@@ -1,0 +1,99 @@
+import React from 'react';
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  Title,
+  Tooltip,
+  Legend,
+  Filler
+} from 'chart.js';
+import { Line } from 'react-chartjs-2';
+
+ChartJS.register(
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  Title,
+  Tooltip,
+  Legend,
+  Filler
+);
+
+interface UsageChartProps {
+  data: {
+    labels: string[];
+    data: number[];
+  };
+  isDark: boolean;
+}
+
+export const UsageChart: React.FC<UsageChartProps> = ({ data, isDark }) => {
+  const chartData = {
+    labels: data.labels,
+    datasets: [
+      {
+        label: 'Active Vehicles',
+        data: data.data,
+        borderColor: isDark ? '#3b82f6' : '#0284c7',
+        backgroundColor: isDark ? 'rgba(59, 130, 246, 0.1)' : 'rgba(2, 132, 199, 0.1)',
+        borderWidth: 2,
+        tension: 0.4,
+        fill: true,
+        pointBackgroundColor: isDark ? '#1e293b' : '#ffffff',
+        pointBorderColor: isDark ? '#3b82f6' : '#0284c7',
+        pointBorderWidth: 2,
+      },
+    ],
+  };
+
+  const options = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: {
+        display: false,
+      },
+      tooltip: {
+        mode: 'index' as const,
+        intersect: false,
+        backgroundColor: isDark ? '#1e293b' : '#ffffff',
+        titleColor: isDark ? '#f8fafc' : '#0f172a',
+        bodyColor: isDark ? '#cbd5e1' : '#475569',
+        borderColor: isDark ? '#334155' : '#e2e8f0',
+        borderWidth: 1,
+      }
+    },
+    scales: {
+      x: {
+        grid: {
+          display: false,
+          drawBorder: false,
+        },
+        ticks: {
+          color: isDark ? '#94a3b8' : '#64748b',
+        }
+      },
+      y: {
+        grid: {
+          color: isDark ? '#334155' : '#e2e8f0',
+          borderDash: [4, 4],
+        },
+        ticks: {
+          color: isDark ? '#94a3b8' : '#64748b',
+        },
+        min: 0,
+        max: 100,
+      }
+    }
+  };
+
+  return (
+    <div className="h-64 w-full">
+      <Line data={chartData} options={options} />
+    </div>
+  );
+};
