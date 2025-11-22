@@ -7,9 +7,20 @@ export default defineConfig(({ mode }) => {
     return {
       server: {
         port: 3000,
-        host: '0.0.0.0',
+        host: 'localhost', // Changed from '0.0.0.0' to 'localhost' for better WebSocket compatibility
+        strictPort: false, // Allow Vite to use next available port if 3000 is taken
+        // Disable HMR to avoid WebSocket connection issues
+        // App will still work, but you need to manually refresh when code changes
+        hmr: false,
+        watch: {
+          usePolling: false,
+        },
       },
-      plugins: [react()],
+      plugins: [
+        react({
+          jsxRuntime: 'automatic',
+        })
+      ],
       define: {
         'process.env.API_KEY': JSON.stringify(env.GEMINI_API_KEY),
         'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY)
@@ -18,6 +29,9 @@ export default defineConfig(({ mode }) => {
         alias: {
           '@': path.resolve(__dirname, '.'),
         }
-      }
+      },
+      optimizeDeps: {
+        include: ['react', 'react-dom'],
+      },
     };
 });

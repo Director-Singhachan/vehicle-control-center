@@ -41,18 +41,44 @@
         padding: 4px 8px;
       }
     </style>
-  <script type="importmap">
-{
-  "imports": {
-    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
-    "react/": "https://aistudiocdn.com/react@^19.2.0/",
-    "react": "https://aistudiocdn.com/react@^19.2.0",
-    "lucide-react": "https://aistudiocdn.com/lucide-react@^0.554.0",
-    "react-chartjs-2": "https://aistudiocdn.com/react-chartjs-2@^5.3.1",
-    "chart.js": "https://aistudiocdn.com/chart.js@^4.5.1",
-    "maplibre-gl": "https://aistudiocdn.com/maplibre-gl@^5.13.0"
+  <!-- Import map removed - using node_modules instead of CDN to avoid polyfill issues -->
+<script>
+// Polyfill for __publicField - Babel helper for class public fields
+// This is required by React 19 when using class fields
+(function() {
+  'use strict';
+  
+  // __publicField polyfill - simplified version
+  // Signature: __publicField(this, key, value) or __publicField(this, descriptor)
+  if (typeof __publicField === 'undefined') {
+    window.__publicField = function(instance, key, value) {
+      try {
+        if (arguments.length === 3) {
+          // __publicField(this, key, value)
+          instance[key] = value;
+        } else if (arguments.length === 2 && typeof key === 'object' && key !== null) {
+          // __publicField(this, descriptor)
+          var descriptor = key;
+          Object.defineProperty(instance, descriptor.key, {
+            enumerable: descriptor.enumerable !== false,
+            configurable: true,
+            writable: true,
+            value: descriptor.initializer ? descriptor.initializer.call(instance) : descriptor.value
+          });
+        } else {
+          // Fallback
+          instance[key] = value;
+        }
+      } catch (e) {
+        console.warn('__publicField polyfill error:', e);
+        // Fallback to simple assignment
+        if (arguments.length === 3) {
+          instance[key] = value;
+        }
+      }
+    };
   }
-}
+})();
 </script>
 </head>
   <body class="bg-gray-50 dark:bg-charcoal-950 text-slate-900 dark:text-slate-100 transition-colors duration-300">

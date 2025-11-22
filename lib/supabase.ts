@@ -26,59 +26,96 @@ See QUICK_START.md for detailed instructions.
   console.error(errorMessage);
   supabaseConfigError = 'Supabase environment variables are not configured. Please create .env.local file.';
   
-  // Use dummy values to prevent app crash, but operations will fail gracefully
-  // This allows the app to show a proper error message instead of crashing
+  // Don't throw error here - let the app show error message in UI
+  // This prevents infinite loading
 }
 
 // Create the Supabase client with better error handling
-// Use dummy values if config is missing to prevent crash
-const safeUrl = supabaseUrl || 'https://placeholder.supabase.co';
-const safeKey = supabaseAnonKey || 'placeholder-key';
+// Use singleton pattern to prevent multiple instances
+let supabaseInstance: ReturnType<typeof createClient> | null = null;
 
-export const supabase = createClient(safeUrl, safeKey, {
-  auth: {
-    persistSession: true,
-    autoRefreshToken: true,
-  },
-  realtime: {
-    params: {
-      eventsPerSecond: 10,
+export const supabase = (() => {
+  if (supabaseInstance) {
+    return supabaseInstance;
+  }
+  
+  // Use dummy values if config is missing to prevent crash
+  const safeUrl = supabaseUrl || 'https://placeholder.supabase.co';
+  const safeKey = supabaseAnonKey || 'placeholder-key';
+
+  supabaseInstance = createClient(safeUrl, safeKey, {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      storageKey: 'vehicle-control-center-auth',
+      storage: typeof window !== 'undefined' ? window.localStorage : undefined,
     },
-  },
-  global: {
-    headers: {
-      'x-client-info': 'vehicle-control-center',
+    realtime: {
+      params: {
+        eventsPerSecond: 10,
+      },
     },
-  },
-});
+    global: {
+      headers: {
+        'x-client-info': 'vehicle-control-center',
+      },
+    },
+  });
+  
+  return supabaseInstance;
+})();
 
 // Helper function to get current user
 export const getCurrentUser = async () => {
   if (supabaseConfigError) {
-    throw new Error(supabaseConfigError);
+    // Return null instead of throwing to prevent infinite loading
+    console.warn('Supabase config error - returning null user');
+    return null;
   }
+  
+  // Add timeout to prevent hanging (increased to 10 seconds for slow connections)
+  const timeoutPromise = new Promise<null>((resolve) => {
+    setTimeout(() => {
+      console.warn('Auth request timeout after 10s - returning null');
+      resolve(null);
+    }, 10000); // Increased from 3s to 10s
+  });
+  
   try {
-    const { data: { user }, error } = await supabase.auth.getUser();
+    const getUserPromise = supabase.auth.getUser();
+    const result = await Promise.race([getUserPromise, timeoutPromise]);
+    
+    // If timeout, return null
+    if (result === null) {
+      return null;
+    }
+    
+    const { data: { user }, error } = result as any;
     
     // If no user, return null (not an error - user just not logged in)
     if (error) {
       // "Auth session missing" is normal when user is not logged in
-      if (error.message.includes('session') || error.message.includes('JWT')) {
+      if (error.message.includes('session') || error.message.includes('JWT') || error.message.includes('Auth session missing')) {
         return null; // User is not authenticated, return null instead of throwing
       }
-      throw error;
+      // For other errors, log but return null to prevent infinite loading
+      console.warn('Auth error:', error.message);
+      return null;
     }
     return user;
   } catch (err) {
     // Check for connection errors
     if (err instanceof Error && (err.message.includes('fetch') || err.message.includes('network'))) {
-      throw new Error('Connection failed. If the problem persists, please check your internet connection or VPN');
+      console.warn('Connection error - returning null user');
+      return null; // Return null instead of throwing to prevent infinite loading
     }
     // If it's a session-related error, just return null (user not logged in)
     if (err instanceof Error && (err.message.includes('session') || err.message.includes('JWT'))) {
       return null;
     }
-    throw err;
+    // For any other error, return null to prevent infinite loading
+    console.warn('Unexpected auth error:', err);
+    return null;
   }
 };
 

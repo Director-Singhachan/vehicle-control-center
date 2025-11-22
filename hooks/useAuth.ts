@@ -22,18 +22,35 @@ export const useAuth = () => {
   const fetchAuth = async () => {
     setLoading(true);
     setError(null);
+    
+    // Add timeout to prevent infinite loading
+    const timeoutId = setTimeout(() => {
+      console.warn('Auth fetch timeout - assuming no user');
+      setLoading(false);
+      setUser(null);
+      setProfile(null);
+    }, 5000); // 5 second timeout
+    
     try {
       const currentUser = await getCurrentUser();
+      clearTimeout(timeoutId);
       setUser(currentUser);
       
       if (currentUser) {
-        const currentProfile = await getCurrentProfile();
-        setProfile(currentProfile);
+        try {
+          const currentProfile = await getCurrentProfile();
+          setProfile(currentProfile);
+        } catch (profileErr) {
+          // Profile fetch failed, but user is authenticated
+          console.warn('Failed to fetch profile:', profileErr);
+          setProfile(null);
+        }
       } else {
         setProfile(null);
         // No user is normal - user just not logged in, don't set error
       }
     } catch (err) {
+      clearTimeout(timeoutId);
       const errorMessage = err instanceof Error ? err.message : 'Failed to fetch auth';
       // Don't show error for session-related messages (user just not logged in)
       if (errorMessage.includes('session') || errorMessage.includes('JWT') || errorMessage.includes('Auth session missing')) {
@@ -50,6 +67,7 @@ export const useAuth = () => {
         setProfile(null);
       }
     } finally {
+      clearTimeout(timeoutId);
       setLoading(false);
     }
   };

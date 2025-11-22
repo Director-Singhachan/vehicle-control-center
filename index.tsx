@@ -214,14 +214,21 @@ const App = () => {
   );
 };
 
-// Error boundary for rendering
+// Error boundary for rendering - use singleton pattern to prevent multiple root creation
+let rootInstance: ReturnType<typeof createRoot> | null = null;
+
 try {
   const rootElement = document.getElementById('root');
   if (!rootElement) {
     throw new Error('Root element not found');
   }
-  const root = createRoot(rootElement);
-  root.render(<App />);
+  
+  // Check if root already exists, reuse it instead of creating new one
+  if (!rootInstance) {
+    rootInstance = createRoot(rootElement);
+  }
+  
+  rootInstance.render(<App />);
 } catch (error) {
   console.error('Failed to render app:', error);
   document.body.innerHTML = `
