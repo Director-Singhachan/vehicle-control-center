@@ -43,40 +43,56 @@
     </style>
   <!-- Import map removed - using node_modules instead of CDN to avoid polyfill issues -->
 <script>
-// Polyfill for __publicField - Babel helper for class public fields
-// This is required by React 19 when using class fields
+// Polyfill for __publicField and other Babel helpers - required by React 19
+// This must run BEFORE any React code loads
 (function() {
   'use strict';
   
-  // __publicField polyfill - simplified version
-  // Signature: __publicField(this, key, value) or __publicField(this, descriptor)
-  if (typeof __publicField === 'undefined') {
-    window.__publicField = function(instance, key, value) {
-      try {
-        if (arguments.length === 3) {
-          // __publicField(this, key, value)
-          instance[key] = value;
-        } else if (arguments.length === 2 && typeof key === 'object' && key !== null) {
-          // __publicField(this, descriptor)
-          var descriptor = key;
-          Object.defineProperty(instance, descriptor.key, {
-            enumerable: descriptor.enumerable !== false,
-            configurable: true,
-            writable: true,
-            value: descriptor.initializer ? descriptor.initializer.call(instance) : descriptor.value
-          });
-        } else {
-          // Fallback
-          instance[key] = value;
+  // Make sure polyfills are available globally before React loads
+  if (typeof window !== 'undefined') {
+    // __publicField polyfill
+    if (typeof window.__publicField === 'undefined') {
+      window.__publicField = function(instance, key, value) {
+        try {
+          if (arguments.length === 3) {
+            instance[key] = value;
+          } else if (arguments.length === 2 && typeof key === 'object' && key !== null) {
+            var descriptor = key;
+            Object.defineProperty(instance, descriptor.key, {
+              enumerable: descriptor.enumerable !== false,
+              configurable: true,
+              writable: true,
+              value: descriptor.initializer ? descriptor.initializer.call(instance) : descriptor.value
+            });
+          }
+        } catch (e) {
+          if (arguments.length === 3) {
+            instance[key] = value;
+          }
         }
-      } catch (e) {
-        console.warn('__publicField polyfill error:', e);
-        // Fallback to simple assignment
-        if (arguments.length === 3) {
-          instance[key] = value;
-        }
-      }
-    };
+      };
+    }
+    
+    // __privateField polyfill
+    if (typeof window.__privateField === 'undefined') {
+      window.__privateField = function(instance, key, value) {
+        return value;
+      };
+    }
+    
+    // __privateFieldSet polyfill
+    if (typeof window.__privateFieldSet === 'undefined') {
+      window.__privateFieldSet = function(instance, key, value) {
+        return value;
+      };
+    }
+    
+    // __classPrivateFieldInit polyfill
+    if (typeof window.__classPrivateFieldInit === 'undefined') {
+      window.__classPrivateFieldInit = function(instance, key, value) {
+        return value;
+      };
+    }
   }
 })();
 </script>

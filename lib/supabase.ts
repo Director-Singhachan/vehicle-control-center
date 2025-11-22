@@ -73,10 +73,20 @@ export const getCurrentUser = async () => {
     return null;
   }
   
+  // Check if Supabase URL is placeholder (indicates missing config)
+  if (supabaseUrl === 'https://placeholder.supabase.co' || supabaseAnonKey === 'placeholder-key') {
+    console.warn('Supabase using placeholder config - returning null user');
+    return null;
+  }
+  
   // Add timeout to prevent hanging (increased to 10 seconds for slow connections)
   const timeoutPromise = new Promise<null>((resolve) => {
     setTimeout(() => {
-      console.warn('Auth request timeout after 10s - returning null');
+      console.warn('Auth request timeout after 10s - this may indicate:');
+      console.warn('1. Missing or incorrect Supabase credentials in .env.local');
+      console.warn('2. Network connection issues');
+      console.warn('3. Supabase service is down');
+      console.warn('Returning null user - app will show login page');
       resolve(null);
     }, 10000); // Increased from 3s to 10s
   });
