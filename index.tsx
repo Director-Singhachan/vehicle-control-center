@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
+import './src/index.css';
 import { 
   LayoutDashboard, 
   Truck, 
@@ -11,9 +12,18 @@ import {
   Sun, 
   Moon, 
   Search,
-  LogOut
+  LogOut,
+  User,
+  Shield
 } from 'lucide-react';
 import { DashboardView } from './views/DashboardView';
+import { ProfileView } from './views/ProfileView';
+import { RLSTestView } from './views/RLSTestView';
+import { VehiclesView } from './views/VehiclesView';
+import { VehicleDetailView } from './views/VehicleDetailView';
+import { VehicleFormView } from './views/VehicleFormView';
+import { ProtectedRoute } from './components/ProtectedRoute';
+import { useAuth } from './hooks';
 
 const SidebarItem = ({ icon: Icon, label, active, onClick }: any) => (
   <button 
@@ -29,10 +39,14 @@ const SidebarItem = ({ icon: Icon, label, active, onClick }: any) => (
   </button>
 );
 
-const App = () => {
+// Main App Content (wrapped in ProtectedRoute)
+const AppContent = () => {
+  const { user, profile, signOut, isAdmin, isManager } = useAuth();
   const [isDark, setIsDark] = useState(true);
   const [isSidebarOpen, setSidebarOpen] = useState(true);
   const [activeTab, setActiveTab] = useState('dashboard');
+  const [vehicleView, setVehicleView] = useState<'list' | 'detail' | 'form'>('list');
+  const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(null);
 
   useEffect(() => {
     if (isDark) {
@@ -66,8 +80,18 @@ const App = () => {
         </div>
 
         <div className="p-3 border-t border-slate-200 dark:border-slate-800 space-y-1">
+          <SidebarItem icon={User} label={isSidebarOpen ? "โปรไฟล์" : ""} active={activeTab === 'profile'} onClick={() => setActiveTab('profile')} />
+          {(isAdmin || isManager) && (
+            <SidebarItem icon={Shield} label={isSidebarOpen ? "ทดสอบ RLS" : ""} active={activeTab === 'rls-test'} onClick={() => setActiveTab('rls-test')} />
+          )}
           <SidebarItem icon={Settings} label={isSidebarOpen ? "ตั้งค่า" : ""} active={activeTab === 'settings'} onClick={() => setActiveTab('settings')} />
-          <SidebarItem icon={LogOut} label={isSidebarOpen ? "ออกจากระบบ" : ""} onClick={() => console.log('logout')} />
+          <SidebarItem icon={LogOut} label={isSidebarOpen ? "ออกจากระบบ" : ""} onClick={async () => {
+            try {
+              await signOut();
+            } catch (error) {
+              console.error('Error signing out:', error);
+            }
+          }} />
         </div>
       </aside>
 
@@ -100,8 +124,14 @@ const App = () => {
             </button>
             <div className="flex items-center space-x-3 border-l border-slate-200 dark:border-slate-700 pl-4">
               <div className="text-right hidden sm:block">
-                <p className="text-sm font-medium text-slate-900 dark:text-white">ผู้ดูแลระบบ</p>
-                <p className="text-xs text-slate-500 dark:text-slate-400">ผู้จัดการกองยาน</p>
+                <p className="text-sm font-medium text-slate-900 dark:text-white">
+                  {profile?.full_name || user?.email || 'ผู้ใช้'}
+                </p>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  {profile?.role === 'admin' ? 'ผู้ดูแลระบบ' : 
+                   profile?.role === 'manager' ? 'ผู้จัดการ' :
+                   profile?.role === 'inspector' ? 'ผู้ตรวจสอบ' : 'ผู้ใช้'}
+                </p>
               </div>
               <div className="w-8 h-8 bg-gradient-to-br from-enterprise-500 to-neon-blue rounded-full shadow-md"></div>
             </div>
@@ -112,11 +142,60 @@ const App = () => {
         <div className="p-6">
           {activeTab === 'dashboard' ? (
             <DashboardView isDark={isDark} />
+          ) : activeTab === 'vehicles' ? (
+            vehicleView === 'list' ? (
+              <VehiclesView
+                onViewDetail={(id) => {
+                  setSelectedVehicleId(id);
+                  setVehicleView('detail');
+                }}
+                onEdit={(id) => {
+                  setSelectedVehicleId(id);
+                  setVehicleView('form');
+                }}
+                onCreate={() => {
+                  setSelectedVehicleId(undefined);
+                  setVehicleView('form');
+                }}
+              />
+            ) : vehicleView === 'detail' && selectedVehicleId ? (
+              <VehicleDetailView
+                vehicleId={selectedVehicleId}
+                onEdit={(id) => {
+                  setSelectedVehicleId(id);
+                  setVehicleView('form');
+                }}
+                onBack={() => {
+                  setVehicleView('list');
+                  setSelectedVehicleId(null);
+                }}
+              />
+            ) : vehicleView === 'form' ? (
+              <VehicleFormView
+                vehicleId={selectedVehicleId || undefined}
+                onSave={() => {
+                  setVehicleView('list');
+                  setSelectedVehicleId(null);
+                }}
+                onCancel={() => {
+                  if (selectedVehicleId) {
+                    setVehicleView('detail');
+                  } else {
+                    setVehicleView('list');
+                    setSelectedVehicleId(null);
+                  }
+                }}
+              />
+            ) : null
+          ) : activeTab === 'profile' ? (
+            <ProfileView />
+          ) : activeTab === 'rls-test' ? (
+            <RLSTestView />
           ) : (
             <div className="flex flex-col items-center justify-center h-[60vh] text-slate-400">
               <Wrench size={48} className="mb-4 opacity-50" />
               <h3 className="text-xl font-medium text-slate-600 dark:text-slate-300">กำลังพัฒนา</h3>
-              <p>โมดูล {activeTab === 'vehicles' ? 'ยานพาหนะ' : activeTab === 'maintenance' ? 'การซ่อมบำรุง' : activeTab === 'reports' ? 'รายงาน' : activeTab === 'settings' ? 'ตั้งค่า' : activeTab} กำลังอยู่ระหว่างการพัฒนา</p>
+              <p>โมดูล {activeTab === 'maintenance' ? 'การซ่อมบำรุง' : activeTab === 'reports' ? 'รายงาน' : activeTab === 'settings' ? 'ตั้งค่า' : activeTab} กำลังอยู่ระหว่างการพัฒนา</p>
             </div>
           )}
         </div>
@@ -126,5 +205,45 @@ const App = () => {
   );
 };
 
-const root = createRoot(document.getElementById('root')!);
-root.render(<App />);
+// Main App with Authentication
+const App = () => {
+  return (
+    <ProtectedRoute>
+      <AppContent />
+    </ProtectedRoute>
+  );
+};
+
+// Error boundary for rendering - use singleton pattern to prevent multiple root creation
+let rootInstance: ReturnType<typeof createRoot> | null = null;
+
+try {
+  const rootElement = document.getElementById('root');
+  if (!rootElement) {
+    throw new Error('Root element not found');
+  }
+  
+  // Check if root already exists, reuse it instead of creating new one
+  if (!rootInstance) {
+    rootInstance = createRoot(rootElement);
+  }
+  
+  rootInstance.render(<App />);
+} catch (error) {
+  console.error('Failed to render app:', error);
+  document.body.innerHTML = `
+    <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; font-family: system-ui; padding: 20px; text-align: center;">
+      <h1 style="color: #ef4444; margin-bottom: 16px;">เกิดข้อผิดพลาดในการโหลดแอป</h1>
+      <p style="color: #64748b; margin-bottom: 8px;">${error instanceof Error ? error.message : 'Unknown error'}</p>
+      <p style="color: #94a3b8; font-size: 14px; margin-top: 16px;">
+        กรุณาตรวจสอบ Browser Console (F12) สำหรับรายละเอียดเพิ่มเติม
+      </p>
+      <button 
+        onclick="location.reload()" 
+        style="margin-top: 24px; padding: 12px 24px; background: #0ea5e9; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 16px;"
+      >
+        โหลดใหม่
+      </button>
+    </div>
+  `;
+}
