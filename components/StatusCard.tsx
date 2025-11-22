@@ -43,7 +43,7 @@ export const StatusCard: React.FC<StatusCardProps> = ({
           <span className={`font-semibold ${trend >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
             {trend > 0 ? '+' : ''}{trend}%
           </span>
-          <span className="ml-2 text-slate-500 dark:text-slate-400">{trendLabel || 'vs yesterday'}</span>
+          <span className="ml-2 text-slate-500 dark:text-slate-400">{trendLabel || 'เทียบกับเมื่อวาน'}</span>
         </div>
       )}
     </div>

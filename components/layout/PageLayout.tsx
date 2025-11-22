@@ -28,7 +28,7 @@ export const PageLayout: React.FC<PageLayoutProps> = ({
   if (loading) {
     return (
       <div className="flex items-center justify-center h-96 text-slate-400">
-        <RefreshCw className="animate-spin mr-2" /> Loading...
+        <RefreshCw className="animate-spin mr-2" /> กำลังโหลด...
       </div>
     );
   }
@@ -36,13 +36,13 @@ export const PageLayout: React.FC<PageLayoutProps> = ({
   if (error) {
     return (
       <div className="flex flex-col items-center justify-center h-96 text-red-400">
-        <p>Failed to load data.</p>
+        <p>โหลดข้อมูลไม่สำเร็จ</p>
         {onRetry && (
           <button
             onClick={onRetry}
             className="mt-4 px-4 py-2 bg-enterprise-600 text-white rounded-lg hover:bg-enterprise-700"
           >
-            Retry
+            ลองอีกครั้ง
           </button>
         )}
       </div>

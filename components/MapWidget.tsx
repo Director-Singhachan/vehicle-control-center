@@ -73,16 +73,16 @@ export const MapWidget: React.FC<MapWidgetProps> = ({ vehicles, isDark }) => {
       <div ref={mapContainer} className="w-full h-full" style={{ minHeight: '400px' }} />
       
       <div className="absolute top-4 left-4 bg-white/90 dark:bg-charcoal-900/90 backdrop-blur p-3 rounded-lg shadow-sm border border-slate-200 dark:border-slate-700 z-10">
-        <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">Legend</h4>
+        <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">คำอธิบาย</h4>
         <div className="space-y-1.5">
           <div className="flex items-center text-xs text-slate-700 dark:text-slate-300">
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 mr-2"></span> Active
+            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 mr-2"></span> ใช้งาน
           </div>
           <div className="flex items-center text-xs text-slate-700 dark:text-slate-300">
-            <span className="w-2.5 h-2.5 rounded-full bg-amber-400 mr-2"></span> Idle
+            <span className="w-2.5 h-2.5 rounded-full bg-amber-400 mr-2"></span> ว่าง
           </div>
           <div className="flex items-center text-xs text-slate-700 dark:text-slate-300">
-            <span className="w-2.5 h-2.5 rounded-full bg-red-500 mr-2"></span> Maintenance
+            <span className="w-2.5 h-2.5 rounded-full bg-red-500 mr-2"></span> ซ่อมบำรุง
           </div>
         </div>
       </div>
