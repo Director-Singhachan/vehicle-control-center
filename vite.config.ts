@@ -9,6 +9,7 @@ export default defineConfig(({ mode }) => {
         port: 3000,
         host: 'localhost', // Changed from '0.0.0.0' to 'localhost' for better WebSocket compatibility
         strictPort: false, // Allow Vite to use next available port if 3000 is taken
+        open: true, // Open in external browser (not IDE embedded browser) - allows F12 DevTools
         // Disable HMR to avoid WebSocket connection issues
         // App will still work, but you need to manually refresh when code changes
         hmr: false,
@@ -32,6 +33,15 @@ export default defineConfig(({ mode }) => {
       },
       optimizeDeps: {
         include: ['react', 'react-dom'],
+        esbuildOptions: {
+          target: 'es2020',
+        },
+      },
+      build: {
+        target: 'es2020',
+        commonjsOptions: {
+          transformMixedEsModules: true,
+        },
       },
     };
 });
