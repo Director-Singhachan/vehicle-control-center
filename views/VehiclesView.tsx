@@ -2,12 +2,12 @@
 import React, { useState, useMemo } from 'react';
 import { useVehicles, useVehiclesWithStatus } from '../hooks';
 import { useAuth } from '../hooks';
-import { 
-  Truck, 
-  Plus, 
-  Search, 
-  Filter, 
-  Edit, 
+import {
+  Truck,
+  Plus,
+  Search,
+  Filter,
+  Edit,
   Eye,
   MapPin,
   Activity,
@@ -38,7 +38,7 @@ export const VehiclesView: React.FC<VehiclesViewProps> = ({
   const { isManager, isAdmin } = useAuth();
   const { vehicles, loading, error, refetch } = useVehicles();
   const { vehicles: vehiclesWithStatus, loading: loadingStatus, error: statusError, refetch: refetchStatus } = useVehiclesWithStatus();
-  
+
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'maintenance' | 'idle'>('all');
   const [branchFilter, setBranchFilter] = useState<string>('all');
@@ -174,41 +174,37 @@ export const VehiclesView: React.FC<VehiclesViewProps> = ({
             <div className="flex gap-2">
               <button
                 onClick={() => setStatusFilter('all')}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  statusFilter === 'all'
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${statusFilter === 'all'
                     ? 'bg-enterprise-600 text-white'
                     : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
-                }`}
+                  }`}
               >
                 ทั้งหมด
               </button>
               <button
                 onClick={() => setStatusFilter('active')}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  statusFilter === 'active'
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${statusFilter === 'active'
                     ? 'bg-green-600 text-white'
                     : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
-                }`}
+                  }`}
               >
                 ใช้งาน
               </button>
               <button
                 onClick={() => setStatusFilter('maintenance')}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  statusFilter === 'maintenance'
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${statusFilter === 'maintenance'
                     ? 'bg-yellow-600 text-white'
                     : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
-                }`}
+                  }`}
               >
                 ซ่อมบำรุง
               </button>
               <button
                 onClick={() => setStatusFilter('idle')}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  statusFilter === 'idle'
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${statusFilter === 'idle'
                     ? 'bg-slate-600 text-white'
                     : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
-                }`}
+                  }`}
               >
                 ว่าง
               </button>
@@ -250,8 +246,8 @@ export const VehiclesView: React.FC<VehiclesViewProps> = ({
               {searchQuery || statusFilter !== 'all' || branchFilter !== 'all'
                 ? 'ลองเปลี่ยนเงื่อนไขการค้นหา'
                 : canEdit
-                ? 'เริ่มต้นด้วยการเพิ่มยานพาหนะ'
-                : 'ยังไม่มีข้อมูลยานพาหนะ'}
+                  ? 'เริ่มต้นด้วยการเพิ่มยานพาหนะ'
+                  : 'ยังไม่มีข้อมูลยานพาหนะ'}
             </p>
           </Card>
         ) : (
@@ -261,61 +257,76 @@ export const VehiclesView: React.FC<VehiclesViewProps> = ({
               const StatusIcon = statusBadge.icon;
 
               return (
-                <Card key={vehicle.id} className="p-6 hover:shadow-lg transition-shadow">
-                  <div className="flex items-start justify-between mb-4">
-                    <div className="flex items-center gap-3">
-                      <div className="p-3 bg-enterprise-100 dark:bg-enterprise-900 rounded-lg">
-                        <Truck className="w-6 h-6 text-enterprise-600 dark:text-enterprise-400" />
-                      </div>
-                      <div>
-                        <h3 className="font-semibold text-lg text-slate-900 dark:text-white">
-                          {vehicle.plate}
-                        </h3>
-                        <p className="text-sm text-slate-500 dark:text-slate-400">
-                          {vehicle.make} {vehicle.model}
-                        </p>
+                <Card key={vehicle.id} className="overflow-hidden hover:shadow-lg transition-shadow group">
+                  <div className="relative h-48 bg-slate-100 dark:bg-slate-800">
+                    <img
+                      src={vehicle.image_url || 'https://images.unsplash.com/photo-1533473359331-0135ef1b58bf?auto=format&fit=crop&q=80&w=1000'}
+                      alt={vehicle.plate}
+                      className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1533473359331-0135ef1b58bf?auto=format&fit=crop&q=80&w=1000';
+                      }}
+                    />
+                    <div className="absolute top-3 right-3">
+                      <span className={`px-2 py-1 rounded-full text-xs font-medium flex items-center gap-1 shadow-sm ${statusBadge.className}`}>
+                        <StatusIcon className="w-3 h-3" />
+                        {statusBadge.label}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="p-6">
+                    <div className="flex items-start justify-between mb-4">
+                      <div className="flex items-center gap-3">
+                        <div className="p-2 bg-enterprise-100 dark:bg-enterprise-900 rounded-lg">
+                          <Truck className="w-5 h-5 text-enterprise-600 dark:text-enterprise-400" />
+                        </div>
+                        <div>
+                          <h3 className="font-semibold text-lg text-slate-900 dark:text-white">
+                            {vehicle.plate}
+                          </h3>
+                          <p className="text-sm text-slate-500 dark:text-slate-400">
+                            {vehicle.make} {vehicle.model}
+                          </p>
+                        </div>
                       </div>
                     </div>
-                    <span className={`px-2 py-1 rounded-full text-xs font-medium flex items-center gap-1 ${statusBadge.className}`}>
-                      <StatusIcon className="w-3 h-3" />
-                      {statusBadge.label}
-                    </span>
-                  </div>
 
-                  <div className="space-y-2 mb-4">
-                    {vehicle.type && (
-                      <div className="flex items-center text-sm text-slate-600 dark:text-slate-400">
-                        <span className="w-20">ประเภท:</span>
-                        <span className="font-medium">{vehicle.type}</span>
-                      </div>
-                    )}
-                    {vehicle.branch && (
-                      <div className="flex items-center text-sm text-slate-600 dark:text-slate-400">
-                        <MapPin className="w-4 h-4 mr-1" />
-                        <span>{vehicle.branch}</span>
-                      </div>
-                    )}
-                  </div>
+                    <div className="space-y-2 mb-4">
+                      {vehicle.type && (
+                        <div className="flex items-center text-sm text-slate-600 dark:text-slate-400">
+                          <span className="w-20">ประเภท:</span>
+                          <span className="font-medium">{vehicle.type}</span>
+                        </div>
+                      )}
+                      {vehicle.branch && (
+                        <div className="flex items-center text-sm text-slate-600 dark:text-slate-400">
+                          <MapPin className="w-4 h-4 mr-1" />
+                          <span>{vehicle.branch}</span>
+                        </div>
+                      )}
+                    </div>
 
-                  <div className="flex gap-2 pt-4 border-t border-slate-200 dark:border-slate-700">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="flex-1"
-                      onClick={() => onViewDetail?.(vehicle.id)}
-                    >
-                      <Eye className="w-4 h-4 mr-1" />
-                      ดูรายละเอียด
-                    </Button>
-                    {canEdit && (
+                    <div className="flex gap-2 pt-4 border-t border-slate-200 dark:border-slate-700">
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => onEdit?.(vehicle.id)}
+                        className="flex-1"
+                        onClick={() => onViewDetail?.(vehicle.id)}
                       >
-                        <Edit className="w-4 h-4" />
+                        <Eye className="w-4 h-4 mr-1" />
+                        ดูรายละเอียด
                       </Button>
-                    )}
+                      {canEdit && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => onEdit?.(vehicle.id)}
+                        >
+                          <Edit className="w-4 h-4" />
+                        </Button>
+                      )}
+                    </div>
                   </div>
                 </Card>
               );
@@ -326,4 +337,3 @@ export const VehiclesView: React.FC<VehiclesViewProps> = ({
     </PageLayout>
   );
 };
-

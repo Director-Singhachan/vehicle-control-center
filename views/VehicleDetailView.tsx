@@ -2,9 +2,9 @@
 import React from 'react';
 import { useVehicle } from '../hooks';
 import { useAuth } from '../hooks';
-import { 
-  Truck, 
-  Edit, 
+import {
+  Truck,
+  Edit,
   ArrowLeft,
   MapPin,
   Calendar,
@@ -32,9 +32,9 @@ export const VehicleDetailView: React.FC<VehicleDetailViewProps> = ({
 }) => {
   const { isManager, isAdmin } = useAuth();
   const { vehicle, loading, error } = useVehicle(vehicleId);
-  const { tickets, loading: loadingTickets, error: ticketsError } = useTickets({ 
+  const { tickets, loading: loadingTickets, error: ticketsError } = useTickets({
     filters: { vehicle_id: vehicleId },
-    autoFetch: true 
+    autoFetch: true
   });
 
   const canEdit = isManager || isAdmin;
@@ -112,93 +112,111 @@ export const VehicleDetailView: React.FC<VehicleDetailViewProps> = ({
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Main Info */}
         <div className="lg:col-span-2 space-y-6">
-          {/* Vehicle Info Card */}
-          <Card className="p-6">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-xl font-semibold text-slate-900 dark:text-white">
-                ข้อมูลยานพาหนะ
-              </h2>
-              <span className={`px-3 py-1 rounded-full text-sm font-medium flex items-center gap-2 ${
-                statusConfig[status as keyof typeof statusConfig].className
-              }`}>
-                <StatusIcon className="w-4 h-4" />
-                {statusConfig[status as keyof typeof statusConfig].label}
-              </span>
+          {/* Vehicle Image & Info Card */}
+          <Card className="overflow-hidden">
+            <div className="relative h-64 md:h-80 bg-slate-100 dark:bg-slate-800">
+              <img
+                src={vehicle.image_url || 'https://images.unsplash.com/photo-1533473359331-0135ef1b58bf?auto=format&fit=crop&q=80&w=1000'}
+                alt={vehicle.plate}
+                className="w-full h-full object-cover"
+                onError={(e) => {
+                  (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1533473359331-0135ef1b58bf?auto=format&fit=crop&q=80&w=1000';
+                }}
+              />
+              <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-6">
+                <div className="flex items-end justify-between">
+                  <div>
+                    <h1 className="text-3xl font-bold text-white mb-1">{vehicle.plate}</h1>
+                    <p className="text-slate-200 text-lg">{vehicle.make} {vehicle.model}</p>
+                  </div>
+                  <span className={`px-3 py-1 rounded-full text-sm font-medium flex items-center gap-2 ${statusConfig[status as keyof typeof statusConfig].className
+                    }`}>
+                    <StatusIcon className="w-4 h-4" />
+                    {statusConfig[status as keyof typeof statusConfig].label}
+                  </span>
+                </div>
+              </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div>
-                <label className="block text-sm font-medium text-slate-500 dark:text-slate-400 mb-1">
-                  ป้ายทะเบียน
-                </label>
-                <p className="text-lg font-semibold text-slate-900 dark:text-white">
-                  {vehicle.plate}
-                </p>
-              </div>
+            <div className="p-6">
+              <h2 className="text-xl font-semibold text-slate-900 dark:text-white mb-6">
+                ข้อมูลยานพาหนะ
+              </h2>
 
-              <div>
-                <label className="block text-sm font-medium text-slate-500 dark:text-slate-400 mb-1">
-                  ยี่ห้อ
-                </label>
-                <p className="text-lg text-slate-900 dark:text-white">
-                  {vehicle.make || '-'}
-                </p>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-500 dark:text-slate-400 mb-1">
-                  รุ่น
-                </label>
-                <p className="text-lg text-slate-900 dark:text-white">
-                  {vehicle.model || '-'}
-                </p>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-500 dark:text-slate-400 mb-1">
-                  ประเภท
-                </label>
-                <p className="text-lg text-slate-900 dark:text-white">
-                  {vehicle.type || '-'}
-                </p>
-              </div>
-
-              {vehicle.branch && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
                   <label className="block text-sm font-medium text-slate-500 dark:text-slate-400 mb-1">
-                    สาขา
+                    ป้ายทะเบียน
+                  </label>
+                  <p className="text-lg font-semibold text-slate-900 dark:text-white">
+                    {vehicle.plate}
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-500 dark:text-slate-400 mb-1">
+                    ยี่ห้อ
+                  </label>
+                  <p className="text-lg text-slate-900 dark:text-white">
+                    {vehicle.make || '-'}
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-500 dark:text-slate-400 mb-1">
+                    รุ่น
+                  </label>
+                  <p className="text-lg text-slate-900 dark:text-white">
+                    {vehicle.model || '-'}
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-500 dark:text-slate-400 mb-1">
+                    ประเภท
+                  </label>
+                  <p className="text-lg text-slate-900 dark:text-white">
+                    {vehicle.type || '-'}
+                  </p>
+                </div>
+
+                {vehicle.branch && (
+                  <div>
+                    <label className="block text-sm font-medium text-slate-500 dark:text-slate-400 mb-1">
+                      สาขา
+                    </label>
+                    <p className="text-lg text-slate-900 dark:text-white flex items-center gap-2">
+                      <MapPin className="w-4 h-4" />
+                      {vehicle.branch}
+                    </p>
+                  </div>
+                )}
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-500 dark:text-slate-400 mb-1">
+                    วันที่เพิ่ม
                   </label>
                   <p className="text-lg text-slate-900 dark:text-white flex items-center gap-2">
-                    <MapPin className="w-4 h-4" />
-                    {vehicle.branch}
+                    <Calendar className="w-4 h-4" />
+                    {new Date(vehicle.created_at).toLocaleDateString('th-TH', {
+                      year: 'numeric',
+                      month: 'long',
+                      day: 'numeric',
+                    })}
                   </p>
                 </div>
-              )}
 
-              <div>
-                <label className="block text-sm font-medium text-slate-500 dark:text-slate-400 mb-1">
-                  วันที่เพิ่ม
-                </label>
-                <p className="text-lg text-slate-900 dark:text-white flex items-center gap-2">
-                  <Calendar className="w-4 h-4" />
-                  {new Date(vehicle.created_at).toLocaleDateString('th-TH', {
-                    year: 'numeric',
-                    month: 'long',
-                    day: 'numeric',
-                  })}
-                </p>
+                {vehicle.lat && vehicle.lng && (
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-medium text-slate-500 dark:text-slate-400 mb-1">
+                      ตำแหน่ง
+                    </label>
+                    <p className="text-sm text-slate-600 dark:text-slate-400">
+                      {vehicle.lat.toFixed(6)}, {vehicle.lng.toFixed(6)}
+                    </p>
+                  </div>
+                )}
               </div>
-
-              {vehicle.lat && vehicle.lng && (
-                <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-slate-500 dark:text-slate-400 mb-1">
-                    ตำแหน่ง
-                  </label>
-                  <p className="text-sm text-slate-600 dark:text-slate-400">
-                    {vehicle.lat.toFixed(6)}, {vehicle.lng.toFixed(6)}
-                  </p>
-                </div>
-              )}
             </div>
           </Card>
 
@@ -285,4 +303,3 @@ export const VehicleDetailView: React.FC<VehicleDetailViewProps> = ({
     </PageLayout>
   );
 };
-

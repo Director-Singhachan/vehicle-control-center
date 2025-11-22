@@ -15,21 +15,21 @@ export default {
       },
       colors: {
         enterprise: {
-          50: '#f0f9ff',
-          100: '#e0f2fe',
-          500: '#0ea5e9',
-          600: '#0284c7',
-          900: '#0c4a6e',
+          50: '#f5f3ff', // violet-50
+          100: '#ede9fe', // violet-100
+          500: '#8b5cf6', // violet-500
+          600: '#7c3aed', // violet-600
+          900: '#4c1d95', // violet-900
         },
         charcoal: {
-          800: '#1e293b',
-          900: '#0f172a',
-          950: '#020617',
+          800: '#1e1b4b', // indigo-950 (Deep Blue/Black)
+          900: '#0f172a', // slate-900
+          950: '#020617', // slate-950 (Deep Space)
         },
         neon: {
-          blue: '#3b82f6',
-          green: '#10b981',
-          alert: '#ef4444',
+          blue: '#38bdf8', // sky-400 (Bright Cyan)
+          green: '#34d399', // emerald-400
+          alert: '#f472b6', // pink-400
         }
       },
       animation: {

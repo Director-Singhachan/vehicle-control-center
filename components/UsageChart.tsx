@@ -38,13 +38,13 @@ export const UsageChart: React.FC<UsageChartProps> = ({ data, isDark }) => {
       {
         label: 'ยานพาหนะที่ใช้งาน',
         data: data.data,
-        borderColor: isDark ? '#3b82f6' : '#0284c7',
-        backgroundColor: isDark ? 'rgba(59, 130, 246, 0.1)' : 'rgba(2, 132, 199, 0.1)',
+        borderColor: isDark ? '#8b5cf6' : '#7c3aed', // Violet
+        backgroundColor: isDark ? 'rgba(139, 92, 246, 0.1)' : 'rgba(124, 58, 237, 0.1)',
         borderWidth: 2,
         tension: 0.4,
         fill: true,
-        pointBackgroundColor: isDark ? '#1e293b' : '#ffffff',
-        pointBorderColor: isDark ? '#3b82f6' : '#0284c7',
+        pointBackgroundColor: isDark ? '#020617' : '#ffffff', // Deep Space
+        pointBorderColor: isDark ? '#8b5cf6' : '#7c3aed',
         pointBorderWidth: 2,
       },
     ],
@@ -60,7 +60,7 @@ export const UsageChart: React.FC<UsageChartProps> = ({ data, isDark }) => {
       tooltip: {
         mode: 'index' as const,
         intersect: false,
-        backgroundColor: isDark ? '#1e293b' : '#ffffff',
+        backgroundColor: isDark ? '#020617' : '#ffffff', // Deep Space
         titleColor: isDark ? '#f8fafc' : '#0f172a',
         bodyColor: isDark ? '#cbd5e1' : '#475569',
         borderColor: isDark ? '#334155' : '#e2e8f0',

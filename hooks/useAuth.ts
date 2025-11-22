@@ -16,26 +16,26 @@ export interface AuthUser {
 export const useAuth = () => {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(true); // Must be true initially to wait for auth check
   const [error, setError] = useState<Error | null>(null);
 
   const fetchAuth = async () => {
     setLoading(true);
     setError(null);
-    
+
     // Add timeout to prevent infinite loading
     const timeoutId = setTimeout(() => {
       console.warn('Auth fetch timeout - assuming no user');
       setLoading(false);
       setUser(null);
       setProfile(null);
-    }, 5000); // 5 second timeout
-    
+    }, 15000); // 15 second timeout (increased from 5)
+
     try {
       const currentUser = await getCurrentUser();
       clearTimeout(timeoutId);
       setUser(currentUser);
-      
+
       if (currentUser) {
         try {
           const currentProfile = await getCurrentProfile();
@@ -80,7 +80,7 @@ export const useAuth = () => {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event, session) => {
       setUser(session?.user ?? null);
-      
+
       if (session?.user) {
         try {
           const currentProfile = await getCurrentProfile();

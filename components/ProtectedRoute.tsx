@@ -19,21 +19,6 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   fallback,
 }) => {
   const { user, profile, loading, error, isAuthenticated, isAdmin, isManager, isInspector } = useAuth();
-  
-  // Use hooks at top level (before any conditional returns)
-  const [showTimeout, setShowTimeout] = React.useState(false);
-  
-  React.useEffect(() => {
-    if (loading) {
-      const timer = setTimeout(() => {
-        setShowTimeout(true);
-      }, 5000); // Show login after 5 seconds
-      
-      return () => clearTimeout(timer);
-    } else {
-      setShowTimeout(false); // Reset timeout when not loading
-    }
-  }, [loading]);
 
   // Show error state if Supabase config is missing
   if (error && (error.message.includes('environment variables') || error.message.includes('not configured'))) {
@@ -52,7 +37,7 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
           <div className="text-left bg-slate-50 dark:bg-slate-900 p-4 rounded-lg mb-4">
             <p className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">ไฟล์ .env.local:</p>
             <pre className="text-xs text-slate-600 dark:text-slate-400 whitespace-pre-wrap">
-{`VITE_SUPABASE_URL=https://your-project-id.supabase.co
+              {`VITE_SUPABASE_URL=https://your-project-id.supabase.co
 VITE_SUPABASE_ANON_KEY=your-anon-key-here`}
             </pre>
           </div>
@@ -64,21 +49,13 @@ VITE_SUPABASE_ANON_KEY=your-anon-key-here`}
     );
   }
 
-  // Show loading state with timeout fallback
+  // Show loading state
   if (loading) {
-    if (showTimeout) {
-      // If loading takes too long, assume no user and show login
-      return <LoginView />;
-    }
-    
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-enterprise-600 mx-auto mb-4"></div>
           <p className="text-slate-600 dark:text-slate-400">กำลังโหลด...</p>
-          <p className="text-xs text-slate-500 dark:text-slate-500 mt-2">
-            หากโหลดนานเกินไป จะแสดงหน้า login อัตโนมัติ
-          </p>
         </div>
       </div>
     );
@@ -139,4 +116,3 @@ VITE_SUPABASE_ANON_KEY=your-anon-key-here`}
   // User is authenticated and has required role
   return <>{children}</>;
 };
-

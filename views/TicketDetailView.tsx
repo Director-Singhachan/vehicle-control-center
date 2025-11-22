@@ -3,9 +3,9 @@ import React, { useState } from 'react';
 import { useTicket, useTicketCosts, useAuth } from '../hooks';
 import { ticketService } from '../services';
 import { supabase } from '../lib/supabase';
-import { 
-  FileText, 
-  Edit, 
+import {
+  FileText,
+  Edit,
   ArrowLeft,
   Calendar,
   AlertCircle,
@@ -24,6 +24,7 @@ import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Card } from '../components/ui/Card';
 import { PageLayout } from '../components/layout/PageLayout';
+import { ApprovalDialog } from '../components/ApprovalDialog';
 import type { Database } from '../types/database';
 
 type TicketStatus = Database['public']['Tables']['tickets']['Row']['status'];
@@ -46,10 +47,8 @@ export const TicketDetailView: React.FC<TicketDetailViewProps> = ({
 
   const [showApprovalDialog, setShowApprovalDialog] = useState(false);
   const [approvalAction, setApprovalAction] = useState<'approve' | 'reject' | null>(null);
-  const [approvalPassword, setApprovalPassword] = useState('');
-  const [approvalComments, setApprovalComments] = useState('');
+
   const [approving, setApproving] = useState(false);
-  const [approvalError, setApprovalError] = useState<string | null>(null);
 
   const [showCostDialog, setShowCostDialog] = useState(false);
   const [costForm, setCostForm] = useState({
@@ -152,16 +151,16 @@ export const TicketDetailView: React.FC<TicketDetailViewProps> = ({
   // Check if user can approve
   const canApprove = () => {
     if (!user || !profile) return false;
-    
+
     // Inspector can approve pending tickets
     if (isInspector && ticket.status === 'pending') return true;
-    
+
     // Manager can approve inspector-approved tickets
     if (isManager && ticket.status === 'approved_inspector') return true;
-    
+
     // Admin can approve any status
     if (isAdmin) return true;
-    
+
     return false;
   };
 
@@ -173,39 +172,15 @@ export const TicketDetailView: React.FC<TicketDetailViewProps> = ({
 
   const handleApproveClick = (action: 'approve' | 'reject') => {
     setApprovalAction(action);
-    setApprovalPassword('');
-    setApprovalComments('');
-    setApprovalError(null);
     setShowApprovalDialog(true);
   };
 
-  const handleApprovalSubmit = async () => {
-    if (!user || !profile) {
-      setApprovalError('กรุณาเข้าสู่ระบบ');
-      return;
-    }
-
-    if (!approvalPassword) {
-      setApprovalError('กรุณากรอกรหัสผ่านเพื่อยืนยัน');
-      return;
-    }
+  const handleApprovalSubmit = async (password: string, comment: string) => {
+    if (!user || !profile) return;
 
     setApproving(true);
-    setApprovalError(null);
 
     try {
-      // Verify password
-      const { error: verifyError } = await supabase.auth.signInWithPassword({
-        email: user.email || '',
-        password: approvalPassword,
-      });
-
-      if (verifyError) {
-        setApprovalError('รหัสผ่านไม่ถูกต้อง');
-        setApproving(false);
-        return;
-      }
-
       // Determine new status based on current status and role
       let newStatus: TicketStatus;
       if (approvalAction === 'reject') {
@@ -222,27 +197,26 @@ export const TicketDetailView: React.FC<TicketDetailViewProps> = ({
         }
       }
 
-      // Update ticket status
-      await ticketService.update(ticketId, {
-        status: newStatus,
-      });
+      // Determine approval level
+      let level = 1;
+      if (isManager) level = 2;
+      if (isAdmin) level = 3;
 
-      // Create approval record
-      await supabase.from('ticket_approvals').insert({
-        ticket_id: ticketId,
-        approver_id: user.id,
-        role_at_approval: profile.role,
-        action: approvalAction === 'approve' ? 'approved' : 'rejected',
-        comments: approvalComments || null,
-      });
+      // Call service to approve
+      await ticketService.approveTicket(
+        ticketId.toString(),
+        level,
+        user.id,
+        password,
+        comment,
+        newStatus
+      );
 
       // Refresh data
       await refetch();
       setShowApprovalDialog(false);
-      setApprovalPassword('');
-      setApprovalComments('');
     } catch (err: any) {
-      setApprovalError(err.message || 'เกิดข้อผิดพลาดในการอนุมัติ');
+      throw err; // Re-throw to be caught by ApprovalDialog
     } finally {
       setApproving(false);
     }
@@ -504,76 +478,14 @@ export const TicketDetailView: React.FC<TicketDetailViewProps> = ({
         </div>
       </div>
 
-      {/* Approval Dialog */}
-      {showApprovalDialog && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <Card className="p-6 max-w-md w-full">
-            <h3 className="text-xl font-semibold text-slate-900 dark:text-white mb-4">
-              ยืนยันการ{approvalAction === 'approve' ? 'อนุมัติ' : 'ปฏิเสธ'}
-            </h3>
-            <p className="text-sm text-slate-600 dark:text-slate-400 mb-4">
-              กรุณากรอกรหัสผ่านเพื่อยืนยันการ{approvalAction === 'approve' ? 'อนุมัติ' : 'ปฏิเสธ'}ตั๋วนี้
-            </p>
-
-            {approvalError && (
-              <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg mb-4">
-                <p className="text-sm text-red-800 dark:text-red-200">{approvalError}</p>
-              </div>
-            )}
-
-            <div className="space-y-4">
-              <div>
-                <Input
-                  label="รหัสผ่าน *"
-                  type="password"
-                  value={approvalPassword}
-                  onChange={(e) => setApprovalPassword(e.target.value)}
-                  placeholder="กรอกรหัสผ่าน"
-                  disabled={approving}
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                  หมายเหตุ (ไม่บังคับ)
-                </label>
-                <textarea
-                  value={approvalComments}
-                  onChange={(e) => setApprovalComments(e.target.value)}
-                  placeholder="เพิ่มหมายเหตุ..."
-                  rows={3}
-                  disabled={approving}
-                  className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-enterprise-500 focus:border-transparent resize-none"
-                />
-              </div>
-            </div>
-
-            <div className="flex gap-3 mt-6">
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setShowApprovalDialog(false);
-                  setApprovalPassword('');
-                  setApprovalComments('');
-                  setApprovalError(null);
-                }}
-                disabled={approving}
-                className="flex-1"
-              >
-                ยกเลิก
-              </Button>
-              <Button
-                onClick={handleApprovalSubmit}
-                disabled={approving || !approvalPassword}
-                isLoading={approving}
-                className="flex-1"
-              >
-                <Lock className="w-4 h-4 mr-2" />
-                ยืนยัน
-              </Button>
-            </div>
-          </Card>
-        </div>
-      )}
+      <ApprovalDialog
+        isOpen={showApprovalDialog}
+        onClose={() => setShowApprovalDialog(false)}
+        onConfirm={handleApprovalSubmit}
+        title={`ยืนยันการ${approvalAction === 'approve' ? 'อนุมัติ' : 'ปฏิเสธ'}`}
+        message={`กรุณากรอกรหัสผ่านเพื่อยืนยันการ${approvalAction === 'approve' ? 'อนุมัติ' : 'ปฏิเสธ'}ตั๋วนี้`}
+        isLoading={approving}
+      />
 
       {/* Add Cost Dialog */}
       {showCostDialog && (

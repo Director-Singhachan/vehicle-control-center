@@ -1,16 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
 import './src/index.css';
-import { 
-  LayoutDashboard, 
-  Truck, 
-  Wrench, 
-  FileText, 
-  Settings, 
-  Menu, 
-  Bell, 
-  Sun, 
-  Moon, 
+import {
+  LayoutDashboard,
+  Truck,
+  Wrench,
+  FileText,
+  Settings,
+  Menu,
+  Bell,
+  Sun,
+  Moon,
   Search,
   LogOut,
   User,
@@ -22,17 +22,19 @@ import { RLSTestView } from './views/RLSTestView';
 import { VehiclesView } from './views/VehiclesView';
 import { VehicleDetailView } from './views/VehicleDetailView';
 import { VehicleFormView } from './views/VehicleFormView';
+import { TicketsView } from './views/TicketsView';
+import { TicketDetailView } from './views/TicketDetailView';
+import { TicketFormView } from './views/TicketFormView';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { useAuth } from './hooks';
 
 const SidebarItem = ({ icon: Icon, label, active, onClick }: any) => (
-  <button 
+  <button
     onClick={onClick}
-    className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors duration-200 ${
-      active 
-      ? 'bg-enterprise-50 text-enterprise-600 dark:bg-slate-800 dark:text-neon-blue font-medium' 
+    className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors duration-200 ${active
+      ? 'bg-enterprise-50 text-enterprise-600 dark:bg-enterprise-900/30 dark:text-enterprise-400 font-medium'
       : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/50'
-    }`}
+      }`}
   >
     <Icon size={20} />
     <span>{label}</span>
@@ -47,6 +49,39 @@ const AppContent = () => {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [vehicleView, setVehicleView] = useState<'list' | 'detail' | 'form'>('list');
   const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(null);
+  const [ticketView, setTicketView] = useState<'list' | 'detail' | 'form'>('list');
+  const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
+
+  // Load navigation state from localStorage on mount
+  useEffect(() => {
+    const savedState = localStorage.getItem('navigationState');
+    if (savedState) {
+      try {
+        const state = JSON.parse(savedState);
+        if (state.activeTab) setActiveTab(state.activeTab);
+        if (state.vehicleView) setVehicleView(state.vehicleView);
+        if (state.selectedVehicleId) setSelectedVehicleId(state.selectedVehicleId);
+        if (state.ticketView) setTicketView(state.ticketView);
+        if (state.selectedTicketId) setSelectedTicketId(state.selectedTicketId);
+        if (state.isDark !== undefined) setIsDark(state.isDark);
+      } catch (e) {
+        console.error('Failed to restore navigation state:', e);
+      }
+    }
+  }, []);
+
+  // Save navigation state to localStorage whenever it changes
+  useEffect(() => {
+    const state = {
+      activeTab,
+      vehicleView,
+      selectedVehicleId,
+      ticketView,
+      selectedTicketId,
+      isDark
+    };
+    localStorage.setItem('navigationState', JSON.stringify(state));
+  }, [activeTab, vehicleView, selectedVehicleId, ticketView, selectedTicketId, isDark]);
 
   useEffect(() => {
     if (isDark) {
@@ -58,17 +93,17 @@ const AppContent = () => {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-charcoal-950 flex font-sans selection:bg-enterprise-500 selection:text-white">
-      
+
       {/* Sidebar */}
-      <aside className={`${isSidebarOpen ? 'w-64' : 'w-20'} bg-white dark:bg-charcoal-900 border-r border-slate-200 dark:border-slate-800 flex flex-col transition-all duration-300 fixed h-full z-20`}>
+      <aside className={`${isSidebarOpen ? 'w-64' : 'w-20'} bg-white/80 dark:bg-charcoal-900/80 backdrop-blur-md border-r border-slate-200 dark:border-slate-800/50 flex flex-col transition-all duration-300 fixed h-full z-20`}>
         <div className="p-6 flex items-center justify-center">
-          <div className="w-10 h-10 bg-enterprise-600 dark:bg-neon-blue rounded-lg flex items-center justify-center shadow-lg shadow-enterprise-500/30">
-             <Truck className="text-white" size={24} />
+          <div className="w-10 h-10 bg-enterprise-600 dark:bg-enterprise-500 rounded-lg flex items-center justify-center shadow-lg shadow-enterprise-500/30">
+            <Truck className="text-white" size={24} />
           </div>
           {isSidebarOpen && (
-             <div className="ml-3">
-               <h1 className="text-lg font-bold text-slate-900 dark:text-white tracking-tight">กอง<span className="text-enterprise-600 dark:text-neon-blue">ยาน</span></h1>
-             </div>
+            <div className="ml-3">
+              <h1 className="text-lg font-bold text-slate-900 dark:text-white tracking-tight">กอง<span className="text-enterprise-600 dark:text-enterprise-400">ยาน</span></h1>
+            </div>
           )}
         </div>
 
@@ -79,7 +114,7 @@ const AppContent = () => {
           <SidebarItem icon={FileText} label={isSidebarOpen ? "รายงาน" : ""} active={activeTab === 'reports'} onClick={() => setActiveTab('reports')} />
         </div>
 
-        <div className="p-3 border-t border-slate-200 dark:border-slate-800 space-y-1">
+        <div className="p-3 border-t border-slate-200 dark:border-slate-800/50 space-y-1">
           <SidebarItem icon={User} label={isSidebarOpen ? "โปรไฟล์" : ""} active={activeTab === 'profile'} onClick={() => setActiveTab('profile')} />
           {(isAdmin || isManager) && (
             <SidebarItem icon={Shield} label={isSidebarOpen ? "ทดสอบ RLS" : ""} active={activeTab === 'rls-test'} onClick={() => setActiveTab('rls-test')} />
@@ -97,18 +132,18 @@ const AppContent = () => {
 
       {/* Main Content */}
       <main className={`flex-1 flex flex-col transition-all duration-300 ${isSidebarOpen ? 'ml-64' : 'ml-20'}`}>
-        
+
         {/* Top Header */}
-        <header className="h-16 bg-white/80 dark:bg-charcoal-900/80 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 flex items-center justify-between px-6 sticky top-0 z-10">
+        <header className="h-16 bg-white/80 dark:bg-charcoal-900/80 backdrop-blur-md border-b border-slate-200 dark:border-slate-800/50 flex items-center justify-between px-6 sticky top-0 z-10">
           <div className="flex items-center">
             <button onClick={() => setSidebarOpen(!isSidebarOpen)} className="p-2 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400">
               <Menu size={20} />
             </button>
             <div className="ml-4 hidden md:flex items-center bg-slate-100 dark:bg-slate-800 rounded-full px-4 py-1.5 border border-transparent focus-within:border-enterprise-500 dark:focus-within:border-neon-blue transition-colors">
               <Search size={16} className="text-slate-400" />
-              <input 
-                type="text" 
-                placeholder="ค้นหายานพาหนะ..." 
+              <input
+                type="text"
+                placeholder="ค้นหายานพาหนะ..."
                 className="bg-transparent border-none outline-none text-sm ml-2 w-64 text-slate-700 dark:text-slate-200 placeholder-slate-400"
               />
             </div>
@@ -128,9 +163,9 @@ const AppContent = () => {
                   {profile?.full_name || user?.email || 'ผู้ใช้'}
                 </p>
                 <p className="text-xs text-slate-500 dark:text-slate-400">
-                  {profile?.role === 'admin' ? 'ผู้ดูแลระบบ' : 
-                   profile?.role === 'manager' ? 'ผู้จัดการ' :
-                   profile?.role === 'inspector' ? 'ผู้ตรวจสอบ' : 'ผู้ใช้'}
+                  {profile?.role === 'admin' ? 'ผู้ดูแลระบบ' :
+                    profile?.role === 'manager' ? 'ผู้จัดการ' :
+                      profile?.role === 'inspector' ? 'ผู้ตรวจสอบ' : 'ผู้ใช้'}
                 </p>
               </div>
               <div className="w-8 h-8 bg-gradient-to-br from-enterprise-500 to-neon-blue rounded-full shadow-md"></div>
@@ -187,6 +222,47 @@ const AppContent = () => {
                 }}
               />
             ) : null
+          ) : activeTab === 'maintenance' ? (
+            ticketView === 'list' ? (
+              <TicketsView
+                onViewDetail={(id) => {
+                  setSelectedTicketId(id);
+                  setTicketView('detail');
+                }}
+                onCreate={() => {
+                  setSelectedTicketId(null);
+                  setTicketView('form');
+                }}
+              />
+            ) : ticketView === 'detail' && selectedTicketId ? (
+              <TicketDetailView
+                ticketId={selectedTicketId}
+                onBack={() => {
+                  setTicketView('list');
+                  setSelectedTicketId(null);
+                }}
+                onEdit={(id) => {
+                  setSelectedTicketId(id);
+                  setTicketView('form');
+                }}
+              />
+            ) : ticketView === 'form' ? (
+              <TicketFormView
+                ticketId={selectedTicketId || undefined}
+                onSave={() => {
+                  setTicketView('list');
+                  setSelectedTicketId(null);
+                }}
+                onCancel={() => {
+                  if (selectedTicketId) {
+                    setTicketView('detail');
+                  } else {
+                    setTicketView('list');
+                    setSelectedTicketId(null);
+                  }
+                }}
+              />
+            ) : null
           ) : activeTab === 'profile' ? (
             <ProfileView />
           ) : activeTab === 'rls-test' ? (
@@ -195,7 +271,7 @@ const AppContent = () => {
             <div className="flex flex-col items-center justify-center h-[60vh] text-slate-400">
               <Wrench size={48} className="mb-4 opacity-50" />
               <h3 className="text-xl font-medium text-slate-600 dark:text-slate-300">กำลังพัฒนา</h3>
-              <p>โมดูล {activeTab === 'maintenance' ? 'การซ่อมบำรุง' : activeTab === 'reports' ? 'รายงาน' : activeTab === 'settings' ? 'ตั้งค่า' : activeTab} กำลังอยู่ระหว่างการพัฒนา</p>
+              <p>โมดูล {activeTab === 'reports' ? 'รายงาน' : activeTab === 'settings' ? 'ตั้งค่า' : activeTab} กำลังอยู่ระหว่างการพัฒนา</p>
             </div>
           )}
         </div>
@@ -222,12 +298,12 @@ try {
   if (!rootElement) {
     throw new Error('Root element not found');
   }
-  
+
   // Check if root already exists, reuse it instead of creating new one
   if (!rootInstance) {
     rootInstance = createRoot(rootElement);
   }
-  
+
   rootInstance.render(<App />);
 } catch (error) {
   console.error('Failed to render app:', error);

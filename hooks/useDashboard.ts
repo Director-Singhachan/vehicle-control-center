@@ -25,7 +25,7 @@ export const useDashboard = () => {
     vehicles: [],
     vehicleDashboard: [],
   });
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(true); // Must be true initially
   const [error, setError] = useState<Error | null>(null);
 
   const fetchDashboardData = async () => {

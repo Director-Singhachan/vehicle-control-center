@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { useVehicle } from '../hooks';
 import { vehicleService } from '../services';
-import { 
+import {
   ArrowLeft,
   Save,
   AlertCircle,
@@ -26,7 +26,7 @@ export const VehicleFormView: React.FC<VehicleFormViewProps> = ({
 }) => {
   const isEdit = !!vehicleId;
   const { vehicle, loading: loadingVehicle } = useVehicle(vehicleId || null);
-  
+
   const [formData, setFormData] = useState({
     plate: '',
     make: '',
@@ -35,6 +35,7 @@ export const VehicleFormView: React.FC<VehicleFormViewProps> = ({
     branch: '',
     lat: '',
     lng: '',
+    image_url: '',
   });
 
   const [saving, setSaving] = useState(false);
@@ -52,6 +53,7 @@ export const VehicleFormView: React.FC<VehicleFormViewProps> = ({
         branch: vehicle.branch || '',
         lat: vehicle.lat?.toString() || '',
         lng: vehicle.lng?.toString() || '',
+        image_url: vehicle.image_url || '',
       });
     }
   }, [vehicle]);
@@ -72,7 +74,7 @@ export const VehicleFormView: React.FC<VehicleFormViewProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!validate()) return;
 
     setSaving(true);
@@ -88,6 +90,7 @@ export const VehicleFormView: React.FC<VehicleFormViewProps> = ({
         branch: formData.branch.trim() || null,
         lat: formData.lat ? parseFloat(formData.lat) : null,
         lng: formData.lng ? parseFloat(formData.lng) : null,
+        image_url: formData.image_url.trim() || null,
       };
 
       if (isEdit && vehicleId) {
@@ -97,7 +100,7 @@ export const VehicleFormView: React.FC<VehicleFormViewProps> = ({
       }
 
       setSuccess(true);
-      
+
       // Call onSave callback after a short delay
       setTimeout(() => {
         if (onSave) onSave();
@@ -204,6 +207,32 @@ export const VehicleFormView: React.FC<VehicleFormViewProps> = ({
               placeholder="สาขา A"
               disabled={saving}
             />
+
+            <div className="md:col-span-2">
+              <h3 className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-4">
+                รูปภาพยานพาหนะ
+              </h3>
+              <Input
+                label="URL รูปภาพ"
+                type="url"
+                value={formData.image_url}
+                onChange={(e) => handleChange('image_url', e.target.value)}
+                placeholder="https://example.com/car-image.jpg"
+                disabled={saving}
+              />
+              {formData.image_url && (
+                <div className="mt-4 relative h-48 w-full rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700">
+                  <img
+                    src={formData.image_url}
+                    alt="Vehicle Preview"
+                    className="w-full h-full object-cover"
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1533473359331-0135ef1b58bf?auto=format&fit=crop&q=80&w=1000';
+                    }}
+                  />
+                </div>
+              )}
+            </div>
 
             <div className="md:col-span-2">
               <h3 className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-4">

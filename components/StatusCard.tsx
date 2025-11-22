@@ -11,20 +11,20 @@ interface StatusCardProps {
   alert?: boolean;
 }
 
-export const StatusCard: React.FC<StatusCardProps> = ({ 
-  title, 
-  value, 
-  subValue, 
-  icon: Icon, 
-  trend, 
+export const StatusCard: React.FC<StatusCardProps> = ({
+  title,
+  value,
+  subValue,
+  icon: Icon,
+  trend,
   trendLabel,
-  alert = false 
+  alert = false
 }) => {
   return (
-    <div className={`relative overflow-hidden rounded-xl p-6 transition-all duration-300 hover:-translate-y-1 hover:shadow-lg
-      ${alert 
-        ? 'bg-white dark:bg-charcoal-800 border-l-4 border-neon-alert' 
-        : 'bg-white dark:bg-charcoal-800 border border-slate-200 dark:border-slate-700'
+    <div className={`relative overflow-hidden rounded-xl p-6 transition-all duration-300 hover:-translate-y-1 hover:shadow-glow
+      ${alert
+        ? 'bg-white/80 dark:bg-charcoal-900/50 backdrop-blur-md border-l-4 border-neon-alert'
+        : 'bg-white/80 dark:bg-charcoal-900/50 backdrop-blur-md border border-slate-200 dark:border-slate-700/50'
       }
     `}>
       <div className="flex items-start justify-between">
@@ -33,11 +33,11 @@ export const StatusCard: React.FC<StatusCardProps> = ({
           <h3 className="mt-2 text-3xl font-bold text-slate-900 dark:text-white">{value}</h3>
           {subValue && <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{subValue}</p>}
         </div>
-        <div className={`p-3 rounded-lg ${alert ? 'bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400' : 'bg-blue-50 dark:bg-slate-700 text-enterprise-600 dark:text-neon-blue'}`}>
+        <div className={`p-3 rounded-lg ${alert ? 'bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400' : 'bg-enterprise-50 dark:bg-enterprise-900/30 text-enterprise-600 dark:text-enterprise-400'}`}>
           <Icon size={24} />
         </div>
       </div>
-      
+
       {trend !== undefined && (
         <div className="mt-4 flex items-center text-sm">
           <span className={`font-semibold ${trend >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>

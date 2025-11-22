@@ -35,7 +35,7 @@ export const MaintenanceTrendChart: React.FC<MaintenanceTrendProps> = ({ data, i
       {
         label: 'ค่าใช้จ่ายการซ่อมบำรุง (฿)',
         data: data.costs,
-        backgroundColor: isDark ? '#6366f1' : '#4f46e5',
+        backgroundColor: isDark ? '#8b5cf6' : '#7c3aed', // Violet
         borderRadius: 4,
       },
       {
@@ -54,7 +54,7 @@ export const MaintenanceTrendChart: React.FC<MaintenanceTrendProps> = ({ data, i
         display: false,
       },
       tooltip: {
-        backgroundColor: isDark ? '#1e293b' : '#ffffff',
+        backgroundColor: isDark ? '#020617' : '#ffffff', // Deep Space
         titleColor: isDark ? '#f8fafc' : '#0f172a',
         bodyColor: isDark ? '#cbd5e1' : '#475569',
         borderColor: isDark ? '#334155' : '#e2e8f0',
@@ -67,7 +67,7 @@ export const MaintenanceTrendChart: React.FC<MaintenanceTrendProps> = ({ data, i
         ticks: { color: isDark ? '#94a3b8' : '#64748b' }
       },
       y: {
-        grid: { 
+        grid: {
           color: isDark ? '#334155' : '#e2e8f0',
           borderDash: [4, 4]
         },

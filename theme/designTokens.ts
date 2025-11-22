@@ -4,26 +4,26 @@
  */
 
 export const colors = {
-  // Enterprise Blue (สีหลัก)
+  // Enterprise (Now Violet/Indigo for Modern AI)
   enterprise: {
-    50: '#f0f9ff',
-    100: '#e0f2fe',
-    500: '#0ea5e9',
-    600: '#0284c7',
-    700: '#0369a1',
-    900: '#0c4a6e',
+    50: '#f5f3ff',
+    100: '#ede9fe',
+    500: '#8b5cf6',
+    600: '#7c3aed',
+    700: '#6d28d9',
+    900: '#4c1d95',
   },
-  // Dark Mode Backgrounds
+  // Dark Mode Backgrounds (Deep Space)
   charcoal: {
-    800: '#1e293b',
+    800: '#1e1b4b',
     900: '#0f172a',
     950: '#020617',
   },
-  // Neon Accents (สำหรับ dark mode)
+  // Neon Accents
   neon: {
-    blue: '#3b82f6',
-    green: '#10b981',
-    alert: '#ef4444',
+    blue: '#38bdf8',
+    green: '#34d399',
+    alert: '#f472b6',
   },
   // Slate (text และ borders)
   slate: {
@@ -39,16 +39,16 @@ export const colors = {
   },
   // Status Colors
   success: {
-    light: '#10b981',
+    light: '#34d399',
     dark: '#059669',
   },
   error: {
-    light: '#ef4444',
-    dark: '#dc2626',
+    light: '#f472b6',
+    dark: '#be123c',
   },
   warning: {
-    light: '#f59e0b',
-    dark: '#d97706',
+    light: '#fbbf24',
+    dark: '#b45309',
   },
 };
 
@@ -75,6 +75,7 @@ export const shadows = {
   md: '0 4px 6px -1px rgb(0 0 0 / 0.1)',
   lg: '0 10px 15px -3px rgb(0 0 0 / 0.1)',
   xl: '0 20px 25px -5px rgb(0 0 0 / 0.1)',
+  glow: '0 0 15px rgba(139, 92, 246, 0.5)', // Violet glow
 };
 
 export const typography = {
@@ -108,21 +109,21 @@ export const transitions = {
 // Component-specific styles
 export const componentStyles = {
   card: {
-    base: 'bg-white dark:bg-charcoal-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm',
-    hover: 'hover:shadow-lg transition-shadow duration-300',
+    base: 'bg-white/80 dark:bg-charcoal-900/50 backdrop-blur-md border border-slate-200 dark:border-slate-700/50 shadow-sm',
+    hover: 'hover:shadow-glow hover:border-enterprise-500/50 transition-all duration-300',
     padding: 'p-6',
   },
   button: {
-    primary: 'bg-enterprise-600 hover:bg-enterprise-700 text-white',
-    secondary: 'bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-900 dark:text-white',
-    outline: 'border border-slate-300 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300',
-    base: 'px-4 py-2 rounded-lg font-medium transition-colors duration-200',
+    primary: 'bg-gradient-to-r from-enterprise-600 to-enterprise-500 hover:from-enterprise-700 hover:to-enterprise-600 text-white shadow-lg shadow-enterprise-500/30',
+    secondary: 'bg-slate-100 dark:bg-slate-800/50 backdrop-blur-sm hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-900 dark:text-white border border-transparent hover:border-slate-300 dark:hover:border-slate-600',
+    outline: 'border border-slate-300 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-800/50 text-slate-700 dark:text-slate-300',
+    base: 'px-4 py-2 rounded-lg font-medium transition-all duration-200 active:scale-95',
   },
   input: {
-    base: 'w-full px-4 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-enterprise-500 dark:focus:ring-neon-blue',
+    base: 'w-full px-4 py-2 bg-white/50 dark:bg-charcoal-900/50 backdrop-blur-sm border border-slate-300 dark:border-slate-600 rounded-lg text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-enterprise-500 dark:focus:ring-enterprise-400 transition-all duration-200',
   },
   pageHeader: {
-    title: 'text-2xl font-bold text-slate-900 dark:text-white',
+    title: 'text-2xl font-bold text-slate-900 dark:text-white tracking-tight',
     subtitle: 'text-sm text-slate-500 dark:text-slate-400',
   },
 };
