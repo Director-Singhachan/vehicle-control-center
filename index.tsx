@@ -53,21 +53,21 @@ const App = () => {
           </div>
           {isSidebarOpen && (
              <div className="ml-3">
-               <h1 className="text-lg font-bold text-slate-900 dark:text-white tracking-tight">Fleet<span className="text-enterprise-600 dark:text-neon-blue">Ops</span></h1>
+               <h1 className="text-lg font-bold text-slate-900 dark:text-white tracking-tight">กอง<span className="text-enterprise-600 dark:text-neon-blue">ยาน</span></h1>
              </div>
           )}
         </div>
 
         <div className="flex-1 px-3 space-y-1 mt-4">
-          <SidebarItem icon={LayoutDashboard} label={isSidebarOpen ? "Dashboard" : ""} active={activeTab === 'dashboard'} onClick={() => setActiveTab('dashboard')} />
-          <SidebarItem icon={Truck} label={isSidebarOpen ? "Vehicles" : ""} active={activeTab === 'vehicles'} onClick={() => setActiveTab('vehicles')} />
-          <SidebarItem icon={Wrench} label={isSidebarOpen ? "Maintenance" : ""} active={activeTab === 'maintenance'} onClick={() => setActiveTab('maintenance')} />
-          <SidebarItem icon={FileText} label={isSidebarOpen ? "Reports" : ""} active={activeTab === 'reports'} onClick={() => setActiveTab('reports')} />
+          <SidebarItem icon={LayoutDashboard} label={isSidebarOpen ? "แดชบอร์ด" : ""} active={activeTab === 'dashboard'} onClick={() => setActiveTab('dashboard')} />
+          <SidebarItem icon={Truck} label={isSidebarOpen ? "ยานพาหนะ" : ""} active={activeTab === 'vehicles'} onClick={() => setActiveTab('vehicles')} />
+          <SidebarItem icon={Wrench} label={isSidebarOpen ? "การซ่อมบำรุง" : ""} active={activeTab === 'maintenance'} onClick={() => setActiveTab('maintenance')} />
+          <SidebarItem icon={FileText} label={isSidebarOpen ? "รายงาน" : ""} active={activeTab === 'reports'} onClick={() => setActiveTab('reports')} />
         </div>
 
         <div className="p-3 border-t border-slate-200 dark:border-slate-800 space-y-1">
-          <SidebarItem icon={Settings} label={isSidebarOpen ? "Settings" : ""} active={activeTab === 'settings'} onClick={() => setActiveTab('settings')} />
-          <SidebarItem icon={LogOut} label={isSidebarOpen ? "Logout" : ""} onClick={() => console.log('logout')} />
+          <SidebarItem icon={Settings} label={isSidebarOpen ? "ตั้งค่า" : ""} active={activeTab === 'settings'} onClick={() => setActiveTab('settings')} />
+          <SidebarItem icon={LogOut} label={isSidebarOpen ? "ออกจากระบบ" : ""} onClick={() => console.log('logout')} />
         </div>
       </aside>
 
@@ -84,7 +84,7 @@ const App = () => {
               <Search size={16} className="text-slate-400" />
               <input 
                 type="text" 
-                placeholder="Search fleet..." 
+                placeholder="ค้นหายานพาหนะ..." 
                 className="bg-transparent border-none outline-none text-sm ml-2 w-64 text-slate-700 dark:text-slate-200 placeholder-slate-400"
               />
             </div>
@@ -100,8 +100,8 @@ const App = () => {
             </button>
             <div className="flex items-center space-x-3 border-l border-slate-200 dark:border-slate-700 pl-4">
               <div className="text-right hidden sm:block">
-                <p className="text-sm font-medium text-slate-900 dark:text-white">Admin User</p>
-                <p className="text-xs text-slate-500 dark:text-slate-400">Fleet Manager</p>
+                <p className="text-sm font-medium text-slate-900 dark:text-white">ผู้ดูแลระบบ</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400">ผู้จัดการกองยาน</p>
               </div>
               <div className="w-8 h-8 bg-gradient-to-br from-enterprise-500 to-neon-blue rounded-full shadow-md"></div>
             </div>
@@ -115,8 +115,8 @@ const App = () => {
           ) : (
             <div className="flex flex-col items-center justify-center h-[60vh] text-slate-400">
               <Wrench size={48} className="mb-4 opacity-50" />
-              <h3 className="text-xl font-medium text-slate-600 dark:text-slate-300">Work in Progress</h3>
-              <p>The {activeTab} module is currently under development.</p>
+              <h3 className="text-xl font-medium text-slate-600 dark:text-slate-300">กำลังพัฒนา</h3>
+              <p>โมดูล {activeTab === 'vehicles' ? 'ยานพาหนะ' : activeTab === 'maintenance' ? 'การซ่อมบำรุง' : activeTab === 'reports' ? 'รายงาน' : activeTab === 'settings' ? 'ตั้งค่า' : activeTab} กำลังอยู่ระหว่างการพัฒนา</p>
             </div>
           )}
         </div>

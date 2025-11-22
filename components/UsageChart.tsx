@@ -36,7 +36,7 @@ export const UsageChart: React.FC<UsageChartProps> = ({ data, isDark }) => {
     labels: data.labels,
     datasets: [
       {
-        label: 'Active Vehicles',
+        label: 'ยานพาหนะที่ใช้งาน',
         data: data.data,
         borderColor: isDark ? '#3b82f6' : '#0284c7',
         backgroundColor: isDark ? 'rgba(59, 130, 246, 0.1)' : 'rgba(2, 132, 199, 0.1)',

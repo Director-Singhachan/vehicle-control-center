@@ -58,8 +58,8 @@ export const DashboardView: React.FC<DashboardProps> = ({ isDark }) => {
 
   return (
     <PageLayout
-      title="Dashboard Overview"
-      subtitle="Real-time fleet telemetry and operational status."
+      title="ภาพรวมแดชบอร์ด"
+      subtitle="ข้อมูลสถานะกองยานและปฏิบัติการแบบเรียลไทม์"
       actions={
         <button onClick={fetchData} className="p-2 text-slate-500 hover:text-enterprise-600 dark:hover:text-neon-blue transition-colors">
           <RefreshCw size={20} />
@@ -74,30 +74,30 @@ export const DashboardView: React.FC<DashboardProps> = ({ isDark }) => {
       {summary && financials && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           <StatusCard 
-            title="Total Vehicles" 
+            title="ยานพาหนะทั้งหมด" 
             value={summary.total} 
-            subValue={`${summary.idle} Idle currently`}
+            subValue={`${summary.idle} คันว่างอยู่ขณะนี้`}
             icon={Truck} 
             trend={1.2} 
-            trendLabel="added this month"
+            trendLabel="เพิ่มในเดือนนี้"
           />
           <StatusCard 
-            title="Active Fleet" 
+            title="กองยานที่ใช้งาน" 
             value={summary.active} 
-            subValue={`${Math.round((summary.active / summary.total) * 100)}% utilization`}
+            subValue={`อัตราการใช้งาน ${Math.round((summary.active / summary.total) * 100)}%`}
             icon={Activity} 
             trend={5.4} 
           />
           <StatusCard 
-            title="Maintenance" 
+            title="การซ่อมบำรุง" 
             value={summary.maintenance} 
-            subValue="High priority tickets"
+            subValue="ตั๋วความสำคัญสูง"
             icon={Wrench} 
             alert={summary.maintenance > 10}
           />
           <StatusCard 
-            title="Today's Revenue" 
-            value={`$${financials.todayRevenue.toLocaleString()}`} 
+            title="รายได้วันนี้" 
+            value={`฿${financials.todayRevenue.toLocaleString()}`} 
             icon={DollarSign} 
             trend={financials.revenueTrend}
           />
@@ -111,7 +111,7 @@ export const DashboardView: React.FC<DashboardProps> = ({ isDark }) => {
             {/* Usage Chart */}
             <div className="bg-white dark:bg-charcoal-800 p-6 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
               <div className="flex justify-between items-center mb-6">
-                <h3 className="font-semibold text-slate-900 dark:text-white">Fleet Utilization</h3>
+                <h3 className="font-semibold text-slate-900 dark:text-white">อัตราการใช้งานกองยาน</h3>
                 <button className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300">
                   <MoreHorizontal size={20} />
                 </button>
@@ -122,7 +122,7 @@ export const DashboardView: React.FC<DashboardProps> = ({ isDark }) => {
             {/* Maintenance Chart */}
             <div className="bg-white dark:bg-charcoal-800 p-6 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
               <div className="flex justify-between items-center mb-6">
-                <h3 className="font-semibold text-slate-900 dark:text-white">Maintenance Costs</h3>
+                <h3 className="font-semibold text-slate-900 dark:text-white">ค่าใช้จ่ายการซ่อมบำรุง</h3>
                 <button className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300">
                   <MoreHorizontal size={20} />
                 </button>
@@ -135,10 +135,10 @@ export const DashboardView: React.FC<DashboardProps> = ({ isDark }) => {
           <div className="grid grid-cols-1 gap-6">
             <div className="bg-white dark:bg-charcoal-800 p-6 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm min-h-[450px]">
               <div className="flex justify-between items-center mb-4">
-                <h3 className="font-semibold text-slate-900 dark:text-white">Live Fleet Map</h3>
+                <h3 className="font-semibold text-slate-900 dark:text-white">แผนที่กองยานแบบเรียลไทม์</h3>
                 <div className="flex space-x-2">
                    <span className="text-xs bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 px-2 py-1 rounded-full flex items-center">
-                     <span className="w-2 h-2 bg-green-500 rounded-full mr-1 animate-pulse"></span> Live
+                     <span className="w-2 h-2 bg-green-500 rounded-full mr-1 animate-pulse"></span> สด
                    </span>
                 </div>
               </div>

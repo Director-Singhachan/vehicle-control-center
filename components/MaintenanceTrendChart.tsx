@@ -33,7 +33,7 @@ export const MaintenanceTrendChart: React.FC<MaintenanceTrendProps> = ({ data, i
     labels: data.labels,
     datasets: [
       {
-        label: 'Maintenance Cost ($)',
+        label: 'ค่าใช้จ่ายการซ่อมบำรุง (฿)',
         data: data.costs,
         backgroundColor: isDark ? '#6366f1' : '#4f46e5',
         borderRadius: 4,
