@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { 
   Truck, 
   Activity, 
@@ -12,62 +12,29 @@ import { UsageChart } from '../components/UsageChart';
 import { MaintenanceTrendChart } from '../components/MaintenanceTrendChart';
 import { MapWidget } from '../components/MapWidget';
 import { PageLayout } from '../components/layout/PageLayout';
-import { vehicleService, ticketService, vehicleUsageService, reportsService, Vehicle } from '../services';
+import { useDashboard } from '../hooks';
 
 interface DashboardProps {
   isDark: boolean;
 }
 
 export const DashboardView: React.FC<DashboardProps> = ({ isDark }) => {
-  const [summary, setSummary] = useState<any>(null);
-  const [financials, setFinancials] = useState<any>(null);
-  const [usageData, setUsageData] = useState<any>(null);
-  const [maintData, setMaintData] = useState<any>(null);
-  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
+  const { data, loading, error, refetch } = useDashboard();
 
-  const fetchData = async () => {
-    setLoading(true);
-    setError(false);
-    try {
-      const [sum, fin, use, maint, veh] = await Promise.all([
-        vehicleService.getSummary(),
-        reportsService.getFinancials(),
-        vehicleUsageService.getDailyUsage(),
-        reportsService.getMaintenanceTrends(),
-        vehicleService.getLocations()
-      ]);
-
-      setSummary(sum);
-      setFinancials(fin);
-      setUsageData(use);
-      setMaintData(maint);
-      setVehicles(veh);
-    } catch (e) {
-      console.error("Error fetching dashboard data", e);
-      setError(true);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchData();
-  }, []);
+  const { summary, financials, usageData, maintenanceTrends, vehicles } = data;
 
   return (
     <PageLayout
       title="ภาพรวมแดชบอร์ด"
       subtitle="ข้อมูลสถานะกองยานและปฏิบัติการแบบเรียลไทม์"
       actions={
-        <button onClick={fetchData} className="p-2 text-slate-500 hover:text-enterprise-600 dark:hover:text-neon-blue transition-colors">
+        <button onClick={refetch} className="p-2 text-slate-500 hover:text-enterprise-600 dark:hover:text-neon-blue transition-colors">
           <RefreshCw size={20} />
         </button>
       }
       loading={loading}
-      error={error || !summary || !financials || !usageData || !maintData}
-      onRetry={fetchData}
+      error={!!error || !summary || !financials || !usageData || !maintenanceTrends}
+      onRetry={refetch}
     >
 
       {/* Status Cards Grid */}
@@ -75,37 +42,35 @@ export const DashboardView: React.FC<DashboardProps> = ({ isDark }) => {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           <StatusCard 
             title="ยานพาหนะทั้งหมด" 
-            value={summary.total} 
-            subValue={`${summary.idle} คันว่างอยู่ขณะนี้`}
+            value={summary.total || 0} 
+            subValue={`${summary.idle || 0} คันว่างอยู่ขณะนี้`}
             icon={Truck} 
-            trend={1.2} 
-            trendLabel="เพิ่มในเดือนนี้"
           />
           <StatusCard 
             title="กองยานที่ใช้งาน" 
-            value={summary.active} 
-            subValue={`อัตราการใช้งาน ${Math.round((summary.active / summary.total) * 100)}%`}
+            value={summary.active || 0} 
+            subValue={`อัตราการใช้งาน ${summary.total > 0 ? Math.round(((summary.active || 0) / summary.total) * 100) : 0}%`}
             icon={Activity} 
-            trend={5.4} 
           />
           <StatusCard 
             title="การซ่อมบำรุง" 
-            value={summary.maintenance} 
+            value={summary.maintenance || 0} 
             subValue="ตั๋วความสำคัญสูง"
             icon={Wrench} 
-            alert={summary.maintenance > 10}
+            alert={(summary.maintenance || 0) > 10}
           />
           <StatusCard 
-            title="รายได้วันนี้" 
-            value={`฿${financials.todayRevenue.toLocaleString()}`} 
+            title="ค่าใช้จ่ายวันนี้" 
+            value={`฿${(financials.todayCost || 0).toLocaleString('th-TH')}`} 
             icon={DollarSign} 
-            trend={financials.revenueTrend}
+            trend={financials.costTrend || 0}
+            trendLabel="เทียบกับเมื่อวาน"
           />
         </div>
       )}
 
       {/* Charts Section */}
-      {usageData && maintData && (
+      {usageData && maintenanceTrends && (
         <>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* Usage Chart */}
@@ -127,7 +92,7 @@ export const DashboardView: React.FC<DashboardProps> = ({ isDark }) => {
                   <MoreHorizontal size={20} />
                 </button>
               </div>
-              <MaintenanceTrendChart data={maintData} isDark={isDark} />
+              <MaintenanceTrendChart data={maintenanceTrends} isDark={isDark} />
             </div>
           </div>
 

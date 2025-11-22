@@ -1,0 +1,113 @@
+// Fixed Reports Service - Compatible with Database Schema
+// ตัวอย่าง service ที่แก้ไขให้เข้ากันได้กับ database
+
+import { supabase } from '../lib/supabase';
+
+export const reportsService = {
+  // Get financials (costs only - no revenue)
+  getFinancials: async () => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    // Today's costs
+    const { data: todayCosts } = await supabase
+      .from('ticket_costs')
+      .select('cost')
+      .gte('created_at', today.toISOString());
+    
+    const todayCost = todayCosts?.reduce((sum, item) => sum + (item.cost || 0), 0) || 0;
+    
+    // Yesterday's costs (for trend)
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayEnd = new Date(yesterday);
+    yesterdayEnd.setHours(23, 59, 59, 999);
+    
+    const { data: yesterdayCosts } = await supabase
+      .from('ticket_costs')
+      .select('cost')
+      .gte('created_at', yesterday.toISOString())
+      .lte('created_at', yesterdayEnd.toISOString());
+    
+    const yesterdayCost = yesterdayCosts?.reduce((sum, item) => sum + (item.cost || 0), 0) || 0;
+    
+    // Calculate trend
+    const costTrend = yesterdayCost > 0 
+      ? ((todayCost - yesterdayCost) / yesterdayCost) * 100 
+      : 0;
+    
+    return {
+      todayCost: todayCost,
+      costTrend: costTrend,
+      // Note: Removed todayRevenue and revenueTrend as they don't exist in database
+    };
+  },
+
+  // Get maintenance trends (monthly)
+  getMaintenanceTrends: async () => {
+    // Get last 6 months
+    const sixMonthsAgo = new Date();
+    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+    
+    // Monthly costs
+    const { data: costsData } = await supabase
+      .from('ticket_costs')
+      .select(`
+        cost,
+        created_at,
+        ticket:tickets!inner(created_at)
+      `)
+      .gte('tickets.created_at', sixMonthsAgo.toISOString());
+    
+    // Monthly incidents
+    const { data: incidentsData } = await supabase
+      .from('tickets')
+      .select('created_at')
+      .gte('created_at', sixMonthsAgo.toISOString());
+    
+    // Group by month
+    const monthMap = new Map<string, { costs: number; incidents: number }>();
+    
+    // Process costs
+    costsData?.forEach(item => {
+      const date = new Date(item.ticket?.created_at || item.created_at);
+      const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+      const monthName = date.toLocaleDateString('th-TH', { month: 'short' });
+      
+      if (!monthMap.has(monthKey)) {
+        monthMap.set(monthKey, { costs: 0, incidents: 0 });
+      }
+      const entry = monthMap.get(monthKey)!;
+      entry.costs += item.cost || 0;
+    });
+    
+    // Process incidents
+    incidentsData?.forEach(item => {
+      const date = new Date(item.created_at);
+      const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+      
+      if (!monthMap.has(monthKey)) {
+        monthMap.set(monthKey, { costs: 0, incidents: 0 });
+      }
+      const entry = monthMap.get(monthKey)!;
+      entry.incidents += 1;
+    });
+    
+    // Convert to arrays
+    const sortedMonths = Array.from(monthMap.entries()).sort();
+    const labels = sortedMonths.map(([key]) => {
+      const [year, month] = key.split('-');
+      const date = new Date(parseInt(year), parseInt(month) - 1);
+      return date.toLocaleDateString('th-TH', { month: 'short' });
+    });
+    const costs = sortedMonths.map(([, data]) => data.costs);
+    const incidents = sortedMonths.map(([, data]) => data.incidents);
+    
+    return {
+      labels,
+      costs,
+      incidents,
+    };
+  },
+};
+

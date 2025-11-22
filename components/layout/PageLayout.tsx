@@ -35,16 +35,26 @@ export const PageLayout: React.FC<PageLayoutProps> = ({
 
   if (error) {
     return (
-      <div className="flex flex-col items-center justify-center h-96 text-red-400">
-        <p>โหลดข้อมูลไม่สำเร็จ</p>
-        {onRetry && (
-          <button
-            onClick={onRetry}
-            className="mt-4 px-4 py-2 bg-enterprise-600 text-white rounded-lg hover:bg-enterprise-700"
-          >
-            ลองอีกครั้ง
-          </button>
-        )}
+      <div className="flex flex-col items-center justify-center h-96 p-6">
+        <div className="text-center max-w-md">
+          <p className="text-red-600 dark:text-red-400 text-lg font-semibold mb-2">
+            ไม่สามารถเชื่อมต่อกับฐานข้อมูลได้
+          </p>
+          <p className="text-slate-600 dark:text-slate-400 text-sm mb-4">
+            กรุณาตรวจสอบ:
+            <br />• การเชื่อมต่ออินเทอร์เน็ตหรือ VPN
+            <br />• การตั้งค่า Supabase ในไฟล์ .env.local
+            <br />• ว่า Supabase project ยังใช้งานได้อยู่
+          </p>
+          {onRetry && (
+            <button
+              onClick={onRetry}
+              className="px-4 py-2 bg-enterprise-600 text-white rounded-lg hover:bg-enterprise-700 transition-colors"
+            >
+              ลองอีกครั้ง
+            </button>
+          )}
+        </div>
       </div>
     );
   }
