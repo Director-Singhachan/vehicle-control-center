@@ -20,10 +20,10 @@ export interface DashboardData {
 export const useDashboard = () => {
   const cache = useDataCacheStore();
   const cacheKey = 'dashboard:all';
-  
+
   // Try to get cached data first
   const cachedData = cache.get<DashboardData>(cacheKey);
-  
+
   const [data, setData] = useState<DashboardData>(cachedData || {
     summary: null,
     financials: null,
@@ -99,35 +99,7 @@ export const useDashboard = () => {
 };
 
 // Individual hooks for specific dashboard data
-export const useVehicleSummary = () => {
-  const [summary, setSummary] = useState<VehicleSummary | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<Error | null>(null);
 
-  const fetchSummary = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await vehicleService.getSummary();
-      setSummary(data);
-    } catch (err) {
-      setError(err instanceof Error ? err : new Error('Failed to fetch vehicle summary'));
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchSummary();
-  }, []);
-
-  return {
-    summary,
-    loading,
-    error,
-    refetch: fetchSummary,
-  };
-};
 
 export const useFinancials = () => {
   const [financials, setFinancials] = useState<Financials | null>(null);
@@ -219,33 +191,5 @@ export const useMaintenanceTrends = (months: number = 6) => {
   };
 };
 
-export const useVehicleLocations = () => {
-  const [vehicles, setVehicles] = useState<VehicleForMap[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<Error | null>(null);
 
-  const fetchLocations = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await vehicleService.getLocations();
-      setVehicles(data);
-    } catch (err) {
-      setError(err instanceof Error ? err : new Error('Failed to fetch vehicle locations'));
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchLocations();
-  }, []);
-
-  return {
-    vehicles,
-    loading,
-    error,
-    refetch: fetchLocations,
-  };
-};
 

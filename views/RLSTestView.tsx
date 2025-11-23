@@ -63,7 +63,7 @@ export const RLSTestView: React.FC = () => {
           type: 'Test',
           branch: 'Test',
         });
-        
+
         // If successful, try to delete it
         if (testVehicle) {
           try {
@@ -106,6 +106,7 @@ export const RLSTestView: React.FC = () => {
         const vehicles = await vehicleService.getAll();
         if (vehicles.length > 0) {
           const testTicket = await ticketService.create({
+            reporter_id: user?.id || 'test-user',
             vehicle_id: vehicles[0].id,
             odometer: 50000,
             urgency: 'medium',
@@ -264,11 +265,10 @@ export const RLSTestView: React.FC = () => {
                 {results.map((result, index) => (
                   <div
                     key={index}
-                    className={`p-4 rounded-lg border ${
-                      result.passed
-                        ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800'
-                        : 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'
-                    }`}
+                    className={`p-4 rounded-lg border ${result.passed
+                      ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800'
+                      : 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'
+                      }`}
                   >
                     <div className="flex items-start justify-between">
                       <div className="flex items-start gap-3">
@@ -289,11 +289,10 @@ export const RLSTestView: React.FC = () => {
                         </div>
                       </div>
                       <span
-                        className={`text-xs px-2 py-1 rounded ${
-                          result.passed
-                            ? 'bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200'
-                            : 'bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200'
-                        }`}
+                        className={`text-xs px-2 py-1 rounded ${result.passed
+                          ? 'bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200'
+                          : 'bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200'
+                          }`}
                       >
                         {result.passed ? 'ผ่าน' : 'ไม่ผ่าน'}
                       </span>

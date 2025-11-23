@@ -12,7 +12,7 @@ export type Json =
 
 export type AppRole = 'user' | 'inspector' | 'manager' | 'executive' | 'admin';
 export type UrgencyLevel = 'low' | 'medium' | 'high' | 'critical';
-export type TicketStatus = 
+export type TicketStatus =
   | 'pending'
   | 'approved_inspector'
   | 'approved_manager'
@@ -106,6 +106,10 @@ export interface Database {
           manager_signed_at: string | null;
           executive_signature_url: string | null;
           executive_signed_at: string | null;
+          repair_start_date: string | null;
+          repair_expected_completion: string | null;
+          repair_assigned_to: string | null;
+          repair_notes: string | null;
         };
         Insert: {
           id?: number;
@@ -130,6 +134,10 @@ export interface Database {
           manager_signed_at?: string | null;
           executive_signature_url?: string | null;
           executive_signed_at?: string | null;
+          repair_start_date?: string | null;
+          repair_expected_completion?: string | null;
+          repair_assigned_to?: string | null;
+          repair_notes?: string | null;
         };
         Update: {
           id?: number;
@@ -154,6 +162,10 @@ export interface Database {
           manager_signed_at?: string | null;
           executive_signature_url?: string | null;
           executive_signed_at?: string | null;
+          repair_start_date?: string | null;
+          repair_expected_completion?: string | null;
+          repair_assigned_to?: string | null;
+          repair_notes?: string | null;
         };
       };
       ticket_approvals: {
