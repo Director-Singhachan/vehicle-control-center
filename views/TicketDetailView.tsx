@@ -20,7 +20,8 @@ import {
   Save,
   Lock,
   Wrench,
-  Building2
+  Building2,
+  Image as ImageIcon
 } from 'lucide-react';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
@@ -106,9 +107,24 @@ export const TicketDetailView: React.FC<TicketDetailViewProps> = ({
   });
   const [startingRepair, setStartingRepair] = useState(false);
   const [profiles, setProfiles] = useState<any[]>([]);
+  const [vehicleData, setVehicleData] = useState<any>(null);
 
   const [showCompleteRepairDialog, setShowCompleteRepairDialog] = useState(false);
   const [completingRepair, setCompletingRepair] = useState(false);
+
+  // Fetch vehicle data for image
+  React.useEffect(() => {
+    if (ticket?.vehicle_id) {
+      supabase
+        .from('vehicles')
+        .select('*')
+        .eq('id', ticket.vehicle_id)
+        .single()
+        .then(({ data }) => {
+          if (data) setVehicleData(data);
+        });
+    }
+  }, [ticket?.vehicle_id]);
 
   // Fetch profiles for assignment
   React.useEffect(() => {
@@ -870,6 +886,59 @@ export const TicketDetailView: React.FC<TicketDetailViewProps> = ({
             approvals={approvals}
             loading={loadingApprovals}
           />
+
+          {/* Vehicle Image */}
+          {vehicleData?.image_url && (
+            <Card className="p-6">
+              <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
+                <Truck className="w-5 h-5" />
+                รูปภาพรถ
+              </h3>
+              <div className="rounded-lg overflow-hidden bg-slate-100 dark:bg-slate-800">
+                <img
+                  src={vehicleData.image_url}
+                  alt={vehicleData.plate_number || 'Vehicle'}
+                  className="w-full h-48 object-cover"
+                  onError={(e) => {
+                    e.currentTarget.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgZmlsbD0iI2VlZSIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iMTQiIGZpbGw9IiM5OTkiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGR5PSIuM2VtIj5ObyBJbWFnZTwvdGV4dD48L3N2Zz4=';
+                  }}
+                />
+              </div>
+              {vehicleData.plate_number && (
+                <p className="text-sm text-slate-600 dark:text-slate-400 mt-2 text-center">
+                  {vehicleData.plate_number}
+                </p>
+              )}
+            </Card>
+          )}
+
+          {/* Issue Images */}
+          {ticket.image_urls && Array.isArray(ticket.image_urls) && (ticket.image_urls as string[]).length > 0 && (
+            <Card className="p-6">
+              <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
+                <ImageIcon className="w-5 h-5" />
+                รูปแจ้งซ่อม ({(ticket.image_urls as string[]).length})
+              </h3>
+              <div className="grid grid-cols-1 gap-3">
+                {(ticket.image_urls as string[]).map((url, index) => (
+                  <div key={index} className="rounded-lg overflow-hidden bg-slate-100 dark:bg-slate-800">
+                    <img
+                      src={url}
+                      alt={`Issue ${index + 1}`}
+                      className="w-full h-48 object-cover cursor-pointer hover:opacity-90 transition-opacity"
+                      onClick={() => window.open(url, '_blank')}
+                      onError={(e) => {
+                        e.currentTarget.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgZmlsbD0iI2VlZSIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iMTQiIGZpbGw9IiM5OTkiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGR5PSIuM2VtIj5JbWFnZSBFcnJvcjwvdGV4dD48L3N2Zz4=';
+                      }}
+                    />
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 text-center">
+                      คลิกเพื่อดูขนาดเต็ม
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          )}
 
           <Card className="p-6">
             <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-4">

@@ -1,7 +1,7 @@
 // Auth Store - Global state management for authentication
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { supabase, getCurrentUser, getCurrentProfile } from '../lib/supabase';
+import { supabase, getCurrentProfile } from '../lib/supabase';
 import type { User } from '@supabase/supabase-js';
 import type { Database } from '../types/database';
 
@@ -44,43 +44,42 @@ export const useAuthStore = create<AuthState>()(
       initialize: async () => {
         const state = get();
 
-        // If we have cached data, return immediately! (No blocking)
-        if (state.initialized && state.user && state.profile) {
-          // Background refresh (non-blocking) - fire and forget
-          setTimeout(() => {
-            get().refreshProfile();
-          }, 100);
+        // If we have cached data, use it immediately!
+        if (state.user && state.profile) {
+          set({ initialized: true, loading: false });
           return;
         }
 
-        // Only set loading if we don't have profile yet
-        if (!state.profile && !state.loading) {
-          set({ loading: true, error: null });
-        }
+        set({ loading: true, error: null });
 
         try {
-          const user = await getCurrentUser();
+          // Use getSession() - reads from localStorage (FAST!)
+          // Instead of getUser() which makes API call (SLOW - 20s timeout)
+          const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+
+          if (sessionError) {
+            console.warn('[Auth] Session error:', sessionError);
+            set({ user: null, profile: null, initialized: true, loading: false });
+            return;
+          }
+
+          const user = session?.user ?? null;
           set({ user, initialized: true });
 
           if (user) {
             try {
-              // Always fetch fresh profile
               const profile = await getCurrentProfile();
               set({ profile, loading: false });
             } catch (err) {
-              console.warn('Failed to fetch profile:', err);
+              console.warn('[Auth] Failed to fetch profile:', err);
               set({ profile: null, loading: false });
             }
           } else {
             set({ profile: null, loading: false });
           }
         } catch (err) {
-          const errorMessage = err instanceof Error ? err.message : 'Failed to initialize auth';
-          // Don't set error for session-related messages
-          if (!errorMessage.includes('session') && !errorMessage.includes('JWT')) {
-            set({ error: new Error(errorMessage) });
-          }
-          set({ loading: false });
+          console.error('[Auth] Initialize error:', err);
+          set({ user: null, profile: null, initialized: true, loading: false });
         }
       },
 
@@ -96,14 +95,13 @@ export const useAuthStore = create<AuthState>()(
 
           set({ user: data.user, initialized: true });
 
-          // Always fetch fresh profile after sign in
+          // Fetch profile after sign in
           if (data.user) {
             try {
               const profile = await getCurrentProfile();
               set({ profile });
             } catch (profileErr) {
-              console.error('Failed to fetch profile after sign in:', profileErr);
-              // Don't throw - user is authenticated even if profile fetch fails
+              console.error('[Auth] Failed to fetch profile after sign in:', profileErr);
               set({ profile: null });
             }
           } else {
@@ -145,8 +143,7 @@ export const useAuthStore = create<AuthState>()(
           const profile = await getCurrentProfile();
           set({ profile });
         } catch (err) {
-          console.error('Error refreshing profile:', err);
-          // Don't clear profile on error - keep existing one
+          console.error('[Auth] Error refreshing profile:', err);
         }
       },
     }),
@@ -155,7 +152,7 @@ export const useAuthStore = create<AuthState>()(
       partialize: (state) => ({
         // Persist user and profile for instant load
         user: state.user ? { id: state.user.id, email: state.user.email } : null,
-        profile: state.profile, // Cache profile for instant UI!
+        profile: state.profile,
       }),
     }
   )
@@ -169,18 +166,18 @@ if (typeof window !== 'undefined') {
   supabase.auth.onAuthStateChange(async (event, session) => {
     const store = useAuthStore.getState();
 
-    // Update user
+    // Update  user
     store.setUser(session?.user ?? null);
     store.setInitialized(true);
 
     if (session?.user) {
-      // Always fetch fresh profile on auth state change
+      // Fetch fresh profile on auth state change
       try {
         const profile = await getCurrentProfile();
         store.setProfile(profile);
-        console.log('Profile updated:', profile?.role); // Debug log
+        console.log('[Auth] Profile updated:', profile?.role);
       } catch (err) {
-        console.error('Error fetching profile on auth change:', err);
+        console.error('[Auth] Error fetching profile on auth change:', err);
         store.setProfile(null);
       }
     } else {
@@ -188,4 +185,3 @@ if (typeof window !== 'undefined') {
     }
   });
 }
-
