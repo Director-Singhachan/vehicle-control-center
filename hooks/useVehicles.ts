@@ -1,6 +1,7 @@
-// Custom hook for vehicles
+// Custom hook for vehicles - Optimized with caching
 import { useState, useEffect } from 'react';
 import { vehicleService, type VehicleSummary, type VehicleForMap } from '../services/vehicleService';
+import { useDataCacheStore, createCacheKey } from '../stores/dataCacheStore';
 import type { Database } from '../types/database';
 
 type Vehicle = Database['public']['Tables']['vehicles']['Row'];
@@ -11,16 +12,33 @@ interface UseVehiclesOptions {
 }
 
 export const useVehicles = (options: UseVehiclesOptions = { autoFetch: true }) => {
-  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
-  const [loading, setLoading] = useState(false);
+  const cache = useDataCacheStore();
+  const cacheKey = 'vehicles:all';
+  
+  const cached = cache.get<Vehicle[]>(cacheKey);
+  const [vehicles, setVehicles] = useState<Vehicle[]>(cached || []);
+  const [loading, setLoading] = useState(!cached && options.autoFetch);
   const [error, setError] = useState<Error | null>(null);
 
-  const fetchVehicles = async () => {
+  const fetchVehicles = async (useCache = true) => {
+    if (useCache) {
+      const cached = cache.get<Vehicle[]>(cacheKey);
+      if (cached) {
+        setVehicles(cached);
+        setLoading(false);
+        // Background refresh
+        fetchVehicles(false);
+        return;
+      }
+    }
+
     setLoading(true);
     setError(null);
     try {
       const data = await vehicleService.getAll();
       setVehicles(data);
+      // Cache for 1 minute (vehicles don't change often)
+      cache.set(cacheKey, data, 60 * 1000);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to fetch vehicles';
       // Check if it's a connection error
@@ -44,7 +62,7 @@ export const useVehicles = (options: UseVehiclesOptions = { autoFetch: true }) =
     vehicles,
     loading,
     error,
-    refetch: fetchVehicles,
+    refetch: () => fetchVehicles(false),
   };
 };
 

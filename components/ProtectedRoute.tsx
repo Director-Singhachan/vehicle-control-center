@@ -49,8 +49,9 @@ VITE_SUPABASE_ANON_KEY=your-anon-key-here`}
     );
   }
 
-  // Show loading state
-  if (loading) {
+  // Show loading state - but only if not initialized yet
+  // Once initialized, use cached data immediately
+  if (loading && !user && !profile) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">

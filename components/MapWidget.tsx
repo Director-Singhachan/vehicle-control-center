@@ -18,8 +18,27 @@ export const MapWidget: React.FC<MapWidgetProps> = ({ vehicles, isDark }) => {
     try {
       map.current = new maplibregl.Map({
         container: mapContainer.current,
-        style: 'https://demotiles.maplibre.org/style.json', // Free demo style
-        center: [-74.0060, 40.7128], // NYC
+        style: {
+          version: 8,
+          sources: {
+            'osm-tiles': {
+              type: 'raster',
+              tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+              tileSize: 256,
+              attribution: '© OpenStreetMap contributors'
+            }
+          },
+          layers: [
+            {
+              id: 'osm-tiles',
+              type: 'raster',
+              source: 'osm-tiles',
+              minzoom: 0,
+              maxzoom: 22
+            }
+          ]
+        },
+        center: [100.5018, 13.7563], // Bangkok, Thailand
         zoom: 11,
         attributionControl: false
       });

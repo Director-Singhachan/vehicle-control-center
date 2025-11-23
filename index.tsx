@@ -14,7 +14,8 @@ import {
   Search,
   LogOut,
   User,
-  Shield
+  Shield,
+  CheckSquare
 } from 'lucide-react';
 import { DashboardView } from './views/DashboardView';
 import { ProfileView } from './views/ProfileView';
@@ -25,12 +26,15 @@ import { VehicleFormView } from './views/VehicleFormView';
 import { TicketsView } from './views/TicketsView';
 import { TicketDetailView } from './views/TicketDetailView';
 import { TicketFormView } from './views/TicketFormView';
+import { ApprovalBoardView } from './views/ApprovalBoardView';
 import { ProtectedRoute } from './components/ProtectedRoute';
-import { useAuth } from './hooks';
+import { useAuth, usePendingTickets } from './hooks';
+import { prefetchService } from './services/prefetchService';
 
-const SidebarItem = ({ icon: Icon, label, active, onClick }: any) => (
+const SidebarItem = ({ icon: Icon, label, active, onClick, onMouseEnter }: any) => (
   <button
     onClick={onClick}
+    onMouseEnter={onMouseEnter}
     className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors duration-200 ${active
       ? 'bg-enterprise-50 text-enterprise-600 dark:bg-enterprise-900/30 dark:text-enterprise-400 font-medium'
       : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/50'
@@ -43,7 +47,8 @@ const SidebarItem = ({ icon: Icon, label, active, onClick }: any) => (
 
 // Main App Content (wrapped in ProtectedRoute)
 const AppContent = () => {
-  const { user, profile, signOut, isAdmin, isManager } = useAuth();
+  const { user, profile, signOut, isAdmin, isManager, isInspector, isExecutive, loading: authLoading } = useAuth();
+  const { count: pendingCount } = usePendingTickets();
   const [isDark, setIsDark] = useState(true);
   const [isSidebarOpen, setSidebarOpen] = useState(true);
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -68,6 +73,18 @@ const AppContent = () => {
         console.error('Failed to restore navigation state:', e);
       }
     }
+  }, []);
+
+  // Prefetch common data on mount for faster navigation
+  useEffect(() => {
+    // Prefetch dashboard and vehicles immediately (most common pages)
+    prefetchService.prefetchDashboard();
+    prefetchService.prefetchVehicles();
+    
+    // Prefetch tickets after a short delay (less critical)
+    setTimeout(() => {
+      prefetchService.prefetchTicketsWithRelations();
+    }, 500);
   }, []);
 
   // Save navigation state to localStorage whenever it changes
@@ -102,16 +119,58 @@ const AppContent = () => {
           </div>
           {isSidebarOpen && (
             <div className="ml-3">
-              <h1 className="text-lg font-bold text-slate-900 dark:text-white tracking-tight">กอง<span className="text-enterprise-600 dark:text-enterprise-400">ยาน</span></h1>
+              <h1 className="text-lg font-bold text-slate-900 dark:text-white tracking-tight">Fleet <span className="text-enterprise-600 dark:text-enterprise-400">Control</span></h1>
             </div>
           )}
         </div>
 
         <div className="flex-1 px-3 space-y-1 mt-4">
-          <SidebarItem icon={LayoutDashboard} label={isSidebarOpen ? "แดชบอร์ด" : ""} active={activeTab === 'dashboard'} onClick={() => setActiveTab('dashboard')} />
-          <SidebarItem icon={Truck} label={isSidebarOpen ? "ยานพาหนะ" : ""} active={activeTab === 'vehicles'} onClick={() => setActiveTab('vehicles')} />
-          <SidebarItem icon={Wrench} label={isSidebarOpen ? "การซ่อมบำรุง" : ""} active={activeTab === 'maintenance'} onClick={() => setActiveTab('maintenance')} />
-          <SidebarItem icon={FileText} label={isSidebarOpen ? "รายงาน" : ""} active={activeTab === 'reports'} onClick={() => setActiveTab('reports')} />
+          <SidebarItem 
+            icon={LayoutDashboard} 
+            label={isSidebarOpen ? "แดชบอร์ด" : ""} 
+            active={activeTab === 'dashboard'} 
+            onClick={() => setActiveTab('dashboard')}
+            onMouseEnter={() => prefetchService.prefetchDashboard()}
+          />
+          <SidebarItem 
+            icon={Truck} 
+            label={isSidebarOpen ? "ยานพาหนะ" : ""} 
+            active={activeTab === 'vehicles'} 
+            onClick={() => setActiveTab('vehicles')}
+            onMouseEnter={() => prefetchService.prefetchVehicles()}
+          />
+          <SidebarItem 
+            icon={Wrench} 
+            label={isSidebarOpen ? "การซ่อมบำรุง" : ""} 
+            active={activeTab === 'maintenance'} 
+            onClick={() => setActiveTab('maintenance')}
+            onMouseEnter={() => prefetchService.prefetchTicketsWithRelations()}
+          />
+          {/* Show approval board menu - check role directly for reliability */}
+          {(() => {
+            const userRole = profile?.role?.toLowerCase();
+            const hasPermission = userRole === 'admin' || 
+                                 userRole === 'manager' || 
+                                 userRole === 'inspector' || 
+                                 userRole === 'executive' ||
+                                 isAdmin || isInspector || isManager || isExecutive || authLoading;
+            
+            return hasPermission ? (
+              <SidebarItem 
+                icon={CheckSquare} 
+                label={isSidebarOpen ? "ภาพรวมการอนุมัติ" : ""} 
+                active={activeTab === 'approvals'} 
+                onClick={() => setActiveTab('approvals')}
+                onMouseEnter={() => prefetchService.prefetchTicketsWithRelations()}
+              />
+            ) : null;
+          })()}
+          <SidebarItem 
+            icon={FileText} 
+            label={isSidebarOpen ? "รายงาน" : ""} 
+            active={activeTab === 'reports'} 
+            onClick={() => setActiveTab('reports')}
+          />
         </div>
 
         <div className="p-3 border-t border-slate-200 dark:border-slate-800/50 space-y-1">
@@ -153,9 +212,17 @@ const AppContent = () => {
             <button onClick={() => setIsDark(!isDark)} className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-yellow-400 transition-colors">
               {isDark ? <Sun size={20} /> : <Moon size={20} />}
             </button>
-            <button className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400 relative">
+            <button 
+              onClick={() => setActiveTab('maintenance')}
+              className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400 relative"
+              title={pendingCount > 0 ? `${pendingCount} ตั๋วรออนุมัติ` : 'การแจ้งเตือน'}
+            >
               <Bell size={20} />
-              <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full border border-white dark:border-charcoal-900"></span>
+              {pendingCount > 0 && (
+                <span className="absolute top-1.5 right-1.5 min-w-[18px] h-[18px] bg-red-500 rounded-full border-2 border-white dark:border-charcoal-900 flex items-center justify-center text-xs text-white font-semibold px-1">
+                  {pendingCount > 9 ? '9+' : pendingCount}
+                </span>
+              )}
             </button>
             <div className="flex items-center space-x-3 border-l border-slate-200 dark:border-slate-700 pl-4">
               <div className="text-right hidden sm:block">
@@ -163,9 +230,26 @@ const AppContent = () => {
                   {profile?.full_name || user?.email || 'ผู้ใช้'}
                 </p>
                 <p className="text-xs text-slate-500 dark:text-slate-400">
-                  {profile?.role === 'admin' ? 'ผู้ดูแลระบบ' :
-                    profile?.role === 'manager' ? 'ผู้จัดการ' :
-                      profile?.role === 'inspector' ? 'ผู้ตรวจสอบ' : 'ผู้ใช้'}
+                  {(() => {
+                    // Only show loading if we're actually loading AND don't have profile
+                    if (authLoading && !profile && !user) {
+                      return 'กำลังโหลด...';
+                    }
+                    // If we have profile, show role
+                    if (profile?.role) {
+                      return profile.role === 'admin' ? 'ผู้ดูแลระบบ' :
+                        profile.role === 'manager' ? 'ผู้จัดการ' :
+                        profile.role === 'inspector' ? 'ผู้ตรวจสอบ' :
+                        profile.role === 'executive' ? 'ผู้บริหาร' :
+                        'ผู้ใช้';
+                    }
+                    // If we have user but no profile yet, show loading
+                    if (user && !profile) {
+                      return 'กำลังโหลด...';
+                    }
+                    // Default fallback
+                    return 'ผู้ใช้';
+                  })()}
                 </p>
               </div>
               <div className="w-8 h-8 bg-gradient-to-br from-enterprise-500 to-neon-blue rounded-full shadow-md"></div>
@@ -176,7 +260,18 @@ const AppContent = () => {
         {/* View Content */}
         <div className="p-6">
           {activeTab === 'dashboard' ? (
-            <DashboardView isDark={isDark} />
+            <DashboardView 
+              isDark={isDark}
+              onNavigateToTickets={() => {
+                setActiveTab('maintenance');
+                setTicketView('list');
+              }}
+              onNavigateToTicketDetail={(ticketId) => {
+                setActiveTab('maintenance');
+                setSelectedTicketId(ticketId.toString());
+                setTicketView('detail');
+              }}
+            />
           ) : activeTab === 'vehicles' ? (
             vehicleView === 'list' ? (
               <VehiclesView
@@ -263,6 +358,71 @@ const AppContent = () => {
                 }}
               />
             ) : null
+          ) : activeTab === 'approvals' ? (
+            // Check permissions - check role directly from profile for reliability
+            (() => {
+              // Show loading only if we truly don't have profile yet
+              if (!profile && authLoading) {
+                return (
+                  <div className="flex flex-col items-center justify-center h-[60vh] text-slate-400">
+                    <CheckSquare size={48} className="mb-4 opacity-50 animate-pulse" />
+                    <p className="text-sm text-slate-500 dark:text-slate-400">กำลังตรวจสอบสิทธิ์...</p>
+                  </div>
+                );
+              }
+
+              // Check role directly from profile (more reliable than isManager flags)
+              const userRole = profile?.role?.toLowerCase();
+              const hasPermission = userRole === 'admin' || 
+                                   userRole === 'manager' || 
+                                   userRole === 'inspector' || 
+                                   userRole === 'executive' ||
+                                   isAdmin || isInspector || isManager || isExecutive; // Fallback to flags
+
+              if (hasPermission) {
+                return (
+                  <ApprovalBoardView
+                    onViewDetail={(ticketId) => {
+                      setActiveTab('maintenance');
+                      setSelectedTicketId(ticketId.toString());
+                      setTicketView('detail');
+                    }}
+                  />
+                );
+              }
+
+              // No permission - show error message
+              return (
+                <div className="flex flex-col items-center justify-center h-[60vh] text-slate-400">
+                  <CheckSquare size={48} className="mb-4 opacity-50" />
+                  <h3 className="text-xl font-medium text-slate-600 dark:text-slate-300">ไม่มีสิทธิ์เข้าถึง</h3>
+                  <p className="text-sm text-slate-500 dark:text-slate-400 mt-2">
+                    หน้านี้จำกัดสำหรับผู้ตรวจสอบ, ผู้จัดการ, ผู้บริหาร และผู้ดูแลระบบเท่านั้น
+                  </p>
+                  <div className="mt-4 p-4 bg-slate-100 dark:bg-slate-800 rounded-lg text-left">
+                    <p className="text-xs font-semibold text-slate-600 dark:text-slate-300 mb-2">ข้อมูล Debug:</p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                      บทบาท: {profile?.role || 'ไม่พบข้อมูล'}
+                    </p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                      isAdmin: {isAdmin ? 'true' : 'false'}
+                    </p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                      isManager: {isManager ? 'true' : 'false'}
+                    </p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                      isInspector: {isInspector ? 'true' : 'false'}
+                    </p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                      isExecutive: {isExecutive ? 'true' : 'false'}
+                    </p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                      Profile ID: {profile?.id || 'ไม่มี'}
+                    </p>
+                  </div>
+                </div>
+              );
+            })()
           ) : activeTab === 'profile' ? (
             <ProfileView />
           ) : activeTab === 'rls-test' ? (

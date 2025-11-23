@@ -18,13 +18,18 @@ import {
   User,
   Truck,
   Save,
-  Lock
+  Lock,
+  Wrench,
+  Building2
 } from 'lucide-react';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Card } from '../components/ui/Card';
 import { PageLayout } from '../components/layout/PageLayout';
 import { ApprovalDialog } from '../components/ApprovalDialog';
+import { ApprovalHistory } from '../components/ApprovalHistory';
+import { ApprovalStatusBadge } from '../components/ApprovalStatusBadge';
+import { useApprovalHistory } from '../hooks/useApprovalHistory';
 import type { Database } from '../types/database';
 
 type TicketStatus = Database['public']['Tables']['tickets']['Row']['status'];
@@ -41,9 +46,41 @@ export const TicketDetailView: React.FC<TicketDetailViewProps> = ({
   onEdit,
   onBack,
 }) => {
-  const { user, profile, isInspector, isManager, isAdmin } = useAuth();
+  const { user, profile, isInspector, isManager, isExecutive, isAdmin } = useAuth();
   const { ticket, loading, error, refetch } = useTicket(ticketId);
   const { costs, loading: loadingCosts, refetch: refetchCosts } = useTicketCosts(ticketId);
+  const { approvals, loading: loadingApprovals, refetch: refetchApprovals } = useApprovalHistory(ticketId);
+
+  // Auto-fix status if approval history shows all levels approved but status is not updated
+  React.useEffect(() => {
+    if (!ticket || !approvals || approvals.length === 0) return;
+
+    const approvedLevels = approvals.map(a => {
+      if (a.level !== undefined && a.level !== null) return a.level;
+      if (a.role_at_approval === 'inspector') return 1;
+      if (a.role_at_approval === 'manager') return 2;
+      if (a.role_at_approval === 'executive') return 3;
+      return 0;
+    }).filter(l => l > 0);
+
+    const hasAllLevels = approvedLevels.includes(1) && approvedLevels.includes(2) && approvedLevels.includes(3);
+
+    // If all levels are approved but status is still approved_manager, auto-fix it
+    if (hasAllLevels && ticket.status === 'approved_manager') {
+      console.log('Auto-fixing status: All levels approved but status is still approved_manager');
+      supabase
+        .from('tickets')
+        .update({ status: 'ready_for_repair' })
+        .eq('id', ticketId)
+        .then(({ error }) => {
+          if (error) {
+            console.error('Error auto-fixing status:', error);
+          } else {
+            refetch();
+          }
+        });
+    }
+  }, [ticket, approvals, ticketId, refetch]);
 
   const [showApprovalDialog, setShowApprovalDialog] = useState(false);
   const [approvalAction, setApprovalAction] = useState<'approve' | 'reject' | null>(null);
@@ -58,6 +95,17 @@ export const TicketDetailView: React.FC<TicketDetailViewProps> = ({
     note: '',
   });
   const [addingCost, setAddingCost] = useState(false);
+
+  // Repair management states
+  const [showStartRepairDialog, setShowStartRepairDialog] = useState(false);
+  const [repairForm, setRepairForm] = useState({
+    garage: ticket?.garage || '',
+    repairDate: '',
+  });
+  const [startingRepair, setStartingRepair] = useState(false);
+
+  const [showCompleteRepairDialog, setShowCompleteRepairDialog] = useState(false);
+  const [completingRepair, setCompletingRepair] = useState(false);
 
   if (loading) {
     return (
@@ -148,18 +196,54 @@ export const TicketDetailView: React.FC<TicketDetailViewProps> = ({
     return badges[urgency] || badges.low;
   };
 
-  // Check if user can approve
+  // Get approved levels from approval history (reusable)
+  const getApprovedLevels = () => {
+    if (!approvals || approvals.length === 0) return [];
+    return approvals.map(a => {
+      if (a.level !== undefined && a.level !== null) return a.level;
+      // Fallback to role_at_approval mapping
+      if (a.role_at_approval === 'inspector') return 1;
+      if (a.role_at_approval === 'manager') return 2;
+      if (a.role_at_approval === 'executive') return 3;
+      return 0;
+    }).filter(l => l > 0);
+  };
+
+  // Check if user can approve - enforce sequential approval
   const canApprove = () => {
     if (!user || !profile) return false;
 
-    // Inspector can approve pending tickets
-    if (isInspector && ticket.status === 'pending') return true;
+    // Get approved levels from approval history
+    const approvedLevels = getApprovedLevels();
 
-    // Manager can approve inspector-approved tickets
-    if (isManager && ticket.status === 'approved_inspector') return true;
+    // Inspector can approve pending tickets (Level 1) - only if Level 1 is not approved yet
+    if (isInspector && ticket.status === 'pending' && !approvedLevels.includes(1)) {
+      return true;
+    }
 
-    // Admin can approve any status
-    if (isAdmin) return true;
+    // Manager can approve inspector-approved tickets (Level 2) - only if Level 1 is approved and Level 2 is not
+    if (isManager && ticket.status === 'approved_inspector' && approvedLevels.includes(1) && !approvedLevels.includes(2)) {
+      return true;
+    }
+
+    // Executive can approve manager-approved tickets (Level 3) - only if Level 1 and 2 are approved and Level 3 is not
+    if (isExecutive && ticket.status === 'approved_manager' && approvedLevels.includes(1) && approvedLevels.includes(2) && !approvedLevels.includes(3)) {
+      return true;
+    }
+
+    // Admin can approve any status, but still must follow sequential order
+    // Admin can approve Level 1 if not approved
+    if (isAdmin && ticket.status === 'pending' && !approvedLevels.includes(1)) {
+      return true;
+    }
+    // Admin can approve Level 2 if Level 1 is approved
+    if (isAdmin && ticket.status === 'approved_inspector' && approvedLevels.includes(1) && !approvedLevels.includes(2)) {
+      return true;
+    }
+    // Admin can approve Level 3 if Level 1 and 2 are approved
+    if (isAdmin && ticket.status === 'approved_manager' && approvedLevels.includes(1) && approvedLevels.includes(2) && !approvedLevels.includes(3)) {
+      return true;
+    }
 
     return false;
   };
@@ -181,28 +265,46 @@ export const TicketDetailView: React.FC<TicketDetailViewProps> = ({
     setApproving(true);
 
     try {
+      // Get approved levels from approval history to enforce sequential approval
+      const approvedLevels = getApprovedLevels();
+
       // Determine new status based on current status and role
       let newStatus: TicketStatus;
+      let level = 1;
+
       if (approvalAction === 'reject') {
         newStatus = 'rejected';
+        // Rejection can happen at any level, but we still need to determine which level is rejecting
+        if (isInspector) level = 1;
+        else if (isManager) level = 2;
+        else if (isExecutive) level = 3;
+        else if (isAdmin) level = 1; // Admin defaults to level 1 for rejection
       } else {
-        if (ticket.status === 'pending' && isInspector) {
+        // Level 1: Inspector approves pending → approved_inspector
+        // Must check that Level 1 is not already approved
+        if (ticket.status === 'pending' && (isInspector || isAdmin) && !approvedLevels.includes(1)) {
+          level = 1;
           newStatus = 'approved_inspector';
-        } else if (ticket.status === 'approved_inspector' && isManager) {
+        } 
+        // Level 2: Manager approves inspector-approved → approved_manager
+        // Must check that Level 1 is approved and Level 2 is not
+        else if (ticket.status === 'approved_inspector' && (isManager || isAdmin) && approvedLevels.includes(1) && !approvedLevels.includes(2)) {
+          level = 2;
           newStatus = 'approved_manager';
-        } else if (ticket.status === 'approved_manager') {
+        } 
+        // Level 3: Executive approves manager-approved → ready_for_repair
+        // Must check that Level 1 and 2 are approved and Level 3 is not
+        else if (ticket.status === 'approved_manager' && (isExecutive || isAdmin) && approvedLevels.includes(1) && approvedLevels.includes(2) && !approvedLevels.includes(3)) {
+          level = 3;
           newStatus = 'ready_for_repair';
-        } else {
-          newStatus = ticket.status;
+        } 
+        else {
+          // If we reach here, the approval is not valid
+          throw new Error('ไม่สามารถอนุมัติได้ เนื่องจากไม่ผ่านเงื่อนไขการอนุมัติตามลำดับ');
         }
       }
 
-      // Determine approval level
-      let level = 1;
-      if (isManager) level = 2;
-      if (isAdmin) level = 3;
-
-      // Call service to approve
+      // Call service to approve (service will also validate sequential approval)
       await ticketService.approveTicket(
         ticketId.toString(),
         level,
@@ -213,12 +315,70 @@ export const TicketDetailView: React.FC<TicketDetailViewProps> = ({
       );
 
       // Refresh data
-      await refetch();
+      await Promise.all([refetch(), refetchApprovals()]);
+      
+      // Close dialog only after successful approval
       setShowApprovalDialog(false);
+      setApprovalAction(null);
     } catch (err: any) {
-      throw err; // Re-throw to be caught by ApprovalDialog
+      console.error('Approval submission error:', err);
+      // Re-throw to be caught by ApprovalDialog
+      throw err;
     } finally {
       setApproving(false);
+    }
+  };
+
+  // Handle start repair
+  const handleStartRepair = async () => {
+    if (!repairForm.garage || !repairForm.repairDate) {
+      alert('กรุณากรอกข้อมูลอู่ซ่อมและวันที่เข้าซ่อม');
+      return;
+    }
+
+    setStartingRepair(true);
+    try {
+      const { error } = await supabase
+        .from('tickets')
+        .update({
+          status: 'in_progress',
+          garage: repairForm.garage,
+        })
+        .eq('id', ticketId);
+
+      if (error) throw error;
+
+      await refetch();
+      setShowStartRepairDialog(false);
+      setRepairForm({ garage: '', repairDate: '' });
+    } catch (err: any) {
+      console.error('Error starting repair:', err);
+      alert('เกิดข้อผิดพลาด: ' + (err.message || 'ไม่สามารถเริ่มการซ่อมได้'));
+    } finally {
+      setStartingRepair(false);
+    }
+  };
+
+  // Handle complete repair
+  const handleCompleteRepair = async () => {
+    setCompletingRepair(true);
+    try {
+      const { error } = await supabase
+        .from('tickets')
+        .update({
+          status: 'completed',
+        })
+        .eq('id', ticketId);
+
+      if (error) throw error;
+
+      await refetch();
+      setShowCompleteRepairDialog(false);
+    } catch (err: any) {
+      console.error('Error completing repair:', err);
+      alert('เกิดข้อผิดพลาด: ' + (err.message || 'ไม่สามารถยืนยันการซ่อมเสร็จได้'));
+    } finally {
+      setCompletingRepair(false);
     }
   };
 
@@ -294,6 +454,11 @@ export const TicketDetailView: React.FC<TicketDetailViewProps> = ({
               </div>
             </div>
 
+            {/* Approval Status Badge */}
+            <div className="mb-6">
+              <ApprovalStatusBadge status={ticket.status} approvals={approvals} />
+            </div>
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
                 <label className="block text-sm font-medium text-slate-500 dark:text-slate-400 mb-1">
@@ -359,6 +524,47 @@ export const TicketDetailView: React.FC<TicketDetailViewProps> = ({
               <h2 className="text-xl font-semibold text-slate-900 dark:text-white mb-4">
                 การอนุมัติ
               </h2>
+              
+              {/* Show current approval step */}
+              <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+                <p className="text-sm text-blue-700 dark:text-blue-300 font-medium mb-2">
+                  📋 ขั้นตอนการอนุมัติปัจจุบัน:
+                </p>
+                {ticket.status === 'pending' && (
+                  <div className="space-y-1 text-sm text-blue-600 dark:text-blue-400">
+                    <p><strong>Level 1:</strong> รอผู้ตรวจสอบอนุมัติ (คุณสามารถอนุมัติได้)</p>
+                    <p className="text-xs text-blue-500 dark:text-blue-500">→ หลังจากนี้จะส่งต่อไปยัง Level 2 (ผู้จัดการ)</p>
+                  </div>
+                )}
+                {ticket.status === 'approved_inspector' && (
+                  <div className="space-y-1 text-sm text-blue-600 dark:text-blue-400">
+                    <p>✅ <strong>Level 1:</strong> ผู้ตรวจสอบอนุมัติแล้ว</p>
+                    <p><strong>Level 2:</strong> รอผู้จัดการอนุมัติ (คุณสามารถอนุมัติได้)</p>
+                    <p className="text-xs text-blue-500 dark:text-blue-500">→ หลังจากนี้จะส่งต่อไปยัง Level 3 (ผู้บริหาร)</p>
+                  </div>
+                )}
+                {ticket.status === 'approved_manager' && (() => {
+                  const approvedLevels = getApprovedLevels();
+                  return (
+                    <div className="space-y-1 text-sm text-blue-600 dark:text-blue-400">
+                      <p>✅ <strong>Level 1:</strong> ผู้ตรวจสอบอนุมัติแล้ว</p>
+                      <p>✅ <strong>Level 2:</strong> ผู้จัดการอนุมัติแล้ว</p>
+                      {approvedLevels.includes(3) ? (
+                        <>
+                          <p>✅ <strong>Level 3:</strong> ผู้บริหารอนุมัติแล้ว</p>
+                          <p className="text-xs text-purple-500 dark:text-purple-400">→ อนุมัติครบทุกขั้นตอนแล้ว - สถานะควรเป็น "พร้อมซ่อม"</p>
+                        </>
+                      ) : (
+                        <>
+                          <p><strong>Level 3:</strong> รอผู้บริหารอนุมัติ (คุณสามารถอนุมัติได้)</p>
+                          <p className="text-xs text-blue-500 dark:text-blue-500">→ หลังจากนี้จะพร้อมซ่อม</p>
+                        </>
+                      )}
+                    </div>
+                  );
+                })()}
+              </div>
+
               <div className="flex gap-3">
                 <Button
                   onClick={() => handleApproveClick('approve')}
@@ -375,6 +581,79 @@ export const TicketDetailView: React.FC<TicketDetailViewProps> = ({
                   <X className="w-4 h-4 mr-2" />
                   ปฏิเสธ
                 </Button>
+              </div>
+            </Card>
+          )}
+
+          {/* Show waiting message if user cannot approve */}
+          {!canApprove() && ticket.status !== 'completed' && ticket.status !== 'rejected' && (
+            <Card className="p-6">
+              <h2 className="text-xl font-semibold text-slate-900 dark:text-white mb-4">
+                สถานะการอนุมัติ
+              </h2>
+              <div className="p-4 bg-slate-50 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700">
+                {ticket.status === 'pending' && (
+                  <p className="text-sm text-slate-600 dark:text-slate-400">
+                    ⏳ <strong>รอผู้ตรวจสอบอนุมัติ (Level 1)</strong> - คุณไม่มีสิทธิ์อนุมัติในขั้นตอนนี้
+                  </p>
+                )}
+                {ticket.status === 'approved_inspector' && (
+                  <p className="text-sm text-slate-600 dark:text-slate-400">
+                    ✅ <strong>Level 1:</strong> ผู้ตรวจสอบอนุมัติแล้ว<br />
+                    ⏳ <strong>Level 2:</strong> รอผู้จัดการอนุมัติ - คุณไม่มีสิทธิ์อนุมัติในขั้นตอนนี้
+                  </p>
+                )}
+                {ticket.status === 'approved_manager' && (() => {
+                  const approvedLevels = getApprovedLevels();
+                  return (
+                    <>
+                      <p className="text-sm text-slate-600 dark:text-slate-400">
+                        ✅ <strong>Level 1:</strong> ผู้ตรวจสอบอนุมัติแล้ว<br />
+                        ✅ <strong>Level 2:</strong> ผู้จัดการอนุมัติแล้ว<br />
+                        {approvedLevels.includes(3) ? (
+                          <>
+                            ✅ <strong>Level 3:</strong> ผู้บริหารอนุมัติแล้ว<br />
+                            <span className="text-purple-600 dark:text-purple-400 font-medium">→ สถานะควรเป็น "พร้อมซ่อม" แต่ยังไม่ถูกอัปเดต</span>
+                          </>
+                        ) : (
+                          <>⏳ <strong>Level 3:</strong> รอผู้บริหารอนุมัติ - คุณไม่มีสิทธิ์อนุมัติในขั้นตอนนี้</>
+                        )}
+                      </p>
+                      {approvedLevels.includes(3) && (
+                  <div className="mt-4 p-3 bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-lg">
+                    <p className="text-sm text-purple-700 dark:text-purple-300 font-medium mb-2">
+                      ⚠️ สถานะไม่สอดคล้องกับประวัติการอนุมัติ
+                    </p>
+                    <p className="text-xs text-purple-600 dark:text-purple-400 mb-3">
+                      ประวัติการอนุมัติแสดงว่าผู้บริหารอนุมัติแล้ว แต่สถานะยังไม่ถูกอัปเดต กรุณารีเฟรชหน้าหรือติดต่อผู้ดูแลระบบ
+                    </p>
+                    <Button
+                      size="sm"
+                      onClick={async () => {
+                        // Try to auto-fix status
+                        try {
+                          const { error } = await supabase
+                            .from('tickets')
+                            .update({ status: 'ready_for_repair' })
+                            .eq('id', ticketId);
+                          
+                          if (error) throw error;
+                          await refetch();
+                        } catch (err: any) {
+                          console.error('Error updating status:', err);
+                          alert('ไม่สามารถอัปเดตสถานะได้: ' + (err.message || 'เกิดข้อผิดพลาด'));
+                        }
+                      }}
+                      className="w-full"
+                    >
+                      <CheckCircle className="w-4 h-4 mr-2" />
+                      อัปเดตสถานะเป็น "พร้อมซ่อม"
+                    </Button>
+                  </div>
+                      )}
+                    </>
+                  );
+                })()}
               </div>
             </Card>
           )}
@@ -452,6 +731,13 @@ export const TicketDetailView: React.FC<TicketDetailViewProps> = ({
 
         {/* Sidebar */}
         <div className="space-y-6">
+          {/* Approval History */}
+          <ApprovalHistory 
+            ticketId={ticketId} 
+            approvals={approvals}
+            loading={loadingApprovals}
+          />
+
           <Card className="p-6">
             <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-4">
               ข้อมูลเพิ่มเติม
@@ -560,7 +846,110 @@ export const TicketDetailView: React.FC<TicketDetailViewProps> = ({
           </Card>
         </div>
       )}
+
+      {/* Start Repair Dialog */}
+      {showStartRepairDialog && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <Card className="p-6 max-w-md w-full">
+            <h3 className="text-xl font-semibold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
+              <Wrench className="w-5 h-5" />
+              เริ่มการซ่อม
+            </h3>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                  ชื่ออู่ซ่อม <span className="text-red-500">*</span>
+                </label>
+                <Input
+                  type="text"
+                  value={repairForm.garage}
+                  onChange={(e) => setRepairForm(prev => ({ ...prev, garage: e.target.value }))}
+                  placeholder="ระบุชื่ออู่ซ่อม"
+                  disabled={startingRepair}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                  วันที่เข้าซ่อม <span className="text-red-500">*</span>
+                </label>
+                <Input
+                  type="date"
+                  value={repairForm.repairDate}
+                  onChange={(e) => setRepairForm(prev => ({ ...prev, repairDate: e.target.value }))}
+                  disabled={startingRepair}
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-3 mt-6">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowStartRepairDialog(false);
+                  setRepairForm({ garage: '', repairDate: '' });
+                }}
+                disabled={startingRepair}
+                className="flex-1"
+              >
+                ยกเลิก
+              </Button>
+              <Button
+                onClick={handleStartRepair}
+                disabled={startingRepair || !repairForm.garage || !repairForm.repairDate}
+                isLoading={startingRepair}
+                className="flex-1"
+              >
+                <Wrench className="w-4 h-4 mr-2" />
+                เริ่มการซ่อม
+              </Button>
+            </div>
+          </Card>
+        </div>
+      )}
+
+      {/* Complete Repair Dialog */}
+      {showCompleteRepairDialog && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <Card className="p-6 max-w-md w-full">
+            <h3 className="text-xl font-semibold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
+              <CheckCircle className="w-5 h-5" />
+              ยืนยันการซ่อมเสร็จ
+            </h3>
+
+            <div className="p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg mb-4">
+              <p className="text-sm text-green-700 dark:text-green-300">
+                คุณต้องการยืนยันว่าการซ่อมเสร็จสิ้นแล้วหรือไม่?
+              </p>
+              <p className="text-xs text-green-600 dark:text-green-400 mt-2">
+                หลังจากยืนยันแล้ว คุณสามารถลงรายการค่าใช้จ่ายได้
+              </p>
+            </div>
+
+            <div className="flex gap-3 mt-6">
+              <Button
+                variant="outline"
+                onClick={() => setShowCompleteRepairDialog(false)}
+                disabled={completingRepair}
+                className="flex-1"
+              >
+                ยกเลิก
+              </Button>
+              <Button
+                onClick={handleCompleteRepair}
+                disabled={completingRepair}
+                isLoading={completingRepair}
+                className="flex-1"
+              >
+                <CheckCircle className="w-4 h-4 mr-2" />
+                ยืนยันการซ่อมเสร็จ
+              </Button>
+            </div>
+          </Card>
+        </div>
+      )}
     </PageLayout>
   );
 };
+
 

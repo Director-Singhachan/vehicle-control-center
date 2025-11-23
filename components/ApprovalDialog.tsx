@@ -40,8 +40,12 @@ export const ApprovalDialog: React.FC<ApprovalDialogProps> = ({
             // Reset form on success (parent will close dialog)
             setPassword('');
             setComment('');
+            setError(null);
         } catch (err) {
-            setError(err instanceof Error ? err.message : 'รหัสผ่านไม่ถูกต้อง หรือเกิดข้อผิดพลาด');
+            const errorMessage = err instanceof Error ? err.message : 'รหัสผ่านไม่ถูกต้อง หรือเกิดข้อผิดพลาด';
+            setError(errorMessage);
+            console.error('Approval error:', err);
+            // Don't reset password on error so user can try again
         }
     };
 
@@ -120,10 +124,11 @@ export const ApprovalDialog: React.FC<ApprovalDialogProps> = ({
                         <Button
                             type="submit"
                             isLoading={isLoading}
-                            className="bg-enterprise-600 hover:bg-enterprise-700 text-white"
+                            disabled={isLoading}
+                            className="bg-enterprise-600 hover:bg-enterprise-700 text-white disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                            <CheckCircle className="w-4 h-4 mr-2" />
-                            ยืนยันการอนุมัติ
+                            {!isLoading && <CheckCircle className="w-4 h-4 mr-2" />}
+                            {isLoading ? 'กำลังยืนยัน...' : 'ยืนยันการอนุมัติ'}
                         </Button>
                     </div>
                 </form>

@@ -1,8 +1,9 @@
-// Custom hook for dashboard data
+// Custom hook for dashboard data - Optimized with caching
 import { useState, useEffect } from 'react';
 import { vehicleService, type VehicleSummary, type VehicleForMap } from '../services/vehicleService';
 import { reportsService, type Financials, type MaintenanceTrends } from '../services/reportsService';
 import { usageService, type DailyUsageData } from '../services/usageService';
+import { useDataCacheStore, createCacheKey } from '../stores/dataCacheStore';
 import type { Database } from '../types/database';
 
 type VehicleDashboard = Database['public']['Views']['vehicle_dashboard']['Row'];
@@ -17,7 +18,13 @@ export interface DashboardData {
 }
 
 export const useDashboard = () => {
-  const [data, setData] = useState<DashboardData>({
+  const cache = useDataCacheStore();
+  const cacheKey = 'dashboard:all';
+  
+  // Try to get cached data first
+  const cachedData = cache.get<DashboardData>(cacheKey);
+  
+  const [data, setData] = useState<DashboardData>(cachedData || {
     summary: null,
     financials: null,
     usageData: null,
@@ -25,10 +32,22 @@ export const useDashboard = () => {
     vehicles: [],
     vehicleDashboard: [],
   });
-  const [loading, setLoading] = useState(true); // Must be true initially
+  const [loading, setLoading] = useState(!cachedData); // Only loading if no cache
   const [error, setError] = useState<Error | null>(null);
 
-  const fetchDashboardData = async () => {
+  const fetchDashboardData = async (useCache = true) => {
+    // Check cache first
+    if (useCache) {
+      const cached = cache.get<DashboardData>(cacheKey);
+      if (cached) {
+        setData(cached);
+        setLoading(false);
+        // Fetch in background to update cache
+        fetchDashboardData(false);
+        return;
+      }
+    }
+
     setLoading(true);
     setError(null);
     try {
@@ -48,14 +67,18 @@ export const useDashboard = () => {
         vehicleService.getDashboardData(),
       ]);
 
-      setData({
+      const newData = {
         summary,
         financials,
         usageData,
         maintenanceTrends,
         vehicles,
         vehicleDashboard: vehicleDashboard as VehicleDashboard[],
-      });
+      };
+
+      setData(newData);
+      // Cache for 2 minutes
+      cache.set(cacheKey, newData, 2 * 60 * 1000);
     } catch (err) {
       setError(err instanceof Error ? err : new Error('Failed to fetch dashboard data'));
     } finally {
@@ -71,7 +94,7 @@ export const useDashboard = () => {
     data,
     loading,
     error,
-    refetch: fetchDashboardData,
+    refetch: () => fetchDashboardData(false),
   };
 };
 
