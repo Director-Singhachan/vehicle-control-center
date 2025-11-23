@@ -13,7 +13,7 @@ interface AuthState {
   loading: boolean;
   error: Error | null;
   initialized: boolean;
-  
+
   // Actions
   setUser: (user: User | null) => void;
   setProfile: (profile: Profile | null) => void;
@@ -43,19 +43,12 @@ export const useAuthStore = create<AuthState>()(
 
       initialize: async () => {
         const state = get();
-        
-        // Skip if already initialized and we have user and profile
+
+        // If we have cached data, return immediately! (No blocking)
         if (state.initialized && state.user && state.profile) {
-          // Silently refresh profile in background (don't block)
-          setTimeout(async () => {
-            try {
-              const profile = await getCurrentProfile();
-              if (get().user) { // Check user still exists
-                set({ profile });
-              }
-            } catch (err) {
-              console.warn('Failed to refresh profile:', err);
-            }
+          // Background refresh (non-blocking) - fire and forget
+          setTimeout(() => {
+            get().refreshProfile();
           }, 100);
           return;
         }
@@ -102,7 +95,7 @@ export const useAuthStore = create<AuthState>()(
           if (signInError) throw signInError;
 
           set({ user: data.user, initialized: true });
-          
+
           // Always fetch fresh profile after sign in
           if (data.user) {
             try {
@@ -148,7 +141,7 @@ export const useAuthStore = create<AuthState>()(
             set({ profile: null });
             return;
           }
-          
+
           const profile = await getCurrentProfile();
           set({ profile });
         } catch (err) {
@@ -160,8 +153,9 @@ export const useAuthStore = create<AuthState>()(
     {
       name: 'auth-storage',
       partialize: (state) => ({
-        // Only persist user ID, not full user object
+        // Persist user and profile for instant load
         user: state.user ? { id: state.user.id, email: state.user.email } : null,
+        profile: state.profile, // Cache profile for instant UI!
       }),
     }
   )
@@ -174,7 +168,7 @@ if (typeof window !== 'undefined') {
   // Listen for auth changes
   supabase.auth.onAuthStateChange(async (event, session) => {
     const store = useAuthStore.getState();
-    
+
     // Update user
     store.setUser(session?.user ?? null);
     store.setInitialized(true);

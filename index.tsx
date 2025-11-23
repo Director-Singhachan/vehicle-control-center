@@ -80,7 +80,7 @@ const AppContent = () => {
     // Prefetch dashboard and vehicles immediately (most common pages)
     prefetchService.prefetchDashboard();
     prefetchService.prefetchVehicles();
-    
+
     // Prefetch tickets after a short delay (less critical)
     setTimeout(() => {
       prefetchService.prefetchTicketsWithRelations();
@@ -125,50 +125,50 @@ const AppContent = () => {
         </div>
 
         <div className="flex-1 px-3 space-y-1 mt-4">
-          <SidebarItem 
-            icon={LayoutDashboard} 
-            label={isSidebarOpen ? "แดชบอร์ด" : ""} 
-            active={activeTab === 'dashboard'} 
+          <SidebarItem
+            icon={LayoutDashboard}
+            label={isSidebarOpen ? "แดชบอร์ด" : ""}
+            active={activeTab === 'dashboard'}
             onClick={() => setActiveTab('dashboard')}
             onMouseEnter={() => prefetchService.prefetchDashboard()}
           />
-          <SidebarItem 
-            icon={Truck} 
-            label={isSidebarOpen ? "ยานพาหนะ" : ""} 
-            active={activeTab === 'vehicles'} 
+          <SidebarItem
+            icon={Truck}
+            label={isSidebarOpen ? "ยานพาหนะ" : ""}
+            active={activeTab === 'vehicles'}
             onClick={() => setActiveTab('vehicles')}
             onMouseEnter={() => prefetchService.prefetchVehicles()}
           />
-          <SidebarItem 
-            icon={Wrench} 
-            label={isSidebarOpen ? "การซ่อมบำรุง" : ""} 
-            active={activeTab === 'maintenance'} 
+          <SidebarItem
+            icon={Wrench}
+            label={isSidebarOpen ? "การซ่อมบำรุง" : ""}
+            active={activeTab === 'maintenance'}
             onClick={() => setActiveTab('maintenance')}
             onMouseEnter={() => prefetchService.prefetchTicketsWithRelations()}
           />
           {/* Show approval board menu - check role directly for reliability */}
           {(() => {
             const userRole = profile?.role?.toLowerCase();
-            const hasPermission = userRole === 'admin' || 
-                                 userRole === 'manager' || 
-                                 userRole === 'inspector' || 
-                                 userRole === 'executive' ||
-                                 isAdmin || isInspector || isManager || isExecutive || authLoading;
-            
+            const hasPermission = userRole === 'admin' ||
+              userRole === 'manager' ||
+              userRole === 'inspector' ||
+              userRole === 'executive' ||
+              isAdmin || isInspector || isManager || isExecutive || authLoading;
+
             return hasPermission ? (
-              <SidebarItem 
-                icon={CheckSquare} 
-                label={isSidebarOpen ? "ภาพรวมการอนุมัติ" : ""} 
-                active={activeTab === 'approvals'} 
+              <SidebarItem
+                icon={CheckSquare}
+                label={isSidebarOpen ? "ภาพรวมการอนุมัติ" : ""}
+                active={activeTab === 'approvals'}
                 onClick={() => setActiveTab('approvals')}
                 onMouseEnter={() => prefetchService.prefetchTicketsWithRelations()}
               />
             ) : null;
           })()}
-          <SidebarItem 
-            icon={FileText} 
-            label={isSidebarOpen ? "รายงาน" : ""} 
-            active={activeTab === 'reports'} 
+          <SidebarItem
+            icon={FileText}
+            label={isSidebarOpen ? "รายงาน" : ""}
+            active={activeTab === 'reports'}
             onClick={() => setActiveTab('reports')}
           />
         </div>
@@ -212,7 +212,7 @@ const AppContent = () => {
             <button onClick={() => setIsDark(!isDark)} className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-yellow-400 transition-colors">
               {isDark ? <Sun size={20} /> : <Moon size={20} />}
             </button>
-            <button 
+            <button
               onClick={() => setActiveTab('maintenance')}
               className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400 relative"
               title={pendingCount > 0 ? `${pendingCount} ตั๋วรออนุมัติ` : 'การแจ้งเตือน'}
@@ -239,13 +239,13 @@ const AppContent = () => {
                     if (profile?.role) {
                       return profile.role === 'admin' ? 'ผู้ดูแลระบบ' :
                         profile.role === 'manager' ? 'ผู้จัดการ' :
-                        profile.role === 'inspector' ? 'ผู้ตรวจสอบ' :
-                        profile.role === 'executive' ? 'ผู้บริหาร' :
-                        'ผู้ใช้';
+                          profile.role === 'inspector' ? 'ผู้ตรวจสอบ' :
+                            profile.role === 'executive' ? 'ผู้บริหาร' :
+                              'ผู้ใช้';
                     }
-                    // If we have user but no profile yet, show loading
-                    if (user && !profile) {
-                      return 'กำลังโหลด...';
+                    // If we have user but no profile AND not loading anymore, show default
+                    if (user && !profile && !authLoading) {
+                      return 'ผู้ใช้';
                     }
                     // Default fallback
                     return 'ผู้ใช้';
@@ -260,7 +260,7 @@ const AppContent = () => {
         {/* View Content */}
         <div className="p-6">
           {activeTab === 'dashboard' ? (
-            <DashboardView 
+            <DashboardView
               isDark={isDark}
               onNavigateToTickets={() => {
                 setActiveTab('maintenance');
@@ -373,11 +373,11 @@ const AppContent = () => {
 
               // Check role directly from profile (more reliable than isManager flags)
               const userRole = profile?.role?.toLowerCase();
-              const hasPermission = userRole === 'admin' || 
-                                   userRole === 'manager' || 
-                                   userRole === 'inspector' || 
-                                   userRole === 'executive' ||
-                                   isAdmin || isInspector || isManager || isExecutive; // Fallback to flags
+              const hasPermission = userRole === 'admin' ||
+                userRole === 'manager' ||
+                userRole === 'inspector' ||
+                userRole === 'executive' ||
+                isAdmin || isInspector || isManager || isExecutive; // Fallback to flags
 
               if (hasPermission) {
                 return (

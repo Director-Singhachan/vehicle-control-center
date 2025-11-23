@@ -49,9 +49,9 @@ VITE_SUPABASE_ANON_KEY=your-anon-key-here`}
     );
   }
 
-  // Show loading state - but only if not initialized yet
-  // Once initialized, use cached data immediately
-  if (loading && !user && !profile) {
+  // Show loading state only on first initialization (no cached data)
+  // If we have cached user/profile, show UI immediately
+  if (loading && !user && !isAuthenticated) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
