@@ -1,7 +1,7 @@
 // Ticket Detail View - Show detailed information about a ticket with approval workflow
 import React, { useState } from 'react';
 import { useTicket, useTicketCosts, useAuth } from '../hooks';
-import { ticketService } from '../services';
+import { ticketService, maintenanceService } from '../services';
 import { supabase } from '../lib/supabase';
 import {
   FileText,
@@ -68,9 +68,7 @@ export const TicketDetailView: React.FC<TicketDetailViewProps> = ({
     // If all levels are approved but status is still approved_manager, auto-fix it
     if (hasAllLevels && ticket.status === 'approved_manager') {
       console.log('Auto-fixing status: All levels approved but status is still approved_manager');
-      supabase
-        .from('tickets')
-        .update({ status: 'ready_for_repair' })
+      (supabase.from('tickets') as any).update({ status: 'ready_for_repair' })
         .eq('id', ticketId)
         .then(({ error }) => {
           if (error) {
@@ -97,15 +95,33 @@ export const TicketDetailView: React.FC<TicketDetailViewProps> = ({
   const [addingCost, setAddingCost] = useState(false);
 
   // Repair management states
+  // Repair management states
   const [showStartRepairDialog, setShowStartRepairDialog] = useState(false);
   const [repairForm, setRepairForm] = useState({
     garage: ticket?.garage || '',
-    repairDate: '',
+    repairDate: new Date().toISOString().split('T')[0],
+    expectedCompletionDate: '',
+    assignedTo: '',
+    notes: '',
   });
   const [startingRepair, setStartingRepair] = useState(false);
+  const [profiles, setProfiles] = useState<any[]>([]);
 
   const [showCompleteRepairDialog, setShowCompleteRepairDialog] = useState(false);
   const [completingRepair, setCompletingRepair] = useState(false);
+
+  // Fetch profiles for assignment
+  React.useEffect(() => {
+    if (showStartRepairDialog) {
+      supabase
+        .from('profiles')
+        .select('*')
+        .order('full_name')
+        .then(({ data }) => {
+          if (data) setProfiles(data);
+        });
+    }
+  }, [showStartRepairDialog]);
 
   if (loading) {
     return (
@@ -254,6 +270,24 @@ export const TicketDetailView: React.FC<TicketDetailViewProps> = ({
     return isInspector || isManager || isAdmin;
   };
 
+  // Check if user can start repair
+  const canStartRepair = () => {
+    if (!user || !profile) return false;
+    // Only Inspector, Manager, Admin can start repair
+    if (!isInspector && !isManager && !isAdmin) return false;
+
+    return ticket.status === 'ready_for_repair';
+  };
+
+  // Check if user can complete repair
+  const canCompleteRepair = () => {
+    if (!user || !profile) return false;
+    // Only Inspector, Manager, Admin can complete repair
+    if (!isInspector && !isManager && !isAdmin) return false;
+
+    return ticket.status === 'in_progress';
+  };
+
   const handleApproveClick = (action: 'approve' | 'reject') => {
     setApprovalAction(action);
     setShowApprovalDialog(true);
@@ -285,19 +319,19 @@ export const TicketDetailView: React.FC<TicketDetailViewProps> = ({
         if (ticket.status === 'pending' && (isInspector || isAdmin) && !approvedLevels.includes(1)) {
           level = 1;
           newStatus = 'approved_inspector';
-        } 
+        }
         // Level 2: Manager approves inspector-approved → approved_manager
         // Must check that Level 1 is approved and Level 2 is not
         else if (ticket.status === 'approved_inspector' && (isManager || isAdmin) && approvedLevels.includes(1) && !approvedLevels.includes(2)) {
           level = 2;
           newStatus = 'approved_manager';
-        } 
+        }
         // Level 3: Executive approves manager-approved → ready_for_repair
         // Must check that Level 1 and 2 are approved and Level 3 is not
         else if (ticket.status === 'approved_manager' && (isExecutive || isAdmin) && approvedLevels.includes(1) && approvedLevels.includes(2) && !approvedLevels.includes(3)) {
           level = 3;
           newStatus = 'ready_for_repair';
-        } 
+        }
         else {
           // If we reach here, the approval is not valid
           throw new Error('ไม่สามารถอนุมัติได้ เนื่องจากไม่ผ่านเงื่อนไขการอนุมัติตามลำดับ');
@@ -316,7 +350,7 @@ export const TicketDetailView: React.FC<TicketDetailViewProps> = ({
 
       // Refresh data
       await Promise.all([refetch(), refetchApprovals()]);
-      
+
       // Close dialog only after successful approval
       setShowApprovalDialog(false);
       setApprovalAction(null);
@@ -338,19 +372,16 @@ export const TicketDetailView: React.FC<TicketDetailViewProps> = ({
 
     setStartingRepair(true);
     try {
-      const { error } = await supabase
-        .from('tickets')
-        .update({
-          status: 'in_progress',
-          garage: repairForm.garage,
-        })
-        .eq('id', ticketId);
-
-      if (error) throw error;
+      await ticketService.startRepair(ticketId, {
+        garage: repairForm.garage,
+        repair_start_date: new Date(repairForm.repairDate).toISOString(),
+        repair_expected_completion: repairForm.expectedCompletionDate ? new Date(repairForm.expectedCompletionDate).toISOString() : undefined,
+        repair_assigned_to: repairForm.assignedTo || undefined,
+        repair_notes: repairForm.notes || undefined,
+      });
 
       await refetch();
       setShowStartRepairDialog(false);
-      setRepairForm({ garage: '', repairDate: '' });
     } catch (err: any) {
       console.error('Error starting repair:', err);
       alert('เกิดข้อผิดพลาด: ' + (err.message || 'ไม่สามารถเริ่มการซ่อมได้'));
@@ -363,14 +394,11 @@ export const TicketDetailView: React.FC<TicketDetailViewProps> = ({
   const handleCompleteRepair = async () => {
     setCompletingRepair(true);
     try {
-      const { error } = await supabase
-        .from('tickets')
-        .update({
-          status: 'completed',
-        })
-        .eq('id', ticketId);
+      // 1. Create maintenance history
+      await maintenanceService.createHistoryFromTicket(ticket, costs);
 
-      if (error) throw error;
+      // 2. Update ticket status
+      await ticketService.completeRepair(ticketId);
 
       await refetch();
       setShowCompleteRepairDialog(false);
@@ -524,7 +552,7 @@ export const TicketDetailView: React.FC<TicketDetailViewProps> = ({
               <h2 className="text-xl font-semibold text-slate-900 dark:text-white mb-4">
                 การอนุมัติ
               </h2>
-              
+
               {/* Show current approval step */}
               <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
                 <p className="text-sm text-blue-700 dark:text-blue-300 font-medium mb-2">
@@ -585,6 +613,56 @@ export const TicketDetailView: React.FC<TicketDetailViewProps> = ({
             </Card>
           )}
 
+          {/* Repair Actions */}
+          {(canStartRepair() || canCompleteRepair()) && (
+            <Card className="p-6">
+              <h2 className="text-xl font-semibold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
+                <Wrench className="w-5 h-5" />
+                การดำเนินการซ่อม
+              </h2>
+
+              {canStartRepair() && (
+                <div className="space-y-4">
+                  <div className="p-3 bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-lg">
+                    <p className="text-sm text-purple-700 dark:text-purple-300 font-medium mb-2">
+                      พร้อมสำหรับการซ่อม
+                    </p>
+                    <p className="text-sm text-purple-600 dark:text-purple-400">
+                      ตั๋วนี้ได้รับการอนุมัติครบทุกขั้นตอนแล้ว คุณสามารถเริ่มดำเนินการซ่อมได้
+                    </p>
+                  </div>
+                  <Button
+                    onClick={() => setShowStartRepairDialog(true)}
+                    className="w-full"
+                  >
+                    <Wrench className="w-4 h-4 mr-2" />
+                    ส่งเข้าซ่อม
+                  </Button>
+                </div>
+              )}
+
+              {canCompleteRepair() && (
+                <div className="space-y-4">
+                  <div className="p-3 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-lg">
+                    <p className="text-sm text-orange-700 dark:text-orange-300 font-medium mb-2">
+                      กำลังดำเนินการซ่อม
+                    </p>
+                    <p className="text-sm text-orange-600 dark:text-orange-400">
+                      เมื่อการซ่อมเสร็จสิ้น กรุณากดปุ่มด้านล่างเพื่อยืนยันและบันทึกประวัติ
+                    </p>
+                  </div>
+                  <Button
+                    onClick={() => setShowCompleteRepairDialog(true)}
+                    className="w-full bg-green-600 hover:bg-green-700 text-white"
+                  >
+                    <CheckCircle className="w-4 h-4 mr-2" />
+                    ยืนยันซ่อมเสร็จ
+                  </Button>
+                </div>
+              )}
+            </Card>
+          )}
+
           {/* Show waiting message if user cannot approve */}
           {!canApprove() && ticket.status !== 'completed' && ticket.status !== 'rejected' && (
             <Card className="p-6">
@@ -620,40 +698,95 @@ export const TicketDetailView: React.FC<TicketDetailViewProps> = ({
                         )}
                       </p>
                       {approvedLevels.includes(3) && (
-                  <div className="mt-4 p-3 bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-lg">
-                    <p className="text-sm text-purple-700 dark:text-purple-300 font-medium mb-2">
-                      ⚠️ สถานะไม่สอดคล้องกับประวัติการอนุมัติ
-                    </p>
-                    <p className="text-xs text-purple-600 dark:text-purple-400 mb-3">
-                      ประวัติการอนุมัติแสดงว่าผู้บริหารอนุมัติแล้ว แต่สถานะยังไม่ถูกอัปเดต กรุณารีเฟรชหน้าหรือติดต่อผู้ดูแลระบบ
-                    </p>
-                    <Button
-                      size="sm"
-                      onClick={async () => {
-                        // Try to auto-fix status
-                        try {
-                          const { error } = await supabase
-                            .from('tickets')
-                            .update({ status: 'ready_for_repair' })
-                            .eq('id', ticketId);
-                          
-                          if (error) throw error;
-                          await refetch();
-                        } catch (err: any) {
-                          console.error('Error updating status:', err);
-                          alert('ไม่สามารถอัปเดตสถานะได้: ' + (err.message || 'เกิดข้อผิดพลาด'));
-                        }
-                      }}
-                      className="w-full"
-                    >
-                      <CheckCircle className="w-4 h-4 mr-2" />
-                      อัปเดตสถานะเป็น "พร้อมซ่อม"
-                    </Button>
-                  </div>
+                        <div className="mt-4 p-3 bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-lg">
+                          <p className="text-sm text-purple-700 dark:text-purple-300 font-medium mb-2">
+                            ⚠️ สถานะไม่สอดคล้องกับประวัติการอนุมัติ
+                          </p>
+                          <p className="text-xs text-purple-600 dark:text-purple-400 mb-3">
+                            ประวัติการอนุมัติแสดงว่าผู้บริหารอนุมัติแล้ว แต่สถานะยังไม่ถูกอัปเดต กรุณารีเฟรชหน้าหรือติดต่อผู้ดูแลระบบ
+                          </p>
+                          <Button
+                            size="sm"
+                            onClick={async () => {
+                              // Try to auto-fix status
+                              try {
+                                const { error } = await (supabase.from('tickets') as any).update({ status: 'ready_for_repair' })
+                                  .eq('id', ticketId);
+
+                                if (error) throw error;
+                                await refetch();
+                              } catch (err: any) {
+                                console.error('Error updating status:', err);
+                                alert('ไม่สามารถอัปเดตสถานะได้: ' + (err.message || 'เกิดข้อผิดพลาด'));
+                              }
+                            }}
+                            className="w-full"
+                          >
+                            <CheckCircle className="w-4 h-4 mr-2" />
+                            อัปเดตสถานะเป็น "พร้อมซ่อม"
+                          </Button>
+                        </div>
                       )}
                     </>
                   );
                 })()}
+              </div>
+            </Card>
+          )}
+
+          {/* Repair Info Card */}
+          {(ticket.status === 'in_progress' || ticket.status === 'completed') && (
+            <Card className="p-6">
+              <h2 className="text-xl font-semibold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
+                <Wrench className="w-5 h-5" />
+                ข้อมูลการซ่อม
+              </h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <label className="block text-sm font-medium text-slate-500 dark:text-slate-400 mb-1">
+                    อู่ซ่อม
+                  </label>
+                  <p className="text-lg text-slate-900 dark:text-white">
+                    {ticket.garage || '-'}
+                  </p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-500 dark:text-slate-400 mb-1">
+                    ผู้รับผิดชอบ
+                  </label>
+                  <p className="text-lg text-slate-900 dark:text-white">
+                    {/* We display ID for now, ideally we should fetch name */}
+                    {ticket.repair_assigned_to ? (profiles.find(p => p.id === ticket.repair_assigned_to)?.full_name || 'ไม่ระบุชื่อ') : '-'}
+                  </p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-500 dark:text-slate-400 mb-1">
+                    วันที่เข้าซ่อม
+                  </label>
+                  <p className="text-lg text-slate-900 dark:text-white flex items-center gap-2">
+                    <Calendar className="w-4 h-4" />
+                    {ticket.repair_start_date ? new Date(ticket.repair_start_date).toLocaleDateString('th-TH') : '-'}
+                  </p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-500 dark:text-slate-400 mb-1">
+                    วันที่คาดว่าจะเสร็จ
+                  </label>
+                  <p className="text-lg text-slate-900 dark:text-white flex items-center gap-2">
+                    <Calendar className="w-4 h-4" />
+                    {ticket.repair_expected_completion ? new Date(ticket.repair_expected_completion).toLocaleDateString('th-TH') : '-'}
+                  </p>
+                </div>
+                {ticket.repair_notes && (
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-medium text-slate-500 dark:text-slate-400 mb-1">
+                      หมายเหตุ
+                    </label>
+                    <p className="text-slate-900 dark:text-white">
+                      {ticket.repair_notes}
+                    </p>
+                  </div>
+                )}
               </div>
             </Card>
           )}
@@ -732,8 +865,8 @@ export const TicketDetailView: React.FC<TicketDetailViewProps> = ({
         {/* Sidebar */}
         <div className="space-y-6">
           {/* Approval History */}
-          <ApprovalHistory 
-            ticketId={ticketId} 
+          <ApprovalHistory
+            ticketId={ticketId}
             approvals={approvals}
             loading={loadingApprovals}
           />
@@ -869,14 +1002,60 @@ export const TicketDetailView: React.FC<TicketDetailViewProps> = ({
                   disabled={startingRepair}
                 />
               </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                    วันที่เข้าซ่อม <span className="text-red-500">*</span>
+                  </label>
+                  <Input
+                    type="date"
+                    value={repairForm.repairDate}
+                    onChange={(e) => setRepairForm(prev => ({ ...prev, repairDate: e.target.value }))}
+                    disabled={startingRepair}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                    วันที่คาดว่าจะเสร็จ
+                  </label>
+                  <Input
+                    type="date"
+                    value={repairForm.expectedCompletionDate}
+                    onChange={(e) => setRepairForm(prev => ({ ...prev, expectedCompletionDate: e.target.value }))}
+                    disabled={startingRepair}
+                    min={repairForm.repairDate}
+                  />
+                </div>
+              </div>
+
               <div>
                 <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                  วันที่เข้าซ่อม <span className="text-red-500">*</span>
+                  ผู้รับผิดชอบ
                 </label>
-                <Input
-                  type="date"
-                  value={repairForm.repairDate}
-                  onChange={(e) => setRepairForm(prev => ({ ...prev, repairDate: e.target.value }))}
+                <select
+                  value={repairForm.assignedTo}
+                  onChange={(e) => setRepairForm(prev => ({ ...prev, assignedTo: e.target.value }))}
+                  className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-enterprise-500 focus:border-transparent"
+                  disabled={startingRepair}
+                >
+                  <option value="">เลือกผู้รับผิดชอบ</option>
+                  {profiles.map(p => (
+                    <option key={p.id} value={p.id}>{p.full_name || p.email}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                  หมายเหตุ
+                </label>
+                <textarea
+                  value={repairForm.notes}
+                  onChange={(e) => setRepairForm(prev => ({ ...prev, notes: e.target.value }))}
+                  placeholder="รายละเอียดเพิ่มเติม..."
+                  rows={3}
+                  className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-enterprise-500 focus:border-transparent resize-none"
                   disabled={startingRepair}
                 />
               </div>
@@ -918,12 +1097,14 @@ export const TicketDetailView: React.FC<TicketDetailViewProps> = ({
             </h3>
 
             <div className="p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg mb-4">
-              <p className="text-sm text-green-700 dark:text-green-300">
-                คุณต้องการยืนยันว่าการซ่อมเสร็จสิ้นแล้วหรือไม่?
+              <p className="text-sm text-green-700 dark:text-green-300 font-medium mb-2">
+                ยืนยันการซ่อมเสร็จสิ้น?
               </p>
-              <p className="text-xs text-green-600 dark:text-green-400 mt-2">
-                หลังจากยืนยันแล้ว คุณสามารถลงรายการค่าใช้จ่ายได้
-              </p>
+              <div className="space-y-1 text-sm text-green-600 dark:text-green-400">
+                <p>• สถานะตั๋วจะเปลี่ยนเป็น "เสร็จสิ้น"</p>
+                <p>• ข้อมูลการซ่อมจะถูกบันทึกลงในประวัติการบำรุงรักษา</p>
+                <p>• คุณสามารถเพิ่มค่าใช้จ่ายเพิ่มเติมได้หลังจากนี้</p>
+              </div>
             </div>
 
             <div className="flex gap-3 mt-6">

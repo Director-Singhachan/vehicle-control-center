@@ -11,7 +11,7 @@ type MaintenanceHistoryUpdate = Database['public']['Tables']['maintenance_histor
 
 export const maintenanceService = {
   // ========== Maintenance Schedules ==========
-  
+
   // Get all maintenance schedules
   getSchedules: async (filters?: {
     vehicle_id?: string;
@@ -21,16 +21,16 @@ export const maintenanceService = {
       .from('maintenance_schedules')
       .select('*')
       .order('created_at', { ascending: false });
-    
+
     if (filters?.vehicle_id) {
       query = query.eq('vehicle_id', filters.vehicle_id);
     }
     if (filters?.is_active !== undefined) {
       query = query.eq('is_active', filters.is_active);
     }
-    
+
     const { data, error } = await query;
-    
+
     if (error) throw error;
     return data || [];
   },
@@ -42,7 +42,7 @@ export const maintenanceService = {
       .select('*')
       .eq('id', id)
       .single();
-    
+
     if (error) throw error;
     return data;
   },
@@ -54,23 +54,21 @@ export const maintenanceService = {
       .insert(schedule)
       .select()
       .single();
-    
+
     if (error) throw error;
     return data;
   },
 
   // Update maintenance schedule
   updateSchedule: async (id: string, updates: MaintenanceScheduleUpdate): Promise<MaintenanceSchedule> => {
-    const { data, error } = await supabase
-      .from('maintenance_schedules')
-      .update({
-        ...updates,
-        updated_at: new Date().toISOString(),
-      })
+    const { data, error } = await (supabase.from('maintenance_schedules') as any).update({
+      ...updates,
+      updated_at: new Date().toISOString(),
+    })
       .eq('id', id)
       .select()
       .single();
-    
+
     if (error) throw error;
     return data;
   },
@@ -81,12 +79,12 @@ export const maintenanceService = {
       .from('maintenance_schedules')
       .delete()
       .eq('id', id);
-    
+
     if (error) throw error;
   },
 
   // ========== Maintenance History ==========
-  
+
   // Get all maintenance history
   getHistory: async (filters?: {
     vehicle_id?: string;
@@ -97,7 +95,7 @@ export const maintenanceService = {
       .from('maintenance_history')
       .select('*')
       .order('performed_at', { ascending: false });
-    
+
     if (filters?.vehicle_id) {
       query = query.eq('vehicle_id', filters.vehicle_id);
     }
@@ -107,9 +105,9 @@ export const maintenanceService = {
     if (filters?.ticket_id) {
       query = query.eq('ticket_id', filters.ticket_id);
     }
-    
+
     const { data, error } = await query;
-    
+
     if (error) throw error;
     return data || [];
   },
@@ -121,7 +119,7 @@ export const maintenanceService = {
       .select('*')
       .eq('id', id)
       .single();
-    
+
     if (error) throw error;
     return data;
   },
@@ -133,20 +131,18 @@ export const maintenanceService = {
       .insert(history)
       .select()
       .single();
-    
+
     if (error) throw error;
     return data;
   },
 
   // Update maintenance history
   updateHistory: async (id: string, updates: MaintenanceHistoryUpdate): Promise<MaintenanceHistory> => {
-    const { data, error } = await supabase
-      .from('maintenance_history')
-      .update(updates)
+    const { data, error } = await (supabase.from('maintenance_history') as any).update(updates)
       .eq('id', id)
       .select()
       .single();
-    
+
     if (error) throw error;
     return data;
   },
@@ -157,7 +153,7 @@ export const maintenanceService = {
       .from('maintenance_history')
       .delete()
       .eq('id', id);
-    
+
     if (error) throw error;
   },
 
@@ -165,6 +161,28 @@ export const maintenanceService = {
   checkAlerts: async (): Promise<void> => {
     const { error } = await supabase.rpc('check_maintenance_alerts');
     if (error) throw error;
+  },
+
+  // Create history from ticket
+  createHistoryFromTicket: async (ticket: any, costs: any[] = []): Promise<MaintenanceHistory> => {
+    const totalCost = costs.reduce((sum, item) => sum + (item.cost || 0), 0);
+
+    const historyData: MaintenanceHistoryInsert = {
+      vehicle_id: ticket.vehicle_id,
+      ticket_id: ticket.id,
+      maintenance_type: 'repair', // Default to repair for tickets
+      maintenance_name: ticket.repair_type || 'ซ่อมบำรุงตามตั๋ว',
+      description: ticket.problem_description,
+      odometer: ticket.odometer || 0,
+      performed_at: new Date().toISOString(),
+      cost: totalCost,
+      garage: ticket.garage,
+      notes: ticket.repair_notes,
+      performed_by: ticket.repair_assigned_to, // Use ID for now, or fetch name if needed
+      created_by: ticket.reporter_id,
+    };
+
+    return await maintenanceService.createHistory(historyData);
   },
 };
 

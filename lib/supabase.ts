@@ -1,5 +1,8 @@
+/// <reference types="vite/client" />
 // Supabase client configuration
 import { createClient } from '@supabase/supabase-js';
+
+import type { Database } from '../types/database';
 
 // Get these values from your Supabase project settings
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
@@ -32,7 +35,7 @@ See QUICK_START.md for detailed instructions.
 
 // Create the Supabase client with better error handling
 // Use singleton pattern to prevent multiple instances
-let supabaseInstance: ReturnType<typeof createClient> | null = null;
+let supabaseInstance: any = null;
 
 export const supabase = (() => {
   if (supabaseInstance) {
@@ -43,7 +46,7 @@ export const supabase = (() => {
   const safeUrl = supabaseUrl || 'https://placeholder.supabase.co';
   const safeKey = supabaseAnonKey || 'placeholder-key';
 
-  supabaseInstance = createClient(safeUrl, safeKey, {
+  supabaseInstance = createClient<Database>(safeUrl, safeKey, {
     auth: {
       persistSession: true,
       autoRefreshToken: true,
@@ -60,7 +63,7 @@ export const supabase = (() => {
         'x-client-info': 'vehicle-control-center',
       },
     },
-  });
+  }) as any;
 
   return supabaseInstance;
 })();

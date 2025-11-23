@@ -147,9 +147,7 @@ export const ticketService = {
 
   // Update ticket
   update: async (id: number, updates: TicketUpdate): Promise<Ticket> => {
-    const { data, error } = await supabase
-      .from('tickets')
-      .update(updates)
+    const { data, error } = await (supabase.from('tickets') as any).update(updates)
       .eq('id', id)
       .select()
       .single();
@@ -209,7 +207,7 @@ export const ticketService = {
   ): Promise<void> => {
     // 1. Verify password - Get current user first
     const { data: { user: currentUser }, error: getUserError } = await supabase.auth.getUser();
-    
+
     if (getUserError || !currentUser || !currentUser.email) {
       console.error('Get user error:', getUserError);
       throw new Error('ไม่พบข้อมูลผู้ใช้ กรุณา login ใหม่');
@@ -301,7 +299,7 @@ export const ticketService = {
     // 3. Create approval record
     // Map level to role for role_at_approval
     const roleAtApproval = level === 1 ? 'inspector' : level === 2 ? 'manager' : 'executive';
-    
+
     const approvalData: any = {
       ticket_id: parseInt(ticketId, 10),
       approver_id: userId,
@@ -321,13 +319,45 @@ export const ticketService = {
 
     // 4. Update ticket status if needed
     if (nextStatus) {
-      const { error: updateError } = await supabase
-        .from('tickets')
-        .update({ status: nextStatus })
+      const { error: updateError } = await (supabase.from('tickets') as any).update({ status: nextStatus })
         .eq('id', ticketId);
 
       if (updateError) throw updateError;
     }
+  },
+
+  // Start repair
+  startRepair: async (
+    ticketId: number,
+    data: {
+      garage: string;
+      repair_start_date: string;
+      repair_expected_completion?: string;
+      repair_assigned_to?: string;
+      repair_notes?: string;
+    }
+  ): Promise<void> => {
+    const { error } = await (supabase.from('tickets') as any).update({
+      status: 'in_progress',
+      garage: data.garage,
+      repair_start_date: data.repair_start_date,
+      repair_expected_completion: data.repair_expected_completion,
+      repair_assigned_to: data.repair_assigned_to,
+      repair_notes: data.repair_notes,
+    })
+      .eq('id', ticketId);
+
+    if (error) throw error;
+  },
+
+  // Complete repair
+  completeRepair: async (ticketId: number): Promise<void> => {
+    const { error } = await (supabase.from('tickets') as any).update({
+      status: 'completed',
+    })
+      .eq('id', ticketId);
+
+    if (error) throw error;
   },
 };
 
