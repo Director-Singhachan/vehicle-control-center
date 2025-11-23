@@ -1,6 +1,9 @@
 // Approval Board View - Kanban board สำหรับดูภาพรวมสถานะการอนุมัติ
 import React, { useMemo } from 'react';
 import { useTicketsWithRelations, useAuth } from '../hooks';
+
+// จำกัดจำนวนตั๋วที่แสดงในแต่ละคอลัมน์
+const ITEMS_PER_COLUMN = 15;
 import {
   Clock,
   CheckCircle,
@@ -42,7 +45,7 @@ export const ApprovalBoardView: React.FC<ApprovalBoardViewProps> = ({
 }) => {
   const { profile, isAdmin, isInspector, isManager, isExecutive } = useAuth();
   const { tickets = [], loading, error, refetch } = useTicketsWithRelations();
-  
+
   // Stable tickets reference to prevent unnecessary re-renders
   // Only update if tickets actually change (by comparing IDs)
   const stableTickets = React.useMemo(() => {
@@ -201,7 +204,7 @@ export const ApprovalBoardView: React.FC<ApprovalBoardViewProps> = ({
     <PageLayout
       title="ภาพรวมการอนุมัติ"
       subtitle={showLoading
-        ? 'กำลังโหลดข้อมูล...' 
+        ? 'กำลังโหลดข้อมูล...'
         : `ทั้งหมด ${totalTickets} ตั๋ว • รออนุมัติ ${pendingCount} • กำลังซ่อม ${inProgressCount} • เสร็จสิ้น ${completedCount}`}
       loading={false} // Never hide content - always show what we have
       error={false} // Never hide content - show error inline if needed
@@ -227,7 +230,7 @@ export const ApprovalBoardView: React.FC<ApprovalBoardViewProps> = ({
           </button>
         </div>
       )}
-      
+
       {/* Show loading indicator inline if needed */}
       {showLoading && (
         <div className="mb-4 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg text-center">
@@ -254,9 +257,9 @@ export const ApprovalBoardView: React.FC<ApprovalBoardViewProps> = ({
               <div>
                 <p className="text-sm text-blue-700 dark:text-blue-300 font-medium">อนุมัติแล้ว</p>
                 <p className="text-2xl font-bold text-blue-900 dark:text-blue-100 mt-1">
-                  {(ticketsByStatus.approved_inspector?.length || 0) + 
-                   (ticketsByStatus.approved_manager?.length || 0) + 
-                   (ticketsByStatus.ready_for_repair?.length || 0)}
+                  {(ticketsByStatus.approved_inspector?.length || 0) +
+                    (ticketsByStatus.approved_manager?.length || 0) +
+                    (ticketsByStatus.ready_for_repair?.length || 0)}
                 </p>
               </div>
               <CheckCircle className="w-8 h-8 text-blue-600 dark:text-blue-400" />
@@ -343,94 +346,113 @@ export const ApprovalBoardView: React.FC<ApprovalBoardViewProps> = ({
                         <p className="text-sm">ไม่มีตั๋ว</p>
                       </div>
                     ) : (
-                      columnTickets.map((ticket) => {
-                        const urgencyBadge = getUrgencyBadge(ticket.urgency);
+                      <>
+                        {columnTickets.slice(0, ITEMS_PER_COLUMN).map((ticket) => {
+                          const urgencyBadge = getUrgencyBadge(ticket.urgency);
 
-                        return (
-                          <Card
-                            key={ticket.id}
-                            className="p-4 hover:shadow-lg transition-all cursor-pointer bg-white dark:bg-slate-800"
-                            onClick={() => onViewDetail?.(ticket.id)}
-                          >
-                            <div className="space-y-3">
-                              {/* Ticket Header */}
-                              <div className="flex items-start justify-between">
-                                <div className="flex-1">
-                                  <div className="flex items-center gap-2 mb-1">
-                                    <FileText className="w-4 h-4 text-slate-400" />
-                                    <p className="font-semibold text-slate-900 dark:text-white text-sm">
-                                      {ticket.ticket_number || `#${ticket.id}`}
+                          return (
+                            <Card
+                              key={ticket.id}
+                              className="p-4 hover:shadow-lg transition-all cursor-pointer bg-white dark:bg-slate-800"
+                              onClick={() => onViewDetail?.(ticket.id)}
+                            >
+                              <div className="space-y-3">
+                                {/* Ticket Header */}
+                                <div className="flex items-start justify-between">
+                                  <div className="flex-1">
+                                    <div className="flex items-center gap-2 mb-1">
+                                      <FileText className="w-4 h-4 text-slate-400" />
+                                      <p className="font-semibold text-slate-900 dark:text-white text-sm">
+                                        {ticket.ticket_number || `#${ticket.id}`}
+                                      </p>
+                                    </div>
+                                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                                      {ticket.repair_type || 'ไม่ระบุประเภท'}
                                     </p>
                                   </div>
-                                  <p className="text-xs text-slate-500 dark:text-slate-400">
-                                    {ticket.repair_type || 'ไม่ระบุประเภท'}
-                                  </p>
-                                </div>
-                                <span className={`px-2 py-0.5 rounded text-xs font-medium ${urgencyBadge.className}`}>
-                                  {urgencyBadge.label === 'วิกฤต' && <Zap className="w-3 h-3 inline mr-1" />}
-                                  {urgencyBadge.label === 'สูง' && <AlertTriangle className="w-3 h-3 inline mr-1" />}
-                                  {urgencyBadge.label}
-                                </span>
-                              </div>
-
-                              {/* Vehicle Info */}
-                              {ticket.vehicle_plate && (
-                                <div className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400">
-                                  <Truck className="w-3 h-3" />
-                                  <span>{ticket.vehicle_plate}</span>
-                                </div>
-                              )}
-
-                              {/* Problem Description */}
-                              {ticket.problem_description && (
-                                <p className="text-xs text-slate-600 dark:text-slate-400 line-clamp-2">
-                                  {ticket.problem_description}
-                                </p>
-                              )}
-
-                              {/* Approval Status */}
-                              <div className="pt-2 border-t border-slate-200 dark:border-slate-700">
-                                <ApprovalStatusBadge status={ticket.status} />
-                              </div>
-
-                              {/* Footer */}
-                              <div className="flex items-center justify-between pt-2 border-t border-slate-200 dark:border-slate-700">
-                                <div className="flex items-center gap-1 text-xs text-slate-500 dark:text-slate-400">
-                                  <Calendar className="w-3 h-3" />
-                                  <span>
-                                    {new Date(ticket.created_at).toLocaleDateString('th-TH', {
-                                      month: 'short',
-                                      day: 'numeric',
-                                    })}
+                                  <span className={`px-2 py-0.5 rounded text-xs font-medium ${urgencyBadge.className}`}>
+                                    {urgencyBadge.label === 'วิกฤต' && <Zap className="w-3 h-3 inline mr-1" />}
+                                    {urgencyBadge.label === 'สูง' && <AlertTriangle className="w-3 h-3 inline mr-1" />}
+                                    {urgencyBadge.label}
                                   </span>
                                 </div>
-                                {ticket.reporter_name && (
-                                  <div className="flex items-center gap-1 text-xs text-slate-500 dark:text-slate-400">
-                                    <User className="w-3 h-3" />
-                                    <span className="truncate max-w-[100px]">
-                                      {ticket.reporter_name}
-                                    </span>
+
+                                {/* Vehicle Info */}
+                                {ticket.vehicle_plate && (
+                                  <div className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400">
+                                    <Truck className="w-3 h-3" />
+                                    <span>{ticket.vehicle_plate}</span>
                                   </div>
                                 )}
-                              </div>
 
-                              {/* View Button */}
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="w-full mt-2"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  onViewDetail?.(ticket.id);
-                                }}
-                              >
-                                <Eye className="w-3 h-3 mr-1" />
-                                ดูรายละเอียด
-                              </Button>
+                                {/* Problem Description */}
+                                {ticket.problem_description && (
+                                  <p className="text-xs text-slate-600 dark:text-slate-400 line-clamp-2">
+                                    {ticket.problem_description}
+                                  </p>
+                                )}
+
+                                {/* Approval Status */}
+                                <div className="pt-2 border-t border-slate-200 dark:border-slate-700">
+                                  <ApprovalStatusBadge status={ticket.status} />
+                                </div>
+
+                                {/* Footer */}
+                                <div className="flex items-center justify-between pt-2 border-t border-slate-200 dark:border-slate-700">
+                                  <div className="flex items-center gap-1 text-xs text-slate-500 dark:text-slate-400">
+                                    <Calendar className="w-3 h-3" />
+                                    <span>
+                                      {new Date(ticket.created_at).toLocaleDateString('th-TH', {
+                                        month: 'short',
+                                        day: 'numeric',
+                                      })}
+                                    </span>
+                                  </div>
+                                  {ticket.reporter_name && (
+                                    <div className="flex items-center gap-1 text-xs text-slate-500 dark:text-slate-400">
+                                      <User className="w-3 h-3" />
+                                      <span className="truncate max-w-[100px]">
+                                        {ticket.reporter_name}
+                                      </span>
+                                    </div>
+                                  )}
+                                </div>
+
+                                {/* View Button */}
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="w-full mt-2"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    onViewDetail?.(ticket.id);
+                                  }}
+                                >
+                                  <Eye className="w-3 h-3 mr-1" />
+                                  ดูรายละเอียด
+                                </Button>
+                              </div>
+                            </Card>
+                          );
+                        })}
+
+                        {/* View All Button - แสดงเมื่อมีตั๋วเกิน ITEMS_PER_COLUMN */}
+                        {columnTickets.length > ITEMS_PER_COLUMN && (
+                          <div
+                            className="p-4 bg-slate-50 dark:bg-slate-700/50 border-2 border-dashed border-slate-300 dark:border-slate-600 hover:border-enterprise-500 dark:hover:border-enterprise-400 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-all cursor-pointer"
+                            onClick={() => window.location.href = `/tickets?status=${column.statuses.join(',')}`}
+                          >
+                            <div className="text-center">
+                              <p className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                                📋 ดูทั้งหมด
+                              </p>
+                              <p className="text-xs text-slate-500 dark:text-slate-400">
+                                +{columnTickets.length - ITEMS_PER_COLUMN} ตั๋วเพิ่มเติม
+                              </p>
                             </div>
-                          </Card>
-                        );
-                      })
+                          </div>
+                        )}
+                      </>
                     )}
                   </div>
                 </div>
