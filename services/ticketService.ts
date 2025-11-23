@@ -118,11 +118,26 @@ export const ticketService = {
     return data || [];
   },
 
-  // Create new ticket
+  // Create new ticket with auto-generated ticket number
   create: async (ticket: TicketInsert): Promise<Ticket> => {
+    // Generate ticket number using SQL function (format: YYMM-XXX)
+    const { data: ticketNumberData, error: ticketNumberError } = await supabase
+      .rpc('generate_ticket_number');
+
+    if (ticketNumberError) {
+      console.error('Error generating ticket number:', ticketNumberError);
+      // Fallback: continue without ticket number
+    }
+
+    // Insert ticket with generated ticket number
+    const ticketData = {
+      ...ticket,
+      ticket_number: ticketNumberData || null,
+    };
+
     const { data, error } = await supabase
       .from('tickets')
-      .insert(ticket)
+      .insert(ticketData)
       .select()
       .single();
 
@@ -192,32 +207,119 @@ export const ticketService = {
     comment?: string,
     nextStatus?: string
   ): Promise<void> => {
-    // 1. Verify password
-    const { data: { user }, error: authError } = await supabase.auth.signInWithPassword({
-      email: (await supabase.auth.getUser()).data.user?.email || '',
+    // 1. Verify password - Get current user first
+    const { data: { user: currentUser }, error: getUserError } = await supabase.auth.getUser();
+    
+    if (getUserError || !currentUser || !currentUser.email) {
+      console.error('Get user error:', getUserError);
+      throw new Error('ไม่พบข้อมูลผู้ใช้ กรุณา login ใหม่');
+    }
+
+    // Store current session to restore if password is wrong
+    const { data: { session: currentSession } } = await supabase.auth.getSession();
+
+    // Verify password by attempting to sign in
+    const { data: { user: verifiedUser, session: newSession }, error: authError } = await supabase.auth.signInWithPassword({
+      email: currentUser.email,
       password: password,
     });
 
-    if (authError || !user) {
+    if (authError || !verifiedUser) {
+      console.error('Password verification error:', authError);
+      // Restore original session if password is wrong
+      if (currentSession) {
+        await supabase.auth.setSession(currentSession);
+      }
       throw new Error('รหัสผ่านไม่ถูกต้อง');
     }
 
-    // 2. Create approval record
+    // Ensure we're still using the same user
+    if (verifiedUser.id !== userId) {
+      console.error('User ID mismatch:', verifiedUser.id, 'expected:', userId);
+      // Restore original session
+      if (currentSession) {
+        await supabase.auth.setSession(currentSession);
+      }
+      throw new Error('รหัสผ่านไม่ถูกต้อง');
+    }
+
+    // Restore original session after verification (to avoid session changes)
+    if (currentSession && newSession) {
+      await supabase.auth.setSession(currentSession);
+    }
+
+    // 2. Validate sequential approval - check if previous levels are approved
+    // Use select('*') to avoid column-specific errors, then filter in client
+    const { data: existingApprovals, error: fetchError } = await supabase
+      .from('ticket_approvals')
+      .select('*')
+      .eq('ticket_id', parseInt(ticketId, 10)); // Ensure ticket_id is a number
+
+    if (fetchError) {
+      console.error('Error fetching approvals:', fetchError);
+      throw new Error(`ไม่สามารถตรวจสอบการอนุมัติได้: ${fetchError.message}`);
+    }
+
+    // Map role_at_approval to level if level column doesn't exist
+    const mapRoleToLevel = (role: string | null): number => {
+      if (!role) return 0;
+      if (role === 'inspector') return 1;
+      if (role === 'manager') return 2;
+      if (role === 'executive') return 3;
+      return 0;
+    };
+
+    // Get approved levels - use level column if exists, otherwise map from role_at_approval
+    const approvedLevels = (existingApprovals || []).map((a: any) => {
+      if (a.level !== undefined && a.level !== null) {
+        return a.level;
+      }
+      return mapRoleToLevel(a.role_at_approval);
+    }).filter((l: number) => l > 0);
+
+    // Validate sequential approval
+    if (level === 2) {
+      // Level 2 requires Level 1 to be approved
+      if (!approvedLevels.includes(1)) {
+        throw new Error('ไม่สามารถอนุมัติ Level 2 ได้ เนื่องจาก Level 1 (ผู้ตรวจสอบ) ยังไม่อนุมัติ');
+      }
+    } else if (level === 3) {
+      // Level 3 requires Level 1 and Level 2 to be approved
+      if (!approvedLevels.includes(1)) {
+        throw new Error('ไม่สามารถอนุมัติ Level 3 ได้ เนื่องจาก Level 1 (ผู้ตรวจสอบ) ยังไม่อนุมัติ');
+      }
+      if (!approvedLevels.includes(2)) {
+        throw new Error('ไม่สามารถอนุมัติ Level 3 ได้ เนื่องจาก Level 2 (ผู้จัดการ) ยังไม่อนุมัติ');
+      }
+    }
+
+    // Check if this level is already approved
+    if (approvedLevels.includes(level)) {
+      throw new Error(`Level ${level} อนุมัติแล้ว ไม่สามารถอนุมัติซ้ำได้`);
+    }
+
+    // 3. Create approval record
+    // Map level to role for role_at_approval
+    const roleAtApproval = level === 1 ? 'inspector' : level === 2 ? 'manager' : 'executive';
+    
+    const approvalData: any = {
+      ticket_id: parseInt(ticketId, 10),
+      approver_id: userId,
+      role_at_approval: roleAtApproval,
+      action: 'approved', // Default to approved, rejection is handled separately
+      comments: comment || null,
+    };
+
+    // Add level if column exists (will be ignored if column doesn't exist)
+    approvalData.level = level;
+
     const { error: approvalError } = await supabase
       .from('ticket_approvals')
-      .insert({
-        ticket_id: ticketId,
-        level: level,
-        approved_by: userId,
-        comments: comment,
-        user_agent: navigator.userAgent,
-        // ip_address is handled by Supabase automatically if configured, 
-        // or we can't reliably get it from client side without an edge function
-      });
+      .insert(approvalData);
 
     if (approvalError) throw approvalError;
 
-    // 3. Update ticket status if needed
+    // 4. Update ticket status if needed
     if (nextStatus) {
       const { error: updateError } = await supabase
         .from('tickets')

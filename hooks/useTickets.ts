@@ -1,6 +1,7 @@
-// Custom hook for tickets
+// Custom hook for tickets - Optimized with caching
 import { useState, useEffect } from 'react';
 import { ticketService, type TicketCost } from '../services/ticketService';
+import { useDataCacheStore, createCacheKey } from '../stores/dataCacheStore';
 import type { Database } from '../types/database';
 
 type Ticket = Database['public']['Tables']['tickets']['Row'];
@@ -16,16 +17,33 @@ interface UseTicketsOptions {
 }
 
 export const useTickets = (options: UseTicketsOptions = { autoFetch: true }) => {
-  const [tickets, setTickets] = useState<Ticket[]>([]);
-  const [loading, setLoading] = useState(false);
+  const cache = useDataCacheStore();
+  const cacheKey = createCacheKey('tickets', options.filters || {});
+  
+  const cached = cache.get<Ticket[]>(cacheKey);
+  const [tickets, setTickets] = useState<Ticket[]>(cached || []);
+  const [loading, setLoading] = useState(!cached && options.autoFetch);
   const [error, setError] = useState<Error | null>(null);
 
-  const fetchTickets = async () => {
+  const fetchTickets = async (useCache = true) => {
+    if (useCache) {
+      const cached = cache.get<Ticket[]>(cacheKey);
+      if (cached) {
+        setTickets(cached);
+        setLoading(false);
+        // Background refresh
+        fetchTickets(false);
+        return;
+      }
+    }
+
     setLoading(true);
     setError(null);
     try {
       const data = await ticketService.getAll(options.filters);
       setTickets(data);
+      // Cache for 2 minutes
+      cache.set(cacheKey, data, 2 * 60 * 1000);
     } catch (err) {
       setError(err instanceof Error ? err : new Error('Failed to fetch tickets'));
     } finally {
@@ -43,11 +61,12 @@ export const useTickets = (options: UseTicketsOptions = { autoFetch: true }) => 
     tickets,
     loading,
     error,
-    refetch: fetchTickets,
+    refetch: () => fetchTickets(false),
   };
 };
 
 export const useTicket = (id: number | null) => {
+  const cache = useDataCacheStore();
   const [ticket, setTicket] = useState<Ticket | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
@@ -58,12 +77,22 @@ export const useTicket = (id: number | null) => {
       return;
     }
 
+    const cacheKey = createCacheKey('ticket', id);
+    const cached = cache.get<Ticket>(cacheKey);
+    
+    if (cached) {
+      setTicket(cached);
+      setLoading(false);
+    }
+
     const fetchTicket = async () => {
       setLoading(true);
       setError(null);
       try {
         const data = await ticketService.getById(id);
         setTicket(data);
+        // Cache for 1 minute
+        cache.set(cacheKey, data, 60 * 1000);
       } catch (err) {
         setError(err instanceof Error ? err : new Error('Failed to fetch ticket'));
       } finally {
@@ -71,13 +100,26 @@ export const useTicket = (id: number | null) => {
       }
     };
 
-    fetchTicket();
+    if (!cached) {
+      fetchTicket();
+    } else {
+      // Background refresh
+      fetchTicket();
+    }
   }, [id]);
 
   return {
     ticket,
     loading,
     error,
+    refetch: async () => {
+      if (!id) return;
+      const cacheKey = createCacheKey('ticket', id);
+      cache.invalidate(cacheKey);
+      const data = await ticketService.getById(id);
+      setTicket(data);
+      cache.set(cacheKey, data, 60 * 1000);
+    },
   };
 };
 
@@ -85,16 +127,39 @@ export const useTicketsWithRelations = (filters?: {
   status?: string[];
   vehicle_id?: string;
 }) => {
-  const [tickets, setTickets] = useState<TicketWithRelations[]>([]);
-  const [loading, setLoading] = useState(false);
+  const cache = useDataCacheStore();
+  const cacheKey = createCacheKey('tickets-with-relations', filters || {});
+  
+  const cached = cache.get<TicketWithRelations[]>(cacheKey);
+  const [tickets, setTickets] = useState<TicketWithRelations[]>(cached || []);
+  const [loading, setLoading] = useState(!cached);
   const [error, setError] = useState<Error | null>(null);
 
-  const fetchTickets = async () => {
-    setLoading(true);
+  const fetchTickets = async (useCache = true) => {
+    if (useCache) {
+      const cached = cache.get<TicketWithRelations[]>(cacheKey);
+      if (cached !== null && cached !== undefined) { // Allow empty array
+        // Always set tickets first to prevent flickering
+        setTickets(cached);
+        setLoading(false);
+        setError(null);
+        // Background refresh - don't block UI
+        setTimeout(() => fetchTickets(false), 100);
+        return;
+      }
+    }
+
+    // Only set loading if we truly have no data
+    const currentTickets = tickets.length > 0 ? tickets : cache.get<TicketWithRelations[]>(cacheKey) || [];
+    if (currentTickets.length === 0 && !loading) {
+      setLoading(true);
+    }
     setError(null);
     try {
       const data = await ticketService.getWithRelations(filters);
       setTickets(data);
+      // Cache for 2 minutes
+      cache.set(cacheKey, data, 2 * 60 * 1000);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to fetch tickets';
       // Check if it's a connection error
@@ -116,11 +181,12 @@ export const useTicketsWithRelations = (filters?: {
     tickets,
     loading,
     error,
-    refetch: fetchTickets,
+    refetch: () => fetchTickets(false),
   };
 };
 
 export const useTicketCosts = (ticketId: number | null) => {
+  const cache = useDataCacheStore();
   const [costs, setCosts] = useState<TicketCost[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
@@ -131,12 +197,22 @@ export const useTicketCosts = (ticketId: number | null) => {
       return;
     }
 
+    const cacheKey = createCacheKey('ticket-costs', ticketId);
+    const cached = cache.get<TicketCost[]>(cacheKey);
+    
+    if (cached) {
+      setCosts(cached);
+      setLoading(false);
+    }
+
     const fetchCosts = async () => {
       setLoading(true);
       setError(null);
       try {
         const data = await ticketService.getCosts(ticketId);
         setCosts(data);
+        // Cache for 1 minute
+        cache.set(cacheKey, data, 60 * 1000);
       } catch (err) {
         setError(err instanceof Error ? err : new Error('Failed to fetch ticket costs'));
       } finally {
@@ -144,7 +220,12 @@ export const useTicketCosts = (ticketId: number | null) => {
       }
     };
 
-    fetchCosts();
+    if (!cached) {
+      fetchCosts();
+    } else {
+      // Background refresh
+      fetchCosts();
+    }
   }, [ticketId]);
 
   return {
@@ -153,8 +234,11 @@ export const useTicketCosts = (ticketId: number | null) => {
     error,
     refetch: async () => {
       if (ticketId) {
+        const cacheKey = createCacheKey('ticket-costs', ticketId);
+        cache.invalidate(cacheKey);
         const data = await ticketService.getCosts(ticketId);
         setCosts(data);
+        cache.set(cacheKey, data, 60 * 1000);
       }
     },
   };

@@ -16,9 +16,15 @@ import { useDashboard } from '../hooks';
 
 interface DashboardProps {
   isDark: boolean;
+  onNavigateToTickets?: () => void;
+  onNavigateToTicketDetail?: (ticketId: number) => void;
 }
 
-export const DashboardView: React.FC<DashboardProps> = ({ isDark }) => {
+export const DashboardView: React.FC<DashboardProps> = ({ 
+  isDark,
+  onNavigateToTickets,
+  onNavigateToTicketDetail,
+}) => {
   const { data, loading, error, refetch } = useDashboard();
 
   const { summary, financials, usageData, maintenanceTrends, vehicles } = data;
@@ -26,7 +32,7 @@ export const DashboardView: React.FC<DashboardProps> = ({ isDark }) => {
   return (
     <PageLayout
       title="ภาพรวมแดชบอร์ด"
-      subtitle="ข้อมูลสถานะกองยานและปฏิบัติการแบบเรียลไทม์"
+      subtitle="ข้อมูลสถานะยานพาหนะและปฏิบัติการแบบเรียลไทม์"
       actions={
         <button onClick={refetch} className="p-2 text-slate-500 hover:text-enterprise-600 dark:hover:text-neon-blue transition-colors">
           <RefreshCw size={20} />
@@ -47,7 +53,7 @@ export const DashboardView: React.FC<DashboardProps> = ({ isDark }) => {
             icon={Truck}
           />
           <StatusCard
-            title="กองยานที่ใช้งาน"
+            title="ยานพาหนะที่ใช้งาน"
             value={summary.active || 0}
             subValue={`อัตราการใช้งาน ${summary.total > 0 ? Math.round(((summary.active || 0) / summary.total) * 100) : 0}%`}
             icon={Activity}
@@ -76,7 +82,7 @@ export const DashboardView: React.FC<DashboardProps> = ({ isDark }) => {
             {/* Usage Chart */}
             <div className="bg-white/80 dark:bg-charcoal-900/50 backdrop-blur-md p-6 rounded-xl border border-slate-200 dark:border-slate-700/50 shadow-sm hover:shadow-glow transition-all duration-300">
               <div className="flex justify-between items-center mb-6">
-                <h3 className="font-semibold text-slate-900 dark:text-white">อัตราการใช้งานกองยาน</h3>
+                <h3 className="font-semibold text-slate-900 dark:text-white">อัตราการใช้งานยานพาหนะ</h3>
                 <button className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300">
                   <MoreHorizontal size={20} />
                 </button>
@@ -100,7 +106,7 @@ export const DashboardView: React.FC<DashboardProps> = ({ isDark }) => {
           <div className="grid grid-cols-1 gap-6 mt-6">
             <div className="bg-white/80 dark:bg-charcoal-900/50 backdrop-blur-md p-6 rounded-xl border border-slate-200 dark:border-slate-700/50 shadow-sm min-h-[450px]">
               <div className="flex justify-between items-center mb-4">
-                <h3 className="font-semibold text-slate-900 dark:text-white">แผนที่กองยานแบบเรียลไทม์</h3>
+                <h3 className="font-semibold text-slate-900 dark:text-white">แผนที่ยานพาหนะแบบเรียลไทม์</h3>
                 <div className="flex space-x-2">
                   <span className="text-xs bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 px-2 py-1 rounded-full flex items-center">
                     <span className="w-2 h-2 bg-green-500 rounded-full mr-1 animate-pulse"></span> สด
