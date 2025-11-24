@@ -53,6 +53,13 @@ export const useAuthStore = create<AuthState>()(
         set({ loading: true, error: null });
 
         try {
+          // Check if supabase client is available
+          if (!supabase || !supabase.auth) {
+            console.warn('[Auth] Supabase client not available');
+            set({ user: null, profile: null, initialized: true, loading: false });
+            return;
+          }
+
           // Use getSession() - reads from localStorage (FAST!)
           // Instead of getUser() which makes API call (SLOW - 20s timeout)
           const { data: { session }, error: sessionError } = await supabase.auth.getSession();
@@ -68,10 +75,23 @@ export const useAuthStore = create<AuthState>()(
 
           if (user) {
             try {
-              const profile = await getCurrentProfile();
-              set({ profile, loading: false });
+              console.log('[Auth] Fetching profile for user:', user.id);
+              // Set loading to false immediately so UI can render
+              // Profile will update when fetch completes
+              set({ loading: false });
+              
+              // Fetch profile in background (don't block UI)
+              getCurrentProfile().then(profile => {
+                console.log('[Auth] Profile fetched:', profile ? `role: ${profile.role}` : 'null');
+                set({ profile });
+              }).catch(err => {
+                console.warn('[Auth] Failed to fetch profile:', err);
+                // Don't block UI if profile fetch fails - user can still use app
+                set({ profile: null });
+              });
             } catch (err) {
               console.warn('[Auth] Failed to fetch profile:', err);
+              // Don't block UI if profile fetch fails - user can still use app
               set({ profile: null, loading: false });
             }
           } else {
@@ -159,29 +179,57 @@ export const useAuthStore = create<AuthState>()(
 );
 
 // Initialize auth on store creation
+// Wrap in try-catch to prevent 500 errors if module fails to load
 if (typeof window !== 'undefined') {
-  useAuthStore.getState().initialize();
-
-  // Listen for auth changes
-  supabase.auth.onAuthStateChange(async (event, session) => {
-    const store = useAuthStore.getState();
-
-    // Update  user
-    store.setUser(session?.user ?? null);
-    store.setInitialized(true);
-
-    if (session?.user) {
-      // Fetch fresh profile on auth state change
-      try {
-        const profile = await getCurrentProfile();
-        store.setProfile(profile);
-        console.log('[Auth] Profile updated:', profile?.role);
-      } catch (err) {
-        console.error('[Auth] Error fetching profile on auth change:', err);
-        store.setProfile(null);
-      }
+  try {
+    // Check if supabase client is available
+    if (!supabase || !supabase.auth) {
+      console.warn('[Auth] Supabase client not available - skipping initialization');
+      useAuthStore.getState().setInitialized(true);
     } else {
-      store.setProfile(null);
+      useAuthStore.getState().initialize();
+
+      // Listen for auth changes
+      supabase.auth.onAuthStateChange(async (event, session) => {
+        try {
+          const store = useAuthStore.getState();
+
+          // Update  user
+          store.setUser(session?.user ?? null);
+          store.setInitialized(true);
+
+          if (session?.user) {
+            // Fetch fresh profile on auth state change
+            try {
+              const profile = await getCurrentProfile();
+              if (profile) {
+                store.setProfile(profile);
+                console.log('[Auth] Profile updated:', profile.role);
+              } else {
+                console.warn('[Auth] Profile not found or timeout - keeping existing profile');
+                // Don't set to null if we already have a profile cached
+                if (!store.profile) {
+                  store.setProfile(null);
+                }
+              }
+            } catch (err) {
+              console.error('[Auth] Error fetching profile on auth change:', err);
+              // Don't clear profile if we already have one cached
+              if (!store.profile) {
+                store.setProfile(null);
+              }
+            }
+          } else {
+            store.setProfile(null);
+          }
+        } catch (err) {
+          console.error('[Auth] Error in auth state change handler:', err);
+        }
+      });
     }
-  });
+  } catch (err) {
+    console.error('[Auth] Failed to initialize auth store:', err);
+    // Set initialized to true to prevent infinite loading
+    useAuthStore.getState().setInitialized(true);
+  }
 }

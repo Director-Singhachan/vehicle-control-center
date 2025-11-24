@@ -30,7 +30,7 @@ export default defineConfig(({ mode }) => {
       }
     },
     optimizeDeps: {
-      include: ['react', 'react-dom', '@supabase/supabase-js'],
+      include: ['react', 'react-dom', '@supabase/supabase-js', 'zustand', 'zustand/middleware'],
       esbuildOptions: {
         target: 'esnext',
       },

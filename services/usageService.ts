@@ -54,32 +54,46 @@ export const usageService = {
 
   // Get daily usage (last 7 days)
   getDailyUsage: async (days: number = 7): Promise<DailyUsageData> => {
-    const startDate = new Date();
-    startDate.setDate(startDate.getDate() - days);
-    startDate.setHours(0, 0, 0, 0);
-    
-    // Query daily usage view
-    const { data, error } = await supabase
-      .from('vehicle_usage_daily')
-      .select('*')
-      .gte('day', startDate.toISOString().split('T')[0])
-      .order('day', { ascending: true });
-    
-    if (error) throw error;
-    
-    // Transform to chart format
-    const labels = (data || []).map(item => {
-      const date = new Date(item.day);
-      const dayNames = ['อา', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส'];
-      return dayNames[date.getDay()];
-    });
-    
-    const usageData = (data || []).map(item => item.active_vehicles || 0);
-    
-    return {
-      labels,
-      data: usageData,
-    };
+    try {
+      console.log('[usageService] Fetching daily usage...');
+      const startDate = new Date();
+      startDate.setDate(startDate.getDate() - days);
+      startDate.setHours(0, 0, 0, 0);
+      
+      const startDateStr = startDate.toISOString().split('T')[0];
+      console.log('[usageService] Querying from date:', startDateStr);
+      
+      // Query daily usage view
+      const { data, error } = await supabase
+        .from('vehicle_usage_daily')
+        .select('*')
+        .gte('day', startDateStr)
+        .order('day', { ascending: true });
+      
+      if (error) {
+        console.error('[usageService] Error fetching daily usage:', error);
+        throw error;
+      }
+      
+      console.log('[usageService] Daily usage data count:', data?.length || 0);
+      
+      // Transform to chart format
+      const labels = (data || []).map(item => {
+        const date = new Date(item.day);
+        const dayNames = ['อา', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส'];
+        return dayNames[date.getDay()];
+      });
+      
+      const usageData = (data || []).map(item => item.active_vehicles || 0);
+      
+      return {
+        labels,
+        data: usageData,
+      };
+    } catch (error) {
+      console.error('[usageService] getDailyUsage error:', error);
+      throw error;
+    }
   },
 
   // Get active trips (in progress)

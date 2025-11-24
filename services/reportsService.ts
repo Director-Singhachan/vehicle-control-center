@@ -15,40 +15,58 @@ export interface MaintenanceTrends {
 export const reportsService = {
   // Get financials (costs only - no revenue)
   getFinancials: async (): Promise<Financials> => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    
-    // Today's costs
-    const { data: todayCosts } = await supabase
-      .from('ticket_costs')
-      .select('cost')
-      .gte('created_at', today.toISOString());
-    
-    const todayCost = todayCosts?.reduce((sum, item) => sum + (item.cost || 0), 0) || 0;
-    
-    // Yesterday's costs (for trend)
-    const yesterday = new Date(today);
-    yesterday.setDate(yesterday.getDate() - 1);
-    const yesterdayEnd = new Date(yesterday);
-    yesterdayEnd.setHours(23, 59, 59, 999);
-    
-    const { data: yesterdayCosts } = await supabase
-      .from('ticket_costs')
-      .select('cost')
-      .gte('created_at', yesterday.toISOString())
-      .lte('created_at', yesterdayEnd.toISOString());
-    
-    const yesterdayCost = yesterdayCosts?.reduce((sum, item) => sum + (item.cost || 0), 0) || 0;
-    
-    // Calculate trend
-    const costTrend = yesterdayCost > 0 
-      ? ((todayCost - yesterdayCost) / yesterdayCost) * 100 
-      : 0;
-    
-    return {
-      todayCost: todayCost,
-      costTrend: costTrend,
-    };
+    try {
+      console.log('[reportsService] Fetching financials...');
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      
+      // Today's costs
+      const { data: todayCosts, error: todayError } = await supabase
+        .from('ticket_costs')
+        .select('cost')
+        .gte('created_at', today.toISOString());
+      
+      if (todayError) {
+        console.error('[reportsService] Error fetching today costs:', todayError);
+        throw todayError;
+      }
+      console.log('[reportsService] Today costs count:', todayCosts?.length || 0);
+      
+      const todayCost = todayCosts?.reduce((sum, item) => sum + (item.cost || 0), 0) || 0;
+      
+      // Yesterday's costs (for trend)
+      const yesterday = new Date(today);
+      yesterday.setDate(yesterday.getDate() - 1);
+      const yesterdayEnd = new Date(yesterday);
+      yesterdayEnd.setHours(23, 59, 59, 999);
+      
+      const { data: yesterdayCosts, error: yesterdayError } = await supabase
+        .from('ticket_costs')
+        .select('cost')
+        .gte('created_at', yesterday.toISOString())
+        .lte('created_at', yesterdayEnd.toISOString());
+      
+      if (yesterdayError) {
+        console.error('[reportsService] Error fetching yesterday costs:', yesterdayError);
+        throw yesterdayError;
+      }
+      console.log('[reportsService] Yesterday costs count:', yesterdayCosts?.length || 0);
+      
+      const yesterdayCost = yesterdayCosts?.reduce((sum, item) => sum + (item.cost || 0), 0) || 0;
+      
+      // Calculate trend
+      const costTrend = yesterdayCost > 0 
+        ? ((todayCost - yesterdayCost) / yesterdayCost) * 100 
+        : 0;
+      
+      return {
+        todayCost: todayCost,
+        costTrend: costTrend,
+      };
+    } catch (error) {
+      console.error('[reportsService] getFinancials error:', error);
+      throw error;
+    }
   },
 
   // Get maintenance trends (monthly)
