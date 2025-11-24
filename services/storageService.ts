@@ -23,6 +23,16 @@ export const storageService = {
         path: string = '',
         onProgress?: (progress: UploadProgress) => void
     ): Promise<string> => {
+        // Check authentication before attempting upload
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+
+        if (sessionError || !session) {
+            console.error('Authentication error before upload:', sessionError);
+            throw new Error('กรุณาเข้าสู่ระบบใหม่อีกครั้ง (Session expired)');
+        }
+
+        console.log('Upload starting - User authenticated:', session.user.email);
+
         const maxRetries = 3;
         let lastError: any;
 
@@ -60,6 +70,8 @@ export const storageService = {
                     });
                 }
 
+                console.log(`Uploading to: ${bucket}/${filePath}`);
+
                 // Upload the file with timeout
                 const uploadPromise = supabase.storage
                     .from(bucket)
@@ -73,6 +85,7 @@ export const storageService = {
                 const { data, error } = await Promise.race([uploadPromise, timeoutPromise]) as any;
 
                 if (error) {
+                    console.error('Upload error:', error);
                     throw error;
                 }
 
@@ -129,14 +142,41 @@ export const storageService = {
 
         // Format error message based on error type
         const errorMessage = lastError?.message || 'Unknown error';
+        const errorCode = lastError?.code || lastError?.error || '';
 
-        if (errorMessage.includes('fetch') || errorMessage.includes('network') || errorMessage.includes('timeout')) {
-            throw new Error('การเชื่อมต่ออินเทอร์เน็ตมีปัญหา กรุณาตรวจสอบสัญญาณและลองอีกครั้ง');
-        } else if (errorMessage.includes('size') || errorMessage.includes('large')) {
-            throw new Error('ไฟล์มีขนาดใหญ่เกินไป กรุณาลดขนาดไฟล์หรือเลือกไฟล์อื่น');
-        } else {
-            throw new Error(`เกิดข้อผิดพลาดในการอัปโหลด: ${errorMessage}`);
+        console.error('Final upload error:', { message: errorMessage, code: errorCode, error: lastError });
+
+        // Check for authentication/permission errors
+        if (errorMessage.includes('JWT') ||
+            errorMessage.includes('session') ||
+            errorMessage.includes('expired') ||
+            errorMessage.includes('unauthorized') ||
+            errorCode === 'PGRST301') {
+            throw new Error('เซสชันหมดอายุ กรุณาออกจากระบบและเข้าสู่ระบบใหม่อีกครั้ง');
         }
+
+        if (errorMessage.includes('row-level security') ||
+            errorMessage.includes('permission') ||
+            errorMessage.includes('policy') ||
+            errorCode === '42501') {
+            throw new Error('ไม่มีสิทธิ์อัปโหลดไฟล์ กรุณาติดต่อผู้ดูแลระบบเพื่อตรวจสอบ Storage Policies');
+        }
+
+        // Check for network errors
+        if (errorMessage.includes('fetch') ||
+            errorMessage.includes('network') ||
+            errorMessage.includes('timeout') ||
+            errorMessage.includes('Failed to fetch')) {
+            throw new Error('การเชื่อมต่ออินเทอร์เน็ตมีปัญหา กรุณาตรวจสอบสัญญาณและลองอีกครั้ง');
+        }
+
+        // Check for file size errors
+        if (errorMessage.includes('size') || errorMessage.includes('large')) {
+            throw new Error('ไฟล์มีขนาดใหญ่เกินไป กรุณาลดขนาดไฟล์หรือเลือกไฟล์อื่น');
+        }
+
+        // Generic error with details
+        throw new Error(`เกิดข้อผิดพลาดในการอัปโหลด: ${errorMessage}`);
     },
 
     /**
