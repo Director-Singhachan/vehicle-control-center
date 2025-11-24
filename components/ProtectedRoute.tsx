@@ -122,6 +122,8 @@ VITE_SUPABASE_ANON_KEY=your-anon-key-here`}
           return isInspector;
         case 'executive':
           return userRole === 'executive' || isAdmin;
+        case 'driver':
+          return userRole === 'driver' || isAdmin;
         case 'user':
           return true; // All authenticated users
         default:

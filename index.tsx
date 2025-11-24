@@ -47,14 +47,28 @@ const SidebarItem = ({ icon: Icon, label, active, onClick, onMouseEnter }: any) 
 
 // Main App Content (wrapped in ProtectedRoute)
 const AppContent = () => {
-  const { user, profile, signOut, isAdmin, isManager, isInspector, isExecutive, loading: authLoading } = useAuth();
-  
+  const { user, profile, signOut, isAdmin, isManager, isInspector, isExecutive, isDriver, loading: authLoading, refreshProfile } = useAuth();
+
   // Don't wait for profile - show UI immediately if user exists
   // Profile will load in background and update when ready
   const { count: pendingCount } = usePendingTickets();
   const [isDark, setIsDark] = useState(true);
   const [isSidebarOpen, setSidebarOpen] = useState(true);
   const [activeTab, setActiveTab] = useState('dashboard');
+
+  // Redirect drivers to maintenance page if they try to access restricted areas
+  useEffect(() => {
+    if (isDriver && activeTab !== 'maintenance' && activeTab !== 'profile' && activeTab !== 'settings') {
+      setActiveTab('maintenance');
+    }
+  }, [isDriver, activeTab]);
+
+  // Force refresh profile on mount to ensure role is up to date
+  useEffect(() => {
+    if (user) {
+      refreshProfile();
+    }
+  }, [user]);
 
   // Debug logging
   React.useEffect(() => {
@@ -63,6 +77,7 @@ const AppContent = () => {
       hasProfile: !!profile,
       activeTab,
       authLoading,
+      role: profile?.role
     });
   }, [user, profile, activeTab, authLoading]);
   const [vehicleView, setVehicleView] = useState<'list' | 'detail' | 'form'>('list');
@@ -138,20 +153,24 @@ const AppContent = () => {
         </div>
 
         <div className="flex-1 px-3 space-y-1 mt-4">
-          <SidebarItem
-            icon={LayoutDashboard}
-            label={isSidebarOpen ? "แดชบอร์ด" : ""}
-            active={activeTab === 'dashboard'}
-            onClick={() => setActiveTab('dashboard')}
-            onMouseEnter={() => prefetchService.prefetchDashboard()}
-          />
-          <SidebarItem
-            icon={Truck}
-            label={isSidebarOpen ? "ยานพาหนะ" : ""}
-            active={activeTab === 'vehicles'}
-            onClick={() => setActiveTab('vehicles')}
-            onMouseEnter={() => prefetchService.prefetchVehicles()}
-          />
+          {!isDriver && (
+            <SidebarItem
+              icon={LayoutDashboard}
+              label={isSidebarOpen ? "แดชบอร์ด" : ""}
+              active={activeTab === 'dashboard'}
+              onClick={() => setActiveTab('dashboard')}
+              onMouseEnter={() => prefetchService.prefetchDashboard()}
+            />
+          )}
+          {!isDriver && (
+            <SidebarItem
+              icon={Truck}
+              label={isSidebarOpen ? "ยานพาหนะ" : ""}
+              active={activeTab === 'vehicles'}
+              onClick={() => setActiveTab('vehicles')}
+              onMouseEnter={() => prefetchService.prefetchVehicles()}
+            />
+          )}
           <SidebarItem
             icon={Wrench}
             label={isSidebarOpen ? "การซ่อมบำรุง" : ""}
@@ -178,12 +197,14 @@ const AppContent = () => {
               />
             ) : null;
           })()}
-          <SidebarItem
-            icon={FileText}
-            label={isSidebarOpen ? "รายงาน" : ""}
-            active={activeTab === 'reports'}
-            onClick={() => setActiveTab('reports')}
-          />
+          {!isDriver && (
+            <SidebarItem
+              icon={FileText}
+              label={isSidebarOpen ? "รายงาน" : ""}
+              active={activeTab === 'reports'}
+              onClick={() => setActiveTab('reports')}
+            />
+          )}
         </div>
 
         <div className="p-3 border-t border-slate-200 dark:border-slate-800/50 space-y-1">
@@ -254,7 +275,8 @@ const AppContent = () => {
                         profile.role === 'manager' ? 'ผู้จัดการ' :
                           profile.role === 'inspector' ? 'ผู้ตรวจสอบ' :
                             profile.role === 'executive' ? 'ผู้บริหาร' :
-                              'ผู้ใช้';
+                              profile.role === 'driver' ? 'พนักงานขับรถ' :
+                                'ผู้ใช้';
                     }
                     // If we have user but no profile AND not loading anymore, show default
                     if (user && !profile && !authLoading) {
@@ -262,7 +284,12 @@ const AppContent = () => {
                     }
                     // Default fallback
                     return 'ผู้ใช้';
+                    return 'ผู้ใช้';
                   })()}
+                  {/* Debug Role */}
+                  <span className="block text-[10px] text-slate-300 opacity-50">
+                    ({profile?.role || 'no-role'})
+                  </span>
                 </p>
               </div>
               <div className="w-8 h-8 bg-gradient-to-br from-enterprise-500 to-neon-blue rounded-full shadow-md"></div>
@@ -331,7 +358,22 @@ const AppContent = () => {
               />
             ) : null
           ) : activeTab === 'maintenance' ? (
-            ticketView === 'list' ? (
+            // For drivers, show the form by default if they are in list view
+            isDriver && ticketView === 'list' ? (
+              <TicketFormView
+                onSave={() => {
+                  // After save, maybe show success or reset?
+                  // For now, let's keep them on the form but clear it (handled by component)
+                  // Or we could show a "History" list if we wanted.
+                  // But user said "only form". 
+                  // Let's reload the page or reset the view to ensure fresh state
+                  window.location.reload();
+                }}
+                onCancel={() => {
+                  // Do nothing or reset form
+                }}
+              />
+            ) : ticketView === 'list' ? (
               <TicketsView
                 onViewDetail={(id) => {
                   setSelectedTicketId(id);

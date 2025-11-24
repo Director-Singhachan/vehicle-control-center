@@ -516,6 +516,7 @@ export const TicketFormView: React.FC<TicketFormViewProps> = ({
                   className="hidden"
                   multiple
                   accept="image/*,video/*"
+                  capture="environment"
                   onChange={handleFileSelect}
                 />
               </label>

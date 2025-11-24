@@ -14,6 +14,13 @@ interface AuthState {
   error: Error | null;
   initialized: boolean;
 
+  // Computed properties
+  isAdmin: boolean;
+  isManager: boolean;
+  isInspector: boolean;
+  isExecutive: boolean;
+  isDriver: boolean;
+
   // Actions
   setUser: (user: User | null) => void;
   setProfile: (profile: Profile | null) => void;
@@ -35,8 +42,24 @@ export const useAuthStore = create<AuthState>()(
       error: null,
       initialized: false,
 
+      // Computed properties (initial values, updated via setProfile)
+      isAdmin: false,
+      isManager: false,
+      isInspector: false,
+      isExecutive: false,
+      isDriver: false,
+
       setUser: (user) => set({ user }),
-      setProfile: (profile) => set({ profile }),
+      setProfile: (profile) => {
+        set({
+          profile,
+          isAdmin: profile?.role === 'admin',
+          isManager: profile?.role === 'manager',
+          isInspector: profile?.role === 'inspector',
+          isExecutive: profile?.role === 'executive',
+          isDriver: profile?.role === 'driver',
+        });
+      },
       setLoading: (loading) => set({ loading }),
       setError: (error) => set({ error }),
       setInitialized: (initialized) => set({ initialized }),
@@ -44,26 +67,30 @@ export const useAuthStore = create<AuthState>()(
       initialize: async () => {
         const state = get();
 
-
-        // If we have cached data, use it immediately!
         if (state.user && state.profile) {
-          set({ initialized: true, loading: false });
-          // Don't return - continue to verify session with Supabase
+          // Re-compute flags to ensure they match profile
+          const profile = state.profile;
+          set({
+            initialized: true,
+            loading: false,
+            isAdmin: profile.role === 'admin',
+            isManager: profile.role === 'manager',
+            isInspector: profile.role === 'inspector',
+            isExecutive: profile.role === 'executive',
+            isDriver: profile.role === 'driver',
+          });
           console.log('[Auth] Using cached data, verifying session in background...');
         } else {
           set({ loading: true, error: null });
         }
 
         try {
-          // Check if supabase client is available
           if (!supabase || !supabase.auth) {
             console.warn('[Auth] Supabase client not available');
             set({ user: null, profile: null, initialized: true, loading: false });
             return;
           }
 
-          // Use getSession() - reads from localStorage (FAST!)
-          // Instead of getUser() which makes API call (SLOW - 20s timeout)
           const { data: { session }, error: sessionError } = await supabase.auth.getSession();
 
           if (sessionError) {
@@ -78,26 +105,23 @@ export const useAuthStore = create<AuthState>()(
           if (user) {
             try {
               console.log('[Auth] Fetching profile for user:', user.id);
-              // Set loading to false immediately so UI can render
-              // Profile will update when fetch completes
               set({ loading: false });
 
-              // Fetch profile in background (don't block UI)
               getCurrentProfile().then(profile => {
                 console.log('[Auth] Profile fetched:', profile ? `role: ${profile.role}` : 'null');
-                set({ profile });
+                get().setProfile(profile);
               }).catch(err => {
                 console.warn('[Auth] Failed to fetch profile:', err);
-                // Don't block UI if profile fetch fails - user can still use app
-                set({ profile: null });
+                get().setProfile(null);
               });
             } catch (err) {
               console.warn('[Auth] Failed to fetch profile:', err);
-              // Don't block UI if profile fetch fails - user can still use app
-              set({ profile: null, loading: false });
+              get().setProfile(null);
+              set({ loading: false });
             }
           } else {
-            set({ profile: null, loading: false });
+            get().setProfile(null);
+            set({ loading: false });
           }
         } catch (err) {
           console.error('[Auth] Initialize error:', err);
@@ -117,17 +141,16 @@ export const useAuthStore = create<AuthState>()(
 
           set({ user: data.user, initialized: true });
 
-          // Fetch profile after sign in
           if (data.user) {
             try {
               const profile = await getCurrentProfile();
-              set({ profile });
+              get().setProfile(profile);
             } catch (profileErr) {
               console.error('[Auth] Failed to fetch profile after sign in:', profileErr);
-              set({ profile: null });
+              get().setProfile(null);
             }
           } else {
-            set({ profile: null });
+            get().setProfile(null);
           }
         } catch (err) {
           const error = err instanceof Error ? err : new Error('Failed to sign in');
@@ -144,7 +167,16 @@ export const useAuthStore = create<AuthState>()(
           const { error: signOutError } = await supabase.auth.signOut();
           if (signOutError) throw signOutError;
 
-          set({ user: null, profile: null, initialized: false });
+          set({
+            user: null,
+            profile: null,
+            initialized: false,
+            isAdmin: false,
+            isManager: false,
+            isInspector: false,
+            isExecutive: false,
+            isDriver: false
+          });
         } catch (err) {
           const error = err instanceof Error ? err : new Error('Failed to sign out');
           set({ error });
@@ -158,12 +190,12 @@ export const useAuthStore = create<AuthState>()(
         try {
           const user = get().user;
           if (!user) {
-            set({ profile: null });
+            get().setProfile(null);
             return;
           }
 
           const profile = await getCurrentProfile();
-          set({ profile });
+          get().setProfile(profile);
         } catch (err) {
           console.error('[Auth] Error refreshing profile:', err);
         }
@@ -175,48 +207,44 @@ export const useAuthStore = create<AuthState>()(
         // Persist user and profile for instant load
         user: state.user ? { id: state.user.id, email: state.user.email } : null,
         profile: state.profile,
+        isAdmin: state.isAdmin,
+        isManager: state.isManager,
+        isInspector: state.isInspector,
+        isExecutive: state.isExecutive,
+        isDriver: state.isDriver,
       }),
     }
   )
 );
 
 // Initialize auth on store creation
-// Wrap in try-catch to prevent 500 errors if module fails to load
 if (typeof window !== 'undefined') {
   try {
-    // Check if supabase client is available
     if (!supabase || !supabase.auth) {
       console.warn('[Auth] Supabase client not available - skipping initialization');
       useAuthStore.getState().setInitialized(true);
     } else {
       useAuthStore.getState().initialize();
 
-      // Listen for auth changes
       supabase.auth.onAuthStateChange(async (event, session) => {
         try {
           const store = useAuthStore.getState();
-
-          // Update  user
           store.setUser(session?.user ?? null);
           store.setInitialized(true);
 
           if (session?.user) {
-            // Fetch fresh profile on auth state change
             try {
               const profile = await getCurrentProfile();
               if (profile) {
                 store.setProfile(profile);
                 console.log('[Auth] Profile updated:', profile.role);
               } else {
-                console.warn('[Auth] Profile not found or timeout - keeping existing profile');
-                // Don't set to null if we already have a profile cached
                 if (!store.profile) {
                   store.setProfile(null);
                 }
               }
             } catch (err) {
               console.error('[Auth] Error fetching profile on auth change:', err);
-              // Don't clear profile if we already have one cached
               if (!store.profile) {
                 store.setProfile(null);
               }
@@ -231,7 +259,6 @@ if (typeof window !== 'undefined') {
     }
   } catch (err) {
     console.error('[Auth] Failed to initialize auth store:', err);
-    // Set initialized to true to prevent infinite loading
     useAuthStore.getState().setInitialized(true);
   }
 }
