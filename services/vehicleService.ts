@@ -136,47 +136,41 @@ export const vehicleService = {
 
       console.log('[vehicleService] User authenticated:', session.user.id);
 
-      // Total vehicles
-      const { count: total, error: totalError } = await supabase
-        .from('vehicles')
-        .select('*', { count: 'exact', head: true });
+      // Use Promise.all for parallel execution
+      const [totalResult, activeResult, maintenanceResult] = await Promise.all([
+        // Total vehicles
+        supabase
+          .from('vehicles')
+          .select('id', { count: 'exact', head: true }),
 
-      if (totalError) {
-        console.error('[vehicleService] Error fetching total vehicles:', totalError);
-        console.error('[vehicleService] Error details:', JSON.stringify(totalError, null, 2));
-        throw totalError;
-      }
-      console.log('[vehicleService] Total vehicles:', total);
+        // Active vehicles (in use)
+        supabase
+          .from('vehicle_usage')
+          .select('vehicle_id', { count: 'exact', head: true })
+          .eq('status', 'in_progress'),
 
-      // Active vehicles (in use)
-      const { count: active, error: activeError } = await supabase
-        .from('vehicle_usage')
-        .select('vehicle_id', { count: 'exact', head: true })
-        .eq('status', 'in_progress');
+        // Maintenance vehicles
+        supabase
+          .from('tickets')
+          .select('vehicle_id', { count: 'exact', head: true })
+          .in('status', ['pending', 'approved_inspector', 'approved_manager', 'ready_for_repair', 'in_progress'])
+      ]);
 
-      if (activeError) {
-        console.error('[vehicleService] Error fetching active vehicles:', activeError);
-        throw activeError;
-      }
-      console.log('[vehicleService] Active vehicles:', active);
+      if (totalResult.error) throw totalResult.error;
+      if (activeResult.error) throw activeResult.error;
+      if (maintenanceResult.error) throw maintenanceResult.error;
 
-      // Maintenance vehicles
-      const { count: maintenance, error: maintenanceError } = await supabase
-        .from('tickets')
-        .select('vehicle_id', { count: 'exact', head: true })
-        .in('status', ['pending', 'approved_inspector', 'approved_manager', 'ready_for_repair', 'in_progress']);
+      const total = totalResult.count || 0;
+      const active = activeResult.count || 0;
+      const maintenance = maintenanceResult.count || 0;
 
-      if (maintenanceError) {
-        console.error('[vehicleService] Error fetching maintenance vehicles:', maintenanceError);
-        throw maintenanceError;
-      }
-      console.log('[vehicleService] Maintenance vehicles:', maintenance);
+      console.log('[vehicleService] Summary counts:', { total, active, maintenance });
 
       return {
-        total: total || 0,
-        active: active || 0,
-        maintenance: maintenance || 0,
-        idle: (total || 0) - (active || 0) - (maintenance || 0),
+        total,
+        active,
+        maintenance,
+        idle: total - active - maintenance,
       };
     } catch (error) {
       console.error('[vehicleService] getSummary error:', error);
@@ -188,9 +182,10 @@ export const vehicleService = {
   getLocations: async (): Promise<VehicleForMap[]> => {
     try {
       console.log('[vehicleService] Fetching locations...');
+      // Select only necessary columns for map
       const { data, error } = await supabase
         .from('vehicles_with_status')
-        .select('*')
+        .select('id, plate, make, model, status, lat, lng, last_fuel_efficiency')
         .not('lat', 'is', null)
         .not('lng', 'is', null);
 

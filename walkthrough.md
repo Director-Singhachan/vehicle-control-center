@@ -1,9 +1,7 @@
-# Supabase Connection Timeout Fix
+# Supabase Connection Timeout Fix & Query Optimization
 
 ## Problem
-The application was experiencing timeouts when fetching dashboard data. Logs showed that `vehicleService` was hanging at `Checking authentication...`, causing all parallel requests in `useDashboard` to time out after 30 seconds.
-
-The root cause was identified as `supabase.auth.getSession()` hanging indefinitely in some scenarios, likely due to token refresh issues or client state desynchronization. Additionally, `authStore` was skipping session verification when cached data was present, potentially leaving the Supabase client in an uninitialized state.
+The application was experiencing timeouts when fetching dashboard data. Logs showed that `vehicleService` was hanging at `Checking authentication...`, causing all parallel requests in `useDashboard` to time out after 30 seconds. Additionally, queries were fetching all columns (`select('*')`), which increased load and latency.
 
 ## Changes Made
 
@@ -14,15 +12,28 @@ The root cause was identified as `supabase.auth.getSession()` hanging indefinite
 ### 2. `services/vehicleService.ts`
 - **Modified**: Added a 5-second timeout to `supabase.auth.getSession()`.
 - **Modified**: Added a fallback mechanism to use the user from `useAuthStore` if `getSession` times out or fails.
-- **Reason**: Prevents the dashboard data fetch from hanging indefinitely if the Supabase client is unresponsive. Allows the application to proceed with the cached user if available.
+- **Optimized**: 
+    - `getDashboardData`: Selected only necessary columns (`id, plate, status, fuel_level, battery_level, last_updated, location, speed, driver_name`).
+    - `getSummary`: Used `Promise.all` to run count queries in parallel.
+    - `getLocations`: Selected only necessary columns (`id, plate, make, model, status, lat, lng, last_fuel_efficiency`).
 
-### 3. `lib/supabase.ts`
+### 3. `services/reportsService.ts`
+- **Optimized**:
+    - `getFinancials`: Used `Promise.all` to fetch today's and yesterday's costs in parallel.
+    - `getMaintenanceTrends`: Used `Promise.all` and selected only necessary columns (`cost`, `created_at`).
+
+### 4. `services/usageService.ts`
+- **Optimized**:
+    - `getDailyUsage`: Selected only necessary columns (`day, active_vehicles`).
+
+### 5. `lib/supabase.ts`
 - **Modified**: Added a 5-second timeout to `getCurrentUser` (which calls `getSession`).
 - **Reason**: Prevents other parts of the application (like profile fetching) from hanging if the Supabase client is unresponsive.
 
 ## Verification
 - **Debug Script**: Verified that Supabase credentials and network connection are working correctly using a Node.js script.
-- **Code Logic**: The new timeout logic ensures that the application will not hang for more than 5 seconds during auth checks, allowing it to fail gracefully or use fallback data instead of timing out the entire dashboard.
+- **Code Logic**: The new timeout logic ensures that the application will not hang for more than 5 seconds during auth checks.
+- **Query Optimization**: Reduced payload size and improved concurrency for dashboard data fetching.
 
 ## Next Steps
 - The user should reload the application.
