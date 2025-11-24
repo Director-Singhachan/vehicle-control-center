@@ -1,40 +1,55 @@
-# Supabase Connection Timeout Fix & Query Optimization
+# Walkthrough - Driver Role & Mobile Optimization
 
-## Problem
-The application was experiencing timeouts when fetching dashboard data. Logs showed that `vehicleService` was hanging at `Checking authentication...`, causing all parallel requests in `useDashboard` to time out after 30 seconds. Additionally, queries were fetching all columns (`select('*')`), which increased load and latency.
+## Overview
+We have implemented a new **Driver** role with a simplified login experience and mobile-optimized interface. This allows drivers to easily report issues using their phone numbers without needing complex email/password setups.
 
-## Changes Made
+## Changes
 
-### 1. `stores/authStore.ts`
-- **Modified**: Removed the early return in `initialize` when cached data is present.
-- **Reason**: Ensures that `supabase.auth.getSession()` is always called (in the background) to verify the session and sync the Supabase client, even if we show cached data to the user immediately.
+### 1. Driver Role & Access Control
+- **New Role**: Added `'driver'` to the system.
+- **Restricted Access**: Drivers can *only* access:
+    - **Maintenance**: To create and view tickets.
+    - **Profile**: To view their info.
+    - **Settings**: Basic settings.
+- **Navigation**: Drivers are automatically redirected to the "Maintenance" page upon login. The Sidebar hides Dashboard, Vehicles, and Reports.
 
-### 2. `services/vehicleService.ts`
-- **Modified**: Added a 5-second timeout to `supabase.auth.getSession()`.
-- **Modified**: Added a fallback mechanism to use the user from `useAuthStore` if `getSession` times out or fails.
-- **Optimized**: 
-    - `getDashboardData`: Selected only necessary columns (`id, plate, status, fuel_level, battery_level, last_updated, location, speed, driver_name`).
-    - `getSummary`: Used `Promise.all` to run count queries in parallel.
-    - `getLocations`: Selected only necessary columns (`id, plate, make, model, status, lat, lng, last_fuel_efficiency`).
+### 2. Simplified Login (Phone Number)
+- **Phone as Username**: Drivers can log in using their 10-digit phone number (e.g., `0812345678`).
+- **Automatic Domain**: The system automatically appends `@driver.local` to the phone number (e.g., `0812345678@driver.local`) for authentication.
+- **No SMS Cost**: This uses the existing email/password infrastructure, avoiding SMS fees.
 
-### 3. `services/reportsService.ts`
-- **Optimized**:
-    - `getFinancials`: Used `Promise.all` to fetch today's and yesterday's costs in parallel.
-    - `getMaintenanceTrends`: Used `Promise.all` and selected only necessary columns (`cost`, `created_at`).
+### 3. Mobile Optimization
+- **Camera Integration**: The "Upload" button on the Ticket Form now opens the camera directly on mobile devices (`capture="environment"`).
+- **Touch-Friendly**: Buttons and inputs are sized for easy tapping.
 
-### 4. `services/usageService.ts`
-- **Optimized**:
-    - `getDailyUsage`: Selected only necessary columns (`day, active_vehicles`).
+## Verification Steps
 
-### 5. `lib/supabase.ts`
-- **Modified**: Added a 5-second timeout to `getCurrentUser` (which calls `getSession`).
-- **Reason**: Prevents other parts of the application (like profile fetching) from hanging if the Supabase client is unresponsive.
+### 1. Database Migration
+Run the following SQL to add the driver role:
+```sql
+-- Run in Supabase SQL Editor
+ALTER TABLE public.profiles DROP CONSTRAINT IF EXISTS profiles_role_check;
+ALTER TABLE public.profiles
+  ADD CONSTRAINT profiles_role_check 
+  CHECK (role IN ('user', 'inspector', 'manager', 'executive', 'admin', 'driver'));
+```
 
-## Verification
-- **Debug Script**: Verified that Supabase credentials and network connection are working correctly using a Node.js script.
-- **Code Logic**: The new timeout logic ensures that the application will not hang for more than 5 seconds during auth checks.
-- **Query Optimization**: Reduced payload size and improved concurrency for dashboard data fetching.
+### 2. Create a Driver User
+1.  Go to Supabase Authentication.
+2.  Add a new user:
+    - **Email**: `0812345678@driver.local` (Replace with actual phone number)
+    - **Password**: `123456` (Or any simple password)
+3.  Go to `public.profiles` table and set this user's `role` to `'driver'`.
 
-## Next Steps
-- The user should reload the application.
-- If the issue persists (e.g. actual network blocking), the application will now show a specific error or fallback state instead of an infinite loading spinner or generic timeout.
+### 3. Test Login
+1.  Open the app.
+2.  Enter `0812345678` in the "Email or Phone Number" field.
+3.  Enter the password.
+4.  **Verify**: You should be redirected to the **Maintenance** page.
+5.  **Verify**: The Sidebar should *not* show Dashboard or Vehicles.
+
+### 4. Test Mobile Ticket Creation
+1.  On a mobile device (or simulator), click "Create Ticket".
+2.  **Verify**: The form is easy to read and tap.
+3.  Click "Upload Image".
+4.  **Verify**: It prompts to use the Camera.

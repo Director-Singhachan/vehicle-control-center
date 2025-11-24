@@ -18,14 +18,14 @@ export const useAuth = () => {
     loading: store.loading,
     error: store.error,
     isAuthenticated: !!store.user,
-    isAdmin: store.profile?.role === 'admin',
-    isManager: store.profile?.role === 'manager' || store.profile?.role === 'admin',
-    isInspector: store.profile?.role === 'inspector' || store.profile?.role === 'manager' || store.profile?.role === 'admin',
-    isExecutive: store.profile?.role === 'executive' || store.profile?.role === 'admin',
+    isAdmin: store.isAdmin,
+    isManager: store.isManager,
+    isInspector: store.isInspector,
+    isExecutive: store.isExecutive,
+    isDriver: store.isDriver,
     signIn: store.signIn,
     signOut: store.signOut,
     refreshProfile: store.refreshProfile,
     refetch: store.initialize,
   };
 };
-

@@ -1,7 +1,7 @@
 // Login View - Authentication page
 import React, { useState } from 'react';
 import { useAuth } from '../hooks';
-import { LogIn, Mail, Lock, AlertCircle, RefreshCw } from 'lucide-react';
+import { LogIn, Mail, Lock, AlertCircle, RefreshCw, Phone } from 'lucide-react';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Card } from '../components/ui/Card';
@@ -12,7 +12,7 @@ interface LoginViewProps {
 
 export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
   const { signIn, loading, error } = useAuth();
-  const [email, setEmail] = useState('');
+  const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [localError, setLocalError] = useState<string | null>(null);
 
@@ -20,13 +20,22 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
     e.preventDefault();
     setLocalError(null);
 
-    if (!email || !password) {
-      setLocalError('กรุณากรอกอีเมลและรหัสผ่าน');
+    if (!identifier || !password) {
+      setLocalError('กรุณากรอกอีเมล/เบอร์โทรศัพท์ และรหัสผ่าน');
       return;
     }
 
     try {
-      await signIn(email, password);
+      let emailToUse = identifier.trim();
+
+      // Check if input is a phone number (digits only, 9-10 digits)
+      const phoneRegex = /^[0-9]{9,10}$/;
+      if (phoneRegex.test(emailToUse)) {
+        // Append domain for driver login
+        emailToUse = `${emailToUse}@driver.local`;
+      }
+
+      await signIn(emailToUse, password);
       if (onLoginSuccess) {
         onLoginSuccess();
       }
@@ -62,17 +71,19 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
 
         <form onSubmit={handleSubmit} className="space-y-6">
           <div>
-            <label htmlFor="email" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-              อีเมล
+            <label htmlFor="identifier" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+              อีเมล หรือ เบอร์โทรศัพท์
             </label>
             <div className="relative">
-              <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-slate-400" />
+              <div className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400">
+                {/^[0-9]+$/.test(identifier) ? <Phone className="w-5 h-5" /> : <Mail className="w-5 h-5" />}
+              </div>
               <Input
-                id="email"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="your@email.com"
+                id="identifier"
+                type="text"
+                value={identifier}
+                onChange={(e) => setIdentifier(e.target.value)}
+                placeholder="อีเมล หรือ เบอร์โทรศัพท์ (สำหรับคนขับ)"
                 className="pl-10"
                 required
                 disabled={loading}

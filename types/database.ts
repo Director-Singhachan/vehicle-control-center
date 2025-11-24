@@ -10,7 +10,7 @@ export type Json =
   | { [key: string]: Json | undefined }
   | Json[]
 
-export type AppRole = 'user' | 'inspector' | 'manager' | 'executive' | 'admin';
+export type AppRole = 'user' | 'inspector' | 'manager' | 'executive' | 'admin' | 'driver';
 export type UrgencyLevel = 'low' | 'medium' | 'high' | 'critical';
 export type TicketStatus =
   | 'pending'

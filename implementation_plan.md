@@ -1,30 +1,55 @@
-# Implementation Plan - Supabase Connection Optimization
+# Implementation Plan - Driver Role, Simplified Login & Mobile Optimization
 
 ## Goal
-Eliminate persistent timeouts (30s/60s) and `getSession` hangs by optimizing the Supabase client configuration, implementing robust retry logic, and increasing fetch timeouts to accommodate slower network conditions.
+Implement a 'driver' role with restricted access, simplified "Phone Number Login", and a mobile-optimized ticket creation experience.
 
 ## Proposed Changes
 
-### 1. `lib/supabase.ts`
-- **Configure Client**: Add `fetch` custom implementation with increased timeout.
-- **Optimize Auth**: Adjust `autoRefreshToken` and `persistSession` settings if needed.
-- **Timeout Adjustment**: Increase `getCurrentUser` timeout from 5s to 10s.
+### 1. Database (SQL)
+- **New Migration**: Create `sql/20251206000000_add_driver_role.sql` to add `'driver'` to the `app_role` enum/constraint.
 
-### 2. `services/vehicleService.ts` (and other services)
-- **Retry Logic**: Implement a helper function `fetchWithRetry` to automatically retry failed requests (e.g., 3 attempts).
-- **Optimization**: Ensure `getSummary` is as lightweight as possible.
+### 2. Types (`types/database.ts`)
+- **Update `AppRole`**: Add `'driver'` to the union type.
 
-### 3. `hooks/useDashboard.ts`
-- **Increase Timeouts**: Increase individual API timeouts from 30s to 60s.
-- **Global Timeout**: Increase global race timeout from 60s to 90s.
-- **Staggered Loading**: (Optional) Consider loading critical data first (Summary) then others.
+### 3. Authentication (`stores/authStore.ts`, `hooks/useAuth.ts`)
+- **Update Store**: Add `isDriver` computed property.
+- **Update Hook**: Expose `isDriver` from `useAuth`.
+
+### 4. Simplified Login (`views/LoginView.tsx`)
+- **UI Update**: Change "Email" label to "Email or Phone Number".
+- **Logic Update**:
+    - Auto-append `@driver.local` domain for phone number inputs (e.g., `0812345678` -> `0812345678@driver.local`).
+    - Allow simple passwords.
+
+### 5. Route Protection (`components/ProtectedRoute.tsx`)
+- **Update Logic**: Allow `'driver'` role in the access check logic.
+
+### 6. Navigation & Layout (`index.tsx`)
+- **Sidebar**: Conditionally render sidebar items. Drivers only see:
+    - Maintenance (Tickets)
+    - Profile
+    - Settings
+    - Logout
+- **Routing**:
+    - Redirect drivers to `'maintenance'` tab by default.
+    - Prevent access to restricted tabs.
+
+### 7. Mobile Optimization (`views/TicketFormView.tsx`)
+- **Touch Targets**: Increase size of buttons and inputs (min 44px height).
+- **Camera Integration**: Ensure file input accepts `capture="environment"` for direct camera access on mobile.
+- **Simplified Layout**:
+    - Stack inputs vertically with more spacing.
+    - Use larger font sizes for labels.
+    - Make the "Upload" area prominent and easy to tap.
 
 ## Verification Plan
 
-### Automated Verification
-- **Unit Tests**: None available for network conditions.
-
 ### Manual Verification
-- **Network Throttling**: Use browser dev tools to simulate "Slow 3G" and verify the app doesn't crash or hang indefinitely.
-- **Disconnect/Reconnect**: Disconnect internet while loading, then reconnect to see if retries work.
-- **Logs**: Check console for "Retry attempt X..." messages.
+1.  **Database**: Run the SQL migration.
+2.  **User Creation**: Create a driver user (`0812345678`).
+3.  **Login**: Log in with phone number.
+4.  **Mobile Experience**:
+    - Use browser dev tools (Device Toolbar) to simulate a phone.
+    - Verify the login page looks good on mobile.
+    - Verify the ticket form is easy to use (large buttons, clear inputs).
+    - Test file upload (simulated).
