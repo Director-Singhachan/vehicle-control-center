@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { useTicket, useAuth } from '../hooks';
 import { useVehicles } from '../hooks';
 import { ticketService } from '../services';
-import { storageService } from '../services/storageService';
+import { storageService, type UploadProgress } from '../services/storageService';
 import {
   ArrowLeft,
   Save,
@@ -62,6 +62,8 @@ export const TicketFormView: React.FC<TicketFormViewProps> = ({
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [existingImages, setExistingImages] = useState<string[]>([]);
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<Map<string, number>>(new Map());
+  const [uploadStatus, setUploadStatus] = useState<string>('');
   // Store preview URLs to prevent them from being revoked
   const [previewUrls, setPreviewUrls] = useState<Map<File, string>>(new Map());
 
@@ -213,13 +215,45 @@ export const TicketFormView: React.FC<TicketFormViewProps> = ({
       let uploadedUrls: string[] = [];
       if (selectedFiles.length > 0) {
         setUploading(true);
+        setUploadStatus('กำลังเตรียมไฟล์...');
+
         try {
-          uploadedUrls = await storageService.uploadFiles(selectedFiles);
+          // Upload with progress tracking
+          uploadedUrls = await storageService.uploadFiles(
+            selectedFiles,
+            'ticket-attachments',
+            '',
+            (progress: UploadProgress) => {
+              // Update progress for this file
+              setUploadProgress(prev => {
+                const newProgress = new Map(prev);
+                newProgress.set(progress.fileName, progress.progress);
+                return newProgress;
+              });
+
+              // Update status message
+              if (progress.status === 'uploading') {
+                if (progress.progress < 20) {
+                  setUploadStatus(`กำลังบีบอัดรูปภาพ ${progress.fileName}...`);
+                } else {
+                  setUploadStatus(`กำลังอัปโหลด ${progress.fileName}... (${Math.round(progress.progress)}%)`);
+                }
+              } else if (progress.status === 'complete') {
+                setUploadStatus(`อัปโหลด ${progress.fileName} สำเร็จ`);
+              } else if (progress.status === 'error') {
+                setUploadStatus(`เกิดข้อผิดพลาดกับ ${progress.fileName}`);
+              }
+            }
+          );
+
+          setUploadStatus('อัปโหลดไฟล์สำเร็จทั้งหมด');
         } catch (uploadError) {
           console.error('Upload failed:', uploadError);
-          setError('เกิดข้อผิดพลาดในการอัปโหลดไฟล์: ' + (uploadError instanceof Error ? uploadError.message : 'Unknown error'));
+          setError(uploadError instanceof Error ? uploadError.message : 'เกิดข้อผิดพลาดในการอัปโหลดไฟล์');
           setSaving(false);
           setUploading(false);
+          setUploadStatus('');
+          setUploadProgress(new Map());
           return;
         }
       }
@@ -243,6 +277,8 @@ export const TicketFormView: React.FC<TicketFormViewProps> = ({
     } finally {
       setSaving(false);
       setUploading(false);
+      setUploadStatus('');
+      setUploadProgress(new Map());
     }
   };
 
@@ -314,6 +350,33 @@ export const TicketFormView: React.FC<TicketFormViewProps> = ({
               <p className="text-sm text-green-800 dark:text-green-200">
                 บันทึกข้อมูลสำเร็จ
               </p>
+            </div>
+          )}
+
+          {/* Upload Progress Indicator */}
+          {uploading && uploadStatus && (
+            <div className="p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+              <div className="flex items-center gap-3 mb-2">
+                <div className="animate-spin rounded-full h-4 w-4 border-2 border-blue-600 border-t-transparent"></div>
+                <p className="text-sm font-medium text-blue-800 dark:text-blue-200">
+                  {uploadStatus}
+                </p>
+              </div>
+              {/* Progress bars for individual files */}
+              {Array.from(uploadProgress.entries()).map(([fileName, progress]) => (
+                <div key={fileName} className="mt-2">
+                  <div className="flex justify-between text-xs text-blue-700 dark:text-blue-300 mb-1">
+                    <span className="truncate max-w-[70%]">{fileName}</span>
+                    <span>{Math.round(progress)}%</span>
+                  </div>
+                  <div className="w-full bg-blue-200 dark:bg-blue-800 rounded-full h-1.5">
+                    <div
+                      className="bg-blue-600 dark:bg-blue-400 h-1.5 rounded-full transition-all duration-300"
+                      style={{ width: `${progress}%` }}
+                    ></div>
+                  </div>
+                </div>
+              ))}
             </div>
           )}
 
