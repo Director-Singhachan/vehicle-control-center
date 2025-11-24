@@ -23,7 +23,7 @@ export const usageService = {
       .from('vehicle_usage')
       .select('*')
       .order('start_time', { ascending: false });
-    
+
     if (filters?.vehicle_id) {
       query = query.eq('vehicle_id', filters.vehicle_id);
     }
@@ -33,9 +33,9 @@ export const usageService = {
     if (filters?.status) {
       query = query.eq('status', filters.status);
     }
-    
+
     const { data, error } = await query;
-    
+
     if (error) throw error;
     return data || [];
   },
@@ -47,39 +47,54 @@ export const usageService = {
       .select('*')
       .eq('id', id)
       .single();
-    
+
     if (error) throw error;
     return data;
   },
 
+
   // Get daily usage (last 7 days)
   getDailyUsage: async (days: number = 7): Promise<DailyUsageData> => {
-    const startDate = new Date();
-    startDate.setDate(startDate.getDate() - days);
-    startDate.setHours(0, 0, 0, 0);
-    
-    // Query daily usage view
-    const { data, error } = await supabase
-      .from('vehicle_usage_daily')
-      .select('*')
-      .gte('day', startDate.toISOString().split('T')[0])
-      .order('day', { ascending: true });
-    
-    if (error) throw error;
-    
-    // Transform to chart format
-    const labels = (data || []).map(item => {
-      const date = new Date(item.day);
-      const dayNames = ['อา', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส'];
-      return dayNames[date.getDay()];
-    });
-    
-    const usageData = (data || []).map(item => item.active_vehicles || 0);
-    
-    return {
-      labels,
-      data: usageData,
-    };
+    try {
+      console.log('[usageService] Fetching daily usage...');
+      const startDate = new Date();
+      startDate.setDate(startDate.getDate() - days);
+      startDate.setHours(0, 0, 0, 0);
+
+      const startDateStr = startDate.toISOString().split('T')[0];
+      console.log('[usageService] Querying from date:', startDateStr);
+
+      // Query daily usage view - select only needed columns
+      const { data, error } = await supabase
+        .from('vehicle_usage_daily')
+        .select('day, active_vehicles')
+        .gte('day', startDateStr)
+        .order('day', { ascending: true });
+
+      if (error) {
+        console.error('[usageService] Error fetching daily usage:', error);
+        throw error;
+      }
+
+      console.log('[usageService] Daily usage data count:', data?.length || 0);
+
+      // Transform to chart format
+      const labels = (data || []).map(item => {
+        const date = new Date(item.day);
+        const dayNames = ['อา', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส'];
+        return dayNames[date.getDay()];
+      });
+
+      const usageData = (data || []).map(item => item.active_vehicles || 0);
+
+      return {
+        labels,
+        data: usageData,
+      };
+    } catch (error) {
+      console.error('[usageService] getDailyUsage error:', error);
+      throw error;
+    }
   },
 
   // Get active trips (in progress)
@@ -89,7 +104,7 @@ export const usageService = {
       .select('*')
       .eq('status', 'in_progress')
       .order('start_time', { ascending: false });
-    
+
     if (error) throw error;
     return data || [];
   },
@@ -104,7 +119,7 @@ export const usageService = {
       })
       .select()
       .single();
-    
+
     if (error) throw error;
     return data;
   },
@@ -125,7 +140,7 @@ export const usageService = {
       .eq('id', id)
       .select()
       .single();
-    
+
     if (error) throw error;
     return data;
   },
@@ -137,7 +152,7 @@ export const usageService = {
       .insert(usage)
       .select()
       .single();
-    
+
     if (error) throw error;
     return data;
   },
@@ -153,7 +168,7 @@ export const usageService = {
       .eq('id', id)
       .select()
       .single();
-    
+
     if (error) throw error;
     return data;
   },
@@ -164,7 +179,7 @@ export const usageService = {
       .from('vehicle_usage')
       .delete()
       .eq('id', id);
-    
+
     if (error) throw error;
   },
 };

@@ -120,7 +120,11 @@ export const TicketDetailView: React.FC<TicketDetailViewProps> = ({
         .select('*')
         .eq('id', ticket.vehicle_id)
         .single()
-        .then(({ data }) => {
+        .then(({ data, error }) => {
+          if (error) {
+            console.warn('[TicketDetail] Error fetching vehicle:', error);
+            return;
+          }
           if (data) setVehicleData(data);
         });
     }
@@ -888,26 +892,40 @@ export const TicketDetailView: React.FC<TicketDetailViewProps> = ({
           />
 
           {/* Vehicle Image */}
-          {vehicleData?.image_url && (
+          {(vehicleData?.image_url || ticket.vehicle_plate) && (
             <Card className="p-6">
               <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
                 <Truck className="w-5 h-5" />
                 รูปภาพรถ
               </h3>
-              <div className="rounded-lg overflow-hidden bg-slate-100 dark:bg-slate-800">
-                <img
-                  src={vehicleData.image_url}
-                  alt={vehicleData.plate_number || 'Vehicle'}
-                  className="w-full h-48 object-cover"
-                  onError={(e) => {
-                    e.currentTarget.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgZmlsbD0iI2VlZSIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iMTQiIGZpbGw9IiM5OTkiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGR5PSIuM2VtIj5ObyBJbWFnZTwvdGV4dD48L3N2Zz4=';
-                  }}
-                />
-              </div>
-              {vehicleData.plate_number && (
-                <p className="text-sm text-slate-600 dark:text-slate-400 mt-2 text-center">
-                  {vehicleData.plate_number}
-                </p>
+              {vehicleData?.image_url ? (
+                <>
+                  <div className="rounded-lg overflow-hidden bg-slate-100 dark:bg-slate-800">
+                    <img
+                      src={vehicleData.image_url}
+                      alt={vehicleData.plate || ticket.vehicle_plate || 'Vehicle'}
+                      className="w-full h-48 object-cover"
+                      onError={(e) => {
+                        e.currentTarget.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgZmlsbD0iI2VlZSIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iMTQiIGZpbGw9IiM5OTkiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGR5PSIuM2VtIj5ObyBJbWFnZTwvdGV4dD48L3N2Zz4=';
+                      }}
+                    />
+                  </div>
+                  <p className="text-sm text-slate-600 dark:text-slate-400 mt-2 text-center">
+                    {vehicleData.plate || ticket.vehicle_plate}
+                  </p>
+                </>
+              ) : (
+                <div className="rounded-lg overflow-hidden bg-slate-100 dark:bg-slate-800 h-48 flex items-center justify-center">
+                  <div className="text-center">
+                    <Truck className="w-12 h-12 mx-auto mb-2 text-slate-400" />
+                    <p className="text-sm text-slate-500 dark:text-slate-400">
+                      ไม่มีรูปภาพ
+                    </p>
+                    <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">
+                      {ticket.vehicle_plate}
+                    </p>
+                  </div>
+                </div>
               )}
             </Card>
           )}

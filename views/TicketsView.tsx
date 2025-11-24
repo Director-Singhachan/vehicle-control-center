@@ -339,9 +339,27 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                   <div className="flex items-start justify-between mb-4">
                     <div className="flex-1">
                       <div className="flex items-center gap-3 mb-2">
-                        <div className="p-2 bg-enterprise-100 dark:bg-enterprise-900 rounded-lg">
-                          <FileText className="w-5 h-5 text-enterprise-600 dark:text-enterprise-400" />
-                        </div>
+                        {/* Vehicle Image */}
+                        {ticket.vehicle_image_url ? (
+                          <div className="w-16 h-16 rounded-lg overflow-hidden bg-slate-100 dark:bg-slate-800 flex-shrink-0">
+                            <img
+                              src={ticket.vehicle_image_url}
+                              alt={ticket.vehicle_plate || 'Vehicle'}
+                              className="w-full h-full object-cover"
+                              onError={(e) => {
+                                e.currentTarget.style.display = 'none';
+                                e.currentTarget.nextElementSibling?.classList.remove('hidden');
+                              }}
+                            />
+                            <div className="hidden w-full h-full flex items-center justify-center bg-enterprise-100 dark:bg-enterprise-900">
+                              <FileText className="w-6 h-6 text-enterprise-600 dark:text-enterprise-400" />
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="p-2 bg-enterprise-100 dark:bg-enterprise-900 rounded-lg flex-shrink-0">
+                            <FileText className="w-5 h-5 text-enterprise-600 dark:text-enterprise-400" />
+                          </div>
+                        )}
                         <div>
                           <h3 className="font-semibold text-lg text-slate-900 dark:text-white">
                             {ticket.ticket_number || `#${ticket.id}`}

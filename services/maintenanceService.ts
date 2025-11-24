@@ -165,6 +165,12 @@ export const maintenanceService = {
 
   // Create history from ticket
   createHistoryFromTicket: async (ticket: any, costs: any[] = []): Promise<MaintenanceHistory> => {
+    // Get current user ID for RLS policy compliance
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      throw new Error('ไม่พบข้อมูลผู้ใช้ กรุณา login ใหม่');
+    }
+
     const totalCost = costs.reduce((sum, item) => sum + (item.cost || 0), 0);
 
     const historyData: MaintenanceHistoryInsert = {
@@ -179,7 +185,7 @@ export const maintenanceService = {
       garage: ticket.garage,
       notes: ticket.repair_notes,
       performed_by: ticket.repair_assigned_to, // Use ID for now, or fetch name if needed
-      created_by: ticket.reporter_id,
+      created_by: user.id, // Use current user ID to comply with RLS policy
     };
 
     return await maintenanceService.createHistory(historyData);

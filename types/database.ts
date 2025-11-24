@@ -57,6 +57,7 @@ export interface Database {
           branch: string | null;
           lat: number | null;
           lng: number | null;
+          image_url: string | null;
           created_at: string;
         };
         Insert: {
@@ -68,6 +69,7 @@ export interface Database {
           branch?: string | null;
           lat?: number | null;
           lng?: number | null;
+          image_url?: string | null;
           created_at?: string;
         };
         Update: {
@@ -79,6 +81,7 @@ export interface Database {
           branch?: string | null;
           lat?: number | null;
           lng?: number | null;
+          image_url?: string | null;
           created_at?: string;
         };
       };
@@ -654,6 +657,7 @@ export interface Database {
           model: string | null;
           vehicle_type: string | null;
           branch: string | null;
+          vehicle_image_url: string | null;
           reporter_email: string | null;
           reporter_name: string | null;
           reporter_role: AppRole;

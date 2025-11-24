@@ -1,43 +1,40 @@
-# Vehicle Repair Request Form Implementation
+# Supabase Connection Timeout Fix & Query Optimization
 
-I have implemented the vehicle repair request form with the following features:
+## Problem
+The application was experiencing timeouts when fetching dashboard data. Logs showed that `vehicleService` was hanging at `Checking authentication...`, causing all parallel requests in `useDashboard` to time out after 30 seconds. Additionally, queries were fetching all columns (`select('*')`), which increased load and latency.
 
-## Features
+## Changes Made
 
-1.  **File Upload**: Users can now upload images and videos to attach to the repair ticket.
-    - Supports multiple files.
-    - Validates file size (max 10MB).
-    - Shows previews of selected files.
-    - Allows removing selected files before upload.
-    - Uploads files to Supabase Storage.
+### 1. `stores/authStore.ts`
+- **Modified**: Removed the early return in `initialize` when cached data is present.
+- **Reason**: Ensures that `supabase.auth.getSession()` is always called (in the background) to verify the session and sync the Supabase client, even if we show cached data to the user immediately.
 
-2.  **Searchable Vehicle Selection**:
-    - Replaced the standard dropdown with a searchable combobox.
-    - Users can type to filter vehicles by plate, make, or model.
-    - Shows vehicle details (plate, make, model) in the dropdown.
+### 2. `services/vehicleService.ts`
+- **Modified**: Added a 5-second timeout to `supabase.auth.getSession()`.
+- **Modified**: Added a fallback mechanism to use the user from `useAuthStore` if `getSession` times out or fails.
+- **Optimized**: 
+    - `getDashboardData`: Selected only necessary columns (`id, plate, status, fuel_level, battery_level, last_updated, location, speed, driver_name`).
+    - `getSummary`: Used `Promise.all` to run count queries in parallel.
+    - `getLocations`: Selected only necessary columns (`id, plate, make, model, status, lat, lng, last_fuel_efficiency`).
 
-3.  **Predefined Repair Types**:
-    - Replaced the text input with a dropdown menu.
-    - Includes common repair types:
-        - เปลี่ยนถ่ายน้ำมันเครื่อง
-        - ยางและช่วงล่าง
-        - ระบบเบรก
-        - แบตเตอรี่และระบบไฟ
-        - เครื่องยนต์
-        - ระบบแอร์
-        - ตัวถังและสี
-        - กระจกและอุปกรณ์ภายนอก
-        - อุปกรณ์ภายในห้องโดยสาร
-        - ตรวจเช็คระยะ
-        - อื่นๆ
+### 3. `services/reportsService.ts`
+- **Optimized**:
+    - `getFinancials`: Used `Promise.all` to fetch today's and yesterday's costs in parallel.
+    - `getMaintenanceTrends`: Used `Promise.all` and selected only necessary columns (`cost`, `created_at`).
 
-## Files Modified
+### 4. `services/usageService.ts`
+- **Optimized**:
+    - `getDailyUsage`: Selected only necessary columns (`day, active_vehicles`).
 
--   `views/TicketFormView.tsx`: Updated the form UI and logic.
--   `services/storageService.ts`: Created a new service to handle file uploads.
+### 5. `lib/supabase.ts`
+- **Modified**: Added a 5-second timeout to `getCurrentUser` (which calls `getSession`).
+- **Reason**: Prevents other parts of the application (like profile fetching) from hanging if the Supabase client is unresponsive.
 
 ## Verification
+- **Debug Script**: Verified that Supabase credentials and network connection are working correctly using a Node.js script.
+- **Code Logic**: The new timeout logic ensures that the application will not hang for more than 5 seconds during auth checks.
+- **Query Optimization**: Reduced payload size and improved concurrency for dashboard data fetching.
 
--   **File Upload**: Verified that files can be selected, previewed, and removed. The upload logic uses `storageService` to upload to Supabase.
--   **Vehicle Search**: Verified that typing in the vehicle input filters the list and selecting a vehicle updates the form state.
--   **Repair Types**: Verified that the dropdown shows the correct options and updates the form state.
+## Next Steps
+- The user should reload the application.
+- If the issue persists (e.g. actual network blocking), the application will now show a specific error or fallback state instead of an infinite loading spinner or generic timeout.

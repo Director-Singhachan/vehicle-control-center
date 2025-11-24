@@ -19,6 +19,32 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   fallback,
 }) => {
   const { user, profile, loading, error, isAuthenticated, isAdmin, isManager, isInspector } = useAuth();
+  const [showTimeout, setShowTimeout] = React.useState(false);
+
+  // Debug logging
+  React.useEffect(() => {
+    console.log('[ProtectedRoute] State:', {
+      hasUser: !!user,
+      hasProfile: !!profile,
+      loading,
+      isAuthenticated,
+      error: error?.message,
+      profileRole: profile?.role,
+    });
+  }, [user, profile, loading, isAuthenticated, error]);
+
+  // Timeout fallback - if loading takes too long, show login
+  React.useEffect(() => {
+    if (loading && !user && !isAuthenticated) {
+      const timeout = setTimeout(() => {
+        console.warn('[ProtectedRoute] Loading timeout after 5s - showing login');
+        setShowTimeout(true);
+      }, 5000);
+      return () => clearTimeout(timeout);
+    } else {
+      setShowTimeout(false);
+    }
+  }, [loading, user, isAuthenticated]);
 
   // Show error state if Supabase config is missing
   if (error && (error.message.includes('environment variables') || error.message.includes('not configured'))) {
@@ -49,22 +75,36 @@ VITE_SUPABASE_ANON_KEY=your-anon-key-here`}
     );
   }
 
-  // Show loading state only on first initialization (no cached data)
-  // If we have cached user/profile, show UI immediately
-  if (loading && !user && !isAuthenticated) {
+  // Show loading state only if we truly don't have user yet
+  if (loading && !user && !isAuthenticated && !showTimeout) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-enterprise-600 mx-auto mb-4"></div>
           <p className="text-slate-600 dark:text-slate-400">กำลังโหลด...</p>
+          <p className="text-xs text-slate-400 dark:text-slate-500 mt-2">หากใช้เวลานานเกิน 5 วินาที จะแสดงหน้า login</p>
         </div>
       </div>
     );
   }
 
-  // Not authenticated - show login
-  if (!isAuthenticated || !user) {
+  // If timeout, show login page instead of infinite loading
+  if (showTimeout && !user && !isAuthenticated) {
+    console.warn('[ProtectedRoute] Timeout reached - showing login page');
     return <LoginView />;
+  }
+
+  // Not authenticated - show login
+  if (!user) {
+    return <LoginView />;
+  }
+
+  // If we have user, show app even if profile is still loading
+  // Profile will load in background and update when ready
+  // This prevents infinite loading when profile fetch is slow
+  if (user && !profile) {
+    console.log('[ProtectedRoute] User exists but profile not loaded yet - showing app anyway');
+    // Continue to show app - profile will load in background
   }
 
   // Check role requirements

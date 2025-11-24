@@ -52,5 +52,8 @@ console.log('\n💡 คำแนะนำ:');
 console.log('1. ตรวจสอบว่า dev server รันอยู่ (npm run dev)');
 console.log('2. เปิด Browser Console (F12) และดู error messages');
 console.log('3. ตรวจสอบว่าเปิด URL ที่ถูกต้อง (ดูใน terminal)');
-console.log('4. ดูเอกสาร: docs/TROUBLESHOOTING_BLANK_PAGE.md\n');
+console.log('4. ดูเอกสาร: docs/TROUBLESHOOTING_BLANK_PAGE.md');
+console.log('5. ทดสอบ connection ใน Browser Console:');
+console.log('   const { data, error } = await supabase.from("vehicles").select("id").limit(1);');
+console.log('   console.log("Test result:", data, error);\n');
 

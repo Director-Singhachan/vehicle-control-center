@@ -48,10 +48,23 @@ const SidebarItem = ({ icon: Icon, label, active, onClick, onMouseEnter }: any) 
 // Main App Content (wrapped in ProtectedRoute)
 const AppContent = () => {
   const { user, profile, signOut, isAdmin, isManager, isInspector, isExecutive, loading: authLoading } = useAuth();
+  
+  // Don't wait for profile - show UI immediately if user exists
+  // Profile will load in background and update when ready
   const { count: pendingCount } = usePendingTickets();
   const [isDark, setIsDark] = useState(true);
   const [isSidebarOpen, setSidebarOpen] = useState(true);
   const [activeTab, setActiveTab] = useState('dashboard');
+
+  // Debug logging
+  React.useEffect(() => {
+    console.log('[AppContent] Rendered:', {
+      hasUser: !!user,
+      hasProfile: !!profile,
+      activeTab,
+      authLoading,
+    });
+  }, [user, profile, activeTab, authLoading]);
   const [vehicleView, setVehicleView] = useState<'list' | 'detail' | 'form'>('list');
   const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(null);
   const [ticketView, setTicketView] = useState<'list' | 'detail' | 'form'>('list');

@@ -8,6 +8,13 @@ import type { Database } from '../types/database';
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 
+// Debug: Log environment variables (without exposing full key)
+if (typeof window !== 'undefined') {
+  console.log('[Supabase Config] URL:', supabaseUrl ? `${supabaseUrl.substring(0, 30)}...` : '❌ NOT SET');
+  console.log('[Supabase Config] Key:', supabaseAnonKey ? `${supabaseAnonKey.substring(0, 20)}...` : '❌ NOT SET');
+  console.log('[Supabase Config] All env vars:', Object.keys(import.meta.env).filter(k => k.startsWith('VITE_')));
+}
+
 // Validate environment variables
 let supabaseConfigError: string | null = null;
 
@@ -52,6 +59,7 @@ export const supabase = (() => {
       autoRefreshToken: true,
       storageKey: 'vehicle-control-center-auth',
       storage: typeof window !== 'undefined' ? window.localStorage : undefined,
+      detectSessionInUrl: true,
     },
     realtime: {
       params: {
@@ -63,12 +71,16 @@ export const supabase = (() => {
         'x-client-info': 'vehicle-control-center',
       },
     },
+    db: {
+      schema: 'public',
+    },
   }) as any;
 
   return supabaseInstance;
 })();
 
 // Helper function to get current user
+// Uses getSession() for fast local storage read instead of getUser() which makes API call
 export const getCurrentUser = async () => {
   if (supabaseConfigError) {
     // Return null instead of throwing to prevent infinite loading
@@ -82,40 +94,32 @@ export const getCurrentUser = async () => {
     return null;
   }
 
-  // Add timeout to prevent hanging (increased to 20 seconds for slow connections)
-  const timeoutPromise = new Promise<null>((resolve) => {
-    setTimeout(() => {
-      console.warn('Auth request timeout after 20s - this may indicate:');
-      console.warn('1. Missing or incorrect Supabase credentials in .env.local');
-      console.warn('2. Network connection issues');
-      console.warn('3. Supabase service is down');
-      console.warn('Returning null user - app will show login page');
-      resolve(null);
-    }, 20000); // Increased from 10s to 20s
-  });
-
   try {
-    const getUserPromise = supabase.auth.getUser();
-    const result = await Promise.race([getUserPromise, timeoutPromise]);
 
-    // If timeout, return null
-    if (result === null) {
-      return null;
-    }
+    // Use getSession() - reads from localStorage (FAST!)
+    // Instead of getUser() which makes API call (SLOW - can timeout)
+    // Add timeout to prevent hanging
+    const getSessionPromise = supabase.auth.getSession();
+    const timeoutPromise = new Promise<{ data: { session: any }, error: any }>((resolve) => {
+      setTimeout(() => {
+        console.warn('getSession timeout in getCurrentUser after 5s');
+        resolve({ data: { session: null }, error: new Error('Session check timeout') });
+      }, 5000);
+    });
 
-    const { data: { user }, error } = result as any;
+    const { data: { session }, error: sessionError } = await Promise.race([getSessionPromise, timeoutPromise]);
 
-    // If no user, return null (not an error - user just not logged in)
-    if (error) {
+    if (sessionError) {
       // "Auth session missing" is normal when user is not logged in
-      if (error.message.includes('session') || error.message.includes('JWT') || error.message.includes('Auth session missing')) {
+      if (sessionError.message.includes('session') || sessionError.message.includes('JWT') || sessionError.message.includes('Auth session missing')) {
         return null; // User is not authenticated, return null instead of throwing
       }
       // For other errors, log but return null to prevent infinite loading
-      console.warn('Auth error:', error.message);
+      console.warn('Session error:', sessionError.message);
       return null;
     }
-    return user;
+
+    return session?.user ?? null;
   } catch (err) {
     // Check for connection errors
     if (err instanceof Error && (err.message.includes('fetch') || err.message.includes('network'))) {
@@ -135,25 +139,49 @@ export const getCurrentUser = async () => {
 // Helper function to get current user profile
 export const getCurrentProfile = async () => {
   if (supabaseConfigError) {
-    throw new Error(supabaseConfigError);
+    console.warn('Supabase config error - returning null profile');
+    return null;
   }
 
   const user = await getCurrentUser();
   if (!user) return null;
 
+  // Add timeout to prevent hanging (10 seconds for profile fetch - increased from 5s)
+  const timeoutPromise = new Promise<null>((resolve) => {
+    setTimeout(() => {
+      console.warn('Profile fetch timeout after 10s - returning null');
+      resolve(null);
+    }, 10000);
+  });
+
   try {
-    const { data, error } = await supabase
+    const profilePromise = supabase
       .from('profiles')
       .select('*')
       .eq('id', user.id)
       .single();
 
+    const result = await Promise.race([profilePromise, timeoutPromise]);
+
+    // If timeout, return null
+    if (result === null) {
+      return null;
+    }
+
+    const { data, error } = result as any;
+
     if (error) {
       // Check for connection errors
       if (error.message.includes('fetch') || error.message.includes('network')) {
-        throw new Error('Connection failed. If the problem persists, please check your internet connection or VPN');
+        console.warn('Connection error fetching profile - returning null');
+        return null;
       }
-      console.error('Error fetching profile:', error);
+      // "No rows returned" is normal if profile doesn't exist yet
+      if (error.code === 'PGRST116' || error.message.includes('No rows')) {
+        console.warn('Profile not found for user - returning null');
+        return null;
+      }
+      console.warn('Error fetching profile:', error.message);
       return null;
     }
 
@@ -161,9 +189,11 @@ export const getCurrentProfile = async () => {
   } catch (err) {
     // Check for connection errors
     if (err instanceof Error && (err.message.includes('fetch') || err.message.includes('network'))) {
-      throw new Error('Connection failed. If the problem persists, please check your internet connection or VPN');
+      console.warn('Connection error fetching profile - returning null');
+      return null;
     }
-    throw err;
+    console.warn('Unexpected error fetching profile:', err);
+    return null;
   }
 };
 
