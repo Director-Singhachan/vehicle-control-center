@@ -1,43 +1,29 @@
-# Vehicle Repair Request Form Implementation
+# Supabase Connection Timeout Fix
 
-I have implemented the vehicle repair request form with the following features:
+## Problem
+The application was experiencing timeouts when fetching dashboard data. Logs showed that `vehicleService` was hanging at `Checking authentication...`, causing all parallel requests in `useDashboard` to time out after 30 seconds.
 
-## Features
+The root cause was identified as `supabase.auth.getSession()` hanging indefinitely in some scenarios, likely due to token refresh issues or client state desynchronization. Additionally, `authStore` was skipping session verification when cached data was present, potentially leaving the Supabase client in an uninitialized state.
 
-1.  **File Upload**: Users can now upload images and videos to attach to the repair ticket.
-    - Supports multiple files.
-    - Validates file size (max 10MB).
-    - Shows previews of selected files.
-    - Allows removing selected files before upload.
-    - Uploads files to Supabase Storage.
+## Changes Made
 
-2.  **Searchable Vehicle Selection**:
-    - Replaced the standard dropdown with a searchable combobox.
-    - Users can type to filter vehicles by plate, make, or model.
-    - Shows vehicle details (plate, make, model) in the dropdown.
+### 1. `stores/authStore.ts`
+- **Modified**: Removed the early return in `initialize` when cached data is present.
+- **Reason**: Ensures that `supabase.auth.getSession()` is always called (in the background) to verify the session and sync the Supabase client, even if we show cached data to the user immediately.
 
-3.  **Predefined Repair Types**:
-    - Replaced the text input with a dropdown menu.
-    - Includes common repair types:
-        - เปลี่ยนถ่ายน้ำมันเครื่อง
-        - ยางและช่วงล่าง
-        - ระบบเบรก
-        - แบตเตอรี่และระบบไฟ
-        - เครื่องยนต์
-        - ระบบแอร์
-        - ตัวถังและสี
-        - กระจกและอุปกรณ์ภายนอก
-        - อุปกรณ์ภายในห้องโดยสาร
-        - ตรวจเช็คระยะ
-        - อื่นๆ
+### 2. `services/vehicleService.ts`
+- **Modified**: Added a 5-second timeout to `supabase.auth.getSession()`.
+- **Modified**: Added a fallback mechanism to use the user from `useAuthStore` if `getSession` times out or fails.
+- **Reason**: Prevents the dashboard data fetch from hanging indefinitely if the Supabase client is unresponsive. Allows the application to proceed with the cached user if available.
 
-## Files Modified
-
--   `views/TicketFormView.tsx`: Updated the form UI and logic.
--   `services/storageService.ts`: Created a new service to handle file uploads.
+### 3. `lib/supabase.ts`
+- **Modified**: Added a 5-second timeout to `getCurrentUser` (which calls `getSession`).
+- **Reason**: Prevents other parts of the application (like profile fetching) from hanging if the Supabase client is unresponsive.
 
 ## Verification
+- **Debug Script**: Verified that Supabase credentials and network connection are working correctly using a Node.js script.
+- **Code Logic**: The new timeout logic ensures that the application will not hang for more than 5 seconds during auth checks, allowing it to fail gracefully or use fallback data instead of timing out the entire dashboard.
 
--   **File Upload**: Verified that files can be selected, previewed, and removed. The upload logic uses `storageService` to upload to Supabase.
--   **Vehicle Search**: Verified that typing in the vehicle input filters the list and selecting a vehicle updates the form state.
--   **Repair Types**: Verified that the dropdown shows the correct options and updates the form state.
+## Next Steps
+- The user should reload the application.
+- If the issue persists (e.g. actual network blocking), the application will now show a specific error or fallback state instead of an infinite loading spinner or generic timeout.

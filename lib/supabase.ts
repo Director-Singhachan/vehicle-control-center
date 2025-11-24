@@ -95,9 +95,19 @@ export const getCurrentUser = async () => {
   }
 
   try {
+
     // Use getSession() - reads from localStorage (FAST!)
     // Instead of getUser() which makes API call (SLOW - can timeout)
-    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+    // Add timeout to prevent hanging
+    const getSessionPromise = supabase.auth.getSession();
+    const timeoutPromise = new Promise<{ data: { session: any }, error: any }>((resolve) => {
+      setTimeout(() => {
+        console.warn('getSession timeout in getCurrentUser after 5s');
+        resolve({ data: { session: null }, error: new Error('Session check timeout') });
+      }, 5000);
+    });
+
+    const { data: { session }, error: sessionError } = await Promise.race([getSessionPromise, timeoutPromise]);
 
     if (sessionError) {
       // "Auth session missing" is normal when user is not logged in

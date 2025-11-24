@@ -44,13 +44,15 @@ export const useAuthStore = create<AuthState>()(
       initialize: async () => {
         const state = get();
 
+
         // If we have cached data, use it immediately!
         if (state.user && state.profile) {
           set({ initialized: true, loading: false });
-          return;
+          // Don't return - continue to verify session with Supabase
+          console.log('[Auth] Using cached data, verifying session in background...');
+        } else {
+          set({ loading: true, error: null });
         }
-
-        set({ loading: true, error: null });
 
         try {
           // Check if supabase client is available
@@ -79,7 +81,7 @@ export const useAuthStore = create<AuthState>()(
               // Set loading to false immediately so UI can render
               // Profile will update when fetch completes
               set({ loading: false });
-              
+
               // Fetch profile in background (don't block UI)
               getCurrentProfile().then(profile => {
                 console.log('[Auth] Profile fetched:', profile ? `role: ${profile.role}` : 'null');

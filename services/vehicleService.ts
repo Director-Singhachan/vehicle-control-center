@@ -1,6 +1,7 @@
 // Vehicle Service - CRUD operations for vehicles
 import { supabase } from '../lib/supabase';
 import type { Database } from '../types/database';
+import { useAuthStore } from '../stores/authStore';
 
 // Debug: Check if supabase client is initialized
 if (typeof window !== 'undefined') {
@@ -38,7 +39,7 @@ export const vehicleService = {
       .from('vehicles')
       .select('*')
       .order('created_at', { ascending: false });
-    
+
     if (error) throw error;
     return data || [];
   },
@@ -50,7 +51,7 @@ export const vehicleService = {
       .select('*')
       .eq('id', id)
       .single();
-    
+
     if (error) throw error;
     return data;
   },
@@ -60,7 +61,7 @@ export const vehicleService = {
     const { data, error } = await supabase
       .from('vehicles_with_status')
       .select('*');
-    
+
     if (error) throw error;
     return data || [];
   },
@@ -72,18 +73,18 @@ export const vehicleService = {
       let query = supabase
         .from('vehicle_dashboard')
         .select('*');
-      
+
       if (vehicleId) {
         query = query.eq('id', vehicleId);
       }
-      
+
       const { data, error } = await query;
-      
+
       if (error) {
         console.error('[vehicleService] Error fetching dashboard data:', error);
         throw error;
       }
-      
+
       console.log('[vehicleService] Dashboard data count:', data?.length || 0);
       return data || [];
     } catch (error) {
@@ -96,61 +97,81 @@ export const vehicleService = {
   getSummary: async (): Promise<VehicleSummary> => {
     try {
       console.log('[vehicleService] Fetching summary...');
-      
+
       // Check if user is authenticated
       console.log('[vehicleService] Checking authentication...');
       const sessionStartTime = Date.now();
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+
+      // Add timeout to getSession to prevent hanging
+      const getSessionPromise = supabase.auth.getSession();
+      const timeoutPromise = new Promise<{ data: { session: any }, error: any }>((resolve) => {
+        setTimeout(() => {
+          console.warn('[vehicleService] getSession timeout after 5s');
+          resolve({ data: { session: null }, error: null }); // Resolve with null session on timeout
+        }, 5000);
+      });
+
+      let { data: { session }, error: sessionError } = await Promise.race([getSessionPromise, timeoutPromise]);
+
       const sessionElapsed = Date.now() - sessionStartTime;
       console.log(`[vehicleService] getSession() took ${sessionElapsed}ms`);
-      
+
       if (sessionError) {
         console.error('[vehicleService] Session error:', sessionError);
-        throw new Error(`Session error: ${sessionError.message}`);
+        // Don't throw yet, try fallback
       }
-      
+
+      // Fallback: Check authStore if session is missing (e.g. timeout or error)
       if (!session) {
-        console.error('[vehicleService] No session - user not authenticated');
-        throw new Error('User not authenticated');
+        const storeUser = useAuthStore.getState().user;
+        if (storeUser) {
+          console.log('[vehicleService] Using user from store as fallback');
+          // Create a minimal session object with just the user
+          session = { user: storeUser } as any;
+        } else {
+          console.error('[vehicleService] No session and no store user - user not authenticated');
+          throw new Error('User not authenticated');
+        }
       }
+
       console.log('[vehicleService] User authenticated:', session.user.id);
-      
+
       // Total vehicles
       const { count: total, error: totalError } = await supabase
         .from('vehicles')
         .select('*', { count: 'exact', head: true });
-      
+
       if (totalError) {
         console.error('[vehicleService] Error fetching total vehicles:', totalError);
         console.error('[vehicleService] Error details:', JSON.stringify(totalError, null, 2));
         throw totalError;
       }
       console.log('[vehicleService] Total vehicles:', total);
-      
+
       // Active vehicles (in use)
       const { count: active, error: activeError } = await supabase
         .from('vehicle_usage')
         .select('vehicle_id', { count: 'exact', head: true })
         .eq('status', 'in_progress');
-      
+
       if (activeError) {
         console.error('[vehicleService] Error fetching active vehicles:', activeError);
         throw activeError;
       }
       console.log('[vehicleService] Active vehicles:', active);
-      
+
       // Maintenance vehicles
       const { count: maintenance, error: maintenanceError } = await supabase
         .from('tickets')
         .select('vehicle_id', { count: 'exact', head: true })
         .in('status', ['pending', 'approved_inspector', 'approved_manager', 'ready_for_repair', 'in_progress']);
-      
+
       if (maintenanceError) {
         console.error('[vehicleService] Error fetching maintenance vehicles:', maintenanceError);
         throw maintenanceError;
       }
       console.log('[vehicleService] Maintenance vehicles:', maintenance);
-      
+
       return {
         total: total || 0,
         active: active || 0,
@@ -172,14 +193,14 @@ export const vehicleService = {
         .select('*')
         .not('lat', 'is', null)
         .not('lng', 'is', null);
-      
+
       if (error) {
         console.error('[vehicleService] Error fetching locations:', error);
         throw error;
       }
-      
+
       console.log('[vehicleService] Locations count:', data?.length || 0);
-      
+
       return (data || []).map(v => ({
         id: v.id,
         plate: v.plate,
@@ -203,7 +224,7 @@ export const vehicleService = {
       .insert(vehicle)
       .select()
       .single();
-    
+
     if (error) throw error;
     return data;
   },
@@ -216,7 +237,7 @@ export const vehicleService = {
       .eq('id', id)
       .select()
       .single();
-    
+
     if (error) throw error;
     return data;
   },
@@ -227,8 +248,7 @@ export const vehicleService = {
       .from('vehicles')
       .delete()
       .eq('id', id);
-    
+
     if (error) throw error;
   },
 };
-
