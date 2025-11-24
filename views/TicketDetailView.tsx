@@ -155,8 +155,8 @@ export const TicketDetailView: React.FC<TicketDetailViewProps> = ({
         .from('maintenance_history')
         .select('*')
         .eq('vehicle_id', ticket.vehicle_id)
-        .eq('service_type', ticket.repair_type)
-        .order('service_date', { ascending: false })
+        .eq('maintenance_name', ticket.repair_type)
+        .order('performed_at', { ascending: false })
         .limit(1)
         .then(({ data, error }) => {
           if (error) {
@@ -1014,7 +1014,7 @@ export const TicketDetailView: React.FC<TicketDetailViewProps> = ({
                     ประเภท
                   </label>
                   <p className="text-sm text-slate-900 dark:text-white">
-                    {lastRepairHistory.service_type}
+                    {lastRepairHistory.maintenance_name}
                   </p>
                 </div>
                 <div>
@@ -1023,7 +1023,7 @@ export const TicketDetailView: React.FC<TicketDetailViewProps> = ({
                   </label>
                   <p className="text-sm text-slate-900 dark:text-white flex items-center gap-1">
                     <Calendar className="w-3 h-3" />
-                    {new Date(lastRepairHistory.service_date).toLocaleDateString('th-TH')}
+                    {new Date(lastRepairHistory.performed_at).toLocaleDateString('th-TH')}
                   </p>
                 </div>
                 {lastRepairHistory.odometer && (
