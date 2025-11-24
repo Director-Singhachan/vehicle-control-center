@@ -19,7 +19,7 @@ interface UseTicketsOptions {
 export const useTickets = (options: UseTicketsOptions = { autoFetch: true }) => {
   const cache = useDataCacheStore();
   const cacheKey = createCacheKey('tickets', options.filters || {});
-  
+
   const cached = cache.get<Ticket[]>(cacheKey);
   const [tickets, setTickets] = useState<Ticket[]>(cached || []);
   const [loading, setLoading] = useState(!cached && options.autoFetch);
@@ -67,7 +67,7 @@ export const useTickets = (options: UseTicketsOptions = { autoFetch: true }) => 
 
 export const useTicket = (id: number | null) => {
   const cache = useDataCacheStore();
-  const [ticket, setTicket] = useState<Ticket | null>(null);
+  const [ticket, setTicket] = useState<TicketWithRelations | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
 
@@ -77,9 +77,9 @@ export const useTicket = (id: number | null) => {
       return;
     }
 
-    const cacheKey = createCacheKey('ticket', id);
-    const cached = cache.get<Ticket>(cacheKey);
-    
+    const cacheKey = createCacheKey('ticket-with-relations', id);
+    const cached = cache.get<TicketWithRelations>(cacheKey);
+
     if (cached) {
       setTicket(cached);
       setLoading(false);
@@ -89,7 +89,7 @@ export const useTicket = (id: number | null) => {
       setLoading(true);
       setError(null);
       try {
-        const data = await ticketService.getById(id);
+        const data = await ticketService.getByIdWithRelations(id);
         setTicket(data);
         // Cache for 1 minute
         cache.set(cacheKey, data, 60 * 1000);
@@ -114,9 +114,9 @@ export const useTicket = (id: number | null) => {
     error,
     refetch: async () => {
       if (!id) return;
-      const cacheKey = createCacheKey('ticket', id);
+      const cacheKey = createCacheKey('ticket-with-relations', id);
       cache.invalidate(cacheKey);
-      const data = await ticketService.getById(id);
+      const data = await ticketService.getByIdWithRelations(id);
       setTicket(data);
       cache.set(cacheKey, data, 60 * 1000);
     },
@@ -129,7 +129,7 @@ export const useTicketsWithRelations = (filters?: {
 }) => {
   const cache = useDataCacheStore();
   const cacheKey = createCacheKey('tickets-with-relations', filters || {});
-  
+
   const cached = cache.get<TicketWithRelations[]>(cacheKey);
   const [tickets, setTickets] = useState<TicketWithRelations[]>(cached || []);
   const [loading, setLoading] = useState(!cached);
@@ -199,7 +199,7 @@ export const useTicketCosts = (ticketId: number | null) => {
 
     const cacheKey = createCacheKey('ticket-costs', ticketId);
     const cached = cache.get<TicketCost[]>(cacheKey);
-    
+
     if (cached) {
       setCosts(cached);
       setLoading(false);

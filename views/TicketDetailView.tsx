@@ -112,6 +112,10 @@ export const TicketDetailView: React.FC<TicketDetailViewProps> = ({
   const [showCompleteRepairDialog, setShowCompleteRepairDialog] = useState(false);
   const [completingRepair, setCompletingRepair] = useState(false);
 
+  // Last repair history state
+  const [lastRepairHistory, setLastRepairHistory] = useState<any | null>(null);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+
   // Fetch vehicle data for image
   React.useEffect(() => {
     if (ticket?.vehicle_id) {
@@ -142,6 +146,30 @@ export const TicketDetailView: React.FC<TicketDetailViewProps> = ({
         });
     }
   }, [showStartRepairDialog]);
+
+  // Fetch last repair history of same type
+  React.useEffect(() => {
+    if (ticket?.vehicle_id && ticket?.repair_type) {
+      setLoadingHistory(true);
+      supabase
+        .from('maintenance_history')
+        .select('*')
+        .eq('vehicle_id', ticket.vehicle_id)
+        .eq('service_type', ticket.repair_type)
+        .order('service_date', { ascending: false })
+        .limit(1)
+        .then(({ data, error }) => {
+          if (error) {
+            console.warn('[TicketDetail] Error fetching repair history:', error);
+          } else if (data && data.length > 0) {
+            setLastRepairHistory(data[0]);
+          } else {
+            setLastRepairHistory(null);
+          }
+          setLoadingHistory(false);
+        });
+    }
+  }, [ticket?.vehicle_id, ticket?.repair_type]);
 
   if (loading) {
     return (
@@ -526,6 +554,16 @@ export const TicketDetailView: React.FC<TicketDetailViewProps> = ({
                 </p>
               </div>
 
+              <div>
+                <label className="block text-sm font-medium text-slate-500 dark:text-slate-400 mb-1">
+                  ผู้รายงาน
+                </label>
+                <p className="text-lg text-slate-900 dark:text-white flex items-center gap-2">
+                  <User className="w-4 h-4" />
+                  {(ticket as any).reporter_name || '-'}
+                </p>
+              </div>
+
               {ticket.odometer && (
                 <div>
                   <label className="block text-sm font-medium text-slate-500 dark:text-slate-400 mb-1">
@@ -884,51 +922,155 @@ export const TicketDetailView: React.FC<TicketDetailViewProps> = ({
 
         {/* Sidebar */}
         <div className="space-y-6">
+          {/* Vehicle Details */}
+          {(ticket.vehicle_plate || (ticket as any).make || (ticket as any).model) && (
+            <Card className="p-6">
+              <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
+                <Truck className="w-5 h-5" />
+                ข้อมูลรถ
+              </h3>
+
+              {/* Vehicle Image */}
+              {vehicleData?.image_url ? (
+                <div className="rounded-lg overflow-hidden bg-slate-100 dark:bg-slate-800 mb-4">
+                  <img
+                    src={vehicleData.image_url}
+                    alt={vehicleData.plate || ticket.vehicle_plate || 'Vehicle'}
+                    className="w-full h-48 object-cover"
+                    onError={(e) => {
+                      e.currentTarget.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgZmlsbD0iI2VlZSIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iMTQiIGZpbGw9IiM5OTkiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGR5PSIuM2VtIj5ObyBJbWFnZTwvdGV4dD48L3N2Zz4=';
+                    }}
+                  />
+                </div>
+              ) : (
+                <div className="rounded-lg overflow-hidden bg-slate-100 dark:bg-slate-800 h-32 flex items-center justify-center mb-4">
+                  <div className="text-center">
+                    <Truck className="w-8 h-8 mx-auto mb-1 text-slate-400" />
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                      ไม่มีรูปภาพ
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              <div className="space-y-3">
+                {ticket.vehicle_plate && (
+                  <div>
+                    <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">
+                      ทะเบียน
+                    </label>
+                    <p className="text-sm font-semibold text-slate-900 dark:text-white">
+                      {ticket.vehicle_plate}
+                    </p>
+                  </div>
+                )}
+                {((ticket as any).make || (ticket as any).model) && (
+                  <div>
+                    <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">
+                      ยี่ห้อ/รุ่น
+                    </label>
+                    <p className="text-sm text-slate-900 dark:text-white">
+                      {(ticket as any).make} {(ticket as any).model}
+                    </p>
+                  </div>
+                )}
+                {(ticket as any).vehicle_type && (
+                  <div>
+                    <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">
+                      ประเภท
+                    </label>
+                    <p className="text-sm text-slate-900 dark:text-white">
+                      {(ticket as any).vehicle_type}
+                    </p>
+                  </div>
+                )}
+                {(ticket as any).branch && (
+                  <div>
+                    <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">
+                      สาขา
+                    </label>
+                    <p className="text-sm text-slate-900 dark:text-white flex items-center gap-1">
+                      <Building2 className="w-3 h-3" />
+                      {(ticket as any).branch}
+                    </p>
+                  </div>
+                )}
+              </div>
+            </Card>
+          )}
+
+          {/* Last Repair History */}
+          <Card className="p-6">
+            <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
+              <Wrench className="w-5 h-5" />
+              ประวัติการซ่อมครั้งล่าสุด
+            </h3>
+            {loadingHistory ? (
+              <p className="text-sm text-slate-500 dark:text-slate-400">กำลังโหลด...</p>
+            ) : lastRepairHistory ? (
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">
+                    ประเภท
+                  </label>
+                  <p className="text-sm text-slate-900 dark:text-white">
+                    {lastRepairHistory.service_type}
+                  </p>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">
+                    วันที่ซ่อม
+                  </label>
+                  <p className="text-sm text-slate-900 dark:text-white flex items-center gap-1">
+                    <Calendar className="w-3 h-3" />
+                    {new Date(lastRepairHistory.service_date).toLocaleDateString('th-TH')}
+                  </p>
+                </div>
+                {lastRepairHistory.odometer && (
+                  <div>
+                    <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">
+                      เลขไมล์
+                    </label>
+                    <p className="text-sm text-slate-900 dark:text-white">
+                      {lastRepairHistory.odometer.toLocaleString()} กม.
+                    </p>
+                  </div>
+                )}
+                {lastRepairHistory.cost && (
+                  <div>
+                    <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">
+                      ค่าใช้จ่าย
+                    </label>
+                    <p className="text-sm font-semibold text-slate-900 dark:text-white flex items-center gap-1">
+                      <DollarSign className="w-3 h-3" />
+                      ฿{lastRepairHistory.cost.toLocaleString()}
+                    </p>
+                  </div>
+                )}
+                {lastRepairHistory.description && (
+                  <div>
+                    <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">
+                      รายละเอียด
+                    </label>
+                    <p className="text-xs text-slate-600 dark:text-slate-400">
+                      {lastRepairHistory.description}
+                    </p>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <p className="text-sm text-slate-500 dark:text-slate-400">
+                ไม่มีประวัติการซ่อมประเภทนี้
+              </p>
+            )}
+          </Card>
+
           {/* Approval History */}
           <ApprovalHistory
             ticketId={ticketId}
             approvals={approvals}
             loading={loadingApprovals}
           />
-
-          {/* Vehicle Image */}
-          {(vehicleData?.image_url || ticket.vehicle_plate) && (
-            <Card className="p-6">
-              <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
-                <Truck className="w-5 h-5" />
-                รูปภาพรถ
-              </h3>
-              {vehicleData?.image_url ? (
-                <>
-                  <div className="rounded-lg overflow-hidden bg-slate-100 dark:bg-slate-800">
-                    <img
-                      src={vehicleData.image_url}
-                      alt={vehicleData.plate || ticket.vehicle_plate || 'Vehicle'}
-                      className="w-full h-48 object-cover"
-                      onError={(e) => {
-                        e.currentTarget.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgZmlsbD0iI2VlZSIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iMTQiIGZpbGw9IiM5OTkiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGR5PSIuM2VtIj5ObyBJbWFnZTwvdGV4dD48L3N2Zz4=';
-                      }}
-                    />
-                  </div>
-                  <p className="text-sm text-slate-600 dark:text-slate-400 mt-2 text-center">
-                    {vehicleData.plate || ticket.vehicle_plate}
-                  </p>
-                </>
-              ) : (
-                <div className="rounded-lg overflow-hidden bg-slate-100 dark:bg-slate-800 h-48 flex items-center justify-center">
-                  <div className="text-center">
-                    <Truck className="w-12 h-12 mx-auto mb-2 text-slate-400" />
-                    <p className="text-sm text-slate-500 dark:text-slate-400">
-                      ไม่มีรูปภาพ
-                    </p>
-                    <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">
-                      {ticket.vehicle_plate}
-                    </p>
-                  </div>
-                </div>
-              )}
-            </Card>
-          )}
 
           {/* Issue Images */}
           {ticket.image_urls && Array.isArray(ticket.image_urls) && (ticket.image_urls as string[]).length > 0 && (
