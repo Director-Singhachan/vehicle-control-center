@@ -1,253 +1,444 @@
-# แผนการพัฒนา Vehicle Control Center
+# 🚗 Vehicle Control Center - Development Roadmap
 
-## 📊 สรุปโครงสร้าง Database จาก SQL Files
-
-### 1. Core Tables (Initial Schema)
-- **profiles** - ข้อมูลผู้ใช้ (เชื่อมกับ auth.users)
-- **vehicles** - ข้อมูลยานพาหนะ
-- **tickets** - ตั๋วแจ้งซ่อม
-- **ticket_approvals** - การอนุมัติตั๋ว
-- **ticket_costs** - ค่าใช้จ่ายการซ่อม
-
-### 2. Vehicle Management Tables
-- **vehicle_usage** - บันทึกการใช้งานรถ
-- **fuel_records** - บันทึกการเติมน้ำมัน
-- **maintenance_schedules** - ตารางบำรุงรักษา
-- **maintenance_history** - ประวัติการบำรุงรักษา
-- **vehicle_alerts** - การแจ้งเตือน
-
-### 3. System Tables
-- **audit_logs** - Audit trail สำหรับ tickets และ approvals
-
-### 4. Views & Functions
-- **vehicle_dashboard** - View สรุปข้อมูลรถแต่ละคัน
-- **fuel_efficiency_summary** - สรุปอัตราสิ้นเปลือง
-- **vehicle_usage_summary** - สรุปการใช้งาน
-- **check_maintenance_alerts()** - Function ตรวจสอบแจ้งเตือน PM
+## 📌 Overview
+แผนการพัฒนาระบบจัดการรถและการบำรุงรักษา เพื่อให้พนักงานขับรถสามารถบันทึกข้อมูลการใช้งานรถ การเติมน้ำมัน และแจ้งซ่อมได้อย่างสะดวก
 
 ---
 
-## 🎯 แผนการพัฒนาต่อไป (Roadmap)
+## 🎯 Phase 1: Dashboard Redesign (ปรับปรุงหน้า Dashboard)
 
-### Phase 1: Setup & Integration (Priority: High) ⚡
+### Objectives
+- ลบส่วนแผนที่ที่ไม่ได้ใช้งาน
+- เพิ่มข้อมูลสรุปที่เป็นประโยชน์และเข้าใจง่าย
+- แสดงสถานะรถแบบ Real-time
 
-#### 1.1 ติดตั้ง Supabase Client
-```bash
-npm install @supabase/supabase-js
-```
+### Tasks
+- [ ] **ลบส่วน Map Widget**
+  - ลบ `MapWidget.tsx`
+  - ลบ dependencies ที่เกี่ยวข้อง (maplibre-gl)
+  - อัปเดต Dashboard layout
 
-#### 1.2 สร้าง Supabase Client Configuration
-- สร้างไฟล์ `lib/supabase.ts` สำหรับ client configuration
-- สร้างไฟล์ `.env.local` สำหรับเก็บ Supabase credentials
+- [ ] **สร้างส่วนสรุปภาพรวม (Summary Cards)**
+  - จำนวนรถทั้งหมด / รถพร้อมใช้งาน
+  - รถที่กำลังซ่อม
+  - ตั๋วรอดำเนินการ
+  - ค่าใช้จ่ายเดือนนี้
 
-#### 1.3 สร้าง Type Definitions
-- สร้างไฟล์ `types/database.ts` จาก database schema
-- ใช้ Supabase CLI: `supabase gen types typescript --local > types/database.ts`
+- [ ] **สร้างส่วนสถานะรถ (Vehicle Status Section)**
+  - แสดงรายการรถพร้อมสถานะ (🟢 พร้อมใช้ / 🔴 ซ่อม / 🟡 ใช้งานอยู่)
+  - เลขไมล์ล่าสุด
+  - วันที่ซ่อมครั้งสุดท้าย
+  - อัตราการใช้น้ำมันเฉลี่ย
 
-### Phase 2: API Services Layer (Priority: High) ⚡
+- [ ] **สร้างส่วนกราฟและสถิติ (Charts & Analytics)**
+  - กราฟการใช้น้ำมันรายเดือน
+  - กราฟค่าซ่อมบำรุงรายเดือน
+  - Top 5 รถที่กินน้ำมันมากสุด
+  - Top 5 รถที่ค่าซ่อมสูงสุด
 
-#### 2.1 สร้าง API Services แทน Mock Data
-- **`services/vehicleService.ts`** - CRUD operations สำหรับ vehicles
-- **`services/ticketService.ts`** - CRUD operations สำหรับ tickets
-- **`services/usageService.ts`** - CRUD operations สำหรับ vehicle_usage
-- **`services/fuelService.ts`** - CRUD operations สำหรับ fuel_records
-- **`services/maintenanceService.ts`** - CRUD operations สำหรับ maintenance
-- **`services/alertService.ts`** - Operations สำหรับ vehicle_alerts
+- [ ] **สร้างส่วน Activity Feed**
+  - รถที่ Check-out ล่าสุด (ยังไม่กลับ)
+  - การเติมน้ำมันล่าสุด
+  - ตั๋วซ่อมที่สร้างวันนี้
+  - การซ่อมที่เสร็จวันนี้
 
-#### 2.2 สร้าง Custom Hooks
-- **`hooks/useVehicles.ts`** - Hook สำหรับดึงข้อมูล vehicles
-- **`hooks/useTickets.ts`** - Hook สำหรับดึงข้อมูล tickets
-- **`hooks/useDashboard.ts`** - Hook สำหรับ dashboard data
-- **`hooks/useAuth.ts`** - Hook สำหรับ authentication
-
-### Phase 3: Authentication & Authorization (Priority: High) ⚡
-
-#### 3.1 สร้าง Auth Components
-- Login page
-- User profile management
-- Role-based access control (RBAC)
-
-#### 3.2 Implement Row Level Security (RLS)
-- ตรวจสอบว่า RLS policies ทำงานถูกต้อง
-- ทดสอบ permissions ตาม roles
-
-### Phase 4: Core Features (Priority: Medium) 📋
-
-#### 4.1 Dashboard Enhancement
-- [ ] เชื่อมต่อกับ `vehicle_dashboard` view
-- [ ] แสดงข้อมูล real-time จาก database
-- [ ] เพิ่ม filters และ date range picker
-- [ ] Export reports
-
-#### 4.2 Vehicle Management
-- [ ] Vehicle list page
-- [ ] Vehicle detail page
-- [ ] Add/Edit vehicle form
-- [ ] Vehicle status tracking
-
-#### 4.3 Ticket Management
-- [ ] Ticket list page with filters
-- [ ] Create ticket form
-- [ ] Ticket detail page
-- [ ] Approval workflow UI
-- [ ] Ticket status tracking
-
-#### 4.4 Vehicle Usage Tracking
-- [ ] Start/End trip form
-- [ ] Usage history page
-- [ ] Usage statistics
-
-#### 4.5 Fuel Management
-- [ ] Add fuel record form
-- [ ] Fuel history page
-- [ ] Fuel efficiency charts
-
-#### 4.6 Maintenance Management
-- [ ] Maintenance schedule page
-- [ ] Add maintenance history
-- [ ] Maintenance alerts dashboard
-- [ ] PM (Preventive Maintenance) calendar
-
-### Phase 5: Advanced Features (Priority: Low) 🔮
-
-#### 5.1 Analytics & Reports
-- [ ] Financial reports
-- [ ] Usage analytics
-- [ ] Maintenance cost analysis
-- [ ] Fuel efficiency trends
-
-#### 5.2 Notifications
-- [ ] Real-time alerts
-- [ ] Email notifications
-- [ ] Push notifications (optional)
-
-#### 5.3 Mobile Optimization
-- [ ] Responsive design improvements
-- [ ] Mobile-friendly forms
-- [ ] Touch-optimized UI
+**Estimated Time:** 3-4 days  
+**Priority:** High  
+**Dependencies:** None
 
 ---
 
-## 🛠️ ขั้นตอนการเริ่มต้น (Next Steps)
+## 🎯 Phase 2: Trip Log System (ระบบบันทึกเลขไมล์)
 
-### Step 1: Setup Supabase
-1. สร้าง Supabase project (ถ้ายังไม่มี)
-   - ดูคำแนะนำการตั้งชื่อโปรเจกต์: [`docs/SUPABASE_SETUP.md`](./SUPABASE_SETUP.md)
-   - แนะนำชื่อ: `vehicle-control-center` หรือ `vcc`
-2. Run SQL migrations ตามลำดับ:
-   - ดูคู่มือ: [`docs/SQL_MIGRATION_GUIDE.md`](./SQL_MIGRATION_GUIDE.md)
-   - `20251105120000_initial_schema.sql`
-   - `20251106120000_add_missing_fields.sql`
-   - `20251115130000_add_audit_logs.sql`
-   - `20251115132000_add_vehicle_management_tables.sql`
-   - `20251110_add_ticket_costs_category_note.sql`
-   - `20251117140000_alter_vehicle_usage_add_manual_correction.sql`
-   - `20251120000000_setup_pm_cron_job.sql` (optional)
+### Objectives
+- ให้พนักงานขับรถบันทึกเลขไมล์ก่อนออกและหลังกลับ
+- คำนวณระยะทางและเวลาที่ใช้อัตโนมัติ
+- ตรวจสอบความถูกต้องของข้อมูล
 
-### Step 2: Install Dependencies
-```bash
-npm install @supabase/supabase-js
-npm install @supabase/auth-helpers-react  # ถ้าใช้ React
-```
+### Database Schema
 
-### Step 3: Create Configuration Files
-- `.env.local` - สำหรับ Supabase URL และ anon key
-- `lib/supabase.ts` - Supabase client setup
-
-### Step 4: Replace Mock Services
-- แก้ไข `services.ts` ให้ใช้ Supabase client แทน mock data
-- สร้าง API functions สำหรับแต่ละ service
-
-### Step 5: Update Components
-- แก้ไข `DashboardView.tsx` ให้ใช้ real data
-- สร้าง loading states และ error handling
-
----
-
-## 📝 ไฟล์ที่ต้องสร้าง
-
-### Configuration
-- [ ] `lib/supabase.ts` - Supabase client
-- [ ] `types/database.ts` - TypeScript types จาก database
-- [ ] `.env.local.example` - ตัวอย่าง environment variables
-
-### Services
-- [ ] `services/vehicleService.ts`
-- [ ] `services/ticketService.ts`
-- [ ] `services/usageService.ts`
-- [ ] `services/fuelService.ts`
-- [ ] `services/maintenanceService.ts`
-- [ ] `services/alertService.ts`
-- [ ] `services/authService.ts`
-
-### Hooks
-- [ ] `hooks/useVehicles.ts`
-- [ ] `hooks/useTickets.ts`
-- [ ] `hooks/useDashboard.ts`
-- [ ] `hooks/useAuth.ts`
-
-### Views/Pages
-- [ ] `views/LoginView.tsx`
-- [ ] `views/VehiclesView.tsx`
-- [ ] `views/TicketsView.tsx`
-- [ ] `views/UsageView.tsx`
-- [ ] `views/FuelView.tsx`
-- [ ] `views/MaintenanceView.tsx`
-- [ ] `views/AlertsView.tsx`
-
-### Components
-- [ ] `components/forms/VehicleForm.tsx`
-- [ ] `components/forms/TicketForm.tsx`
-- [ ] `components/forms/UsageForm.tsx`
-- [ ] `components/forms/FuelForm.tsx`
-- [ ] `components/tables/VehicleTable.tsx`
-- [ ] `components/tables/TicketTable.tsx`
-
----
-
-## 🔍 SQL Views ที่สามารถใช้ได้ทันที
-
-### 1. `vehicle_dashboard`
+#### Table: `trip_logs`
 ```sql
-SELECT * FROM vehicle_dashboard;
-```
-- ใช้สำหรับแสดงข้อมูลรถใน dashboard
-- มีข้อมูล: current_odometer, usage_status, trips, fuel, maintenance, alerts
+CREATE TABLE trip_logs (
+  id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  vehicle_id uuid REFERENCES vehicles(id) NOT NULL,
+  driver_id uuid REFERENCES profiles(id) NOT NULL,
+  
+  -- Check-out data
+  odometer_start integer NOT NULL,
+  checkout_time timestamptz NOT NULL DEFAULT now(),
+  
+  -- Check-in data
+  odometer_end integer,
+  checkin_time timestamptz,
+  
+  -- Calculated fields
+  distance_km integer GENERATED ALWAYS AS (odometer_end - odometer_start) STORED,
+  duration_hours decimal,
+  
+  -- Optional fields
+  destination text,
+  route text,
+  notes text,
+  
+  -- Status
+  status text NOT NULL DEFAULT 'checked_out' CHECK (status IN ('checked_out', 'checked_in')),
+  
+  created_at timestamptz DEFAULT now(),
+  updated_at timestamptz DEFAULT now()
+);
 
-### 2. `fuel_efficiency_summary`
-```sql
-SELECT * FROM fuel_efficiency_summary 
-WHERE month >= date_trunc('month', now() - interval '6 months');
-```
-- ใช้สำหรับแสดงกราฟอัตราสิ้นเปลือง
+-- Indexes
+CREATE INDEX idx_trip_logs_vehicle ON trip_logs(vehicle_id);
+CREATE INDEX idx_trip_logs_driver ON trip_logs(driver_id);
+CREATE INDEX idx_trip_logs_status ON trip_logs(status);
+CREATE INDEX idx_trip_logs_checkout_time ON trip_logs(checkout_time DESC);
 
-### 3. `vehicle_usage_summary`
-```sql
-SELECT * FROM vehicle_usage_summary 
-WHERE month >= date_trunc('month', now() - interval '6 months');
+-- RLS Policies
+ALTER TABLE trip_logs ENABLE ROW LEVEL SECURITY;
+
+-- Drivers can view and create their own trips
+CREATE POLICY "Drivers can view own trips" ON trip_logs
+  FOR SELECT USING (driver_id = auth.uid());
+
+CREATE POLICY "Drivers can create trips" ON trip_logs
+  FOR INSERT WITH CHECK (driver_id = auth.uid());
+
+CREATE POLICY "Drivers can update own trips" ON trip_logs
+  FOR UPDATE USING (driver_id = auth.uid());
+
+-- Managers and above can view all trips
+CREATE POLICY "Managers can view all trips" ON trip_logs
+  FOR SELECT USING (
+    EXISTS (
+      SELECT 1 FROM profiles
+      WHERE id = auth.uid()
+      AND role IN ('manager', 'executive', 'admin')
+    )
+  );
 ```
-- ใช้สำหรับแสดงกราฟการใช้งาน
+
+### Tasks
+
+#### 2.1 Database Setup
+- [ ] สร้าง migration file สำหรับ `trip_logs` table
+- [ ] เพิ่ม RLS policies
+- [ ] สร้าง indexes
+- [ ] ทดสอบ policies
+
+#### 2.2 Backend Services
+- [ ] สร้าง `tripLogService.ts`
+  - `createCheckout()` - บันทึกเลขไมล์ออก
+  - `updateCheckin()` - บันทึกเลขไมล์กลับ
+  - `getActiveTripsByVehicle()` - ดูรถที่ออกไปแล้วยังไม่กลับ
+  - `getTripHistory()` - ดูประวัติการเดินทาง
+  - `validateOdometer()` - ตรวจสอบเลขไมล์
+
+- [ ] สร้าง custom hooks
+  - `useTripLogs()` - ดึงข้อมูล trip logs
+  - `useActiveTrips()` - ดูรถที่กำลังใช้งาน
+  - `useVehicleStatus()` - ตรวจสอบสถานะรถ
+
+#### 2.3 UI Components
+- [ ] สร้าง `TripLogFormView.tsx`
+  - ฟอร์ม Check-out (บันทึกเลขไมล์ออก)
+  - ฟอร์ม Check-in (บันทึกเลขไมล์กลับ)
+  - Validation เลขไมล์
+  - แสดง trip ที่ active
+
+- [ ] สร้าง `TripLogListView.tsx`
+  - แสดงประวัติการเดินทาง
+  - Filter by vehicle, driver, date
+  - Export to Excel
+
+- [ ] สร้าง `ActiveTripsWidget.tsx`
+  - แสดงรถที่ออกไปแล้วยังไม่กลับ
+  - เตือนถ้าออกนานเกิน 12 ชม.
+
+#### 2.4 Validation & Alerts
+- [ ] ตรวจสอบเลขไมล์กลับ > เลขไมล์ออก
+- [ ] ตรวจสอบระยะทางไม่เกิน 500 km ต่อครั้ง
+- [ ] เตือนถ้ารถ Check-out เกิน 12 ชั่วโมง
+- [ ] ป้องกัน Check-out ซ้ำ (รถต้อง Check-in ก่อน)
+
+**Estimated Time:** 4-5 days  
+**Priority:** High  
+**Dependencies:** Phase 1 (optional)
 
 ---
 
-## ⚠️ ข้อควรระวัง
+## 🎯 Phase 3: Fuel Log System (ระบบบันทึกการเติมน้ำมัน)
 
-1. **RLS Policies** - ตรวจสอบว่า policies อนุญาตให้ user อ่าน/เขียนข้อมูลได้ถูกต้อง
-2. **Cron Jobs** - Function `check_maintenance_alerts()` ต้องถูกเรียกเป็นประจำ (ใช้ pg_cron หรือ external service)
-3. **Generated Columns** - `distance_km`, `duration_hours`, `total_cost` เป็น generated columns ไม่ต้อง insert
-4. **UUID vs Bigint** - tickets ใช้ bigint แต่ vehicle_usage ใช้ uuid
-5. **Timezone** - ใช้ `timestamptz` ทุกที่ ต้องระวัง timezone
+### Objectives
+- บันทึกการเติมน้ำมันแต่ละครั้ง
+- คำนวณอัตราการใช้น้ำมัน (km/L)
+- ติดตามค่าใช้จ่ายน้ำมัน
+
+### Database Schema
+
+#### Table: `fuel_logs`
+```sql
+CREATE TABLE fuel_logs (
+  id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  vehicle_id uuid REFERENCES vehicles(id) NOT NULL,
+  filled_by uuid REFERENCES profiles(id) NOT NULL,
+  
+  -- Fuel data
+  odometer integer NOT NULL,
+  fuel_amount decimal(10,2) NOT NULL, -- ลิตร
+  fuel_price decimal(10,2) NOT NULL, -- บาท
+  fuel_type text NOT NULL CHECK (fuel_type IN ('gasoline_91', 'gasoline_95', 'gasohol_91', 'gasohol_95', 'diesel', 'e20', 'e85')),
+  
+  -- Calculated fields
+  price_per_liter decimal(10,2) GENERATED ALWAYS AS (fuel_price / fuel_amount) STORED,
+  fuel_efficiency decimal(10,2), -- km/L (calculated from previous fill)
+  
+  -- Optional fields
+  gas_station text,
+  receipt_image_url text,
+  notes text,
+  
+  filled_at timestamptz NOT NULL DEFAULT now(),
+  created_at timestamptz DEFAULT now()
+);
+
+-- Indexes
+CREATE INDEX idx_fuel_logs_vehicle ON fuel_logs(vehicle_id);
+CREATE INDEX idx_fuel_logs_filled_by ON fuel_logs(filled_by);
+CREATE INDEX idx_fuel_logs_filled_at ON fuel_logs(filled_at DESC);
+
+-- RLS Policies
+ALTER TABLE fuel_logs ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Drivers can view own fuel logs" ON fuel_logs
+  FOR SELECT USING (filled_by = auth.uid());
+
+CREATE POLICY "Drivers can create fuel logs" ON fuel_logs
+  FOR INSERT WITH CHECK (filled_by = auth.uid());
+
+CREATE POLICY "Managers can view all fuel logs" ON fuel_logs
+  FOR SELECT USING (
+    EXISTS (
+      SELECT 1 FROM profiles
+      WHERE id = auth.uid()
+      AND role IN ('manager', 'executive', 'admin')
+    )
+  );
+```
+
+### Tasks
+
+#### 3.1 Database Setup
+- [ ] สร้าง migration file สำหรับ `fuel_logs` table
+- [ ] เพิ่ม RLS policies
+- [ ] สร้าง indexes
+- [ ] สร้าง function คำนวณ fuel efficiency
+
+#### 3.2 Backend Services
+- [ ] สร้าง `fuelLogService.ts`
+  - `createFuelLog()` - บันทึกการเติมน้ำมัน
+  - `calculateFuelEfficiency()` - คำนวณ km/L
+  - `getFuelHistory()` - ดูประวัติการเติม
+  - `getFuelStats()` - สถิติการใช้น้ำมัน
+  - `uploadReceipt()` - อัปโหลดรูปใบเสร็จ
+
+- [ ] สร้าง custom hooks
+  - `useFuelLogs()` - ดึงข้อมูลการเติมน้ำมัน
+  - `useFuelStats()` - สถิติน้ำมัน
+
+#### 3.3 UI Components
+- [ ] สร้าง `FuelLogFormView.tsx`
+  - ฟอร์มบันทึกการเติมน้ำมัน
+  - เลือกรถ
+  - กรอกเลขไมล์, ลิตร, ราคา
+  - เลือกประเภทน้ำมัน
+  - อัปโหลดรูปใบเสร็จ
+  - แสดงอัตราการใช้น้ำมันที่คำนวณได้
+
+- [ ] สร้าง `FuelLogListView.tsx`
+  - แสดงประวัติการเติมน้ำมัน
+  - Filter by vehicle, date range
+  - แสดงสถิติรวม
+
+- [ ] สร้าง `FuelEfficiencyChart.tsx`
+  - กราฟแสดง km/L ตามเวลา
+  - เปรียบเทียบรถต่างๆ
+
+#### 3.4 Analytics & Alerts
+- [ ] คำนวณอัตราการใช้น้ำมันเฉลี่ย
+- [ ] เตือนเมื่อ fuel efficiency ต่ำกว่าปกติ 20%
+- [ ] รายงานค่าใช้จ่ายน้ำมันรายเดือน
+- [ ] เปรียบเทียบประสิทธิภาพรถ
+
+**Estimated Time:** 4-5 days  
+**Priority:** High  
+**Dependencies:** Phase 2 (optional, แต่ควรมี trip logs เพื่อคำนวณ km/L ได้แม่นยำ)
 
 ---
 
-## 📚 Resources
+## 🎯 Phase 4: Driver Role & Navigation (ปรับปรุงสิทธิ์และเมนู)
 
-### Documentation
-- [`docs/SUPABASE_SETUP.md`](./SUPABASE_SETUP.md) - คู่มือการตั้งค่า Supabase และตั้งชื่อโปรเจกต์
-- [`docs/SQL_MIGRATION_GUIDE.md`](./SQL_MIGRATION_GUIDE.md) - คู่มือการรัน SQL migrations
+### Objectives
+- จำกัดเมนูสำหรับพนักงานขับรถ
+- ทำให้ UI ง่ายและใช้งานสะดวก
+- ป้องกันการเข้าถึงข้อมูลที่ไม่จำเป็น
 
-### External Links
-- [Supabase Documentation](https://supabase.com/docs)
-- [Supabase React Guide](https://supabase.com/docs/guides/getting-started/quickstarts/reactjs)
-- [Row Level Security](https://supabase.com/docs/guides/auth/row-level-security)
+### Tasks
 
+#### 4.1 Navigation Updates
+- [ ] อัปเดต `index.tsx` (main navigation)
+  - เพิ่มเมนู "บันทึกเลขไมล์"
+  - เพิ่มเมนู "บันทึกน้ำมัน"
+  - ซ่อนเมนูที่ไม่เกี่ยวข้องสำหรับ Driver role
+
+- [ ] สร้าง `DriverDashboard.tsx` (simplified dashboard)
+  - แสดงเฉพาะข้อมูลที่เกี่ยวข้อง
+  - Quick actions: แจ้งซ่อม, บันทึกไมล์, บันทึกน้ำมัน
+  - รถที่ตัวเองกำลังใช้
+
+#### 4.2 Role-based Access Control
+- [ ] อัปเดต `useAuth.ts`
+  - เพิ่ม `isDriver` helper
+  - ตรวจสอบสิทธิ์ก่อนแสดงเมนู
+
+- [ ] อัปเดต routing
+  - Redirect driver ไปหน้าที่เหมาะสม
+  - ป้องกันการเข้าถึง admin pages
+
+#### 4.3 Mobile Optimization
+- [ ] ปรับ UI ให้เหมาะกับมือถือ
+- [ ] ทดสอบบนมือถือ Android/iOS
+- [ ] ปรับขนาดปุ่มให้กดง่าย
+
+**Estimated Time:** 2-3 days  
+**Priority:** Medium  
+**Dependencies:** Phase 2, Phase 3
+
+---
+
+## 🎯 Phase 5: Reports & Analytics (รายงานและการวิเคราะห์)
+
+### Objectives
+- สร้างรายงานที่เป็นประโยชน์
+- วิเคราะห์ข้อมูลเพื่อหาจุดปรับปรุง
+- Export ข้อมูลเป็น Excel/PDF
+
+### Tasks
+
+#### 5.1 Fuel Reports
+- [ ] รายงานการใช้น้ำมันรายเดือน
+- [ ] เปรียบเทียบค่าใช้จ่ายน้ำมันแต่ละรถ
+- [ ] กราฟแสดง trend การใช้น้ำมัน
+- [ ] Export to Excel
+
+#### 5.2 Trip Reports
+- [ ] รายงานระยะทางรายเดือน
+- [ ] สรุปการใช้รถแต่ละคัน
+- [ ] รายงานพนักงานขับรถ
+- [ ] Export to Excel
+
+#### 5.3 Maintenance Reports
+- [ ] รายงานค่าซ่อมบำรุงรายเดือน
+- [ ] เปรียบเทียบค่าซ่อมแต่ละรถ
+- [ ] ประวัติการซ่อมแต่ละรถ
+- [ ] Export to Excel
+
+#### 5.4 Cost Analysis
+- [ ] สรุปค่าใช้จ่ายรวม (น้ำมัน + ซ่อม)
+- [ ] ค่าใช้จ่ายต่อ km
+- [ ] ROI analysis
+- [ ] Budget tracking
+
+**Estimated Time:** 5-6 days  
+**Priority:** Medium  
+**Dependencies:** Phase 2, Phase 3
+
+---
+
+## 🎯 Phase 6: Advanced Features (ฟีเจอร์ขั้นสูง)
+
+### Optional Features (ทำหลังจากระบบหลักเสร็จ)
+
+- [ ] **GPS Integration**
+  - บันทึกตำแหน่งเมื่อ Check-out/Check-in
+  - แสดงเส้นทางบนแผนที่
+
+- [ ] **Notifications**
+  - แจ้งเตือนผ่าน LINE/Email
+  - แจ้งเตือนเมื่อถึงกำหนดซ่อมบำรุง
+  - แจ้งเตือนเมื่อรถ Check-out นาน
+
+- [ ] **QR Code Check-in/out**
+  - สแกน QR บนรถเพื่อ Check-out/in
+  - รวดเร็วและป้องกันผิดพลาด
+
+- [ ] **Voice Input**
+  - บันทึกเลขไมล์ด้วยเสียง
+  - สะดวกขณะขับรถ
+
+- [ ] **Predictive Maintenance**
+  - ทำนายเมื่อต้องซ่อมบำรุง
+  - วิเคราะห์ pattern การเสีย
+
+**Estimated Time:** TBD  
+**Priority:** Low  
+**Dependencies:** All previous phases
+
+---
+
+## 📊 Progress Tracking
+
+### Overall Progress: 0% Complete
+
+| Phase | Status | Progress | Start Date | End Date |
+|-------|--------|----------|------------|----------|
+| Phase 1: Dashboard | 🔴 Not Started | 0% | - | - |
+| Phase 2: Trip Logs | 🔴 Not Started | 0% | - | - |
+| Phase 3: Fuel Logs | 🔴 Not Started | 0% | - | - |
+| Phase 4: Driver Role | 🔴 Not Started | 0% | - | - |
+| Phase 5: Reports | 🔴 Not Started | 0% | - | - |
+| Phase 6: Advanced | 🔴 Not Started | 0% | - | - |
+
+### Legend
+- 🔴 Not Started
+- 🟡 In Progress
+- 🟢 Completed
+- ⏸️ On Hold
+- ❌ Cancelled
+
+---
+
+## 🎯 Next Steps
+
+1. **รอการยืนยันแผน** - รอ user approve roadmap
+2. **เริ่ม Phase 1** - ปรับปรุง Dashboard
+3. **Database Design Review** - ตรวจสอบ schema ก่อนสร้าง
+4. **UI/UX Mockups** - ออกแบบหน้าจอก่อนเขียนโค้ด
+
+---
+
+## 📝 Notes & Decisions
+
+### Design Decisions
+- ใช้ `timestamptz` สำหรับเวลาทั้งหมด (รองรับ timezone)
+- ใช้ `uuid` สำหรับ primary keys
+- ใช้ RLS policies เพื่อความปลอดภัย
+- ใช้ GENERATED columns สำหรับการคำนวณ
+
+### Technical Stack
+- Frontend: React + TypeScript
+- Backend: Supabase (PostgreSQL + Auth + Storage)
+- Charts: Recharts / Chart.js
+- Export: xlsx / jsPDF
+
+### Future Considerations
+- Mobile app (React Native)
+- Offline support
+- Multi-language support
+- Integration with accounting system
+
+---
+
+**Last Updated:** 2025-11-24  
+**Document Owner:** Development Team  
+**Status:** Draft - Pending Approval
