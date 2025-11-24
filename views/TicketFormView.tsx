@@ -62,6 +62,8 @@ export const TicketFormView: React.FC<TicketFormViewProps> = ({
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [existingImages, setExistingImages] = useState<string[]>([]);
   const [uploading, setUploading] = useState(false);
+  // Store preview URLs to prevent them from being revoked
+  const [previewUrls, setPreviewUrls] = useState<Map<File, string>>(new Map());
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -106,6 +108,16 @@ export const TicketFormView: React.FC<TicketFormViewProps> = ({
     setFilteredVehicles(filtered);
   }, [vehicleSearch, vehicles]);
 
+  // Cleanup blob URLs when component unmounts
+  useEffect(() => {
+    return () => {
+      // Revoke all object URLs on cleanup
+      previewUrls.forEach((url) => {
+        URL.revokeObjectURL(url);
+      });
+    };
+  }, [previewUrls]);
+
   const handleChange = (field: string, value: string | UrgencyLevel | TicketStatus) => {
     setFormData(prev => ({ ...prev, [field]: value }));
     setError(null);
@@ -124,11 +136,30 @@ export const TicketFormView: React.FC<TicketFormViewProps> = ({
         return true;
       });
 
+      // Create blob URLs for new files and store them
+      const newPreviewUrls = new Map(previewUrls);
+      validFiles.forEach((file: File) => {
+        if (!newPreviewUrls.has(file)) {
+          newPreviewUrls.set(file, URL.createObjectURL(file as Blob));
+        }
+      });
+      setPreviewUrls(newPreviewUrls);
       setSelectedFiles(prev => [...prev, ...validFiles]);
     }
   };
 
   const removeFile = (index: number) => {
+    const fileToRemove = selectedFiles[index];
+
+    // Revoke the blob URL for the removed file
+    const url = previewUrls.get(fileToRemove);
+    if (url) {
+      URL.revokeObjectURL(url);
+      const newPreviewUrls = new Map(previewUrls);
+      newPreviewUrls.delete(fileToRemove);
+      setPreviewUrls(newPreviewUrls);
+    }
+
     setSelectedFiles(prev => prev.filter((_, i) => i !== index));
   };
 
@@ -480,25 +511,33 @@ export const TicketFormView: React.FC<TicketFormViewProps> = ({
               ))}
 
               {/* Selected Files Previews */}
-              {selectedFiles.map((file, index) => (
-                <div key={`new-${index}`} className="relative group aspect-video bg-slate-100 dark:bg-slate-800 rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700 flex items-center justify-center">
-                  {file.type.startsWith('image/') ? (
-                    <img src={URL.createObjectURL(file)} alt="Preview" className="w-full h-full object-cover" />
-                  ) : (
-                    <div className="flex flex-col items-center text-slate-500">
-                      <FileVideo size={32} className="mb-2" />
-                      <span className="text-xs truncate max-w-[90%]">{file.name}</span>
-                    </div>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => removeFile(index)}
-                    className="absolute top-2 right-2 p-1.5 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
-                  >
-                    <X size={16} />
-                  </button>
-                </div>
-              ))}
+              {selectedFiles.map((file, index) => {
+                const previewUrl = previewUrls.get(file);
+                return (
+                  <div key={`new-${index}`} className="relative group aspect-video bg-slate-100 dark:bg-slate-800 rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700 flex items-center justify-center">
+                    {file.type.startsWith('image/') && previewUrl ? (
+                      <img src={previewUrl} alt="Preview" className="w-full h-full object-cover" />
+                    ) : file.type.startsWith('image/') ? (
+                      <div className="flex flex-col items-center text-slate-500">
+                        <ImageIcon size={32} className="mb-2" />
+                        <span className="text-xs truncate max-w-[90%]">{file.name}</span>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col items-center text-slate-500">
+                        <FileVideo size={32} className="mb-2" />
+                        <span className="text-xs truncate max-w-[90%]">{file.name}</span>
+                      </div>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => removeFile(index)}
+                      className="absolute top-2 right-2 p-1.5 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      <X size={16} />
+                    </button>
+                  </div>
+                );
+              })}
 
               {/* Upload Button */}
               <label className="cursor-pointer flex flex-col items-center justify-center aspect-video border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
