@@ -94,6 +94,18 @@ export const ticketService = {
     return data;
   },
 
+  // Get ticket by ID with relations (reporter, vehicle info)
+  getByIdWithRelations: async (id: number): Promise<TicketWithRelations | null> => {
+    const { data, error } = await supabase
+      .from('tickets_with_relations')
+      .select('*')
+      .eq('id', id)
+      .single();
+
+    if (error) throw error;
+    return data;
+  },
+
   // Get urgent tickets count
   getUrgentCount: async (): Promise<number> => {
     const { count, error } = await supabase
