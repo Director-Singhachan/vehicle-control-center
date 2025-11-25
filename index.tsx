@@ -34,17 +34,17 @@ import { ProtectedRoute } from './components/ProtectedRoute';
 import { useAuth, usePendingTickets } from './hooks';
 import { prefetchService } from './services/prefetchService';
 
-const SidebarItem = ({ icon: Icon, label, active, onClick, onMouseEnter }: any) => (
+const SidebarItem = ({ icon: Icon, label, active, onClick, onMouseEnter, isCollapsed }: any) => (
   <button
     onClick={onClick}
     onMouseEnter={onMouseEnter}
-    className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors duration-200 ${active
+    className={`w-full flex items-center ${isCollapsed ? 'justify-center' : 'space-x-3'} px-4 py-3 rounded-lg transition-colors duration-200 ${active
       ? 'bg-enterprise-50 text-enterprise-600 dark:bg-enterprise-900/30 dark:text-enterprise-400 font-medium'
       : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/50'
       }`}
   >
-    <Icon size={20} />
-    <span>{label}</span>
+    <Icon size={isCollapsed ? 24 : 20} />
+    {!isCollapsed && <span>{label}</span>}
   </button>
 );
 
@@ -231,6 +231,7 @@ const AppContent = () => {
               active={activeTab === 'dashboard'}
               onClick={() => setActiveTab('dashboard')}
               onMouseEnter={() => prefetchService.prefetchDashboard()}
+              isCollapsed={!isSidebarOpen}
             />
           )}
           {!isDriver && (
@@ -240,6 +241,7 @@ const AppContent = () => {
               active={activeTab === 'vehicles'}
               onClick={() => setActiveTab('vehicles')}
               onMouseEnter={() => prefetchService.prefetchVehicles()}
+              isCollapsed={!isSidebarOpen}
             />
           )}
           <SidebarItem
@@ -248,6 +250,7 @@ const AppContent = () => {
             active={activeTab === 'maintenance'}
             onClick={() => setActiveTab('maintenance')}
             onMouseEnter={() => prefetchService.prefetchTicketsWithRelations()}
+            isCollapsed={!isSidebarOpen}
           />
           <SidebarItem
             icon={Route}
@@ -257,6 +260,7 @@ const AppContent = () => {
               setActiveTab('triplogs');
               setTripLogView('list');
             }}
+            isCollapsed={!isSidebarOpen}
           />
           {/* Show approval board menu - check role directly for reliability */}
           {(() => {
@@ -274,6 +278,7 @@ const AppContent = () => {
                 active={activeTab === 'approvals'}
                 onClick={() => setActiveTab('approvals')}
                 onMouseEnter={() => prefetchService.prefetchTicketsWithRelations()}
+                isCollapsed={!isSidebarOpen}
               />
             ) : null;
           })()}
@@ -283,16 +288,17 @@ const AppContent = () => {
               label={isSidebarOpen ? "รายงาน" : ""}
               active={activeTab === 'reports'}
               onClick={() => setActiveTab('reports')}
+              isCollapsed={!isSidebarOpen}
             />
           )}
         </div>
 
         <div className="p-3 border-t border-slate-200 dark:border-slate-800/50 space-y-1">
-          <SidebarItem icon={User} label={isSidebarOpen ? "โปรไฟล์" : ""} active={activeTab === 'profile'} onClick={() => setActiveTab('profile')} />
+          <SidebarItem icon={User} label={isSidebarOpen ? "โปรไฟล์" : ""} active={activeTab === 'profile'} onClick={() => setActiveTab('profile')} isCollapsed={!isSidebarOpen} />
           {(isAdmin || isManager) && (
-            <SidebarItem icon={Shield} label={isSidebarOpen ? "ทดสอบ RLS" : ""} active={activeTab === 'rls-test'} onClick={() => setActiveTab('rls-test')} />
+            <SidebarItem icon={Shield} label={isSidebarOpen ? "ทดสอบ RLS" : ""} active={activeTab === 'rls-test'} onClick={() => setActiveTab('rls-test')} isCollapsed={!isSidebarOpen} />
           )}
-          <SidebarItem icon={Settings} label={isSidebarOpen ? "ตั้งค่า" : ""} active={activeTab === 'settings'} onClick={() => setActiveTab('settings')} />
+          <SidebarItem icon={Settings} label={isSidebarOpen ? "ตั้งค่า" : ""} active={activeTab === 'settings'} onClick={() => setActiveTab('settings')} isCollapsed={!isSidebarOpen} />
           <SidebarItem icon={LogOut} label={isSidebarOpen ? "ออกจากระบบ" : ""} onClick={async () => {
             try {
               await signOut();
