@@ -126,6 +126,7 @@ export const useTicket = (id: number | null) => {
 export const useTicketsWithRelations = (filters?: {
   status?: string[];
   vehicle_id?: string;
+  urgency?: string[]; // Add urgency filter
   limit?: number;
   offset?: number;
   search?: string;

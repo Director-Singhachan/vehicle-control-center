@@ -47,38 +47,22 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
   // Calculate pagination
   const offset = (currentPage - 1) * itemsPerPage;
 
-  // Fetch tickets with relations (server-side pagination)
+  // Fetch tickets with relations (server-side pagination and filtering)
   const { tickets, totalCount, loading, error, refetch } = useTicketsWithRelations({
     status: statusFilter !== 'all' && Array.isArray(statusFilter) ? statusFilter : undefined,
+    urgency: urgencyFilter !== 'all' && Array.isArray(urgencyFilter) ? urgencyFilter : undefined,
     limit: itemsPerPage,
     offset: offset,
     search: searchQuery || undefined,
   });
 
-  // Filter tickets (client-side filtering for urgency only, as it's not in service yet)
-  // Note: For better performance with large datasets, urgency filter should be moved to server-side
-  const filteredTickets = useMemo(() => {
-    let filtered = tickets || [];
-
-    // Urgency filter (client-side for now, can be moved to server-side later)
-    if (urgencyFilter !== 'all' && Array.isArray(urgencyFilter)) {
-      filtered = filtered.filter(t => urgencyFilter.includes(t.urgency));
-    }
-
-    return filtered;
-  }, [tickets, urgencyFilter]);
-
-  // Pagination (using server-side count, but adjust if urgency filter is applied)
-  // Note: If urgency filter is active, totalCount may not be accurate
-  // For accurate count with urgency filter, we'd need to fetch all matching records or add urgency to server-side filter
-  const effectiveTotalCount = urgencyFilter !== 'all' && Array.isArray(urgencyFilter) 
-    ? filteredTickets.length // Approximate - not accurate for pagination
-    : totalCount;
+  // All filtering is now done server-side, so we can use tickets directly
+  const paginatedTickets = tickets;
   
-  const totalPages = Math.ceil(effectiveTotalCount / itemsPerPage);
+  // Pagination (using server-side count)
+  const totalPages = Math.ceil(totalCount / itemsPerPage);
   const startIndex = offset;
-  const endIndex = Math.min(startIndex + itemsPerPage, effectiveTotalCount);
-  const paginatedTickets = filteredTickets;
+  const endIndex = Math.min(startIndex + itemsPerPage, totalCount);
 
   // Reset to page 1 when filters change
   useEffect(() => {
@@ -163,7 +147,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
   return (
     <PageLayout
       title="ตั๋วซ่อมบำรุง"
-      subtitle={loading ? 'กำลังโหลด...' : `ทั้งหมด ${effectiveTotalCount.toLocaleString('th-TH')} รายการ${totalPages > 1 ? ` (หน้า ${currentPage}/${totalPages})` : ''}`}
+      subtitle={loading ? 'กำลังโหลด...' : `ทั้งหมด ${totalCount.toLocaleString('th-TH')} รายการ${totalPages > 1 ? ` (หน้า ${currentPage}/${totalPages})` : ''}`}
       loading={loading}
       error={!!error}
       onRetry={refetch}
@@ -327,7 +311,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
         </Card>
 
         {/* Tickets List */}
-        {effectiveTotalCount === 0 ? (
+        {totalCount === 0 ? (
           <Card className="p-12 text-center">
             <FileText className="w-16 h-16 mx-auto mb-4 text-slate-400 opacity-50" />
             <h3 className="text-lg font-medium text-slate-600 dark:text-slate-300 mb-2">
@@ -458,7 +442,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
               <Card className="p-4">
                 <div className="flex flex-col md:flex-row items-center justify-between gap-4">
                   <div className="text-sm text-slate-600 dark:text-slate-400">
-                    แสดง {startIndex + 1}-{endIndex} จาก {effectiveTotalCount.toLocaleString('th-TH')} รายการ
+                    แสดง {startIndex + 1}-{endIndex} จาก {totalCount.toLocaleString('th-TH')} รายการ
                     {totalPages > 1 && (
                       <span className="ml-2">(ทั้งหมด {totalPages.toLocaleString('th-TH')} หน้า)</span>
                     )}
