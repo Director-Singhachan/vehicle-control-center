@@ -529,6 +529,55 @@ export interface Database {
           created_at?: string;
         };
       };
+      trip_logs: {
+        Row: {
+          id: string;
+          vehicle_id: string;
+          driver_id: string;
+          odometer_start: number;
+          checkout_time: string;
+          odometer_end: number | null;
+          checkin_time: string | null;
+          distance_km: number | null;
+          duration_hours: number | null;
+          destination: string | null;
+          route: string | null;
+          notes: string | null;
+          status: 'checked_out' | 'checked_in';
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          vehicle_id: string;
+          driver_id: string;
+          odometer_start: number;
+          checkout_time?: string;
+          odometer_end?: number | null;
+          checkin_time?: string | null;
+          destination?: string | null;
+          route?: string | null;
+          notes?: string | null;
+          status?: 'checked_out' | 'checked_in';
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          vehicle_id?: string;
+          driver_id?: string;
+          odometer_start?: number;
+          checkout_time?: string;
+          odometer_end?: number | null;
+          checkin_time?: string | null;
+          destination?: string | null;
+          route?: string | null;
+          notes?: string | null;
+          status?: 'checked_out' | 'checked_in';
+          created_at?: string;
+          updated_at?: string;
+        };
+      };
       audit_logs: {
         Row: {
           id: number;
