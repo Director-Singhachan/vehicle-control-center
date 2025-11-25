@@ -9,20 +9,25 @@ export const useTripLogs = (filters?: {
   start_date?: string;
   end_date?: string;
   status?: 'checked_out' | 'checked_in';
+  limit?: number;
+  offset?: number;
+  search?: string;
 }) => {
   const cache = useDataCacheStore();
   const cacheKey = createCacheKey('trip-logs', filters || {});
 
-  const cached = cache.get<TripLogWithRelations[]>(cacheKey);
-  const [trips, setTrips] = useState<TripLogWithRelations[]>(cached || []);
+  const cached = cache.get<{ data: TripLogWithRelations[]; count: number }>(cacheKey);
+  const [trips, setTrips] = useState<TripLogWithRelations[]>(cached?.data || []);
+  const [totalCount, setTotalCount] = useState<number>(cached?.count || 0);
   const [loading, setLoading] = useState(!cached);
   const [error, setError] = useState<Error | null>(null);
 
   const fetchTrips = async (useCache = true) => {
     if (useCache) {
-      const cached = cache.get<TripLogWithRelations[]>(cacheKey);
+      const cached = cache.get<{ data: TripLogWithRelations[]; count: number }>(cacheKey);
       if (cached !== null && cached !== undefined) {
-        setTrips(cached);
+        setTrips(cached.data);
+        setTotalCount(cached.count);
         setLoading(false);
         // Background refresh
         setTimeout(() => fetchTrips(false), 100);
@@ -33,10 +38,11 @@ export const useTripLogs = (filters?: {
     setLoading(true);
     setError(null);
     try {
-      const data = await tripLogService.getTripHistory(filters);
-      setTrips(data);
+      const result = await tripLogService.getTripHistory(filters);
+      setTrips(result.data);
+      setTotalCount(result.count);
       // Cache for 1 minute
-      cache.set(cacheKey, data, 60 * 1000);
+      cache.set(cacheKey, result, 60 * 1000);
     } catch (err) {
       setError(err instanceof Error ? err : new Error('Failed to fetch trip logs'));
     } finally {
@@ -50,6 +56,7 @@ export const useTripLogs = (filters?: {
 
   return {
     trips,
+    totalCount,
     loading,
     error,
     refetch: () => fetchTrips(false),

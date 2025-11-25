@@ -45,16 +45,23 @@ export const ticketService = {
     return data || [];
   },
 
-  // Get tickets with relations (using view)
+  // Get tickets with relations (using view) with pagination
   getWithRelations: async (filters?: {
     status?: string[];
     vehicle_id?: string;
-  }): Promise<TicketWithRelations[]> => {
+    limit?: number;
+    offset?: number;
+    search?: string; // For text search
+  }): Promise<{ data: TicketWithRelations[]; count: number }> => {
     try {
+      const limit = filters?.limit || 100;
+      const offset = filters?.offset || 0;
+      
       let query = supabase
         .from('tickets_with_relations')
-        .select('*')
-        .order('created_at', { ascending: false });
+        .select('*', { count: 'exact' })
+        .order('created_at', { ascending: false })
+        .range(offset, offset + limit - 1);
 
       if (filters?.status && filters.status.length > 0) {
         query = query.in('status', filters.status);
@@ -63,7 +70,7 @@ export const ticketService = {
         query = query.eq('vehicle_id', filters.vehicle_id);
       }
 
-      const { data, error } = await query;
+      const { data, error, count } = await query;
 
       if (error) {
         // Check for connection errors
@@ -72,7 +79,25 @@ export const ticketService = {
         }
         throw error;
       }
-      return data || [];
+
+      let results = data || [];
+
+      // Apply text search filter if provided (client-side for now)
+      if (filters?.search) {
+        const searchLower = filters.search.toLowerCase();
+        results = results.filter(ticket =>
+          ticket.ticket_number?.toLowerCase().includes(searchLower) ||
+          ticket.vehicle_plate?.toLowerCase().includes(searchLower) ||
+          ticket.repair_type?.toLowerCase().includes(searchLower) ||
+          ticket.problem_description?.toLowerCase().includes(searchLower) ||
+          ticket.reporter_name?.toLowerCase().includes(searchLower)
+        );
+      }
+
+      return {
+        data: results,
+        count: count || 0,
+      };
     } catch (err) {
       // Re-throw with better error message
       if (err instanceof Error && (err.message.includes('fetch') || err.message.includes('network'))) {

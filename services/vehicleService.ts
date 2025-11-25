@@ -143,11 +143,12 @@ export const vehicleService = {
           .from('vehicles')
           .select('id', { count: 'exact', head: true }),
 
-        // Active vehicles (in use)
+        // Active vehicles (in use) - Count from trip_logs where status = 'checked_out'
+        // This represents vehicles that are currently checked out but not yet checked in
         supabase
-          .from('vehicle_usage')
+          .from('trip_logs')
           .select('vehicle_id', { count: 'exact', head: true })
-          .eq('status', 'in_progress'),
+          .eq('status', 'checked_out'),
 
         // Maintenance vehicles
         supabase

@@ -126,21 +126,25 @@ export const useTicket = (id: number | null) => {
 export const useTicketsWithRelations = (filters?: {
   status?: string[];
   vehicle_id?: string;
+  limit?: number;
+  offset?: number;
+  search?: string;
 }) => {
   const cache = useDataCacheStore();
   const cacheKey = createCacheKey('tickets-with-relations', filters || {});
 
-  const cached = cache.get<TicketWithRelations[]>(cacheKey);
-  const [tickets, setTickets] = useState<TicketWithRelations[]>(cached || []);
+  const cached = cache.get<{ data: TicketWithRelations[]; count: number }>(cacheKey);
+  const [tickets, setTickets] = useState<TicketWithRelations[]>(cached?.data || []);
+  const [totalCount, setTotalCount] = useState<number>(cached?.count || 0);
   const [loading, setLoading] = useState(!cached);
   const [error, setError] = useState<Error | null>(null);
 
   const fetchTickets = async (useCache = true) => {
     if (useCache) {
-      const cached = cache.get<TicketWithRelations[]>(cacheKey);
-      if (cached !== null && cached !== undefined) { // Allow empty array
-        // Always set tickets first to prevent flickering
-        setTickets(cached);
+      const cached = cache.get<{ data: TicketWithRelations[]; count: number }>(cacheKey);
+      if (cached !== null && cached !== undefined) {
+        setTickets(cached.data);
+        setTotalCount(cached.count);
         setLoading(false);
         setError(null);
         // Background refresh - don't block UI
@@ -150,16 +154,17 @@ export const useTicketsWithRelations = (filters?: {
     }
 
     // Only set loading if we truly have no data
-    const currentTickets = tickets.length > 0 ? tickets : cache.get<TicketWithRelations[]>(cacheKey) || [];
+    const currentTickets = tickets.length > 0 ? tickets : cache.get<{ data: TicketWithRelations[]; count: number }>(cacheKey)?.data || [];
     if (currentTickets.length === 0 && !loading) {
       setLoading(true);
     }
     setError(null);
     try {
-      const data = await ticketService.getWithRelations(filters);
-      setTickets(data);
+      const result = await ticketService.getWithRelations(filters);
+      setTickets(result.data);
+      setTotalCount(result.count);
       // Cache for 2 minutes
-      cache.set(cacheKey, data, 2 * 60 * 1000);
+      cache.set(cacheKey, result, 2 * 60 * 1000);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to fetch tickets';
       // Check if it's a connection error
@@ -179,6 +184,7 @@ export const useTicketsWithRelations = (filters?: {
 
   return {
     tickets,
+    totalCount,
     loading,
     error,
     refetch: () => fetchTickets(false),

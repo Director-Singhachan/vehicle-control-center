@@ -75,7 +75,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
               อีเมล หรือ เบอร์โทรศัพท์
             </label>
             <div className="relative">
-              <div className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400">
+              <div className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-500 dark:text-slate-400 z-10 pointer-events-none">
                 {/^[0-9]+$/.test(identifier) ? <Phone className="w-5 h-5" /> : <Mail className="w-5 h-5" />}
               </div>
               <Input
@@ -96,7 +96,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
               รหัสผ่าน
             </label>
             <div className="relative">
-              <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-slate-400" />
+              <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-slate-500 dark:text-slate-400 z-10 pointer-events-none" />
               <Input
                 id="password"
                 type="password"
