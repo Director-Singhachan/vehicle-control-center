@@ -108,7 +108,7 @@ export const ActiveTripsWidget: React.FC<ActiveTripsWidgetProps> = ({
         </span>
       </div>
 
-      <div className="space-y-4">
+      <div className="space-y-4 max-h-[600px] overflow-y-auto">
         {displayTrips.map((trip) => {
           const overdue = isOverdue(trip);
           
@@ -125,20 +125,51 @@ export const ActiveTripsWidget: React.FC<ActiveTripsWidgetProps> = ({
               onClick={() => onTripClick && onTripClick(trip.id)}
             >
               <div className="flex items-start justify-between mb-3">
-                <div className="flex items-center gap-3">
-                  <div
-                    className={`w-3 h-3 rounded-full ${
-                      overdue ? 'bg-red-500' : 'bg-amber-500'
-                    }`}
-                  />
-                  <div>
-                    <h4 className="font-semibold text-slate-900 dark:text-white flex items-center gap-2">
-                      <Truck size={18} />
-                      {trip.vehicle?.plate || 'N/A'}
-                    </h4>
-                    <p className="text-sm text-slate-600 dark:text-slate-400 flex items-center gap-1 mt-1">
+                <div className="flex items-center gap-3 flex-1">
+                  {/* Vehicle Image */}
+                  <div className="flex-shrink-0">
+                    {trip.vehicle?.image_url ? (
+                      <img
+                        src={trip.vehicle.image_url}
+                        alt={trip.vehicle.plate || 'Vehicle'}
+                        className="w-16 h-16 object-cover rounded-lg border border-slate-200 dark:border-slate-700"
+                        onError={(e) => {
+                          // Fallback to icon if image fails to load
+                          const target = e.target as HTMLImageElement;
+                          target.style.display = 'none';
+                          const fallback = target.nextElementSibling as HTMLElement;
+                          if (fallback) fallback.style.display = 'flex';
+                        }}
+                      />
+                    ) : null}
+                    <div
+                      className={`w-16 h-16 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 flex items-center justify-center ${
+                        trip.vehicle?.image_url ? 'hidden' : ''
+                      }`}
+                    >
+                      <Truck size={24} className="text-slate-400" />
+                    </div>
+                  </div>
+                  
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <div
+                        className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                          overdue ? 'bg-red-500' : 'bg-amber-500'
+                        }`}
+                      />
+                      <h4 className="font-semibold text-slate-900 dark:text-white truncate">
+                        {trip.vehicle?.plate || 'N/A'}
+                      </h4>
+                    </div>
+                    {trip.vehicle?.make && trip.vehicle?.model && (
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">
+                        {trip.vehicle.make} {trip.vehicle.model}
+                      </p>
+                    )}
+                    <p className="text-sm text-slate-600 dark:text-slate-400 flex items-center gap-1">
                       <User size={14} />
-                      {trip.driver?.full_name || 'N/A'}
+                      <span className="truncate">{trip.driver?.full_name || 'N/A'}</span>
                     </p>
                   </div>
                 </div>

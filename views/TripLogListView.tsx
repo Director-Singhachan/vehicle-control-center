@@ -1,5 +1,5 @@
 // Trip Log List View - Display trip history
-import React, { useState } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Truck,
   Gauge,
@@ -12,7 +12,9 @@ import {
   CheckCircle,
   AlertCircle,
   ArrowRight,
-  Plus
+  Plus,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
@@ -40,20 +42,31 @@ export const TripLogListView: React.FC<TripLogListViewProps> = ({
   }>({});
 
   const [searchTerm, setSearchTerm] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageInput, setPageInput] = useState('');
+  const itemsPerPage = 20;
 
-  const { trips, loading, error, refetch } = useTripLogs(filters);
+  // Calculate pagination
+  const offset = (currentPage - 1) * itemsPerPage;
 
-  // Filter trips by search term
-  const filteredTrips = trips.filter((trip) => {
-    if (!searchTerm) return true;
-    const searchLower = searchTerm.toLowerCase();
-    return (
-      trip.vehicle?.plate?.toLowerCase().includes(searchLower) ||
-      trip.driver?.full_name?.toLowerCase().includes(searchLower) ||
-      trip.destination?.toLowerCase().includes(searchLower) ||
-      trip.route?.toLowerCase().includes(searchLower)
-    );
+  // Fetch trips with server-side pagination
+  const { trips, totalCount, loading, error, refetch } = useTripLogs({
+    ...filters,
+    limit: itemsPerPage,
+    offset: offset,
+    search: searchTerm || undefined,
   });
+
+  // Pagination (using server-side count)
+  const totalPages = Math.ceil(totalCount / itemsPerPage);
+  const startIndex = offset;
+  const endIndex = Math.min(startIndex + itemsPerPage, totalCount);
+  const paginatedTrips = trips;
+
+  // Reset to page 1 when filters or search change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [filters, searchTerm]);
 
   const formatDate = (date: string) => {
     return new Date(date).toLocaleString('th-TH', {
@@ -80,7 +93,7 @@ export const TripLogListView: React.FC<TripLogListViewProps> = ({
   return (
     <PageLayout
       title="ประวัติการเดินทาง"
-      subtitle="รายการการเดินทางทั้งหมด"
+      subtitle={loading ? 'กำลังโหลด...' : `ทั้งหมด ${totalCount.toLocaleString('th-TH')} รายการ${totalPages > 1 ? ` (หน้า ${currentPage}/${totalPages})` : ''}`}
       actions={
         <div className="flex gap-2">
           {onCreateCheckout && (
@@ -211,7 +224,7 @@ export const TripLogListView: React.FC<TripLogListViewProps> = ({
       )}
 
       {/* Trips List */}
-      {!loading && filteredTrips.length === 0 && (
+      {!loading && totalCount === 0 && (
         <Card className="p-12 text-center">
           <Truck className="mx-auto mb-4 text-slate-400" size={48} />
           <p className="text-slate-600 dark:text-slate-400">
@@ -222,13 +235,14 @@ export const TripLogListView: React.FC<TripLogListViewProps> = ({
         </Card>
       )}
 
-      {!loading && filteredTrips.length > 0 && (
-        <div className="space-y-4">
-          <div className="text-sm text-slate-600 dark:text-slate-400 mb-4">
-            พบทั้งหมด {filteredTrips.length} รายการ
-          </div>
+      {!loading && totalCount > 0 && (
+        <>
+          <div className="space-y-4">
+            <div className="text-sm text-slate-600 dark:text-slate-400 mb-4">
+              พบทั้งหมด {totalCount.toLocaleString('th-TH')} รายการ
+            </div>
 
-          {filteredTrips.map((trip) => (
+            {paginatedTrips.map((trip) => (
             <Card key={trip.id} className="p-6 hover:shadow-md transition-shadow">
               <div className="flex items-start gap-4">
                 {/* Vehicle Image */}
@@ -390,8 +404,150 @@ export const TripLogListView: React.FC<TripLogListViewProps> = ({
                 </div>
               </div>
             </Card>
-          ))}
-        </div>
+            ))}
+
+            {/* Pagination */}
+            {totalPages > 1 && (
+              <Card className="p-4 mt-6">
+                <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+                  <div className="text-sm text-slate-600 dark:text-slate-400">
+                    แสดง {startIndex + 1}-{endIndex} จาก {totalCount.toLocaleString('th-TH')} รายการ
+                    {totalPages > 1 && (
+                      <span className="ml-2">(ทั้งหมด {totalPages.toLocaleString('th-TH')} หน้า)</span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 flex-wrap justify-center">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                      disabled={currentPage === 1}
+                      className="flex items-center gap-1"
+                    >
+                      <ChevronLeft size={16} />
+                      ก่อนหน้า
+                    </Button>
+                    
+                    {/* Page Numbers */}
+                    <div className="flex items-center gap-1 flex-wrap">
+                      {(() => {
+                        const pages: (number | string)[] = [];
+                        
+                        // For small number of pages, show all
+                        if (totalPages <= 7) {
+                          for (let i = 1; i <= totalPages; i++) {
+                            pages.push(i);
+                          }
+                        } else {
+                          // Always show first page
+                          pages.push(1);
+                          
+                          // Calculate range around current page (show 2 pages on each side)
+                          const startPage = Math.max(2, currentPage - 2);
+                          const endPage = Math.min(totalPages - 1, currentPage + 2);
+                          
+                          // Add ellipsis if needed before current range
+                          if (startPage > 2) {
+                            pages.push('ellipsis-start');
+                          }
+                          
+                          // Add pages around current page
+                          for (let i = startPage; i <= endPage; i++) {
+                            if (i !== 1 && i !== totalPages) {
+                              pages.push(i);
+                            }
+                          }
+                          
+                          // Add ellipsis if needed after current range
+                          if (endPage < totalPages - 1) {
+                            pages.push('ellipsis-end');
+                          }
+                          
+                          // Always show last page
+                          pages.push(totalPages);
+                        }
+                        
+                        return pages.map((page) => {
+                          if (typeof page === 'string') {
+                            return (
+                              <span key={page} className="px-2 text-slate-400">
+                                ...
+                              </span>
+                            );
+                          }
+                          
+                          return (
+                            <button
+                              key={page}
+                              onClick={() => setCurrentPage(page)}
+                              className={`px-3 py-1 rounded-lg text-sm font-medium transition-colors ${
+                                currentPage === page
+                                  ? 'bg-enterprise-600 text-white'
+                                  : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+                              }`}
+                            >
+                              {page.toLocaleString('th-TH')}
+                            </button>
+                          );
+                        });
+                      })()}
+                    </div>
+
+                    {/* Jump to Page Input (for large page counts) */}
+                    {totalPages > 10 && (
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm text-slate-600 dark:text-slate-400">ไปที่หน้า:</span>
+                        <input
+                          type="number"
+                          min="1"
+                          max={totalPages}
+                          value={pageInput}
+                          onChange={(e) => setPageInput(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              const page = parseInt(pageInput);
+                              if (page >= 1 && page <= totalPages) {
+                                setCurrentPage(page);
+                                setPageInput('');
+                              }
+                            }
+                          }}
+                          placeholder={`1-${totalPages}`}
+                          className="w-20 px-2 py-1 text-sm border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-enterprise-500 focus:border-transparent"
+                        />
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            const page = parseInt(pageInput);
+                            if (page >= 1 && page <= totalPages) {
+                              setCurrentPage(page);
+                              setPageInput('');
+                            }
+                          }}
+                          disabled={!pageInput || parseInt(pageInput) < 1 || parseInt(pageInput) > totalPages}
+                        >
+                          ไป
+                        </Button>
+                      </div>
+                    )}
+
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                      disabled={currentPage === totalPages}
+                      className="flex items-center gap-1"
+                    >
+                      ถัดไป
+                      <ChevronRight size={16} />
+                    </Button>
+                  </div>
+                </div>
+              </Card>
+            )}
+          </div>
+        </>
       )}
     </PageLayout>
   );

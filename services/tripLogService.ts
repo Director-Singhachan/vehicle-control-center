@@ -22,6 +22,7 @@ export interface TripLogWithRelations extends TripLog {
 export interface CheckoutData {
   vehicle_id: string;
   odometer_start: number;
+  checkout_time?: string; // ISO string - optional, defaults to now()
   destination?: string;
   route?: string;
   notes?: string;
@@ -43,11 +44,14 @@ export const tripLogService = {
       throw new Error('User not authenticated');
     }
 
+    // Use provided checkout_time or default to now()
+    const checkoutTime = data.checkout_time || new Date().toISOString();
+
     const tripLog: TripLogInsert = {
       vehicle_id: data.vehicle_id,
       driver_id: user.id,
       odometer_start: data.odometer_start,
-      checkout_time: new Date().toISOString(),
+      checkout_time: checkoutTime,
       destination: data.destination,
       route: data.route,
       notes: data.notes,
@@ -155,23 +159,29 @@ export const tripLogService = {
     return (data || []) as TripLogWithRelations[];
   },
 
-  // Get trip history
+  // Get trip history with pagination
   getTripHistory: async (filters?: {
     vehicle_id?: string;
     driver_id?: string;
     start_date?: string;
     end_date?: string;
     status?: 'checked_out' | 'checked_in';
-  }): Promise<TripLogWithRelations[]> => {
+    limit?: number;
+    offset?: number;
+    search?: string; // For text search
+  }): Promise<{ data: TripLogWithRelations[]; count: number }> => {
+    const limit = filters?.limit || 100;
+    const offset = filters?.offset || 0;
+    
     let query = supabase
       .from('trip_logs')
       .select(`
         *,
         vehicle:vehicles(plate, make, model, image_url),
         driver:profiles(full_name, email)
-      `)
+      `, { count: 'exact' })
       .order('checkout_time', { ascending: false })
-      .limit(100);
+      .range(offset, offset + limit - 1);
 
     if (filters?.vehicle_id) {
       query = query.eq('vehicle_id', filters.vehicle_id);
@@ -193,14 +203,37 @@ export const tripLogService = {
       query = query.eq('status', filters.status);
     }
 
-    const { data, error } = await query;
+    // Text search - search in vehicle plate, driver name, destination, route
+    if (filters?.search) {
+      // Note: Supabase doesn't support full-text search across relations easily
+      // We'll filter in client-side for now, but ideally should use database functions
+      // For now, we'll do basic filtering on available fields
+    }
+
+    const { data, error, count } = await query;
 
     if (error) {
       console.error('[tripLogService] Error fetching trip history:', error);
       throw error;
     }
 
-    return (data || []) as TripLogWithRelations[];
+    let results = (data || []) as TripLogWithRelations[];
+
+    // Apply text search filter if provided (client-side for now)
+    if (filters?.search) {
+      const searchLower = filters.search.toLowerCase();
+      results = results.filter(trip =>
+        trip.vehicle?.plate?.toLowerCase().includes(searchLower) ||
+        trip.driver?.full_name?.toLowerCase().includes(searchLower) ||
+        trip.destination?.toLowerCase().includes(searchLower) ||
+        trip.route?.toLowerCase().includes(searchLower)
+      );
+    }
+
+    return {
+      data: results,
+      count: count || 0,
+    };
   },
 
   // Get trip by ID
@@ -221,6 +254,42 @@ export const tripLogService = {
     }
 
     return data as TripLogWithRelations | null;
+  },
+
+  // Get last odometer reading for a vehicle
+  getLastOdometer: async (vehicleId: string): Promise<number | null> => {
+    // Get last known odometer reading
+    const [fuelResult, tripResult] = await Promise.all([
+      // From fuel records
+      supabase
+        .from('fuel_records')
+        .select('odometer')
+        .eq('vehicle_id', vehicleId)
+        .order('filled_at', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+
+      // From trip logs - only get checked-in trips (where odometer_end is not null)
+      supabase
+        .from('trip_logs')
+        .select('odometer_end')
+        .eq('vehicle_id', vehicleId)
+        .not('odometer_end', 'is', null)
+        .order('checkin_time', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+    ]);
+
+    // Handle errors gracefully - if query fails, just ignore that source
+    const lastFuelOdometer = fuelResult.error ? null : fuelResult.data?.odometer;
+    const lastTripOdometer = tripResult.error ? null : tripResult.data?.odometer_end;
+
+    const lastOdometer = Math.max(
+      lastFuelOdometer || 0,
+      lastTripOdometer || 0
+    );
+
+    return lastOdometer > 0 ? lastOdometer : null;
   },
 
   // Validate odometer reading

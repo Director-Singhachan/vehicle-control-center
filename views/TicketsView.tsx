@@ -1,5 +1,5 @@
 // Tickets View - List all tickets with filters and search
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useTicketsWithRelations, useAuth } from '../hooks';
 import { 
   FileText, 
@@ -12,7 +12,9 @@ import {
   X,
   Clock,
   AlertTriangle,
-  Zap
+  Zap,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
@@ -38,38 +40,50 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
   const [statusFilter, setStatusFilter] = useState<TicketStatus[] | 'all'>('all');
   const [urgencyFilter, setUrgencyFilter] = useState<UrgencyLevel[] | 'all'>('all');
   const [showFilters, setShowFilters] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageInput, setPageInput] = useState('');
+  const itemsPerPage = 20;
 
-  // Fetch tickets with relations
-  const { tickets, loading, error, refetch } = useTicketsWithRelations();
+  // Calculate pagination
+  const offset = (currentPage - 1) * itemsPerPage;
 
-  // Filter tickets
+  // Fetch tickets with relations (server-side pagination)
+  const { tickets, totalCount, loading, error, refetch } = useTicketsWithRelations({
+    status: statusFilter !== 'all' && Array.isArray(statusFilter) ? statusFilter : undefined,
+    limit: itemsPerPage,
+    offset: offset,
+    search: searchQuery || undefined,
+  });
+
+  // Filter tickets (client-side filtering for urgency only, as it's not in service yet)
+  // Note: For better performance with large datasets, urgency filter should be moved to server-side
   const filteredTickets = useMemo(() => {
     let filtered = tickets || [];
 
-    // Search filter
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase();
-      filtered = filtered.filter(t =>
-        t.ticket_number?.toLowerCase().includes(query) ||
-        t.vehicle_plate?.toLowerCase().includes(query) ||
-        t.repair_type?.toLowerCase().includes(query) ||
-        t.problem_description?.toLowerCase().includes(query) ||
-        t.reporter_name?.toLowerCase().includes(query)
-      );
-    }
-
-    // Status filter
-    if (statusFilter !== 'all' && Array.isArray(statusFilter)) {
-      filtered = filtered.filter(t => statusFilter.includes(t.status));
-    }
-
-    // Urgency filter
+    // Urgency filter (client-side for now, can be moved to server-side later)
     if (urgencyFilter !== 'all' && Array.isArray(urgencyFilter)) {
       filtered = filtered.filter(t => urgencyFilter.includes(t.urgency));
     }
 
     return filtered;
-  }, [tickets, searchQuery, statusFilter, urgencyFilter]);
+  }, [tickets, urgencyFilter]);
+
+  // Pagination (using server-side count, but adjust if urgency filter is applied)
+  // Note: If urgency filter is active, totalCount may not be accurate
+  // For accurate count with urgency filter, we'd need to fetch all matching records or add urgency to server-side filter
+  const effectiveTotalCount = urgencyFilter !== 'all' && Array.isArray(urgencyFilter) 
+    ? filteredTickets.length // Approximate - not accurate for pagination
+    : totalCount;
+  
+  const totalPages = Math.ceil(effectiveTotalCount / itemsPerPage);
+  const startIndex = offset;
+  const endIndex = Math.min(startIndex + itemsPerPage, effectiveTotalCount);
+  const paginatedTickets = filteredTickets;
+
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, statusFilter, urgencyFilter]);
 
   const getStatusBadge = (status: TicketStatus) => {
     const badges = {
@@ -149,7 +163,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
   return (
     <PageLayout
       title="ตั๋วซ่อมบำรุง"
-      subtitle={loading ? 'กำลังโหลด...' : `ทั้งหมด ${filteredTickets.length} รายการ`}
+      subtitle={loading ? 'กำลังโหลด...' : `ทั้งหมด ${effectiveTotalCount.toLocaleString('th-TH')} รายการ${totalPages > 1 ? ` (หน้า ${currentPage}/${totalPages})` : ''}`}
       loading={loading}
       error={!!error}
       onRetry={refetch}
@@ -313,7 +327,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
         </Card>
 
         {/* Tickets List */}
-        {filteredTickets.length === 0 ? (
+        {effectiveTotalCount === 0 ? (
           <Card className="p-12 text-center">
             <FileText className="w-16 h-16 mx-auto mb-4 text-slate-400 opacity-50" />
             <h3 className="text-lg font-medium text-slate-600 dark:text-slate-300 mb-2">
@@ -328,8 +342,9 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
             </p>
           </Card>
         ) : (
-          <div className="space-y-4">
-            {filteredTickets.map((ticket) => {
+          <>
+            <div className="space-y-4">
+              {paginatedTickets.map((ticket) => {
               const statusBadge = getStatusBadge(ticket.status);
               const urgencyBadge = getUrgencyBadge(ticket.urgency);
               const StatusIcon = statusBadge.icon;
@@ -435,8 +450,150 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                   </div>
                 </Card>
               );
-            })}
-          </div>
+              })}
+            </div>
+
+            {/* Pagination */}
+            {totalPages > 1 && (
+              <Card className="p-4">
+                <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+                  <div className="text-sm text-slate-600 dark:text-slate-400">
+                    แสดง {startIndex + 1}-{endIndex} จาก {effectiveTotalCount.toLocaleString('th-TH')} รายการ
+                    {totalPages > 1 && (
+                      <span className="ml-2">(ทั้งหมด {totalPages.toLocaleString('th-TH')} หน้า)</span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 flex-wrap justify-center">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                      disabled={currentPage === 1}
+                      className="flex items-center gap-1"
+                    >
+                      <ChevronLeft size={16} />
+                      ก่อนหน้า
+                    </Button>
+                    
+                    {/* Page Numbers */}
+                    <div className="flex items-center gap-1 flex-wrap">
+                      {(() => {
+                        const pages: (number | string)[] = [];
+                        
+                        // For small number of pages, show all
+                        if (totalPages <= 7) {
+                          for (let i = 1; i <= totalPages; i++) {
+                            pages.push(i);
+                          }
+                        } else {
+                          // Always show first page
+                          pages.push(1);
+                          
+                          // Calculate range around current page (show 2 pages on each side)
+                          const startPage = Math.max(2, currentPage - 2);
+                          const endPage = Math.min(totalPages - 1, currentPage + 2);
+                          
+                          // Add ellipsis if needed before current range
+                          if (startPage > 2) {
+                            pages.push('ellipsis-start');
+                          }
+                          
+                          // Add pages around current page
+                          for (let i = startPage; i <= endPage; i++) {
+                            if (i !== 1 && i !== totalPages) {
+                              pages.push(i);
+                            }
+                          }
+                          
+                          // Add ellipsis if needed after current range
+                          if (endPage < totalPages - 1) {
+                            pages.push('ellipsis-end');
+                          }
+                          
+                          // Always show last page
+                          pages.push(totalPages);
+                        }
+                        
+                        return pages.map((page) => {
+                          if (typeof page === 'string') {
+                            return (
+                              <span key={page} className="px-2 text-slate-400">
+                                ...
+                              </span>
+                            );
+                          }
+                          
+                          return (
+                            <button
+                              key={page}
+                              onClick={() => setCurrentPage(page)}
+                              className={`px-3 py-1 rounded-lg text-sm font-medium transition-colors ${
+                                currentPage === page
+                                  ? 'bg-enterprise-600 text-white'
+                                  : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+                              }`}
+                            >
+                              {page.toLocaleString('th-TH')}
+                            </button>
+                          );
+                        });
+                      })()}
+                    </div>
+
+                    {/* Jump to Page Input (for large page counts) */}
+                    {totalPages > 10 && (
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm text-slate-600 dark:text-slate-400">ไปที่หน้า:</span>
+                        <input
+                          type="number"
+                          min="1"
+                          max={totalPages}
+                          value={pageInput}
+                          onChange={(e) => setPageInput(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              const page = parseInt(pageInput);
+                              if (page >= 1 && page <= totalPages) {
+                                setCurrentPage(page);
+                                setPageInput('');
+                              }
+                            }
+                          }}
+                          placeholder={`1-${totalPages}`}
+                          className="w-20 px-2 py-1 text-sm border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-enterprise-500 focus:border-transparent"
+                        />
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            const page = parseInt(pageInput);
+                            if (page >= 1 && page <= totalPages) {
+                              setCurrentPage(page);
+                              setPageInput('');
+                            }
+                          }}
+                          disabled={!pageInput || parseInt(pageInput) < 1 || parseInt(pageInput) > totalPages}
+                        >
+                          ไป
+                        </Button>
+                      </div>
+                    )}
+
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                      disabled={currentPage === totalPages}
+                      className="flex items-center gap-1"
+                    >
+                      ถัดไป
+                      <ChevronRight size={16} />
+                    </Button>
+                  </div>
+                </div>
+              </Card>
+            )}
+          </>
         )}
       </div>
     </PageLayout>
