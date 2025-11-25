@@ -3,10 +3,12 @@ import { useState, useEffect } from 'react';
 import { vehicleService, type VehicleSummary, type VehicleForMap } from '../services/vehicleService';
 import { reportsService, type Financials, type MaintenanceTrends } from '../services/reportsService';
 import { usageService, type DailyUsageData } from '../services/usageService';
+import { ticketService } from '../services/ticketService';
 import { useDataCacheStore, createCacheKey } from '../stores/dataCacheStore';
 import type { Database } from '../types/database';
 
 type VehicleDashboard = Database['public']['Views']['vehicle_dashboard']['Row'];
+type TicketWithRelations = Database['public']['Views']['tickets_with_relations']['Row'];
 
 export interface DashboardData {
   summary: VehicleSummary | null;
@@ -15,6 +17,8 @@ export interface DashboardData {
   maintenanceTrends: MaintenanceTrends | null;
   vehicles: VehicleForMap[];
   vehicleDashboard: VehicleDashboard[];
+  recentTickets: TicketWithRelations[];
+  pendingTicketsCount: number;
 }
 
 export const useDashboard = () => {
@@ -31,6 +35,8 @@ export const useDashboard = () => {
     maintenanceTrends: null,
     vehicles: [],
     vehicleDashboard: [],
+    recentTickets: [],
+    pendingTicketsCount: 0,
   });
   // Always start with loading: false - show UI immediately
   // Data will appear when it's ready (prevents infinite loading)
@@ -94,6 +100,17 @@ export const useDashboard = () => {
         ]);
       };
 
+      // Helper to get pending tickets count
+      const getPendingTicketsCount = async (): Promise<number> => {
+        try {
+          const tickets = await ticketService.getAll({ status: ['pending'] });
+          return tickets.length;
+        } catch (err) {
+          console.warn('[useDashboard] Error fetching pending tickets count:', err);
+          return 0;
+        }
+      };
+
       // Increased timeout to 30 seconds since Gateway logs show requests succeed but are slow
       // Some queries (especially with joins/views) may take longer
       const fetchPromise = Promise.all([
@@ -103,6 +120,8 @@ export const useDashboard = () => {
         withTimeout(reportsService.getMaintenanceTrends(6), 30000, 'Trends'),
         withTimeout(vehicleService.getLocations(), 30000, 'Locations'),
         withTimeout(vehicleService.getDashboardData(), 30000, 'Dashboard'),
+        withTimeout(ticketService.getRecentTickets(10), 30000, 'RecentTickets'),
+        withTimeout(getPendingTicketsCount(), 30000, 'PendingTicketsCount'),
       ]);
 
       console.log('[useDashboard] Waiting for Promise.race...');
@@ -122,6 +141,8 @@ export const useDashboard = () => {
           maintenanceTrends: null,
           vehicles: [],
           vehicleDashboard: [],
+          recentTickets: [],
+          pendingTicketsCount: 0,
         });
         setLoading(false);
         console.log('[useDashboard] Timeout - loading set to false');
@@ -135,12 +156,15 @@ export const useDashboard = () => {
         maintenanceTrends,
         vehicles,
         vehicleDashboard,
+        recentTickets,
+        pendingTicketsCount,
       ] = result;
 
       // Check if all API calls failed (all are null/empty)
       const allFailed = !summary && !financials && !usageData && !maintenanceTrends && 
                        (!vehicles || vehicles.length === 0) && 
-                       (!vehicleDashboard || vehicleDashboard.length === 0);
+                       (!vehicleDashboard || vehicleDashboard.length === 0) &&
+                       (!recentTickets || recentTickets.length === 0);
 
       if (allFailed) {
         console.error('[useDashboard] All API calls failed or timed out - possible Supabase connection issue');
@@ -158,6 +182,8 @@ export const useDashboard = () => {
         maintenanceTrends,
         vehicles,
         vehicleDashboard: vehicleDashboard as VehicleDashboard[],
+        recentTickets: (recentTickets || []) as TicketWithRelations[],
+        pendingTicketsCount: pendingTicketsCount || 0,
       };
 
       console.log('[useDashboard] Data fetched:', {
@@ -166,6 +192,8 @@ export const useDashboard = () => {
         hasUsageData: !!usageData,
         hasTrends: !!maintenanceTrends,
         vehiclesCount: vehicles?.length || 0,
+        ticketsCount: recentTickets?.length || 0,
+        pendingTicketsCount: pendingTicketsCount || 0,
         allFailed,
       });
 
@@ -189,6 +217,8 @@ export const useDashboard = () => {
         maintenanceTrends: null,
         vehicles: [],
         vehicleDashboard: [],
+        recentTickets: [],
+        pendingTicketsCount: 0,
       });
       setLoading(false);
       console.log('[useDashboard] Error - loading set to false');

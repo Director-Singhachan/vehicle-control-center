@@ -25,6 +25,9 @@ export { reportsService, type Financials, type MaintenanceTrends } from './servi
 // Profile Service
 export { profileService } from './services/profileService';
 
+// Trip Log Service
+export { tripLogService, type TripLogWithRelations, type CheckoutData, type CheckinData } from './services/tripLogService';
+
 // Legacy Vehicle interface for backward compatibility
 export interface Vehicle {
   id: string;

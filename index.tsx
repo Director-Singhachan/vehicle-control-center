@@ -15,7 +15,8 @@ import {
   LogOut,
   User,
   Shield,
-  CheckSquare
+  CheckSquare,
+  Route
 } from 'lucide-react';
 import { DashboardView } from './views/DashboardView';
 import { ProfileView } from './views/ProfileView';
@@ -27,6 +28,8 @@ import { TicketsView } from './views/TicketsView';
 import { TicketDetailView } from './views/TicketDetailView';
 import { TicketFormView } from './views/TicketFormView';
 import { ApprovalBoardView } from './views/ApprovalBoardView';
+import { TripLogFormView } from './views/TripLogFormView';
+import { TripLogListView } from './views/TripLogListView';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { useAuth, usePendingTickets } from './hooks';
 import { prefetchService } from './services/prefetchService';
@@ -65,7 +68,12 @@ const AppContent = () => {
     }
     return window.innerWidth < 1024;
   });
-  const [activeTab, setActiveTab] = useState('dashboard');
+  // Set initial tab based on user role
+  const [activeTab, setActiveTab] = useState(() => {
+    // Drivers should start at triplogs page
+    // We'll check this in useEffect after profile loads
+    return 'dashboard';
+  });
   // Track viewport width to tailor driver experience on mobile
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -89,12 +97,33 @@ const AppContent = () => {
   }, [isMobile]);
 
 
-  // Redirect drivers to maintenance page if they try to access restricted areas
+  // Redirect drivers to trip log form page when they login (like maintenance form)
+  // Drivers can access: triplogs, maintenance, profile, settings
   useEffect(() => {
-    if (isDriver && activeTab !== 'maintenance' && activeTab !== 'profile' && activeTab !== 'settings') {
-      setActiveTab('maintenance');
+    if (isDriver) {
+      // If driver tries to access restricted areas, redirect to triplogs form
+      if (activeTab !== 'triplogs' && activeTab !== 'maintenance' && activeTab !== 'profile' && activeTab !== 'settings') {
+        setActiveTab('triplogs');
+        setTripLogView('form');
+        setTripLogMode('checkout');
+      }
+      // If driver is on dashboard or other restricted pages, redirect to triplogs form
+      else if (activeTab === 'dashboard' || activeTab === 'vehicles' || activeTab === 'approvals' || activeTab === 'reports') {
+        setActiveTab('triplogs');
+        setTripLogView('form');
+        setTripLogMode('checkout');
+      }
     }
   }, [isDriver, activeTab]);
+
+  // Set initial tab for drivers when profile loads - go directly to form
+  useEffect(() => {
+    if (isDriver && activeTab === 'dashboard') {
+      setActiveTab('triplogs');
+      setTripLogView('form');
+      setTripLogMode('checkout');
+    }
+  }, [isDriver, profile]);
 
   // Force refresh profile on mount to ensure role is up to date
   useEffect(() => {
@@ -117,6 +146,9 @@ const AppContent = () => {
   const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(null);
   const [ticketView, setTicketView] = useState<'list' | 'detail' | 'form'>('list');
   const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
+  const [tripLogView, setTripLogView] = useState<'list' | 'form'>('list');
+  const [tripLogMode, setTripLogMode] = useState<'checkout' | 'checkin'>('checkout');
+  const [selectedTripId, setSelectedTripId] = useState<string | null>(null);
 
   // Load navigation state from localStorage on mount
   useEffect(() => {
@@ -216,6 +248,15 @@ const AppContent = () => {
             active={activeTab === 'maintenance'}
             onClick={() => setActiveTab('maintenance')}
             onMouseEnter={() => prefetchService.prefetchTicketsWithRelations()}
+          />
+          <SidebarItem
+            icon={Route}
+            label={isSidebarOpen ? "บันทึกการใช้งานรถ" : ""}
+            active={activeTab === 'triplogs'}
+            onClick={() => {
+              setActiveTab('triplogs');
+              setTripLogView('list');
+            }}
           />
           {/* Show approval board menu - check role directly for reliability */}
           {(() => {
@@ -357,6 +398,16 @@ const AppContent = () => {
                 setSelectedTicketId(ticketId.toString());
                 setTicketView('detail');
               }}
+              onNavigateToTripLogs={() => {
+                setActiveTab('triplogs');
+                setTripLogView('list');
+              }}
+              onCheckInTrip={(tripId) => {
+                setActiveTab('triplogs');
+                setTripLogMode('checkin');
+                setSelectedTripId(tripId);
+                setTripLogView('form');
+              }}
             />
           ) : activeTab === 'vehicles' ? (
             vehicleView === 'list' ? (
@@ -456,6 +507,57 @@ const AppContent = () => {
                     setTicketView('list');
                     setSelectedTicketId(null);
                   }
+                }}
+              />
+            ) : null
+          ) : activeTab === 'triplogs' ? (
+            // For drivers, always show form, never list
+            isDriver ? (
+              <TripLogFormView
+                vehicleId={selectedVehicleId || undefined}
+                tripId={selectedTripId || undefined}
+                mode={tripLogMode}
+                onSave={() => {
+                  // For drivers, stay on form but reset
+                  setSelectedTripId(null);
+                  setSelectedVehicleId(null);
+                  setTripLogMode('checkout');
+                  // Optional: Reload to ensure fresh state if needed, but component state reset should be enough
+                }}
+                onCancel={() => {
+                  // Drivers can't go back to list, so just reset
+                  setSelectedTripId(null);
+                  setSelectedVehicleId(null);
+                  setTripLogMode('checkout');
+                }}
+              />
+            ) : tripLogView === 'list' ? (
+              <TripLogListView
+                onCreateCheckout={() => {
+                  setTripLogMode('checkout');
+                  setTripLogView('form');
+                  setSelectedTripId(null);
+                }}
+                onCreateCheckin={(tripId) => {
+                  setTripLogMode('checkin');
+                  setSelectedTripId(tripId);
+                  setTripLogView('form');
+                }}
+              />
+            ) : tripLogView === 'form' ? (
+              <TripLogFormView
+                vehicleId={selectedVehicleId || undefined}
+                tripId={selectedTripId || undefined}
+                mode={tripLogMode}
+                onSave={() => {
+                  setTripLogView('list');
+                  setSelectedTripId(null);
+                  setSelectedVehicleId(null);
+                }}
+                onCancel={() => {
+                  setTripLogView('list');
+                  setSelectedTripId(null);
+                  setSelectedVehicleId(null);
                 }}
               />
             ) : null

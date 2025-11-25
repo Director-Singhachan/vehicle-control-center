@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase';
 export interface Financials {
   todayCost: number;
   costTrend: number; // percent
+  monthlyCost: number; // ค่าใช้จ่ายเดือนนี้
 }
 
 export interface MaintenanceTrends {
@@ -26,8 +27,11 @@ export const reportsService = {
       const yesterdayEnd = new Date(yesterday);
       yesterdayEnd.setHours(23, 59, 59, 999);
 
+      // First day of current month
+      const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+
       // Use Promise.all for parallel execution
-      const [todayResult, yesterdayResult] = await Promise.all([
+      const [todayResult, yesterdayResult, monthlyResult] = await Promise.all([
         // Today's costs
         supabase
           .from('ticket_costs')
@@ -39,7 +43,13 @@ export const reportsService = {
           .from('ticket_costs')
           .select('cost')
           .gte('created_at', yesterday.toISOString())
-          .lte('created_at', yesterdayEnd.toISOString())
+          .lte('created_at', yesterdayEnd.toISOString()),
+
+        // This month's costs
+        supabase
+          .from('ticket_costs')
+          .select('cost')
+          .gte('created_at', firstDayOfMonth.toISOString())
       ]);
 
       if (todayResult.error) {
@@ -52,13 +62,24 @@ export const reportsService = {
         throw yesterdayResult.error;
       }
 
+      if (monthlyResult.error) {
+        console.error('[reportsService] Error fetching monthly costs:', monthlyResult.error);
+        throw monthlyResult.error;
+      }
+
       const todayCosts = todayResult.data;
       const yesterdayCosts = yesterdayResult.data;
+      const monthlyCosts = monthlyResult.data;
 
-      console.log('[reportsService] Costs count:', { today: todayCosts?.length, yesterday: yesterdayCosts?.length });
+      console.log('[reportsService] Costs count:', { 
+        today: todayCosts?.length, 
+        yesterday: yesterdayCosts?.length,
+        monthly: monthlyCosts?.length 
+      });
 
       const todayCost = todayCosts?.reduce((sum, item) => sum + (item.cost || 0), 0) || 0;
       const yesterdayCost = yesterdayCosts?.reduce((sum, item) => sum + (item.cost || 0), 0) || 0;
+      const monthlyCost = monthlyCosts?.reduce((sum, item) => sum + (item.cost || 0), 0) || 0;
 
       // Calculate trend
       const costTrend = yesterdayCost > 0
@@ -68,6 +89,7 @@ export const reportsService = {
       return {
         todayCost: todayCost,
         costTrend: costTrend,
+        monthlyCost: monthlyCost,
       };
     } catch (error) {
       console.error('[reportsService] getFinancials error:', error);
