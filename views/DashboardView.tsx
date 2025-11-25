@@ -5,12 +5,16 @@ import {
   Wrench,
   DollarSign,
   MoreHorizontal,
-  RefreshCw
+  RefreshCw,
+  FileText,
+  Calendar
 } from 'lucide-react';
 import { StatusCard } from '../components/StatusCard';
 import { UsageChart } from '../components/UsageChart';
 import { MaintenanceTrendChart } from '../components/MaintenanceTrendChart';
-import { MapWidget } from '../components/MapWidget';
+import { VehicleStatusSection } from '../components/VehicleStatusSection';
+import { ActivityFeed } from '../components/ActivityFeed';
+import { ActiveTripsWidget } from '../components/ActiveTripsWidget';
 import { PageLayout } from '../components/layout/PageLayout';
 import { useDashboard } from '../hooks';
 
@@ -20,7 +24,7 @@ interface DashboardProps {
   onNavigateToTicketDetail?: (ticketId: number) => void;
 }
 
-export const DashboardView: React.FC<DashboardProps> = ({ 
+export const DashboardView: React.FC<DashboardProps> = ({
   isDark,
   onNavigateToTickets,
   onNavigateToTicketDetail,
@@ -38,7 +42,7 @@ export const DashboardView: React.FC<DashboardProps> = ({
     });
   }, [data, loading, error]);
 
-  const { summary, financials, usageData, maintenanceTrends, vehicles } = data || {};
+  const { summary, financials, usageData, maintenanceTrends, vehicles, vehicleDashboard, recentTickets, pendingTicketsCount } = data || {};
 
   // Never show loading state - always show UI (even if empty or error)
   // This prevents infinite loading when API calls timeout or are slow
@@ -110,18 +114,17 @@ export const DashboardView: React.FC<DashboardProps> = ({
             icon={Activity}
           />
           <StatusCard
-            title="การซ่อมบำรุง"
-            value={summary.maintenance || 0}
-            subValue="ตั๋วความสำคัญสูง"
-            icon={Wrench}
-            alert={(summary.maintenance || 0) > 10}
+            title="ตั๋วรอดำเนินการ"
+            value={pendingTicketsCount || 0}
+            subValue="รอการอนุมัติ"
+            icon={FileText}
+            alert={(pendingTicketsCount || 0) > 0}
           />
           <StatusCard
-            title="ค่าใช้จ่ายวันนี้"
-            value={`฿${(financials.todayCost || 0).toLocaleString('th-TH')}`}
-            icon={DollarSign}
-            trend={financials.costTrend || 0}
-            trendLabel="เทียบกับเมื่อวาน"
+            title="ค่าใช้จ่ายเดือนนี้"
+            value={`฿${(financials.monthlyCost || 0).toLocaleString('th-TH')}`}
+            icon={Calendar}
+            subValue={`วันนี้: ฿${(financials.todayCost || 0).toLocaleString('th-TH')}`}
           />
         </div>
       ) : (
@@ -153,6 +156,18 @@ export const DashboardView: React.FC<DashboardProps> = ({
         </div>
       )}
 
+      {/* Active Trips Widget */}
+      <div className="mt-6">
+        <ActiveTripsWidget />
+      </div>
+
+      {/* Vehicle Status Section */}
+      {vehicleDashboard && vehicleDashboard.length > 0 && (
+        <div className="mt-6">
+          <VehicleStatusSection vehicles={vehicleDashboard} isDark={isDark} />
+        </div>
+      )}
+
       {/* Charts Section */}
       {usageData && maintenanceTrends ? (
         <>
@@ -179,23 +194,6 @@ export const DashboardView: React.FC<DashboardProps> = ({
               <MaintenanceTrendChart data={maintenanceTrends} isDark={isDark} />
             </div>
           </div>
-
-          {/* Map Widget */}
-          <div className="grid grid-cols-1 gap-6 mt-6">
-            <div className="bg-white/80 dark:bg-charcoal-900/50 backdrop-blur-md p-6 rounded-xl border border-slate-200 dark:border-slate-700/50 shadow-sm min-h-[450px]">
-              <div className="flex justify-between items-center mb-4">
-                <h3 className="font-semibold text-slate-900 dark:text-white">แผนที่ยานพาหนะแบบเรียลไทม์</h3>
-                <div className="flex space-x-2">
-                  <span className="text-xs bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 px-2 py-1 rounded-full flex items-center">
-                    <span className="w-2 h-2 bg-green-500 rounded-full mr-1 animate-pulse"></span> สด
-                  </span>
-                </div>
-              </div>
-              <div className="h-96 w-full bg-slate-100 dark:bg-slate-900 rounded-lg overflow-hidden">
-                <MapWidget vehicles={vehicles || []} isDark={isDark} />
-              </div>
-            </div>
-          </div>
         </>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
@@ -213,6 +211,15 @@ export const DashboardView: React.FC<DashboardProps> = ({
           </div>
         </div>
       )}
+
+      {/* Activity Feed */}
+      <div className="mt-6">
+        <ActivityFeed 
+          tickets={recentTickets} 
+          isDark={isDark}
+          onNavigateToTicket={onNavigateToTicketDetail}
+        />
+      </div>
 
     </PageLayout>
   );

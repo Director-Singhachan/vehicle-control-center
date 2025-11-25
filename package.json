@@ -13,7 +13,6 @@
     "@supabase/supabase-js": "^2.84.0",
     "chart.js": "^4.5.1",
     "lucide-react": "^0.554.0",
-    "maplibre-gl": "^5.13.0",
     "react": "^19.2.0",
     "react-chartjs-2": "^5.3.1",
     "react-dom": "^19.2.0",

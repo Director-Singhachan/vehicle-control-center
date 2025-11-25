@@ -15,7 +15,8 @@ import {
   LogOut,
   User,
   Shield,
-  CheckSquare
+  CheckSquare,
+  Route
 } from 'lucide-react';
 import { DashboardView } from './views/DashboardView';
 import { ProfileView } from './views/ProfileView';
@@ -27,6 +28,8 @@ import { TicketsView } from './views/TicketsView';
 import { TicketDetailView } from './views/TicketDetailView';
 import { TicketFormView } from './views/TicketFormView';
 import { ApprovalBoardView } from './views/ApprovalBoardView';
+import { TripLogFormView } from './views/TripLogFormView';
+import { TripLogListView } from './views/TripLogListView';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { useAuth, usePendingTickets } from './hooks';
 import { prefetchService } from './services/prefetchService';
@@ -90,8 +93,9 @@ const AppContent = () => {
 
 
   // Redirect drivers to maintenance page if they try to access restricted areas
+  // Drivers can access: maintenance, triplogs, profile, settings
   useEffect(() => {
-    if (isDriver && activeTab !== 'maintenance' && activeTab !== 'profile' && activeTab !== 'settings') {
+    if (isDriver && activeTab !== 'maintenance' && activeTab !== 'triplogs' && activeTab !== 'profile' && activeTab !== 'settings') {
       setActiveTab('maintenance');
     }
   }, [isDriver, activeTab]);
@@ -117,6 +121,9 @@ const AppContent = () => {
   const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(null);
   const [ticketView, setTicketView] = useState<'list' | 'detail' | 'form'>('list');
   const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
+  const [tripLogView, setTripLogView] = useState<'list' | 'form'>('list');
+  const [tripLogMode, setTripLogMode] = useState<'checkout' | 'checkin'>('checkout');
+  const [selectedTripId, setSelectedTripId] = useState<string | null>(null);
 
   // Load navigation state from localStorage on mount
   useEffect(() => {
@@ -216,6 +223,15 @@ const AppContent = () => {
             active={activeTab === 'maintenance'}
             onClick={() => setActiveTab('maintenance')}
             onMouseEnter={() => prefetchService.prefetchTicketsWithRelations()}
+          />
+          <SidebarItem
+            icon={Route}
+            label={isSidebarOpen ? "บันทึกเลขไมล์" : ""}
+            active={activeTab === 'triplogs'}
+            onClick={() => {
+              setActiveTab('triplogs');
+              setTripLogView('list');
+            }}
           />
           {/* Show approval board menu - check role directly for reliability */}
           {(() => {
@@ -456,6 +472,37 @@ const AppContent = () => {
                     setTicketView('list');
                     setSelectedTicketId(null);
                   }
+                }}
+              />
+            ) : null
+          ) : activeTab === 'triplogs' ? (
+            tripLogView === 'list' ? (
+              <TripLogListView
+                onCreateCheckout={() => {
+                  setTripLogMode('checkout');
+                  setTripLogView('form');
+                  setSelectedTripId(null);
+                }}
+                onCreateCheckin={(tripId) => {
+                  setTripLogMode('checkin');
+                  setSelectedTripId(tripId);
+                  setTripLogView('form');
+                }}
+              />
+            ) : tripLogView === 'form' ? (
+              <TripLogFormView
+                vehicleId={selectedVehicleId || undefined}
+                tripId={selectedTripId || undefined}
+                mode={tripLogMode}
+                onSave={() => {
+                  setTripLogView('list');
+                  setSelectedTripId(null);
+                  setSelectedVehicleId(null);
+                }}
+                onCancel={() => {
+                  setTripLogView('list');
+                  setSelectedTripId(null);
+                  setSelectedVehicleId(null);
                 }}
               />
             ) : null
