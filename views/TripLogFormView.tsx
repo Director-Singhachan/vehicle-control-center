@@ -71,6 +71,7 @@ export const TripLogFormView: React.FC<TripLogFormViewProps> = ({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const [successMode, setSuccessMode] = useState<'checkout' | 'checkin' | null>(null); // Track which mode succeeded
   const [tripData, setTripData] = useState<any>(null); // Store full trip data for check-in
   const [userMismatch, setUserMismatch] = useState(false);
 
@@ -89,7 +90,11 @@ export const TripLogFormView: React.FC<TripLogFormViewProps> = ({
           route: activeTrip.route || '',
           notes: activeTrip.notes || '',
         });
-
+        
+        // Reset success state when switching modes
+        setSuccess(false);
+        setSuccessMode(null);
+        
         // Check user match
         if (user && activeTrip.driver_id && activeTrip.driver_id !== user.id) {
           setUserMismatch(true);
@@ -99,11 +104,21 @@ export const TripLogFormView: React.FC<TripLogFormViewProps> = ({
           setError(null);
         }
       } else {
-        // No active trip - ensure checkout mode
+        // No active trip - ensure checkout mode and clear all check-in related data
         setMode('checkout');
         setTripData(null);
         setSelectedTripId('');
         setUserMismatch(false);
+        // Reset success state when switching modes
+        setSuccess(false);
+        setSuccessMode(null);
+        // Clear form data when switching back to checkout mode
+        setFormData({
+          odometer: '',
+          destination: '',
+          route: '',
+          notes: '',
+        });
       }
     }
   }, [selectedVehicleId, activeTrips, mode, user]);
@@ -136,6 +151,9 @@ export const TripLogFormView: React.FC<TripLogFormViewProps> = ({
         tripLogService.getById(selectedTripId).then((trip) => {
           if (trip) {
             loadTrip(trip);
+            // Reset success state when loading trip
+            setSuccess(false);
+            setSuccessMode(null);
           }
         }).catch((err) => {
           console.error('Error loading trip:', err);
@@ -145,6 +163,9 @@ export const TripLogFormView: React.FC<TripLogFormViewProps> = ({
         // If vehicleId is provided, use the active trip for that vehicle
         setSelectedTripId(vehicleActiveTrip.id);
         loadTrip(vehicleActiveTrip);
+        // Reset success state when loading trip
+        setSuccess(false);
+        setSuccessMode(null);
       } else if (selectedVehicleId && !vehicleActiveTrip && !loadingVehicleStatus) {
         // Vehicle has no active trip
         setError('รถคันนี้ไม่มี trip ที่ยังไม่ check-in');
@@ -155,6 +176,9 @@ export const TripLogFormView: React.FC<TripLogFormViewProps> = ({
           setSelectedTripId(firstActiveTrip.id);
           setSelectedVehicleId(firstActiveTrip.vehicle_id);
           loadTrip(firstActiveTrip);
+          // Reset success state when loading trip
+          setSuccess(false);
+          setSuccessMode(null);
         }
       }
     }
@@ -274,8 +298,23 @@ export const TripLogFormView: React.FC<TripLogFormViewProps> = ({
           notes: formData.notes || undefined,
         });
 
+        setSuccessMode('checkout');
         setSuccess(true);
+        
+        // Clear form data after successful checkout
         setTimeout(() => {
+          setFormData({
+            odometer: '',
+            destination: '',
+            route: '',
+            notes: '',
+          });
+          setSelectedVehicleId('');
+          setVehicleSearchQuery('');
+          setOdometerValidation(null);
+          setShowVehicleDropdown(false);
+          setSuccessMode(null);
+          
           if (onSave) onSave();
         }, 1500);
       } else {
@@ -314,8 +353,34 @@ export const TripLogFormView: React.FC<TripLogFormViewProps> = ({
           // Don't update destination, route, notes - keep original values
         });
 
+        setSuccessMode('checkin');
         setSuccess(true);
+        
+        // Refetch active trips to update the list (remove the completed trip)
+        refetchActiveTrips();
+        
+        // Clear form data after successful check-in
         setTimeout(() => {
+          // Clear all form state
+          setFormData({
+            odometer: '',
+            destination: '',
+            route: '',
+            notes: '',
+          });
+          setSelectedVehicleId('');
+          setSelectedTripId('');
+          setVehicleSearchQuery('');
+          setTripData(null);
+          setOdometerValidation(null);
+          setShowVehicleDropdown(false);
+          setUserMismatch(false);
+          setSuccessMode(null);
+          setSuccess(false);
+          setError(null);
+          // Reset to checkout mode for next entry
+          setMode('checkout');
+          
           if (onSave) onSave();
         }, 1500);
       }
@@ -381,7 +446,7 @@ export const TripLogFormView: React.FC<TripLogFormViewProps> = ({
             <div className="flex items-center gap-2 text-emerald-800 dark:text-emerald-200">
               <CheckCircle size={20} />
               <span className="font-medium">
-                {mode === 'checkout' ? 'บันทึกการออกเดินทางสำเร็จ' : 'บันทึกการกลับสำเร็จ'}
+                {successMode === 'checkout' ? 'บันทึกการออกเดินทางสำเร็จ' : successMode === 'checkin' ? 'บันทึกการกลับสำเร็จ' : mode === 'checkout' ? 'บันทึกการออกเดินทางสำเร็จ' : 'บันทึกการกลับสำเร็จ'}
               </span>
             </div>
           </Card>

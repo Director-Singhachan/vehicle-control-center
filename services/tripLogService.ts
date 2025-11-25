@@ -11,6 +11,7 @@ export interface TripLogWithRelations extends TripLog {
     plate: string;
     make?: string;
     model?: string;
+    image_url?: string;
   };
   driver?: {
     full_name: string;
@@ -134,7 +135,7 @@ export const tripLogService = {
       .from('trip_logs')
       .select(`
         *,
-        vehicle:vehicles(plate, make, model),
+        vehicle:vehicles(plate, make, model, image_url),
         driver:profiles(full_name, email)
       `)
       .eq('status', 'checked_out')
@@ -166,7 +167,7 @@ export const tripLogService = {
       .from('trip_logs')
       .select(`
         *,
-        vehicle:vehicles(plate, make, model),
+        vehicle:vehicles(plate, make, model, image_url),
         driver:profiles(full_name, email)
       `)
       .order('checkout_time', { ascending: false })
@@ -208,7 +209,7 @@ export const tripLogService = {
       .from('trip_logs')
       .select(`
         *,
-        vehicle:vehicles(plate, make, model),
+        vehicle:vehicles(plate, make, model, image_url),
         driver:profiles(full_name, email)
       `)
       .eq('id', tripId)
@@ -290,7 +291,7 @@ export const tripLogService = {
       .from('trip_logs')
       .select(`
         *,
-        vehicle:vehicles(plate, make, model),
+        vehicle:vehicles(plate, make, model, image_url),
         driver:profiles(full_name, email)
       `)
       .eq('status', 'checked_out')
