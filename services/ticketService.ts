@@ -49,9 +49,10 @@ export const ticketService = {
   getWithRelations: async (filters?: {
     status?: string[];
     vehicle_id?: string;
+    urgency?: string[]; // Add urgency filter
     limit?: number;
     offset?: number;
-    search?: string; // For text search
+    search?: string; // For text search (database-level)
   }): Promise<{ data: TicketWithRelations[]; count: number }> => {
     try {
       const limit = filters?.limit || 100;
@@ -69,6 +70,21 @@ export const ticketService = {
       if (filters?.vehicle_id) {
         query = query.eq('vehicle_id', filters.vehicle_id);
       }
+      // Add urgency filter at database level
+      if (filters?.urgency && filters.urgency.length > 0) {
+        query = query.in('urgency', filters.urgency);
+      }
+
+      // Database-level text search using ILIKE (case-insensitive pattern matching)
+      // Supabase client library handles URL encoding automatically
+      if (filters?.search) {
+        const searchPattern = `%${filters.search}%`;
+        // Use OR operator to search across multiple fields
+        // Format: field1.ilike.pattern,field2.ilike.pattern
+        query = query.or(
+          `ticket_number.ilike.${searchPattern},vehicle_plate.ilike.${searchPattern},repair_type.ilike.${searchPattern},problem_description.ilike.${searchPattern},reporter_name.ilike.${searchPattern}`
+        );
+      }
 
       const { data, error, count } = await query;
 
@@ -80,22 +96,8 @@ export const ticketService = {
         throw error;
       }
 
-      let results = data || [];
-
-      // Apply text search filter if provided (client-side for now)
-      if (filters?.search) {
-        const searchLower = filters.search.toLowerCase();
-        results = results.filter(ticket =>
-          ticket.ticket_number?.toLowerCase().includes(searchLower) ||
-          ticket.vehicle_plate?.toLowerCase().includes(searchLower) ||
-          ticket.repair_type?.toLowerCase().includes(searchLower) ||
-          ticket.problem_description?.toLowerCase().includes(searchLower) ||
-          ticket.reporter_name?.toLowerCase().includes(searchLower)
-        );
-      }
-
       return {
-        data: results,
+        data: data || [],
         count: count || 0,
       };
     } catch (err) {

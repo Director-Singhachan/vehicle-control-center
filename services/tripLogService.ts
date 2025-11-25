@@ -203,11 +203,17 @@ export const tripLogService = {
       query = query.eq('status', filters.status);
     }
 
-    // Text search - search in vehicle plate, driver name, destination, route
+    // Database-level text search using ILIKE
+    // Search in fields that are directly in trip_logs table (destination, route, notes)
+    // Note: For searching across relations (vehicle.plate, driver.full_name), 
+    // Supabase doesn't easily support ILIKE on joined relations in a single query.
+    // We'll search trip_logs fields at DB level, then filter relations client-side on the limited results
     if (filters?.search) {
-      // Note: Supabase doesn't support full-text search across relations easily
-      // We'll filter in client-side for now, but ideally should use database functions
-      // For now, we'll do basic filtering on available fields
+      const searchPattern = `%${filters.search}%`;
+      // Search in trip_logs table fields using OR operator
+      query = query.or(
+        `destination.ilike.${searchPattern},route.ilike.${searchPattern},notes.ilike.${searchPattern}`
+      );
     }
 
     const { data, error, count } = await query;
@@ -219,20 +225,27 @@ export const tripLogService = {
 
     let results = (data || []) as TripLogWithRelations[];
 
-    // Apply text search filter if provided (client-side for now)
+    // Apply additional text search filter for related fields (vehicle plate, driver name)
+    // This filters the already-limited results from database (much faster than filtering all records)
+    // Note: This is a hybrid approach - DB filters trip_logs fields, client filters relations
+    // For better performance with relations, consider using a database function or view
     if (filters?.search) {
       const searchLower = filters.search.toLowerCase();
       results = results.filter(trip =>
         trip.vehicle?.plate?.toLowerCase().includes(searchLower) ||
         trip.driver?.full_name?.toLowerCase().includes(searchLower) ||
+        // Note: destination, route, notes are already filtered at DB level,
+        // but we keep them here for consistency in case the DB filter didn't catch everything
         trip.destination?.toLowerCase().includes(searchLower) ||
         trip.route?.toLowerCase().includes(searchLower)
       );
+      // Adjust count for client-side filtering (approximate)
+      // In a production system, you'd want to get accurate count from DB with all filters
     }
 
     return {
       data: results,
-      count: count || 0,
+      count: count || 0, // Note: count may not be accurate if client-side filtering is applied
     };
   },
 
