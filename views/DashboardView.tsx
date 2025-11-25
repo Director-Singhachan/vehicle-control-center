@@ -22,12 +22,16 @@ interface DashboardProps {
   isDark: boolean;
   onNavigateToTickets?: () => void;
   onNavigateToTicketDetail?: (ticketId: number) => void;
+  onNavigateToTripLogs?: () => void;
+  onCheckInTrip?: (tripId: string) => void;
 }
 
 export const DashboardView: React.FC<DashboardProps> = ({
   isDark,
   onNavigateToTickets,
   onNavigateToTicketDetail,
+  onNavigateToTripLogs,
+  onCheckInTrip,
 }) => {
   const { data, loading, error, refetch } = useDashboard();
 
@@ -158,7 +162,10 @@ export const DashboardView: React.FC<DashboardProps> = ({
 
       {/* Active Trips Widget */}
       <div className="mt-6">
-        <ActiveTripsWidget />
+        <ActiveTripsWidget 
+          onCheckIn={onCheckInTrip}
+          onTripClick={onNavigateToTripLogs ? () => onNavigateToTripLogs() : undefined}
+        />
       </div>
 
       {/* Vehicle Status Section */}

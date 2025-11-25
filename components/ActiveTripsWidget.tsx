@@ -7,9 +7,11 @@ import {
   MapPin,
   Gauge,
   User,
-  ArrowRight
+  ArrowRight,
+  CheckCircle
 } from 'lucide-react';
 import { Card } from './ui/Card';
+import { Button } from './ui/Button';
 import { useActiveTrips, useOverdueTrips } from '../hooks';
 import type { TripLogWithRelations } from '../services/tripLogService';
 
@@ -17,12 +19,14 @@ interface ActiveTripsWidgetProps {
   vehicleId?: string;
   showOverdueOnly?: boolean;
   onTripClick?: (tripId: string) => void;
+  onCheckIn?: (tripId: string) => void;
 }
 
 export const ActiveTripsWidget: React.FC<ActiveTripsWidgetProps> = ({
   vehicleId,
   showOverdueOnly = false,
   onTripClick,
+  onCheckIn,
 }) => {
   const { trips: activeTrips, loading, error } = useActiveTrips(vehicleId);
   const { trips: overdueTrips } = useOverdueTrips();
@@ -174,6 +178,24 @@ export const ActiveTripsWidget: React.FC<ActiveTripsWidgetProps> = ({
                     <MapPin size={14} />
                     <span>{trip.destination}</span>
                   </div>
+                </div>
+              )}
+
+              {/* Check-in Button */}
+              {onCheckIn && (
+                <div className="mt-3 pt-3 border-t border-slate-200 dark:border-slate-700">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onCheckIn(trip.id);
+                    }}
+                    className="w-full flex items-center justify-center gap-2"
+                  >
+                    <CheckCircle size={16} />
+                    บันทึกเลขไมล์กลับ
+                  </Button>
                 </div>
               )}
             </div>

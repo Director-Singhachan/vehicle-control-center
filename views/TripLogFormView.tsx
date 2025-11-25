@@ -1,9 +1,9 @@
 // Trip Log Form View - Check-out/Check-in form
-import React, { useState, useEffect } from 'react';
-import { 
-  ArrowLeft, 
-  Save, 
-  AlertCircle, 
+import React, { useState, useEffect, useRef } from 'react';
+import {
+  ArrowLeft,
+  Save,
+  AlertCircle,
   CheckCircle,
   Truck,
   Gauge,
@@ -11,13 +11,16 @@ import {
   Route,
   FileText,
   Clock,
-  AlertTriangle
+  AlertTriangle,
+  Search,
+  ChevronDown,
+  X
 } from 'lucide-react';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Card } from '../components/ui/Card';
 import { PageLayout } from '../components/layout/PageLayout';
-import { useVehicles, useActiveTrips, useTripCheckout, useTripCheckin, useVehicleStatus } from '../hooks';
+import { useVehicles, useActiveTrips, useTripCheckout, useTripCheckin, useVehicleStatus, useAuth } from '../hooks';
 import { tripLogService } from '../services/tripLogService';
 
 interface TripLogFormViewProps {
@@ -35,16 +38,22 @@ export const TripLogFormView: React.FC<TripLogFormViewProps> = ({
   onSave,
   onCancel,
 }) => {
+  const { user } = useAuth();
   const { vehicles, loading: loadingVehicles, error: vehiclesError } = useVehicles();
   const { trips: activeTrips, refetch: refetchActiveTrips, loading: loadingActiveTrips } = useActiveTrips();
   const { checkout, loading: checkingOut } = useTripCheckout();
   const { checkin, loading: checkingIn } = useTripCheckin();
-  const { activeTrip: vehicleActiveTrip, refetch: refetchVehicleStatus, loading: loadingVehicleStatus } = useVehicleStatus(initialVehicleId || '');
 
   // Determine mode: if tripId provided, it's check-in; otherwise checkout
   const [mode, setMode] = useState<'checkout' | 'checkin'>(initialMode || (tripId ? 'checkin' : 'checkout'));
   const [selectedVehicleId, setSelectedVehicleId] = useState<string>(initialVehicleId || '');
   const [selectedTripId, setSelectedTripId] = useState<string>(tripId || '');
+  const [vehicleSearchQuery, setVehicleSearchQuery] = useState<string>('');
+  const [showVehicleDropdown, setShowVehicleDropdown] = useState(false);
+  const vehicleDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Use selectedVehicleId after it's initialized
+  const { activeTrip: vehicleActiveTrip, refetch: refetchVehicleStatus, loading: loadingVehicleStatus } = useVehicleStatus(selectedVehicleId || '');
 
   const [formData, setFormData] = useState({
     odometer: '',
@@ -62,21 +71,71 @@ export const TripLogFormView: React.FC<TripLogFormViewProps> = ({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const [tripData, setTripData] = useState<any>(null); // Store full trip data for check-in
+  const [userMismatch, setUserMismatch] = useState(false);
+
+  // Detect when vehicle with active trip is selected in checkout mode
+  useEffect(() => {
+    if (mode === 'checkout' && selectedVehicleId) {
+      const activeTrip = activeTrips.find(t => t.vehicle_id === selectedVehicleId);
+      if (activeTrip) {
+        // Vehicle has active trip - switch to check-in mode
+        setMode('checkin');
+        setSelectedTripId(activeTrip.id);
+        setTripData(activeTrip);
+        setFormData({
+          odometer: '',
+          destination: activeTrip.destination || '',
+          route: activeTrip.route || '',
+          notes: activeTrip.notes || '',
+        });
+
+        // Check user match
+        if (user && activeTrip.driver_id && activeTrip.driver_id !== user.id) {
+          setUserMismatch(true);
+          setError('คุณไม่สามารถบันทึกเลขไมล์กลับได้ เนื่องจากไม่ใช่ผู้ใช้งานคนเดียวกัน');
+        } else {
+          setUserMismatch(false);
+          setError(null);
+        }
+      } else {
+        // No active trip - ensure checkout mode
+        setMode('checkout');
+        setTripData(null);
+        setSelectedTripId('');
+        setUserMismatch(false);
+      }
+    }
+  }, [selectedVehicleId, activeTrips, mode, user]);
 
   // Load active trip data for check-in
   useEffect(() => {
     if (mode === 'checkin') {
+      const loadTrip = async (trip: any) => {
+        // Check if current user matches trip driver_id
+        if (user && trip.driver_id && trip.driver_id !== user.id) {
+          setUserMismatch(true);
+          setError('คุณไม่สามารถบันทึกเลขไมล์กลับได้ เนื่องจากไม่ใช่ผู้ใช้งานคนเดียวกัน');
+          return;
+        } else {
+          setUserMismatch(false);
+        }
+
+        setTripData(trip);
+        setFormData({
+          odometer: '',
+          destination: trip.destination || '',
+          route: trip.route || '',
+          notes: trip.notes || '',
+        });
+        setSelectedVehicleId(trip.vehicle_id);
+      };
+
       if (selectedTripId) {
         // If tripId is provided, load that trip
         tripLogService.getById(selectedTripId).then((trip) => {
           if (trip) {
-            setFormData({
-              odometer: '',
-              destination: trip.destination || '',
-              route: trip.route || '',
-              notes: trip.notes || '',
-            });
-            setSelectedVehicleId(trip.vehicle_id);
+            loadTrip(trip);
           }
         }).catch((err) => {
           console.error('Error loading trip:', err);
@@ -85,12 +144,7 @@ export const TripLogFormView: React.FC<TripLogFormViewProps> = ({
       } else if (selectedVehicleId && vehicleActiveTrip) {
         // If vehicleId is provided, use the active trip for that vehicle
         setSelectedTripId(vehicleActiveTrip.id);
-        setFormData({
-          odometer: '',
-          destination: vehicleActiveTrip.destination || '',
-          route: vehicleActiveTrip.route || '',
-          notes: vehicleActiveTrip.notes || '',
-        });
+        loadTrip(vehicleActiveTrip);
       } else if (selectedVehicleId && !vehicleActiveTrip && !loadingVehicleStatus) {
         // Vehicle has no active trip
         setError('รถคันนี้ไม่มี trip ที่ยังไม่ check-in');
@@ -100,37 +154,89 @@ export const TripLogFormView: React.FC<TripLogFormViewProps> = ({
           const firstActiveTrip = activeTrips[0];
           setSelectedTripId(firstActiveTrip.id);
           setSelectedVehicleId(firstActiveTrip.vehicle_id);
-          setFormData({
-            odometer: '',
-            destination: firstActiveTrip.destination || '',
-            route: firstActiveTrip.route || '',
-            notes: firstActiveTrip.notes || '',
-          });
+          loadTrip(firstActiveTrip);
         }
       }
     }
-  }, [mode, selectedTripId, selectedVehicleId, vehicleActiveTrip, activeTrips, loadingVehicleStatus]);
+  }, [mode, selectedTripId, selectedVehicleId, vehicleActiveTrip, activeTrips, loadingVehicleStatus, user]);
 
   // Validate odometer when it changes
   useEffect(() => {
     if (formData.odometer && selectedVehicleId) {
       const odometerValue = parseInt(formData.odometer);
       if (!isNaN(odometerValue)) {
-        tripLogService.validateOdometer(selectedVehicleId, odometerValue)
-          .then((result) => {
-            setOdometerValidation(result);
-          })
-          .catch((err) => {
-            console.error('Error validating odometer:', err);
-          });
+        // For check-in mode, validate against trip start odometer instead of database
+        if (mode === 'checkin' && tripData) {
+          const tripStart = tripData.odometer_start;
+          const distance = odometerValue - tripStart;
+
+          if (odometerValue <= tripStart) {
+            setOdometerValidation({
+              valid: false,
+              lastOdometer: tripStart,
+              warning: `เลขไมล์กลับ (${odometerValue.toLocaleString()}) ต้องมากกว่าเลขไมล์ออก (${tripStart.toLocaleString()})`,
+            });
+          } else if (distance > 500) {
+            setOdometerValidation({
+              valid: true,
+              lastOdometer: tripStart,
+              warning: `ระยะทาง (${distance.toLocaleString()} km) เกิน 500 km กรุณาตรวจสอบ`,
+            });
+          } else {
+            setOdometerValidation({
+              valid: true,
+              lastOdometer: tripStart,
+            });
+          }
+        } else {
+          // For checkout mode, validate against database
+          tripLogService.validateOdometer(selectedVehicleId, odometerValue)
+            .then((result) => {
+              setOdometerValidation(result);
+            })
+            .catch((err) => {
+              console.error('Error validating odometer:', err);
+            });
+        }
       }
     } else {
       setOdometerValidation(null);
     }
-  }, [formData.odometer, selectedVehicleId]);
+  }, [formData.odometer, selectedVehicleId, mode, tripData]);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (vehicleDropdownRef.current && !vehicleDropdownRef.current.contains(event.target as Node)) {
+        setShowVehicleDropdown(false);
+      }
+    };
+
+    if (showVehicleDropdown) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showVehicleDropdown]);
 
   const selectedVehicle = vehicles.find(v => v.id === selectedVehicleId);
   const selectedTrip = activeTrips.find(t => t.id === selectedTripId);
+
+  // Filter vehicles based on search query
+  const filteredVehicles = vehicles.filter((vehicle) => {
+    if (!vehicleSearchQuery) return true;
+    const query = vehicleSearchQuery.toLowerCase();
+    const plate = vehicle.plate?.toLowerCase() || '';
+    const make = vehicle.make?.toLowerCase() || '';
+    const model = vehicle.model?.toLowerCase() || '';
+    return plate.includes(query) || make.includes(query) || model.includes(query);
+  });
+
+  // Use all filtered vehicles - don't hide active ones
+  // This allows selecting an active vehicle to switch to check-in mode
+  const availableVehicles = filteredVehicles;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -180,25 +286,32 @@ export const TripLogFormView: React.FC<TripLogFormViewProps> = ({
           return;
         }
 
+        // Validate user matches trip driver_id
+        if (user && tripData && tripData.driver_id && tripData.driver_id !== user.id) {
+          setError('คุณไม่สามารถบันทึกเลขไมล์กลับได้ เนื่องจากไม่ใช่ผู้ใช้งานคนเดียวกัน');
+          setSaving(false);
+          return;
+        }
+
         // Validate odometer_end > odometer_start
-        if (selectedTrip && odometerValue <= selectedTrip.odometer_start) {
-          setError(`เลขไมล์กลับ (${odometerValue.toLocaleString()}) ต้องมากกว่าเลขไมล์ออก (${selectedTrip.odometer_start.toLocaleString()})`);
+        const tripStart = tripData?.odometer_start || selectedTrip?.odometer_start;
+        if (tripStart && odometerValue <= tripStart) {
+          setError(`เลขไมล์กลับ (${odometerValue.toLocaleString()}) ต้องมากกว่าเลขไมล์ออก (${tripStart.toLocaleString()})`);
           setSaving(false);
           return;
         }
 
         // Validate distance <= 500 km
-        if (selectedTrip && (odometerValue - selectedTrip.odometer_start) > 500) {
-          setError(`ระยะทาง (${(odometerValue - selectedTrip.odometer_start).toLocaleString()} km) เกิน 500 km กรุณาตรวจสอบ`);
+        if (tripStart && (odometerValue - tripStart) > 500) {
+          setError(`ระยะทาง (${(odometerValue - tripStart).toLocaleString()} km) เกิน 500 km กรุณาตรวจสอบ`);
           setSaving(false);
           return;
         }
 
+        // For check-in, only send odometer_end (other fields are read-only)
         await checkin(selectedTripId, {
           odometer_end: odometerValue,
-          destination: formData.destination || undefined,
-          route: formData.route || undefined,
-          notes: formData.notes || undefined,
+          // Don't update destination, route, notes - keep original values
         });
 
         setSuccess(true);
@@ -223,7 +336,7 @@ export const TripLogFormView: React.FC<TripLogFormViewProps> = ({
   if (loadingVehicles || (mode === 'checkin' && loadingVehicleStatus)) {
     return (
       <PageLayout
-        title={mode === 'checkout' ? 'บันทึกเลขไมล์ออก' : 'บันทึกเลขไมล์กลับ'}
+        title={mode === 'checkout' ? 'บันทึกการออกเดินทาง' : 'บันทึกการกลับ'}
         subtitle="กำลังโหลดข้อมูล..."
         loading={true}
       />
@@ -234,7 +347,7 @@ export const TripLogFormView: React.FC<TripLogFormViewProps> = ({
   if (vehiclesError) {
     return (
       <PageLayout
-        title={mode === 'checkout' ? 'บันทึกเลขไมล์ออก' : 'บันทึกเลขไมล์กลับ'}
+        title={mode === 'checkout' ? 'บันทึกการออกเดินทาง' : 'บันทึกการกลับ'}
         subtitle="เกิดข้อผิดพลาด"
         error={true}
         onRetry={() => window.location.reload()}
@@ -244,9 +357,9 @@ export const TripLogFormView: React.FC<TripLogFormViewProps> = ({
 
   return (
     <PageLayout
-      title={mode === 'checkout' ? 'บันทึกเลขไมล์ออก' : 'บันทึกเลขไมล์กลับ'}
-      subtitle={mode === 'checkout' 
-        ? 'บันทึกเลขไมล์เมื่อออกเดินทาง' 
+      title={mode === 'checkout' ? 'บันทึกการออกเดินทาง' : 'บันทึกการกลับ'}
+      subtitle={mode === 'checkout'
+        ? 'บันทึกเลขไมล์เมื่อออกเดินทาง'
         : 'บันทึกเลขไมล์เมื่อกลับจากเดินทาง'}
       actions={
         onCancel && (
@@ -286,7 +399,7 @@ export const TripLogFormView: React.FC<TripLogFormViewProps> = ({
 
         {/* Vehicle Selection (for checkout) */}
         {mode === 'checkout' && (
-          <Card className="p-6">
+          <Card className="p-6 relative z-20">
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
@@ -302,45 +415,228 @@ export const TripLogFormView: React.FC<TripLogFormViewProps> = ({
                     ไม่พบข้อมูลรถ
                   </div>
                 ) : (
-                  <select
-                    value={selectedVehicleId}
-                    onChange={(e) => {
-                      setSelectedVehicleId(e.target.value);
-                      setOdometerValidation(null);
-                    }}
-                    className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-enterprise-500 focus:border-transparent"
-                    required
-                  >
-                    <option value="">-- เลือกรถ --</option>
-                    {vehicles.map((vehicle) => {
-                      const hasActiveTrip = activeTrips.some(t => t.vehicle_id === vehicle.id);
-                      return (
-                        <option 
-                          key={vehicle.id} 
-                          value={vehicle.id}
-                          disabled={hasActiveTrip}
-                        >
-                          {vehicle.plate} {vehicle.make && vehicle.model ? `(${vehicle.make} ${vehicle.model})` : ''}
-                          {hasActiveTrip ? ' - มี trip ที่ยังไม่ check-in' : ''}
-                        </option>
-                      );
-                    })}
-                  </select>
+                  <div className="relative" ref={vehicleDropdownRef}>
+                    {/* Search Input - Only show when no vehicle is selected */}
+                    {!selectedVehicleId && (
+                      <div className="relative">
+                        <div className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400">
+                          <Search size={18} />
+                        </div>
+                        <input
+                          type="text"
+                          value={vehicleSearchQuery}
+                          onChange={(e) => {
+                            setVehicleSearchQuery(e.target.value);
+                            setShowVehicleDropdown(true);
+                          }}
+                          onFocus={() => setShowVehicleDropdown(true)}
+                          placeholder="พิมพ์เพื่อค้นหาทะเบียนรถ..."
+                          className="w-full pl-10 pr-10 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-enterprise-500 focus:border-transparent"
+                        />
+                        {vehicleSearchQuery && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setVehicleSearchQuery('');
+                              setShowVehicleDropdown(false);
+                            }}
+                            className="absolute right-3 top-1/2 transform -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
+                          >
+                            <X size={18} />
+                          </button>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Dropdown List */}
+                    {showVehicleDropdown && availableVehicles.length > 0 && !selectedVehicleId && (
+                      <div className="absolute z-50 w-full mt-1 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg shadow-lg max-h-60 overflow-auto">
+                        {availableVehicles.map((vehicle) => (
+                          <button
+                            key={vehicle.id}
+                            type="button"
+                            onClick={() => {
+                              setSelectedVehicleId(vehicle.id);
+                              setVehicleSearchQuery(''); // Clear search query
+                              setShowVehicleDropdown(false);
+                              setOdometerValidation(null);
+                              setError(null);
+                              setTripData(null);
+                            }}
+                            className={`w-full text-left px-4 py-2 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors ${selectedVehicleId === vehicle.id ? 'bg-enterprise-50 dark:bg-enterprise-900/20' : ''
+                              }`}
+                          >
+                            <div className="font-medium text-slate-900 dark:text-white">
+                              {vehicle.plate}
+                            </div>
+                            {vehicle.make && vehicle.model && (
+                              <div className="text-sm text-slate-500 dark:text-slate-400">
+                                {vehicle.make} {vehicle.model}
+                              </div>
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Show selected vehicle */}
+                    {selectedVehicleId && selectedVehicle && (
+                      <div className="mt-2 p-3 bg-slate-50 dark:bg-slate-800/50 rounded-lg border border-slate-200 dark:border-slate-700">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <div className="font-medium text-slate-900 dark:text-white">
+                              {selectedVehicle.plate}
+                            </div>
+                            {selectedVehicle.make && selectedVehicle.model && (
+                              <div className="text-sm text-slate-500 dark:text-slate-400">
+                                {selectedVehicle.make} {selectedVehicle.model}
+                              </div>
+                            )}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedVehicleId('');
+                              setVehicleSearchQuery('');
+                            }}
+                            className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
+                          >
+                            <X size={18} />
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Show message if no vehicles found */}
+                    {vehicleSearchQuery && availableVehicles.length === 0 && (
+                      <div className="mt-2 p-3 text-center text-slate-500 dark:text-slate-400 text-sm">
+                        ไม่พบรถที่ค้นหา
+                      </div>
+                    )}
+
+                    {/* Show message about vehicles with active trips */}
+                    {(() => {
+                      const activeVehicleCount = vehicles.filter(v => activeTrips.some(t => t.vehicle_id === v.id)).length;
+                      if (activeVehicleCount > 0 && !vehicleSearchQuery) {
+                        return (
+                          <div className="mt-2 p-2 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded text-sm text-amber-800 dark:text-amber-200">
+                            <div className="flex items-center gap-2">
+                              <AlertTriangle size={16} />
+                              <span>
+                                มีรถ {activeVehicleCount} คันที่ออกไปแล้วยังไม่กลับ
+                                (พิมพ์เพื่อค้นหาและบันทึกการกลับ)
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      }
+                      return null;
+                    })()}
+                  </div>
                 )}
               </div>
             </div>
           </Card>
         )}
 
-        {/* Active Trip Info (for check-in) */}
-        {mode === 'checkin' && loadingVehicleStatus && (
-          <Card className="p-6">
-            <div className="text-center text-slate-500 dark:text-slate-400">
-              กำลังโหลดข้อมูลการเดินทาง...
+        {/* Active Trip Info - Show when vehicle with active trip is selected */}
+        {mode === 'checkin' && tripData && (
+          <Card className="p-6 bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800">
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="font-semibold text-slate-900 dark:text-white flex items-center gap-2">
+                  <Truck size={18} />
+                  ข้อมูลการออกเดินทาง
+                </h3>
+                {userMismatch && (
+                  <span className="px-3 py-1 bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-200 rounded-full text-xs font-medium">
+                    ไม่ใช่ผู้ใช้งานคนเดียวกัน
+                  </span>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+                <div>
+                  <div className="text-slate-600 dark:text-slate-400 mb-1">รถ</div>
+                  <div className="font-medium text-slate-900 dark:text-white">
+                    {tripData.vehicle?.plate || 'N/A'}
+                    {tripData.vehicle?.make && tripData.vehicle?.model && (
+                      <span className="text-slate-500 dark:text-slate-400 ml-2">
+                        ({tripData.vehicle.make} {tripData.vehicle.model})
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                <div>
+                  <div className="text-slate-600 dark:text-slate-400 mb-1">ผู้ขับ</div>
+                  <div className="font-medium text-slate-900 dark:text-white">
+                    {tripData.driver?.full_name || 'N/A'}
+                  </div>
+                </div>
+
+                <div>
+                  <div className="text-slate-600 dark:text-slate-400 mb-1 flex items-center gap-1">
+                    <Gauge size={14} />
+                    เลขไมล์ออก
+                  </div>
+                  <div className="font-medium text-slate-900 dark:text-white text-lg">
+                    {(tripData.odometer_start || 0).toLocaleString()} km
+                  </div>
+                </div>
+
+                <div>
+                  <div className="text-slate-600 dark:text-slate-400 mb-1 flex items-center gap-1">
+                    <Clock size={14} />
+                    ออกเมื่อ
+                  </div>
+                  <div className="font-medium text-slate-900 dark:text-white">
+                    {new Date(tripData.checkout_time || new Date()).toLocaleString('th-TH')}
+                  </div>
+                </div>
+
+                {tripData.destination && (
+                  <div className="md:col-span-2">
+                    <div className="text-slate-600 dark:text-slate-400 mb-1 flex items-center gap-1">
+                      <MapPin size={14} />
+                      ปลายทาง
+                    </div>
+                    <div className="font-medium text-slate-900 dark:text-white">
+                      {tripData.destination}
+                    </div>
+                  </div>
+                )}
+
+                {tripData.route && (
+                  <div className="md:col-span-2">
+                    <div className="text-slate-600 dark:text-slate-400 mb-1 flex items-center gap-1">
+                      <Route size={14} />
+                      เส้นทาง
+                    </div>
+                    <div className="font-medium text-slate-900 dark:text-white">
+                      {tripData.route}
+                    </div>
+                  </div>
+                )}
+
+                {tripData.notes && (
+                  <div className="md:col-span-2">
+                    <div className="text-slate-600 dark:text-slate-400 mb-1 flex items-center gap-1">
+                      <FileText size={14} />
+                      หมายเหตุ
+                    </div>
+                    <div className="font-medium text-slate-900 dark:text-white">
+                      {tripData.notes}
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           </Card>
         )}
-        {mode === 'checkin' && !loadingVehicleStatus && !selectedTrip && (
+
+        {/* Show error if no trip data but in checkin mode */}
+        {mode === 'checkin' && !tripData && !loadingVehicleStatus && selectedVehicleId && (
           <Card className="p-6 bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800">
             <div className="flex items-center gap-2 text-amber-800 dark:text-amber-200">
               <AlertTriangle size={20} />
@@ -348,29 +644,13 @@ export const TripLogFormView: React.FC<TripLogFormViewProps> = ({
             </div>
           </Card>
         )}
-        {mode === 'checkin' && selectedTrip && (
-          <Card className="p-6 bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800">
-            <div className="space-y-2">
-              <h3 className="font-semibold text-slate-900 dark:text-white flex items-center gap-2">
-                <Truck size={18} />
-                รถ: {selectedTrip.vehicle?.plate || 'N/A'}
-              </h3>
-              <div className="text-sm text-slate-600 dark:text-slate-400">
-                <div className="flex items-center gap-2">
-                  <Gauge size={16} />
-                  เลขไมล์ออก: {selectedTrip.odometer_start.toLocaleString()} km
-                </div>
-                <div className="flex items-center gap-2 mt-1">
-                  <Clock size={16} />
-                  ออกเมื่อ: {new Date(selectedTrip.checkout_time).toLocaleString('th-TH')}
-                </div>
-                {selectedTrip.destination && (
-                  <div className="flex items-center gap-2 mt-1">
-                    <MapPin size={16} />
-                    ปลายทาง: {selectedTrip.destination}
-                  </div>
-                )}
-              </div>
+
+        {/* Show error if user mismatch */}
+        {mode === 'checkin' && userMismatch && tripData && (
+          <Card className="p-6 bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800">
+            <div className="flex items-center gap-2 text-red-800 dark:text-red-200">
+              <AlertCircle size={20} />
+              <span>คุณไม่สามารถบันทึกเลขไมล์กลับได้ เนื่องจากไม่ใช่ผู้ใช้งานคนเดียวกัน</span>
             </div>
           </Card>
         )}
@@ -394,9 +674,11 @@ export const TripLogFormView: React.FC<TripLogFormViewProps> = ({
                 min={0}
                 error={odometerValidation && !odometerValidation.valid ? odometerValidation.warning : undefined}
                 helperText={
-                  odometerValidation?.lastOdometer 
-                    ? `เลขไมล์ล่าสุด: ${odometerValidation.lastOdometer.toLocaleString()} km`
-                    : undefined
+                  mode === 'checkin' && tripData
+                    ? `เลขไมล์ออก: ${tripData.odometer_start.toLocaleString()} km`
+                    : odometerValidation?.lastOdometer
+                      ? `เลขไมล์ล่าสุด: ${odometerValidation.lastOdometer.toLocaleString()} km`
+                      : undefined
                 }
               />
               {odometerValidation?.warning && odometerValidation.valid && (
@@ -408,71 +690,77 @@ export const TripLogFormView: React.FC<TripLogFormViewProps> = ({
             </div>
 
             {/* Distance calculation for check-in */}
-            {mode === 'checkin' && selectedTrip && formData.odometer && (
+            {mode === 'checkin' && tripData && formData.odometer && (
               <div className="p-3 bg-slate-50 dark:bg-slate-800/50 rounded-lg">
                 <div className="text-sm text-slate-600 dark:text-slate-400">
-                  ระยะทาง: {(() => {
-                    const odometerValue = parseInt(formData.odometer);
-                    if (!isNaN(odometerValue) && odometerValue > selectedTrip.odometer_start) {
-                      const distance = odometerValue - selectedTrip.odometer_start;
-                      return `${distance.toLocaleString()} km`;
-                    }
-                    return 'N/A';
-                  })()}
+                  <div className="font-medium mb-1">ระยะทางที่วิ่ง:</div>
+                  <div className="text-lg font-semibold text-slate-900 dark:text-white">
+                    {(() => {
+                      const odometerValue = parseInt(formData.odometer);
+                      const tripStart = tripData.odometer_start;
+                      if (!isNaN(odometerValue) && tripStart && odometerValue > tripStart) {
+                        const distance = odometerValue - tripStart;
+                        return `${distance.toLocaleString()} km`;
+                      }
+                      return 'N/A';
+                    })()}
+                  </div>
                 </div>
               </div>
             )}
           </div>
         </Card>
 
-        {/* Optional Fields */}
-        <Card className="p-6">
-          <div className="space-y-4">
-            <Input
-              label={
-                <span className="flex items-center gap-2">
-                  <MapPin size={18} />
-                  ปลายทาง (ไม่บังคับ)
-                </span>
-              }
-              value={formData.destination}
-              onChange={(e) => setFormData({ ...formData, destination: e.target.value })}
-              placeholder="กรอกปลายทาง"
-            />
-
-            <Input
-              label={
-                <span className="flex items-center gap-2">
-                  <Route size={18} />
-                  เส้นทาง (ไม่บังคับ)
-                </span>
-              }
-              value={formData.route}
-              onChange={(e) => setFormData({ ...formData, route: e.target.value })}
-              placeholder="กรอกเส้นทาง"
-            />
-
-            <div>
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                <FileText className="inline mr-2" size={18} />
-                หมายเหตุ (ไม่บังคับ)
-              </label>
-              <textarea
-                value={formData.notes}
-                onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                placeholder="กรอกหมายเหตุ"
-                rows={3}
-                className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-enterprise-500 focus:border-transparent resize-none"
+        {/* Optional Fields - Only show for checkout, hide for check-in */}
+        {mode === 'checkout' && (
+          <Card className="p-6">
+            <div className="space-y-4">
+              <Input
+                label={
+                  <span className="flex items-center gap-2">
+                    <MapPin size={18} />
+                    ปลายทาง (ไม่บังคับ)
+                  </span>
+                }
+                value={formData.destination}
+                onChange={(e) => setFormData({ ...formData, destination: e.target.value })}
+                placeholder="กรอกปลายทาง"
               />
+
+              <Input
+                label={
+                  <span className="flex items-center gap-2">
+                    <Route size={18} />
+                    เส้นทาง (ไม่บังคับ)
+                  </span>
+                }
+                value={formData.route}
+                onChange={(e) => setFormData({ ...formData, route: e.target.value })}
+                placeholder="กรอกเส้นทาง"
+              />
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                  <FileText className="inline mr-2" size={18} />
+                  หมายเหตุ (ไม่บังคับ)
+                </label>
+                <textarea
+                  value={formData.notes}
+                  onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                  placeholder="กรอกหมายเหตุ"
+                  rows={3}
+                  className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-enterprise-500 focus:border-transparent resize-none"
+                />
+              </div>
             </div>
-          </div>
-        </Card>
+          </Card>
+        )}
 
         {/* Submit Button */}
         <div className="flex gap-4">
           <Button
             type="submit"
-            disabled={saving || checkingOut || checkingIn}
+            disabled={saving || checkingOut || checkingIn || userMismatch}
             className="flex-1 flex items-center justify-center gap-2"
           >
             {saving || checkingOut || checkingIn ? (
@@ -483,7 +771,7 @@ export const TripLogFormView: React.FC<TripLogFormViewProps> = ({
             ) : (
               <>
                 <Save size={18} />
-                {mode === 'checkout' ? 'บันทึกการออก' : 'บันทึกการกลับ'}
+                {mode === 'checkout' ? 'บันทึกการออกเดินทาง' : 'บันทึกการกลับ'}
               </>
             )}
           </Button>

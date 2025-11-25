@@ -37,7 +37,7 @@ export const tripLogService = {
   // Create check-out (start trip)
   createCheckout: async (data: CheckoutData): Promise<TripLog> => {
     const { data: { user } } = await supabase.auth.getUser();
-    
+
     if (!user) {
       throw new Error('User not authenticated');
     }
@@ -70,7 +70,7 @@ export const tripLogService = {
   // Update check-in (end trip)
   updateCheckin: async (tripId: string, data: CheckinData): Promise<TripLog> => {
     const { data: { user } } = await supabase.auth.getUser();
-    
+
     if (!user) {
       throw new Error('User not authenticated');
     }
@@ -134,8 +134,8 @@ export const tripLogService = {
       .from('trip_logs')
       .select(`
         *,
-        vehicle:vehicles!trip_logs_vehicle_id_fkey(plate, make, model),
-        driver:profiles!trip_logs_driver_id_fkey(full_name, email)
+        vehicle:vehicles(plate, make, model),
+        driver:profiles(full_name, email)
       `)
       .eq('status', 'checked_out')
       .order('checkout_time', { ascending: false });
@@ -166,8 +166,8 @@ export const tripLogService = {
       .from('trip_logs')
       .select(`
         *,
-        vehicle:vehicles!trip_logs_vehicle_id_fkey(plate, make, model),
-        driver:profiles!trip_logs_driver_id_fkey(full_name, email)
+        vehicle:vehicles(plate, make, model),
+        driver:profiles(full_name, email)
       `)
       .order('checkout_time', { ascending: false })
       .limit(100);
@@ -208,8 +208,8 @@ export const tripLogService = {
       .from('trip_logs')
       .select(`
         *,
-        vehicle:vehicles!trip_logs_vehicle_id_fkey(plate, make, model),
-        driver:profiles!trip_logs_driver_id_fkey(full_name, email)
+        vehicle:vehicles(plate, make, model),
+        driver:profiles(full_name, email)
       `)
       .eq('id', tripId)
       .single();
@@ -237,9 +237,9 @@ export const tripLogService = {
         .eq('vehicle_id', vehicleId)
         .order('filled_at', { ascending: false })
         .limit(1)
-        .single(),
-      
-      // From trip logs
+        .maybeSingle(),
+
+      // From trip logs - only get checked-in trips (where odometer_end is not null)
       supabase
         .from('trip_logs')
         .select('odometer_end')
@@ -247,12 +247,13 @@ export const tripLogService = {
         .not('odometer_end', 'is', null)
         .order('checkin_time', { ascending: false })
         .limit(1)
-        .single(),
+        .maybeSingle(),
     ]);
 
-    const lastFuelOdometer = fuelResult.data?.odometer;
-    const lastTripOdometer = tripResult.data?.odometer_end;
-    
+    // Handle errors gracefully - if query fails, just ignore that source
+    const lastFuelOdometer = fuelResult.error ? null : fuelResult.data?.odometer;
+    const lastTripOdometer = tripResult.error ? null : tripResult.data?.odometer_end;
+
     const lastOdometer = Math.max(
       lastFuelOdometer || 0,
       lastTripOdometer || 0
@@ -289,8 +290,8 @@ export const tripLogService = {
       .from('trip_logs')
       .select(`
         *,
-        vehicle:vehicles!trip_logs_vehicle_id_fkey(plate, make, model),
-        driver:profiles!trip_logs_driver_id_fkey(full_name, email)
+        vehicle:vehicles(plate, make, model),
+        driver:profiles(full_name, email)
       `)
       .eq('status', 'checked_out')
       .lt('checkout_time', twelveHoursAgo.toISOString())

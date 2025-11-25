@@ -89,7 +89,7 @@ export const TripLogListView: React.FC<TripLogListViewProps> = ({
               className="flex items-center gap-2"
             >
               <Plus size={18} />
-              บันทึกเลขไมล์ออก
+              บันทึกการใช้งานรถ
             </Button>
           )}
           <Button
