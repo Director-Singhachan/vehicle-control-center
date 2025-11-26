@@ -57,7 +57,7 @@ export const ticketService = {
     try {
       const limit = filters?.limit || 100;
       const offset = filters?.offset || 0;
-      
+
       let query = supabase
         .from('tickets_with_relations')
         .select('*', { count: 'exact' })
@@ -359,7 +359,7 @@ export const ticketService = {
     // 4. Update ticket status if needed
     if (nextStatus) {
       const { error: updateError } = await (supabase.from('tickets') as any).update({ status: nextStatus })
-        .eq('id', ticketId);
+        .eq('id', parseInt(ticketId, 10));
 
       if (updateError) throw updateError;
     }
