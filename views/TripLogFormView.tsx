@@ -22,6 +22,7 @@ import { Card } from '../components/ui/Card';
 import { PageLayout } from '../components/layout/PageLayout';
 import { useVehicles, useActiveTrips, useTripCheckout, useTripCheckin, useVehicleStatus, useAuth } from '../hooks';
 import { tripLogService } from '../services/tripLogService';
+import { useDataCacheStore, createCacheKey } from '../stores/dataCacheStore';
 
 interface TripLogFormViewProps {
   vehicleId?: string;
@@ -38,11 +39,28 @@ export const TripLogFormView: React.FC<TripLogFormViewProps> = ({
   onSave,
   onCancel,
 }) => {
-  const { user } = useAuth();
+  const { user, isDriver, isManager, isAdmin, isInspector } = useAuth();
   const { vehicles, loading: loadingVehicles, error: vehiclesError } = useVehicles();
   const { trips: activeTrips, refetch: refetchActiveTrips, loading: loadingActiveTrips } = useActiveTrips();
+  
+  // Log active trips for debugging
+  useEffect(() => {
+    console.log('[TripLogFormView] Active trips:', {
+      count: activeTrips.length,
+      trips: activeTrips.map(t => ({
+        id: t.id,
+        vehicle_id: t.vehicle_id,
+        vehicle_plate: t.vehicle?.plate,
+        driver_id: t.driver_id,
+        driver_name: t.driver?.full_name,
+      })),
+      userRole: { isDriver, isManager, isAdmin, isInspector },
+      userId: user?.id,
+    });
+  }, [activeTrips, user, isDriver, isManager, isAdmin, isInspector]);
   const { checkout, loading: checkingOut } = useTripCheckout();
   const { checkin, loading: checkingIn } = useTripCheckin();
+  const cache = useDataCacheStore();
 
   // Determine mode: if tripId provided, it's check-in; otherwise checkout
   const [mode, setMode] = useState<'checkout' | 'checkin'>(initialMode || (tripId ? 'checkin' : 'checkout'));
@@ -77,53 +95,77 @@ export const TripLogFormView: React.FC<TripLogFormViewProps> = ({
   const [tripData, setTripData] = useState<any>(null); // Store full trip data for check-in
   const [userMismatch, setUserMismatch] = useState(false);
 
+  // Refresh active trips when component mounts or user changes
+  useEffect(() => {
+    if (user) {
+      // Invalidate cache and refetch active trips to ensure fresh data
+      cache.invalidate([createCacheKey('active-trips', 'all')]);
+      refetchActiveTrips();
+    }
+  }, [user?.id]); // Only refetch when user ID changes
+
   // Detect when vehicle with active trip is selected in checkout mode
+  // Use vehicleActiveTrip from useVehicleStatus which refreshes automatically when vehicle is selected
   useEffect(() => {
     if (mode === 'checkout' && selectedVehicleId) {
-      const activeTrip = activeTrips.find(t => t.vehicle_id === selectedVehicleId);
-      if (activeTrip) {
-        // Vehicle has active trip - switch to check-in mode
-        setMode('checkin');
-        setSelectedTripId(activeTrip.id);
-        setTripData(activeTrip);
-        setFormData({
-          odometer: '',
-          destination: activeTrip.destination || '',
-          route: activeTrip.route || '',
-          notes: activeTrip.notes || '',
-        });
+      // Wait a bit for data to refresh, then check for active trip
+      const checkActiveTrip = () => {
+        // First check vehicleActiveTrip (most up-to-date for selected vehicle)
+        const activeTrip = vehicleActiveTrip || activeTrips.find(t => t.vehicle_id === selectedVehicleId);
         
-        // Reset success state when switching modes
-        setSuccess(false);
-        setSuccessMode(null);
-        
-        // Check user match
-        if (user && activeTrip.driver_id && activeTrip.driver_id !== user.id) {
-          setUserMismatch(true);
-          setError('คุณไม่สามารถบันทึกเลขไมล์กลับได้ เนื่องจากไม่ใช่ผู้ใช้งานคนเดียวกัน');
-        } else {
+        if (activeTrip) {
+          // Vehicle has active trip - switch to check-in mode
+          setMode('checkin');
+          setSelectedTripId(activeTrip.id);
+          setTripData(activeTrip);
+          setFormData({
+            odometer: '',
+            destination: activeTrip.destination || '',
+            route: activeTrip.route || '',
+            notes: activeTrip.notes || '',
+          });
+          
+          // Reset success state when switching modes
+          setSuccess(false);
+          setSuccessMode(null);
+          
+          // Check user match (only for drivers, staff can check-in any trip)
+          if (isDriver && user && activeTrip.driver_id && activeTrip.driver_id !== user.id) {
+            setUserMismatch(true);
+            setError('คุณไม่สามารถบันทึกเลขไมล์กลับได้ เนื่องจากไม่ใช่ผู้ใช้งานคนเดียวกัน กรุณาติดต่อผู้จัดการเพื่อช่วย check-in');
+          } else {
+            setUserMismatch(false);
+            setError(null);
+          }
+        } else if (!loadingVehicleStatus) {
+          // Only clear if not loading (to avoid clearing while data is being fetched)
+          // No active trip - ensure checkout mode and clear all check-in related data
+          setMode('checkout');
+          setTripData(null);
+          setSelectedTripId('');
           setUserMismatch(false);
-          setError(null);
+          // Reset success state when switching modes
+          setSuccess(false);
+          setSuccessMode(null);
+          // Clear form data when switching back to checkout mode
+          setFormData({
+            odometer: '',
+            destination: '',
+            route: '',
+            notes: '',
+          });
         }
+      };
+
+      // If still loading, wait a bit before checking
+      if (loadingVehicleStatus || loadingActiveTrips) {
+        const timeout = setTimeout(checkActiveTrip, 300);
+        return () => clearTimeout(timeout);
       } else {
-        // No active trip - ensure checkout mode and clear all check-in related data
-        setMode('checkout');
-        setTripData(null);
-        setSelectedTripId('');
-        setUserMismatch(false);
-        // Reset success state when switching modes
-        setSuccess(false);
-        setSuccessMode(null);
-        // Clear form data when switching back to checkout mode
-        setFormData({
-          odometer: '',
-          destination: '',
-          route: '',
-          notes: '',
-        });
+        checkActiveTrip();
       }
     }
-  }, [selectedVehicleId, activeTrips, mode, user]);
+  }, [selectedVehicleId, activeTrips, vehicleActiveTrip, mode, user, loadingVehicleStatus, loadingActiveTrips]);
 
   // Load active trip data for check-in
   useEffect(() => {
@@ -352,9 +394,9 @@ export const TripLogFormView: React.FC<TripLogFormViewProps> = ({
           return;
         }
 
-        // Validate user matches trip driver_id
-        if (user && tripData && tripData.driver_id && tripData.driver_id !== user.id) {
-          setError('คุณไม่สามารถบันทึกเลขไมล์กลับได้ เนื่องจากไม่ใช่ผู้ใช้งานคนเดียวกัน');
+        // Validate user matches trip driver_id (only for drivers, staff can check-in any trip)
+        if (isDriver && user && tripData && tripData.driver_id && tripData.driver_id !== user.id) {
+          setError('คุณไม่สามารถบันทึกเลขไมล์กลับได้ เนื่องจากไม่ใช่ผู้ใช้งานคนเดียวกัน กรุณาติดต่อผู้จัดการเพื่อช่วย check-in');
           setSaving(false);
           return;
         }
@@ -545,61 +587,116 @@ export const TripLogFormView: React.FC<TripLogFormViewProps> = ({
                     {/* Dropdown List */}
                     {showVehicleDropdown && availableVehicles.length > 0 && !selectedVehicleId && (
                       <div className="absolute z-50 w-full mt-1 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg shadow-lg max-h-60 overflow-auto">
-                        {availableVehicles.map((vehicle) => (
-                          <button
-                            key={vehicle.id}
-                            type="button"
-                            onClick={() => {
+                        {availableVehicles.map((vehicle) => {
+                          const hasActiveTrip = activeTrips.some(t => t.vehicle_id === vehicle.id);
+                          return (
+                            <button
+                              key={vehicle.id}
+                              type="button"
+                            onClick={async () => {
                               setSelectedVehicleId(vehicle.id);
                               setVehicleSearchQuery(''); // Clear search query
                               setShowVehicleDropdown(false);
                               setOdometerValidation(null);
                               setError(null);
                               setTripData(null);
+                              // Invalidate cache for active trips to ensure fresh data
+                              cache.invalidate([
+                                createCacheKey('active-trips', 'all'),
+                                createCacheKey('active-trips', vehicle.id),
+                              ]);
+                              // Force refresh active trips and vehicle status when selecting a vehicle
+                              // Do this in parallel for faster response
+                              await Promise.all([
+                                refetchActiveTrips(),
+                                vehicle.id ? refetchVehicleStatus() : Promise.resolve(),
+                              ]);
                             }}
-                            className={`w-full text-left px-4 py-2 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors ${selectedVehicleId === vehicle.id ? 'bg-enterprise-50 dark:bg-enterprise-900/20' : ''
-                              }`}
-                          >
-                            <div className="font-medium text-slate-900 dark:text-white">
-                              {vehicle.plate}
-                            </div>
-                            {vehicle.make && vehicle.model && (
-                              <div className="text-sm text-slate-500 dark:text-slate-400">
-                                {vehicle.make} {vehicle.model}
+                              className={`w-full text-left px-4 py-2 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors ${selectedVehicleId === vehicle.id ? 'bg-enterprise-50 dark:bg-enterprise-900/20' : ''
+                                }`}
+                            >
+                              <div className="flex items-center justify-between">
+                                <div className="flex-1">
+                                  <div className="font-medium text-slate-900 dark:text-white">
+                                    {vehicle.plate}
+                                  </div>
+                                  {vehicle.make && vehicle.model && (
+                                    <div className="text-sm text-slate-500 dark:text-slate-400">
+                                      {vehicle.make} {vehicle.model}
+                                    </div>
+                                  )}
+                                </div>
+                                {hasActiveTrip && (
+                                  <span className="ml-2 px-2 py-0.5 bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-200 rounded-full text-xs font-medium flex items-center gap-1">
+                                    <Clock size={12} />
+                                    ใช้งานอยู่
+                                  </span>
+                                )}
                               </div>
-                            )}
-                          </button>
-                        ))}
+                            </button>
+                          );
+                        })}
                       </div>
                     )}
 
                     {/* Show selected vehicle */}
-                    {selectedVehicleId && selectedVehicle && (
-                      <div className="mt-2 p-3 bg-slate-50 dark:bg-slate-800/50 rounded-lg border border-slate-200 dark:border-slate-700">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <div className="font-medium text-slate-900 dark:text-white">
-                              {selectedVehicle.plate}
-                            </div>
-                            {selectedVehicle.make && selectedVehicle.model && (
-                              <div className="text-sm text-slate-500 dark:text-slate-400">
-                                {selectedVehicle.make} {selectedVehicle.model}
+                    {selectedVehicleId && selectedVehicle && (() => {
+                      const activeTripForVehicle = vehicleActiveTrip || activeTrips.find(t => t.vehicle_id === selectedVehicleId);
+                      return (
+                        <div className="mt-2 p-3 bg-slate-50 dark:bg-slate-800/50 rounded-lg border border-slate-200 dark:border-slate-700">
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="flex-1">
+                              <div className="font-medium text-slate-900 dark:text-white flex items-center gap-2">
+                                {selectedVehicle.plate}
+                                {activeTripForVehicle && (
+                                  <span className="px-2 py-0.5 bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-200 rounded-full text-xs font-medium flex items-center gap-1">
+                                    <Clock size={12} />
+                                    ใช้งานอยู่
+                                  </span>
+                                )}
                               </div>
-                            )}
+                              {selectedVehicle.make && selectedVehicle.model && (
+                                <div className="text-sm text-slate-500 dark:text-slate-400">
+                                  {selectedVehicle.make} {selectedVehicle.model}
+                                </div>
+                              )}
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedVehicleId('');
+                                setVehicleSearchQuery('');
+                                setTripData(null);
+                                setMode('checkout');
+                              }}
+                              className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
+                            >
+                              <X size={18} />
+                            </button>
                           </div>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setSelectedVehicleId('');
-                              setVehicleSearchQuery('');
-                            }}
-                            className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
-                          >
-                            <X size={18} />
-                          </button>
+                          {/* Show active trip info if exists */}
+                          {activeTripForVehicle && (
+                            <div className="mt-2 pt-2 border-t border-slate-200 dark:border-slate-700">
+                              <div className="text-xs text-slate-600 dark:text-slate-400 space-y-1">
+                                <div className="flex items-center gap-1">
+                                  <Gauge size={12} />
+                                  <span>เลขไมล์ออก: <span className="font-medium text-slate-900 dark:text-white">{(activeTripForVehicle.odometer_start || 0).toLocaleString()} km</span></span>
+                                </div>
+                                <div className="flex items-center gap-1">
+                                  <Clock size={12} />
+                                  <span>ออกเมื่อ: <span className="font-medium text-slate-900 dark:text-white">{new Date(activeTripForVehicle.checkout_time || new Date()).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short' })}</span></span>
+                                </div>
+                                {activeTripForVehicle.driver?.full_name && (
+                                  <div className="text-slate-500 dark:text-slate-400">
+                                    ผู้ขับ: <span className="font-medium text-slate-900 dark:text-white">{activeTripForVehicle.driver.full_name}</span>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          )}
                         </div>
-                      </div>
-                    )}
+                      );
+                    })()}
 
                     {/* Show message if no vehicles found */}
                     {vehicleSearchQuery && availableVehicles.length === 0 && (
@@ -642,11 +739,38 @@ export const TripLogFormView: React.FC<TripLogFormViewProps> = ({
                   <Truck size={18} />
                   ข้อมูลการออกเดินทาง
                 </h3>
-                {userMismatch && (
-                  <span className="px-3 py-1 bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-200 rounded-full text-xs font-medium">
-                    ไม่ใช่ผู้ใช้งานคนเดียวกัน
-                  </span>
-                )}
+                <div className="flex items-center gap-2">
+                  {userMismatch && (
+                    <span className="px-3 py-1 bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-200 rounded-full text-xs font-medium">
+                      ไม่ใช่ผู้ใช้งานคนเดียวกัน
+                    </span>
+                  )}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setSelectedVehicleId('');
+                      setSelectedTripId('');
+                      setVehicleSearchQuery('');
+                      setTripData(null);
+                      setMode('checkout');
+                      setUserMismatch(false);
+                      setError(null);
+                      setFormData({
+                        odometer: '',
+                        checkout_time: '',
+                        destination: '',
+                        route: '',
+                        notes: '',
+                      });
+                    }}
+                    className="flex items-center gap-1"
+                  >
+                    <ArrowLeft size={16} />
+                    เลือกรถใหม่
+                  </Button>
+                </div>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
@@ -742,9 +866,37 @@ export const TripLogFormView: React.FC<TripLogFormViewProps> = ({
         {/* Show error if user mismatch */}
         {mode === 'checkin' && userMismatch && tripData && (
           <Card className="p-6 bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800">
-            <div className="flex items-center gap-2 text-red-800 dark:text-red-200">
-              <AlertCircle size={20} />
-              <span>คุณไม่สามารถบันทึกเลขไมล์กลับได้ เนื่องจากไม่ใช่ผู้ใช้งานคนเดียวกัน</span>
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 text-red-800 dark:text-red-200">
+                <AlertCircle size={20} />
+                <span>คุณไม่สามารถบันทึกเลขไมล์กลับได้ เนื่องจากไม่ใช่ผู้ใช้งานคนเดียวกัน</span>
+              </div>
+              <div className="pt-2 border-t border-red-200 dark:border-red-800">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    setSelectedVehicleId('');
+                    setSelectedTripId('');
+                    setVehicleSearchQuery('');
+                    setTripData(null);
+                    setMode('checkout');
+                    setUserMismatch(false);
+                    setError(null);
+                    setFormData({
+                      odometer: '',
+                      checkout_time: '',
+                      destination: '',
+                      route: '',
+                      notes: '',
+                    });
+                  }}
+                  className="flex items-center gap-2"
+                >
+                  <ArrowLeft size={18} />
+                  เลือกรถใหม่
+                </Button>
+              </div>
             </div>
           </Card>
         )}
