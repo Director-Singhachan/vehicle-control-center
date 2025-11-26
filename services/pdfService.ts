@@ -29,6 +29,7 @@ interface Ticket {
 export const pdfService = {
     generateMaintenanceTicketPDF: async (ticket: Ticket) => {
         try {
+            console.log('[pdfService] generateMaintenanceTicketPDF input:', ticket);
             // Create new PDF document
             const doc = new jsPDF();
 
@@ -68,10 +69,35 @@ export const pdfService = {
                 doc.text(value || '-', x, y + 6);
             };
 
+            // Normalized fields (เผื่อมีหลายชื่อฟิลด์จาก view / table ต่างกัน)
+            const repairType =
+                ticket.problem ||
+                (ticket as any).repair_type ||
+                '-';
+
+            const problemDescription =
+                ticket.description ||
+                (ticket as any).problem_description ||
+                '-';
+
+            const makeModel =
+                `${ticket.vehicle_make || (ticket as any).vehicle_make || ''} ${ticket.vehicle_model || (ticket as any).vehicle_model || ''}`.trim() ||
+                '-';
+
+            const repairGarage =
+                ticket.garage ||
+                (ticket as any).repair_garage ||
+                null;
+
+            const repairNotes =
+                ticket.notes ||
+                (ticket as any).repair_notes ||
+                null;
+
             // --- Header ---
             // Title
-            doc.setFontSize(22);
-            doc.text('ใบแจ้งซ่อม (Maintenance Ticket)', 105, 20, { align: 'center' });
+            doc.setFontSize(16);
+            doc.text('ใบแจ้งซ่อม', 105, 20, { align: 'center' });
 
             doc.setFontSize(12);
             doc.text(`เลขที่เอกสาร: ${ticket.ticket_number || ticket.id}`, 195, 20, { align: 'right' });
@@ -107,7 +133,7 @@ export const pdfService = {
             rightY += 10;
 
             addField('ทะเบียน (Plate)', ticket.vehicle_plate, rightColX, rightY);
-            addField('ยี่ห้อ/รุ่น (Make/Model)', `${ticket.vehicle_make || ''} ${ticket.vehicle_model || ''}`, rightColX + 40, rightY);
+            addField('ยี่ห้อ/รุ่น (Make/Model)', makeModel, rightColX + 40, rightY);
             rightY += 15;
 
             addField('ประเภท (Type)', ticket.vehicle_type, rightColX, rightY);
@@ -128,7 +154,7 @@ export const pdfService = {
             doc.text('รายละเอียดการซ่อม (Repair Details)', 15, currentY);
             currentY += 10;
 
-            addField('ประเภทการซ่อม (Repair Type)', ticket.problem, 15, currentY);
+            addField('ประเภทการซ่อม (Repair Type)', repairType, 15, currentY);
             addField('ความเร่งด่วน (Urgency)', ticket.urgency, 80, currentY);
             currentY += 15;
 
@@ -140,7 +166,7 @@ export const pdfService = {
             doc.setFontSize(12);
             doc.setTextColor(0, 0, 0);
             // Split text to fit width
-            const splitDescription = doc.splitTextToSize(ticket.description || '-', 180);
+            const splitDescription = doc.splitTextToSize(problemDescription, 180);
             doc.text(splitDescription, 15, currentY);
             currentY += (splitDescription.length * 7) + 5;
 
@@ -170,7 +196,7 @@ export const pdfService = {
             }
 
             // --- Garage Section ---
-            if (ticket.garage) {
+            if (repairGarage) {
                 doc.setLineWidth(0.1);
                 doc.line(15, currentY, 195, currentY);
                 currentY += 10;
@@ -180,9 +206,9 @@ export const pdfService = {
                 doc.text('ข้อมูลการซ่อม (Repair Info)', 15, currentY);
                 currentY += 10;
 
-                addField('อู่/ร้านที่จะเข้าซ่อม (Garage)', ticket.garage, 15, currentY);
-                if (ticket.notes) {
-                    addField('หมายเหตุ (Notes)', ticket.notes, 80, currentY);
+                addField('อู่/ร้านที่จะเข้าซ่อม (Garage)', repairGarage, 15, currentY);
+                if (repairNotes) {
+                    addField('หมายเหตุ (Notes)', repairNotes, 80, currentY);
                 }
                 currentY += 20;
             } else {
