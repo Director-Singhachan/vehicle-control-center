@@ -42,7 +42,7 @@ export const TripLogFormView: React.FC<TripLogFormViewProps> = ({
   const { user, isDriver, isManager, isAdmin, isInspector } = useAuth();
   const { vehicles, loading: loadingVehicles, error: vehiclesError } = useVehicles();
   const { trips: activeTrips, refetch: refetchActiveTrips, loading: loadingActiveTrips } = useActiveTrips();
-  
+
   // Log active trips for debugging
   useEffect(() => {
     console.log('[TripLogFormView] Active trips:', {
@@ -112,7 +112,7 @@ export const TripLogFormView: React.FC<TripLogFormViewProps> = ({
       const checkActiveTrip = () => {
         // First check vehicleActiveTrip (most up-to-date for selected vehicle)
         const activeTrip = vehicleActiveTrip || activeTrips.find(t => t.vehicle_id === selectedVehicleId);
-        
+
         if (activeTrip) {
           // Vehicle has active trip - switch to check-in mode
           setMode('checkin');
@@ -124,11 +124,11 @@ export const TripLogFormView: React.FC<TripLogFormViewProps> = ({
             route: activeTrip.route || '',
             notes: activeTrip.notes || '',
           });
-          
+
           // Reset success state when switching modes
           setSuccess(false);
           setSuccessMode(null);
-          
+
           // Check user match (only for drivers, staff can check-in any trip)
           if (isDriver && user && activeTrip.driver_id && activeTrip.driver_id !== user.id) {
             setUserMismatch(true);
@@ -367,7 +367,7 @@ export const TripLogFormView: React.FC<TripLogFormViewProps> = ({
 
         setSuccessMode('checkout');
         setSuccess(true);
-        
+
         // Clear form data after successful checkout
         setTimeout(() => {
           setFormData({
@@ -383,7 +383,7 @@ export const TripLogFormView: React.FC<TripLogFormViewProps> = ({
           setShowVehicleDropdown(false);
           setSuccessMode(null);
           setIsBackfillMode(false);
-          
+
           if (onSave) onSave();
         }, 1500);
       } else {
@@ -409,11 +409,20 @@ export const TripLogFormView: React.FC<TripLogFormViewProps> = ({
           return;
         }
 
-        // Validate distance <= 500 km
+        // Validate distance > 500 km - show confirmation instead of blocking
         if (tripStart && (odometerValue - tripStart) > 500) {
-          setError(`ระยะทาง (${(odometerValue - tripStart).toLocaleString()} km) เกิน 500 km กรุณาตรวจสอบ`);
-          setSaving(false);
-          return;
+          const distance = odometerValue - tripStart;
+          const confirmed = confirm(
+            `ระยะทางที่บันทึก: ${distance.toLocaleString()} กม.\n\n` +
+            `ระยะทางนี้เกิน 500 กม. กรุณาตรวจสอบว่าเลขไมล์ถูกต้องหรือไม่\n\n` +
+            `ถ้าระยะทางนี้ถูกต้อง กด "ตกลง" เพื่อบันทึก\n` +
+            `ถ้าไม่แน่ใจ กด "ยกเลิก" เพื่อตรวจสอบอีกครั้ง`
+          );
+
+          if (!confirmed) {
+            setSaving(false);
+            return;
+          }
         }
 
         // For check-in, only send odometer_end (other fields are read-only)
@@ -424,10 +433,10 @@ export const TripLogFormView: React.FC<TripLogFormViewProps> = ({
 
         setSuccessMode('checkin');
         setSuccess(true);
-        
+
         // Refetch active trips to update the list (remove the completed trip)
         refetchActiveTrips();
-        
+
         // Clear form data after successful check-in
         setTimeout(() => {
           // Clear all form state
@@ -451,7 +460,7 @@ export const TripLogFormView: React.FC<TripLogFormViewProps> = ({
           setIsBackfillMode(false);
           // Reset to checkout mode for next entry
           setMode('checkout');
-          
+
           if (onSave) onSave();
         }, 1500);
       }
@@ -593,25 +602,25 @@ export const TripLogFormView: React.FC<TripLogFormViewProps> = ({
                             <button
                               key={vehicle.id}
                               type="button"
-                            onClick={async () => {
-                              setSelectedVehicleId(vehicle.id);
-                              setVehicleSearchQuery(''); // Clear search query
-                              setShowVehicleDropdown(false);
-                              setOdometerValidation(null);
-                              setError(null);
-                              setTripData(null);
-                              // Invalidate cache for active trips to ensure fresh data
-                              cache.invalidate([
-                                createCacheKey('active-trips', 'all'),
-                                createCacheKey('active-trips', vehicle.id),
-                              ]);
-                              // Force refresh active trips and vehicle status when selecting a vehicle
-                              // Do this in parallel for faster response
-                              await Promise.all([
-                                refetchActiveTrips(),
-                                vehicle.id ? refetchVehicleStatus() : Promise.resolve(),
-                              ]);
-                            }}
+                              onClick={async () => {
+                                setSelectedVehicleId(vehicle.id);
+                                setVehicleSearchQuery(''); // Clear search query
+                                setShowVehicleDropdown(false);
+                                setOdometerValidation(null);
+                                setError(null);
+                                setTripData(null);
+                                // Invalidate cache for active trips to ensure fresh data
+                                cache.invalidate([
+                                  createCacheKey('active-trips', 'all'),
+                                  createCacheKey('active-trips', vehicle.id),
+                                ]);
+                                // Force refresh active trips and vehicle status when selecting a vehicle
+                                // Do this in parallel for faster response
+                                await Promise.all([
+                                  refetchActiveTrips(),
+                                  vehicle.id ? refetchVehicleStatus() : Promise.resolve(),
+                                ]);
+                              }}
                               className={`w-full text-left px-4 py-2 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors ${selectedVehicleId === vehicle.id ? 'bg-enterprise-50 dark:bg-enterprise-900/20' : ''
                                 }`}
                             >
@@ -928,14 +937,12 @@ export const TripLogFormView: React.FC<TripLogFormViewProps> = ({
                       setFormData(prev => ({ ...prev, checkout_time: '' }));
                     }
                   }}
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                    isBackfillMode ? 'bg-enterprise-600' : 'bg-slate-300 dark:bg-slate-600'
-                  }`}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${isBackfillMode ? 'bg-enterprise-600' : 'bg-slate-300 dark:bg-slate-600'
+                    }`}
                 >
                   <span
-                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                      isBackfillMode ? 'translate-x-6' : 'translate-x-1'
-                    }`}
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${isBackfillMode ? 'translate-x-6' : 'translate-x-1'
+                      }`}
                   />
                 </button>
               </div>
