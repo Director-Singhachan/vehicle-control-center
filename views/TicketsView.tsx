@@ -1,11 +1,11 @@
 // Tickets View - List all tickets with filters and search
 import React, { useState, useMemo, useEffect } from 'react';
 import { useTicketsWithRelations, useAuth } from '../hooks';
-import { 
-  FileText, 
-  Plus, 
-  Search, 
-  Filter, 
+import {
+  FileText,
+  Plus,
+  Search,
+  Filter,
   Eye,
   AlertCircle,
   CheckCircle,
@@ -20,6 +20,7 @@ import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Card } from '../components/ui/Card';
 import { PageLayout } from '../components/layout/PageLayout';
+import { Avatar } from '../components/ui/Avatar';
 import type { Database } from '../types/database';
 
 type TicketWithRelations = Database['public']['Views']['tickets_with_relations']['Row'];
@@ -58,7 +59,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
 
   // All filtering is now done server-side, so we can use tickets directly
   const paginatedTickets = tickets;
-  
+
   // Pagination (using server-side count)
   const totalPages = Math.ceil(totalCount / itemsPerPage);
   const startIndex = offset;
@@ -191,41 +192,37 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
             <div className="flex gap-2 flex-wrap">
               <button
                 onClick={() => setStatusFilter('all')}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  statusFilter === 'all'
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${statusFilter === 'all'
                     ? 'bg-enterprise-600 text-white'
                     : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
-                }`}
+                  }`}
               >
                 ทั้งหมด
               </button>
               <button
                 onClick={() => setStatusFilter(['pending'])}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  Array.isArray(statusFilter) && statusFilter.includes('pending')
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${Array.isArray(statusFilter) && statusFilter.includes('pending')
                     ? 'bg-yellow-600 text-white'
                     : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
-                }`}
+                  }`}
               >
                 รออนุมัติ
               </button>
               <button
                 onClick={() => setStatusFilter(['in_progress'])}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  Array.isArray(statusFilter) && statusFilter.includes('in_progress')
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${Array.isArray(statusFilter) && statusFilter.includes('in_progress')
                     ? 'bg-orange-600 text-white'
                     : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
-                }`}
+                  }`}
               >
                 กำลังซ่อม
               </button>
               <button
                 onClick={() => setStatusFilter(['completed'])}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  Array.isArray(statusFilter) && statusFilter.includes('completed')
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${Array.isArray(statusFilter) && statusFilter.includes('completed')
                     ? 'bg-green-600 text-white'
                     : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
-                }`}
+                  }`}
               >
                 เสร็จสิ้น
               </button>
@@ -258,11 +255,10 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                               }
                             }
                           }}
-                          className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${
-                            isSelected
+                          className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${isSelected
                               ? 'bg-enterprise-600 text-white'
                               : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
-                          }`}
+                            }`}
                         >
                           {getStatusBadge(status).label}
                         </button>
@@ -293,11 +289,10 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                               }
                             }
                           }}
-                          className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${
-                            isSelected
+                          className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${isSelected
                               ? 'bg-enterprise-600 text-white'
                               : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
-                          }`}
+                            }`}
                         >
                           {getUrgencyBadge(urgency).label}
                         </button>
@@ -321,119 +316,127 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
               {searchQuery || statusFilter !== 'all' || urgencyFilter !== 'all'
                 ? 'ลองเปลี่ยนเงื่อนไขการค้นหา'
                 : user
-                ? 'เริ่มต้นด้วยการสร้างตั๋วซ่อมบำรุง'
-                : 'ยังไม่มีข้อมูลตั๋วซ่อมบำรุง'}
+                  ? 'เริ่มต้นด้วยการสร้างตั๋วซ่อมบำรุง'
+                  : 'ยังไม่มีข้อมูลตั๋วซ่อมบำรุง'}
             </p>
           </Card>
         ) : (
           <>
             <div className="space-y-4">
               {paginatedTickets.map((ticket) => {
-              const statusBadge = getStatusBadge(ticket.status);
-              const urgencyBadge = getUrgencyBadge(ticket.urgency);
-              const StatusIcon = statusBadge.icon;
+                const statusBadge = getStatusBadge(ticket.status);
+                const urgencyBadge = getUrgencyBadge(ticket.urgency);
+                const StatusIcon = statusBadge.icon;
 
-              return (
-                <Card key={ticket.id} className="p-6 hover:shadow-lg transition-shadow">
-                  <div className="flex items-start justify-between mb-4">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-3 mb-2">
-                        {/* Vehicle Image */}
-                        {ticket.vehicle_image_url ? (
-                          <div className="w-16 h-16 rounded-lg overflow-hidden bg-slate-100 dark:bg-slate-800 flex-shrink-0">
-                            <img
-                              src={ticket.vehicle_image_url}
-                              alt={ticket.vehicle_plate || 'Vehicle'}
-                              className="w-full h-full object-cover"
-                              onError={(e) => {
-                                e.currentTarget.style.display = 'none';
-                                e.currentTarget.nextElementSibling?.classList.remove('hidden');
-                              }}
-                            />
-                            <div className="hidden w-full h-full flex items-center justify-center bg-enterprise-100 dark:bg-enterprise-900">
-                              <FileText className="w-6 h-6 text-enterprise-600 dark:text-enterprise-400" />
+                return (
+                  <Card key={ticket.id} className="p-6 hover:shadow-lg transition-shadow">
+                    <div className="flex items-start justify-between mb-4">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-3 mb-2">
+                          {/* Vehicle Image */}
+                          {ticket.vehicle_image_url ? (
+                            <div className="w-16 h-16 rounded-lg overflow-hidden bg-slate-100 dark:bg-slate-800 flex-shrink-0">
+                              <img
+                                src={ticket.vehicle_image_url}
+                                alt={ticket.vehicle_plate || 'Vehicle'}
+                                className="w-full h-full object-cover"
+                                onError={(e) => {
+                                  e.currentTarget.style.display = 'none';
+                                  e.currentTarget.nextElementSibling?.classList.remove('hidden');
+                                }}
+                              />
+                              <div className="hidden w-full h-full flex items-center justify-center bg-enterprise-100 dark:bg-enterprise-900">
+                                <FileText className="w-6 h-6 text-enterprise-600 dark:text-enterprise-400" />
+                              </div>
                             </div>
+                          ) : (
+                            <div className="p-2 bg-enterprise-100 dark:bg-enterprise-900 rounded-lg flex-shrink-0">
+                              <FileText className="w-5 h-5 text-enterprise-600 dark:text-enterprise-400" />
+                            </div>
+                          )}
+                          <div>
+                            <h3 className="font-semibold text-lg text-slate-900 dark:text-white">
+                              {ticket.ticket_number || `#${ticket.id}`}
+                            </h3>
+                            <p className="text-sm text-slate-500 dark:text-slate-400">
+                              {ticket.vehicle_plate} • {ticket.repair_type || 'ไม่ระบุประเภท'}
+                            </p>
                           </div>
-                        ) : (
-                          <div className="p-2 bg-enterprise-100 dark:bg-enterprise-900 rounded-lg flex-shrink-0">
-                            <FileText className="w-5 h-5 text-enterprise-600 dark:text-enterprise-400" />
-                          </div>
+                        </div>
+
+                        {ticket.problem_description && (
+                          <p className="text-sm text-slate-600 dark:text-slate-400 mt-2 line-clamp-2">
+                            {ticket.problem_description}
+                          </p>
                         )}
-                        <div>
-                          <h3 className="font-semibold text-lg text-slate-900 dark:text-white">
-                            {ticket.ticket_number || `#${ticket.id}`}
-                          </h3>
-                          <p className="text-sm text-slate-500 dark:text-slate-400">
-                            {ticket.vehicle_plate} • {ticket.repair_type || 'ไม่ระบุประเภท'}
+                      </div>
+
+                      <div className="flex flex-col gap-2 items-end">
+                        <span className={`px-3 py-1 rounded-full text-xs font-medium flex items-center gap-1 ${statusBadge.className}`}>
+                          <StatusIcon className="w-3 h-3" />
+                          {statusBadge.label}
+                        </span>
+                        <span className={`px-3 py-1 rounded-full text-xs font-medium ${urgencyBadge.className}`}>
+                          {urgencyBadge.label === 'วิกฤต' && <Zap className="w-3 h-3 inline mr-1" />}
+                          {urgencyBadge.label === 'สูง' && <AlertTriangle className="w-3 h-3 inline mr-1" />}
+                          {urgencyBadge.label}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pt-4 border-t border-slate-200 dark:border-slate-700 text-sm">
+                      <div>
+                        <p className="text-slate-500 dark:text-slate-400 mb-1">ผู้รายงาน</p>
+                        <div className="flex items-center gap-2">
+                          <Avatar
+                            src={ticket.reporter_avatar_url}
+                            alt={ticket.reporter_name || 'Reporter'}
+                            size="sm"
+                            fallback={ticket.reporter_name}
+                          />
+                          <p className="font-medium text-slate-900 dark:text-white">
+                            {ticket.reporter_name || ticket.reporter_email || '-'}
                           </p>
                         </div>
                       </div>
-
-                      {ticket.problem_description && (
-                        <p className="text-sm text-slate-600 dark:text-slate-400 mt-2 line-clamp-2">
-                          {ticket.problem_description}
-                        </p>
-                      )}
-                    </div>
-
-                    <div className="flex flex-col gap-2 items-end">
-                      <span className={`px-3 py-1 rounded-full text-xs font-medium flex items-center gap-1 ${statusBadge.className}`}>
-                        <StatusIcon className="w-3 h-3" />
-                        {statusBadge.label}
-                      </span>
-                      <span className={`px-3 py-1 rounded-full text-xs font-medium ${urgencyBadge.className}`}>
-                        {urgencyBadge.label === 'วิกฤต' && <Zap className="w-3 h-3 inline mr-1" />}
-                        {urgencyBadge.label === 'สูง' && <AlertTriangle className="w-3 h-3 inline mr-1" />}
-                        {urgencyBadge.label}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pt-4 border-t border-slate-200 dark:border-slate-700 text-sm">
-                    <div>
-                      <p className="text-slate-500 dark:text-slate-400 mb-1">ผู้รายงาน</p>
-                      <p className="font-medium text-slate-900 dark:text-white">
-                        {ticket.reporter_name || ticket.reporter_email || '-'}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-slate-500 dark:text-slate-400 mb-1">ยานพาหนะ</p>
-                      <p className="font-medium text-slate-900 dark:text-white">
-                        {ticket.vehicle_plate}
-                      </p>
-                    </div>
-                    {ticket.odometer && (
                       <div>
-                        <p className="text-slate-500 dark:text-slate-400 mb-1">เลขไมล์</p>
+                        <p className="text-slate-500 dark:text-slate-400 mb-1">ยานพาหนะ</p>
                         <p className="font-medium text-slate-900 dark:text-white">
-                          {ticket.odometer.toLocaleString()} กม.
+                          {ticket.vehicle_plate}
                         </p>
                       </div>
-                    )}
-                    <div>
-                      <p className="text-slate-500 dark:text-slate-400 mb-1">วันที่สร้าง</p>
-                      <p className="font-medium text-slate-900 dark:text-white">
-                        {new Date(ticket.created_at).toLocaleDateString('th-TH', {
-                          year: 'numeric',
-                          month: 'short',
-                          day: 'numeric',
-                        })}
-                      </p>
+                      {ticket.odometer && (
+                        <div>
+                          <p className="text-slate-500 dark:text-slate-400 mb-1">เลขไมล์</p>
+                          <p className="font-medium text-slate-900 dark:text-white">
+                            {ticket.odometer.toLocaleString()} กม.
+                          </p>
+                        </div>
+                      )}
+                      <div>
+                        <p className="text-slate-500 dark:text-slate-400 mb-1">วันที่สร้าง</p>
+                        <p className="font-medium text-slate-900 dark:text-white">
+                          {new Date(ticket.created_at).toLocaleDateString('th-TH', {
+                            year: 'numeric',
+                            month: 'short',
+                            day: 'numeric',
+                          })}
+                        </p>
+                      </div>
                     </div>
-                  </div>
 
-                  <div className="flex justify-end gap-2 mt-4 pt-4 border-t border-slate-200 dark:border-slate-700">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => onViewDetail?.(ticket.id)}
-                    >
-                      <Eye className="w-4 h-4 mr-1" />
-                      ดูรายละเอียด
-                    </Button>
-                  </div>
-                </Card>
-              );
+                    <div className="flex justify-end gap-2 mt-4 pt-4 border-t border-slate-200 dark:border-slate-700">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => onViewDetail?.(ticket.id)}
+                      >
+                        <Eye className="w-4 h-4 mr-1" />
+                        ดูรายละเอียด
+                      </Button>
+                    </div>
+                  </Card>
+                );
               })}
             </div>
 
@@ -458,12 +461,12 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                       <ChevronLeft size={16} />
                       ก่อนหน้า
                     </Button>
-                    
+
                     {/* Page Numbers */}
                     <div className="flex items-center gap-1 flex-wrap">
                       {(() => {
                         const pages: (number | string)[] = [];
-                        
+
                         // For small number of pages, show all
                         if (totalPages <= 7) {
                           for (let i = 1; i <= totalPages; i++) {
@@ -472,32 +475,32 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                         } else {
                           // Always show first page
                           pages.push(1);
-                          
+
                           // Calculate range around current page (show 2 pages on each side)
                           const startPage = Math.max(2, currentPage - 2);
                           const endPage = Math.min(totalPages - 1, currentPage + 2);
-                          
+
                           // Add ellipsis if needed before current range
                           if (startPage > 2) {
                             pages.push('ellipsis-start');
                           }
-                          
+
                           // Add pages around current page
                           for (let i = startPage; i <= endPage; i++) {
                             if (i !== 1 && i !== totalPages) {
                               pages.push(i);
                             }
                           }
-                          
+
                           // Add ellipsis if needed after current range
                           if (endPage < totalPages - 1) {
                             pages.push('ellipsis-end');
                           }
-                          
+
                           // Always show last page
                           pages.push(totalPages);
                         }
-                        
+
                         return pages.map((page) => {
                           if (typeof page === 'string') {
                             return (
@@ -506,16 +509,15 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                               </span>
                             );
                           }
-                          
+
                           return (
                             <button
                               key={page}
                               onClick={() => setCurrentPage(page)}
-                              className={`px-3 py-1 rounded-lg text-sm font-medium transition-colors ${
-                                currentPage === page
+                              className={`px-3 py-1 rounded-lg text-sm font-medium transition-colors ${currentPage === page
                                   ? 'bg-enterprise-600 text-white'
                                   : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
-                              }`}
+                                }`}
                             >
                               {page.toLocaleString('th-TH')}
                             </button>

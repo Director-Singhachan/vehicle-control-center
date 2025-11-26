@@ -30,6 +30,7 @@ export interface Database {
           email: string | null;
           full_name: string | null;
           role: AppRole;
+          avatar_url: string | null;
           created_at: string;
         };
         Insert: {
@@ -37,6 +38,7 @@ export interface Database {
           email?: string | null;
           full_name?: string | null;
           role?: AppRole;
+          avatar_url?: string | null;
           created_at?: string;
         };
         Update: {
@@ -44,6 +46,7 @@ export interface Database {
           email?: string | null;
           full_name?: string | null;
           role?: AppRole;
+          avatar_url?: string | null;
           created_at?: string;
         };
       };
