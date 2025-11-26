@@ -229,43 +229,43 @@ CREATE POLICY "Managers can view all fuel logs" ON fuel_logs
 ### Tasks
 
 #### 3.1 Database Setup
-- [ ] สร้าง migration file สำหรับ `fuel_logs` table
-- [ ] เพิ่ม RLS policies
-- [ ] สร้าง indexes
-- [ ] สร้าง function คำนวณ fuel efficiency
+- [x] สร้าง migration file สำหรับ `fuel_logs` table (มีอยู่แล้ว: `fuel_records`)
+- [x] เพิ่ม RLS policies (มีอยู่แล้ว)
+- [x] สร้าง indexes (มีอยู่แล้ว)
+- [x] สร้าง function คำนวณ fuel efficiency (มีอยู่แล้วใน trigger)
 
 #### 3.2 Backend Services
-- [ ] สร้าง `fuelLogService.ts`
-  - `createFuelLog()` - บันทึกการเติมน้ำมัน
-  - `calculateFuelEfficiency()` - คำนวณ km/L
-  - `getFuelHistory()` - ดูประวัติการเติม
-  - `getFuelStats()` - สถิติการใช้น้ำมัน
-  - `uploadReceipt()` - อัปโหลดรูปใบเสร็จ
+- [x] สร้าง `fuelLogService.ts` (มีอยู่แล้ว)
+  - [x] `create()` - บันทึกการเติมน้ำมัน
+  - [x] `getFuelHistory()` - ดูประวัติการเติม (เพิ่มแล้ว)
+  - [x] `getFuelStats()` - สถิติการใช้น้ำมัน (เพิ่มแล้ว)
+  - [x] `uploadReceipt()` - อัปโหลดรูปใบเสร็จ (เพิ่มแล้ว)
+  - [x] `calculateFuelEfficiency()` - คำนวณ km/L (มีใน database trigger)
 
-- [ ] สร้าง custom hooks
-  - `useFuelLogs()` - ดึงข้อมูลการเติมน้ำมัน
-  - `useFuelStats()` - สถิติน้ำมัน
+- [x] สร้าง custom hooks
+  - [x] `useFuelLogs()` - ดึงข้อมูลการเติมน้ำมัน
+  - [x] `useFuelStats()` - สถิติน้ำมัน
 
 #### 3.3 UI Components
-- [ ] สร้าง `FuelLogFormView.tsx`
-  - ฟอร์มบันทึกการเติมน้ำมัน
-  - เลือกรถ
-  - กรอกเลขไมล์, ลิตร, ราคา
-  - เลือกประเภทน้ำมัน
-  - อัปโหลดรูปใบเสร็จ
-  - แสดงอัตราการใช้น้ำมันที่คำนวณได้
+- [x] สร้าง `FuelLogFormView.tsx`
+  - [x] ฟอร์มบันทึกการเติมน้ำมัน
+  - [x] เลือกรถ
+  - [x] กรอกเลขไมล์, ลิตร, ราคา
+  - [x] เลือกประเภทน้ำมัน
+  - [x] อัปโหลดรูปใบเสร็จ
+  - [x] แสดงอัตราการใช้น้ำมันที่คำนวณได้ (แสดงใน list view)
 
-- [ ] สร้าง `FuelLogListView.tsx`
-  - แสดงประวัติการเติมน้ำมัน
-  - Filter by vehicle, date range
-  - แสดงสถิติรวม
+- [x] สร้าง `FuelLogListView.tsx`
+  - [x] แสดงประวัติการเติมน้ำมัน
+  - [x] Filter by vehicle, date range, fuel type
+  - [x] แสดงสถิติรวม
+  - [x] Pagination
 
-- [ ] สร้าง `FuelEfficiencyChart.tsx`
-  - กราฟแสดง km/L ตามเวลา
-  - เปรียบเทียบรถต่างๆ
+- [x] สร้าง `FuelEfficiencyChart.tsx`
+  - [x] กราฟแสดง km/L ตามเวลา (ใช้ Chart.js)
 
 #### 3.4 Analytics & Alerts
-- [ ] คำนวณอัตราการใช้น้ำมันเฉลี่ย
+- [x] คำนวณอัตราการใช้น้ำมันเฉลี่ย (ใน useFuelStats)
 - [ ] เตือนเมื่อ fuel efficiency ต่ำกว่าปกติ 20%
 - [ ] รายงานค่าใช้จ่ายน้ำมันรายเดือน
 - [ ] เปรียบเทียบประสิทธิภาพรถ
@@ -394,7 +394,7 @@ CREATE POLICY "Managers can view all fuel logs" ON fuel_logs
 |-------|--------|----------|------------|----------|
 | Phase 1: Dashboard | 🔴 Not Started | 0% | - | - |
 | Phase 2: Trip Logs | 🔴 Not Started | 0% | - | - |
-| Phase 3: Fuel Logs | 🔴 Not Started | 0% | - | - |
+| Phase 3: Fuel Logs | 🟡 In Progress | 75% | 2025-12-08 | - |
 | Phase 4: Driver Role | 🔴 Not Started | 0% | - | - |
 | Phase 5: Reports | 🔴 Not Started | 0% | - | - |
 | Phase 6: Advanced | 🔴 Not Started | 0% | - | - |
