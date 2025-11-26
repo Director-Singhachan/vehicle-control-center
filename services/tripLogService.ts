@@ -150,18 +150,6 @@ export const tripLogService = {
 
     const { data, error } = await query;
 
-    if (error) {
-      console.error('[tripLogService] Error fetching active trips:', error);
-      throw error;
-    }
-
-    // Log for debugging - remove in production
-    console.log('[tripLogService] Active trips fetched:', {
-      vehicleId: vehicleId || 'all',
-      count: data?.length || 0,
-      trips: data?.map(t => ({ id: t.id, vehicle_id: t.vehicle_id, driver_id: t.driver_id })) || [],
-    });
-
     return (data || []) as TripLogWithRelations[];
   },
 

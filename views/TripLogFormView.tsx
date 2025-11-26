@@ -14,7 +14,8 @@ import {
   AlertTriangle,
   Search,
   ChevronDown,
-  X
+  X,
+  User
 } from 'lucide-react';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
@@ -629,7 +630,8 @@ export const TripLogFormView: React.FC<TripLogFormViewProps> = ({
                     {showVehicleDropdown && availableVehicles.length > 0 && !selectedVehicleId && (
                       <div className="absolute z-50 w-full mt-1 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg shadow-lg max-h-60 overflow-auto">
                         {availableVehicles.map((vehicle) => {
-                          const hasActiveTrip = activeTrips.some(t => t.vehicle_id === vehicle.id);
+                          const activeTrip = activeTrips.find(t => t.vehicle_id === vehicle.id);
+                          const hasActiveTrip = !!activeTrip;
                           return (
                             <button
                               key={vehicle.id}
@@ -664,6 +666,12 @@ export const TripLogFormView: React.FC<TripLogFormViewProps> = ({
                                   {vehicle.make && vehicle.model && (
                                     <div className="text-sm text-slate-500 dark:text-slate-400">
                                       {vehicle.make} {vehicle.model}
+                                    </div>
+                                  )}
+                                  {hasActiveTrip && activeTrip?.driver?.full_name && (
+                                    <div className="text-xs text-amber-700 dark:text-amber-300 mt-0.5 flex items-center gap-1">
+                                      <User size={10} />
+                                      ขับโดย: {activeTrip.driver.full_name}
                                     </div>
                                   )}
                                 </div>
