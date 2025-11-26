@@ -14,13 +14,15 @@ import {
   AlertTriangle,
   Zap,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  Download
 } from 'lucide-react';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Card } from '../components/ui/Card';
 import { PageLayout } from '../components/layout/PageLayout';
 import { Avatar } from '../components/ui/Avatar';
+import { pdfService } from '../services/pdfService';
 import type { Database } from '../types/database';
 
 type TicketWithRelations = Database['public']['Views']['tickets_with_relations']['Row'];
@@ -193,8 +195,8 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
               <button
                 onClick={() => setStatusFilter('all')}
                 className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${statusFilter === 'all'
-                    ? 'bg-enterprise-600 text-white'
-                    : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+                  ? 'bg-enterprise-600 text-white'
+                  : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
                   }`}
               >
                 ทั้งหมด
@@ -202,8 +204,8 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
               <button
                 onClick={() => setStatusFilter(['pending'])}
                 className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${Array.isArray(statusFilter) && statusFilter.includes('pending')
-                    ? 'bg-yellow-600 text-white'
-                    : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+                  ? 'bg-yellow-600 text-white'
+                  : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
                   }`}
               >
                 รออนุมัติ
@@ -211,8 +213,8 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
               <button
                 onClick={() => setStatusFilter(['in_progress'])}
                 className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${Array.isArray(statusFilter) && statusFilter.includes('in_progress')
-                    ? 'bg-orange-600 text-white'
-                    : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+                  ? 'bg-orange-600 text-white'
+                  : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
                   }`}
               >
                 กำลังซ่อม
@@ -220,8 +222,8 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
               <button
                 onClick={() => setStatusFilter(['completed'])}
                 className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${Array.isArray(statusFilter) && statusFilter.includes('completed')
-                    ? 'bg-green-600 text-white'
-                    : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+                  ? 'bg-green-600 text-white'
+                  : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
                   }`}
               >
                 เสร็จสิ้น
@@ -256,8 +258,8 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                             }
                           }}
                           className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${isSelected
-                              ? 'bg-enterprise-600 text-white'
-                              : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+                            ? 'bg-enterprise-600 text-white'
+                            : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
                             }`}
                         >
                           {getStatusBadge(status).label}
@@ -290,8 +292,8 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                             }
                           }}
                           className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${isSelected
-                              ? 'bg-enterprise-600 text-white'
-                              : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+                            ? 'bg-enterprise-600 text-white'
+                            : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
                             }`}
                         >
                           {getUrgencyBadge(urgency).label}
@@ -427,6 +429,33 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
 
                     <div className="flex justify-end gap-2 mt-4 pt-4 border-t border-slate-200 dark:border-slate-700">
                       <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => pdfService.generateMaintenanceTicketPDF({
+                          id: ticket.id.toString(),
+                          ticket_number: ticket.ticket_number,
+                          vehicle_plate: ticket.vehicle_plate,
+                          vehicle_make: ticket.vehicle_make,
+                          vehicle_model: ticket.vehicle_model,
+                          vehicle_type: (ticket as any).vehicle_type,
+                          branch: (ticket as any).branch,
+                          reporter_name: ticket.reporter_name,
+                          reporter_email: ticket.reporter_email,
+                          problem: ticket.repair_type,
+                          description: ticket.problem_description,
+                          urgency: ticket.urgency,
+                          status: ticket.status,
+                          created_at: ticket.created_at,
+                          odometer: ticket.odometer,
+                          garage: ticket.garage,
+                          notes: ticket.repair_notes
+                        })}
+                        className="text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
+                        title="ดาวน์โหลด PDF"
+                      >
+                        <Download className="w-4 h-4" />
+                      </Button>
+                      <Button
                         variant="outline"
                         size="sm"
                         onClick={() => onViewDetail?.(ticket.id)}
@@ -515,8 +544,8 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                               key={page}
                               onClick={() => setCurrentPage(page)}
                               className={`px-3 py-1 rounded-lg text-sm font-medium transition-colors ${currentPage === page
-                                  ? 'bg-enterprise-600 text-white'
-                                  : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+                                ? 'bg-enterprise-600 text-white'
+                                : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
                                 }`}
                             >
                               {page.toLocaleString('th-TH')}

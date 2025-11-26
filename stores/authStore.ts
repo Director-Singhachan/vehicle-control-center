@@ -164,8 +164,37 @@ export const useAuthStore = create<AuthState>()(
       signOut: async () => {
         set({ loading: true, error: null });
         try {
-          const { error: signOutError } = await supabase.auth.signOut();
-          if (signOutError) throw signOutError;
+          // Best-effort sign out on server, but never block local logout
+          try {
+            const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+
+            if (sessionError) {
+              console.warn('[Auth] Error checking session before sign out:', sessionError);
+            }
+
+            if (session) {
+              // Use local scope to avoid global logout 403s; ignore any errors
+              const { error: signOutError } = await supabase.auth.signOut({ scope: 'local' });
+
+              if (signOutError) {
+                console.warn('[Auth] Sign out error (ignored, logging out locally):', signOutError.message);
+              }
+            } else {
+              console.log('[Auth] No active session found during sign out, clearing local auth state');
+            }
+          } catch (innerErr) {
+            console.warn('[Auth] Unexpected error during remote sign out (ignored):', innerErr);
+          }
+
+          // Always clear local auth state so UI/logical logout always works
+          try {
+            if (typeof window !== 'undefined' && window.localStorage) {
+              // Clear Supabase auth storage explicitly
+              window.localStorage.removeItem('vehicle-control-center-auth');
+            }
+          } catch (storageErr) {
+            console.warn('[Auth] Failed to clear local auth storage (ignored):', storageErr);
+          }
 
           set({
             user: null,
@@ -177,10 +206,6 @@ export const useAuthStore = create<AuthState>()(
             isExecutive: false,
             isDriver: false
           });
-        } catch (err) {
-          const error = err instanceof Error ? err : new Error('Failed to sign out');
-          set({ error });
-          throw error;
         } finally {
           set({ loading: false });
         }
