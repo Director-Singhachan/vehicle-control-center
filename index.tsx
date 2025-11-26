@@ -33,6 +33,7 @@ import { TripLogListView } from './views/TripLogListView';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { useAuth, usePendingTickets } from './hooks';
 import { prefetchService } from './services/prefetchService';
+import { Avatar } from './components/ui/Avatar';
 
 const SidebarItem = ({ icon: Icon, label, active, onClick, onMouseEnter, isCollapsed }: any) => (
   <button
@@ -385,7 +386,12 @@ const AppContent = () => {
                   </span>
                 </p>
               </div>
-              <div className="w-8 h-8 bg-gradient-to-br from-enterprise-500 to-neon-blue rounded-full shadow-md"></div>
+              <Avatar
+                src={profile?.avatar_url}
+                alt={profile?.full_name || user?.email || 'User'}
+                size="md"
+                fallback={profile?.full_name || user?.email}
+              />
             </div>
           </div>
         </header>

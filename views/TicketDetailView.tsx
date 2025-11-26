@@ -27,6 +27,7 @@ import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Card } from '../components/ui/Card';
 import { PageLayout } from '../components/layout/PageLayout';
+import { Avatar } from '../components/ui/Avatar';
 import { ApprovalDialog } from '../components/ApprovalDialog';
 import { ApprovalHistory } from '../components/ApprovalHistory';
 import { ApprovalStatusBadge } from '../components/ApprovalStatusBadge';
@@ -558,10 +559,17 @@ export const TicketDetailView: React.FC<TicketDetailViewProps> = ({
                 <label className="block text-sm font-medium text-slate-500 dark:text-slate-400 mb-1">
                   ผู้รายงาน
                 </label>
-                <p className="text-lg text-slate-900 dark:text-white flex items-center gap-2">
-                  <User className="w-4 h-4" />
-                  {(ticket as any).reporter_name || '-'}
-                </p>
+                <div className="flex items-center gap-2">
+                  <Avatar
+                    src={(ticket as any).reporter_avatar_url}
+                    alt={(ticket as any).reporter_name || 'Reporter'}
+                    size="sm"
+                    fallback={(ticket as any).reporter_name}
+                  />
+                  <p className="text-lg text-slate-900 dark:text-white">
+                    {(ticket as any).reporter_name || '-'}
+                  </p>
+                </div>
               </div>
 
               {ticket.odometer && (

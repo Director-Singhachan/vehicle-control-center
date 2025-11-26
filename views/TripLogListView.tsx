@@ -20,6 +20,7 @@ import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Card } from '../components/ui/Card';
 import { PageLayout } from '../components/layout/PageLayout';
+import { Avatar } from '../components/ui/Avatar';
 import { useTripLogs, useVehicles } from '../hooks';
 import type { TripLogWithRelations } from '../services/tripLogService';
 
@@ -243,167 +244,175 @@ export const TripLogListView: React.FC<TripLogListViewProps> = ({
             </div>
 
             {paginatedTrips.map((trip) => (
-            <Card key={trip.id} className="p-6 hover:shadow-md transition-shadow">
-              <div className="flex items-start gap-4">
-                {/* Vehicle Image */}
-                <div className="w-24 h-24 flex-shrink-0 rounded-lg overflow-hidden bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
-                  {trip.vehicle?.image_url ? (
-                    <img
-                      src={trip.vehicle.image_url}
-                      alt={trip.vehicle.plate}
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center text-slate-400">
-                      <Truck size={32} />
-                    </div>
-                  )}
-                </div>
-
-                <div className="flex-1">
-                  {/* Header */}
-                  <div className="flex items-center gap-3 mb-4">
-                    <div
-                      className={`w-3 h-3 rounded-full ${trip.status === 'checked_in'
-                          ? 'bg-emerald-500'
-                          : 'bg-amber-500'
-                        }`}
-                    />
-                    <div>
-                      <h3 className="font-semibold text-slate-900 dark:text-white flex items-center gap-2">
-                        <Truck size={18} />
-                        {trip.vehicle?.plate || 'N/A'}
-                      </h3>
-                      <p className="text-sm text-slate-600 dark:text-slate-400">
-                        {trip.driver?.full_name || 'N/A'}
-                      </p>
-                    </div>
-                    <div className="ml-auto">
-                      <span
-                        className={`px-3 py-1 rounded-full text-xs font-medium ${trip.status === 'checked_in'
-                            ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-200'
-                            : 'bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-200'
-                          }`}
-                      >
-                        {trip.status === 'checked_in' ? (
-                          <span className="flex items-center gap-1">
-                            <CheckCircle size={14} />
-                            กลับแล้ว
-                          </span>
-                        ) : (
-                          <span className="flex items-center gap-1">
-                            <Clock size={14} />
-                            ออกไปแล้ว
-                          </span>
-                        )}
-                      </span>
-                    </div>
+              <Card key={trip.id} className="p-6 hover:shadow-md transition-shadow">
+                <div className="flex items-start gap-4">
+                  {/* Vehicle Image */}
+                  <div className="w-24 h-24 flex-shrink-0 rounded-lg overflow-hidden bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+                    {trip.vehicle?.image_url ? (
+                      <img
+                        src={trip.vehicle.image_url}
+                        alt={trip.vehicle.plate}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-slate-400">
+                        <Truck size={32} />
+                      </div>
+                    )}
                   </div>
 
-                  {/* Trip Details */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                    <div className="flex items-center gap-2 text-sm">
-                      <Gauge size={16} className="text-slate-400" />
+                  <div className="flex-1">
+                    {/* Header */}
+                    <div className="flex items-center gap-3 mb-4">
+                      <div
+                        className={`w-3 h-3 rounded-full ${trip.status === 'checked_in'
+                          ? 'bg-emerald-500'
+                          : 'bg-amber-500'
+                          }`}
+                      />
                       <div>
-                        <div className="text-slate-600 dark:text-slate-400">เลขไมล์ออก</div>
-                        <div className="font-medium text-slate-900 dark:text-white">
-                          {trip.odometer_start.toLocaleString()} km
+                        <h3 className="font-semibold text-slate-900 dark:text-white flex items-center gap-2">
+                          <Truck size={18} />
+                          {trip.vehicle?.plate || 'N/A'}
+                        </h3>
+                        <div className="flex items-center gap-2 mt-1">
+                          <Avatar
+                            src={trip.driver?.avatar_url}
+                            alt={trip.driver?.full_name || 'Driver'}
+                            size="sm"
+                            fallback={trip.driver?.full_name}
+                          />
+                          <p className="text-sm text-slate-600 dark:text-slate-400">
+                            {trip.driver?.full_name || 'N/A'}
+                          </p>
                         </div>
+                      </div>
+                      <div className="ml-auto">
+                        <span
+                          className={`px-3 py-1 rounded-full text-xs font-medium ${trip.status === 'checked_in'
+                            ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-200'
+                            : 'bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-200'
+                            }`}
+                        >
+                          {trip.status === 'checked_in' ? (
+                            <span className="flex items-center gap-1">
+                              <CheckCircle size={14} />
+                              กลับแล้ว
+                            </span>
+                          ) : (
+                            <span className="flex items-center gap-1">
+                              <Clock size={14} />
+                              ออกไปแล้ว
+                            </span>
+                          )}
+                        </span>
                       </div>
                     </div>
 
-                    {trip.odometer_end && (
+                    {/* Trip Details */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                       <div className="flex items-center gap-2 text-sm">
                         <Gauge size={16} className="text-slate-400" />
                         <div>
-                          <div className="text-slate-600 dark:text-slate-400">เลขไมล์กลับ</div>
+                          <div className="text-slate-600 dark:text-slate-400">เลขไมล์ออก</div>
                           <div className="font-medium text-slate-900 dark:text-white">
-                            {trip.odometer_end.toLocaleString()} km
+                            {trip.odometer_start.toLocaleString()} km
                           </div>
                         </div>
                       </div>
-                    )}
 
-                    {trip.distance_km && (
-                      <div className="flex items-center gap-2 text-sm">
-                        <ArrowRight size={16} className="text-slate-400" />
-                        <div>
-                          <div className="text-slate-600 dark:text-slate-400">ระยะทาง</div>
-                          <div className="font-medium text-slate-900 dark:text-white">
-                            {trip.distance_km.toLocaleString()} km
+                      {trip.odometer_end && (
+                        <div className="flex items-center gap-2 text-sm">
+                          <Gauge size={16} className="text-slate-400" />
+                          <div>
+                            <div className="text-slate-600 dark:text-slate-400">เลขไมล์กลับ</div>
+                            <div className="font-medium text-slate-900 dark:text-white">
+                              {trip.odometer_end.toLocaleString()} km
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    )}
+                      )}
 
-                    {trip.duration_hours && (
-                      <div className="flex items-center gap-2 text-sm">
-                        <Clock size={16} className="text-slate-400" />
-                        <div>
-                          <div className="text-slate-600 dark:text-slate-400">เวลา</div>
-                          <div className="font-medium text-slate-900 dark:text-white">
-                            {formatDuration(trip.duration_hours)}
+                      {trip.distance_km && (
+                        <div className="flex items-center gap-2 text-sm">
+                          <ArrowRight size={16} className="text-slate-400" />
+                          <div>
+                            <div className="text-slate-600 dark:text-slate-400">ระยะทาง</div>
+                            <div className="font-medium text-slate-900 dark:text-white">
+                              {trip.distance_km.toLocaleString()} km
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    )}
-                  </div>
+                      )}
 
-                  {/* Additional Info */}
-                  {(trip.destination || trip.route || trip.notes) && (
-                    <div className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-700">
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-                        {trip.destination && (
-                          <div className="flex items-start gap-2">
-                            <MapPin size={16} className="text-slate-400 mt-0.5 flex-shrink-0" />
-                            <div>
-                              <div className="text-slate-600 dark:text-slate-400">ปลายทาง</div>
-                              <div className="text-slate-900 dark:text-white">{trip.destination}</div>
+                      {trip.duration_hours && (
+                        <div className="flex items-center gap-2 text-sm">
+                          <Clock size={16} className="text-slate-400" />
+                          <div>
+                            <div className="text-slate-600 dark:text-slate-400">เวลา</div>
+                            <div className="font-medium text-slate-900 dark:text-white">
+                              {formatDuration(trip.duration_hours)}
                             </div>
                           </div>
-                        )}
-
-                        {trip.route && (
-                          <div className="flex items-start gap-2">
-                            <ArrowRight size={16} className="text-slate-400 mt-0.5 flex-shrink-0" />
-                            <div>
-                              <div className="text-slate-600 dark:text-slate-400">เส้นทาง</div>
-                              <div className="text-slate-900 dark:text-white">{trip.route}</div>
-                            </div>
-                          </div>
-                        )}
-
-                        {trip.notes && (
-                          <div className="flex items-start gap-2">
-                            <Calendar size={16} className="text-slate-400 mt-0.5 flex-shrink-0" />
-                            <div>
-                              <div className="text-slate-600 dark:text-slate-400">หมายเหตุ</div>
-                              <div className="text-slate-900 dark:text-white">{trip.notes}</div>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Timestamps */}
-                  <div className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-700">
-                    <div className="flex flex-wrap gap-4 text-xs text-slate-500 dark:text-slate-500">
-                      <div className="flex items-center gap-1">
-                        <Clock size={12} />
-                        ออก: {formatDate(trip.checkout_time)}
-                      </div>
-                      {trip.checkin_time && (
-                        <div className="flex items-center gap-1">
-                          <CheckCircle size={12} />
-                          กลับ: {formatDate(trip.checkin_time)}
                         </div>
                       )}
                     </div>
+
+                    {/* Additional Info */}
+                    {(trip.destination || trip.route || trip.notes) && (
+                      <div className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-700">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                          {trip.destination && (
+                            <div className="flex items-start gap-2">
+                              <MapPin size={16} className="text-slate-400 mt-0.5 flex-shrink-0" />
+                              <div>
+                                <div className="text-slate-600 dark:text-slate-400">ปลายทาง</div>
+                                <div className="text-slate-900 dark:text-white">{trip.destination}</div>
+                              </div>
+                            </div>
+                          )}
+
+                          {trip.route && (
+                            <div className="flex items-start gap-2">
+                              <ArrowRight size={16} className="text-slate-400 mt-0.5 flex-shrink-0" />
+                              <div>
+                                <div className="text-slate-600 dark:text-slate-400">เส้นทาง</div>
+                                <div className="text-slate-900 dark:text-white">{trip.route}</div>
+                              </div>
+                            </div>
+                          )}
+
+                          {trip.notes && (
+                            <div className="flex items-start gap-2">
+                              <Calendar size={16} className="text-slate-400 mt-0.5 flex-shrink-0" />
+                              <div>
+                                <div className="text-slate-600 dark:text-slate-400">หมายเหตุ</div>
+                                <div className="text-slate-900 dark:text-white">{trip.notes}</div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Timestamps */}
+                    <div className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-700">
+                      <div className="flex flex-wrap gap-4 text-xs text-slate-500 dark:text-slate-500">
+                        <div className="flex items-center gap-1">
+                          <Clock size={12} />
+                          ออก: {formatDate(trip.checkout_time)}
+                        </div>
+                        {trip.checkin_time && (
+                          <div className="flex items-center gap-1">
+                            <CheckCircle size={12} />
+                            กลับ: {formatDate(trip.checkin_time)}
+                          </div>
+                        )}
+                      </div>
+                    </div>
                   </div>
                 </div>
-              </div>
-            </Card>
+              </Card>
             ))}
 
             {/* Pagination */}
@@ -427,12 +436,12 @@ export const TripLogListView: React.FC<TripLogListViewProps> = ({
                       <ChevronLeft size={16} />
                       ก่อนหน้า
                     </Button>
-                    
+
                     {/* Page Numbers */}
                     <div className="flex items-center gap-1 flex-wrap">
                       {(() => {
                         const pages: (number | string)[] = [];
-                        
+
                         // For small number of pages, show all
                         if (totalPages <= 7) {
                           for (let i = 1; i <= totalPages; i++) {
@@ -441,32 +450,32 @@ export const TripLogListView: React.FC<TripLogListViewProps> = ({
                         } else {
                           // Always show first page
                           pages.push(1);
-                          
+
                           // Calculate range around current page (show 2 pages on each side)
                           const startPage = Math.max(2, currentPage - 2);
                           const endPage = Math.min(totalPages - 1, currentPage + 2);
-                          
+
                           // Add ellipsis if needed before current range
                           if (startPage > 2) {
                             pages.push('ellipsis-start');
                           }
-                          
+
                           // Add pages around current page
                           for (let i = startPage; i <= endPage; i++) {
                             if (i !== 1 && i !== totalPages) {
                               pages.push(i);
                             }
                           }
-                          
+
                           // Add ellipsis if needed after current range
                           if (endPage < totalPages - 1) {
                             pages.push('ellipsis-end');
                           }
-                          
+
                           // Always show last page
                           pages.push(totalPages);
                         }
-                        
+
                         return pages.map((page) => {
                           if (typeof page === 'string') {
                             return (
@@ -475,16 +484,15 @@ export const TripLogListView: React.FC<TripLogListViewProps> = ({
                               </span>
                             );
                           }
-                          
+
                           return (
                             <button
                               key={page}
                               onClick={() => setCurrentPage(page)}
-                              className={`px-3 py-1 rounded-lg text-sm font-medium transition-colors ${
-                                currentPage === page
+                              className={`px-3 py-1 rounded-lg text-sm font-medium transition-colors ${currentPage === page
                                   ? 'bg-enterprise-600 text-white'
                                   : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
-                              }`}
+                                }`}
                             >
                               {page.toLocaleString('th-TH')}
                             </button>

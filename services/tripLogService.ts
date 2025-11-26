@@ -16,6 +16,7 @@ export interface TripLogWithRelations extends TripLog {
   driver?: {
     full_name: string;
     email?: string;
+    avatar_url?: string | null;
   };
 }
 
@@ -140,7 +141,7 @@ export const tripLogService = {
       .select(`
         *,
         vehicle:vehicles(plate, make, model, image_url),
-        driver:profiles(full_name, email)
+        driver:profiles(full_name, email, avatar_url)
       `)
       .eq('status', 'checked_out')
       .order('checkout_time', { ascending: false });
@@ -179,13 +180,13 @@ export const tripLogService = {
   }): Promise<{ data: TripLogWithRelations[]; count: number }> => {
     const limit = filters?.limit || 100;
     const offset = filters?.offset || 0;
-    
+
     let query = supabase
       .from('trip_logs')
       .select(`
         *,
         vehicle:vehicles(plate, make, model, image_url),
-        driver:profiles(full_name, email)
+        driver:profiles(full_name, email, avatar_url)
       `, { count: 'exact' })
       .order('checkout_time', { ascending: false })
       .range(offset, offset + limit - 1);
@@ -263,7 +264,7 @@ export const tripLogService = {
       .select(`
         *,
         vehicle:vehicles(plate, make, model, image_url),
-        driver:profiles(full_name, email)
+        driver:profiles(full_name, email, avatar_url)
       `)
       .eq('id', tripId)
       .single();
@@ -381,7 +382,7 @@ export const tripLogService = {
       .select(`
         *,
         vehicle:vehicles(plate, make, model, image_url),
-        driver:profiles(full_name, email)
+        driver:profiles(full_name, email, avatar_url)
       `)
       .eq('status', 'checked_out')
       .lt('checkout_time', twelveHoursAgo.toISOString())

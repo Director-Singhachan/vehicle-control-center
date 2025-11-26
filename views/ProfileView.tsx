@@ -1,12 +1,13 @@
 // Profile View - User profile management
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../hooks';
 import { profileService } from '../services/profileService';
-import { User, Mail, Shield, LogOut, Save, Edit2, AlertCircle } from 'lucide-react';
+import { User, Mail, Shield, LogOut, Save, Edit2, AlertCircle, Camera, Trash2, Upload } from 'lucide-react';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Card } from '../components/ui/Card';
 import { PageLayout } from '../components/layout/PageLayout';
+import { Avatar } from '../components/ui/Avatar';
 
 export const ProfileView: React.FC = () => {
   const { user, profile, signOut, refreshProfile, loading } = useAuth();
@@ -16,6 +17,12 @@ export const ProfileView: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+
+  // Avatar upload states
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Update local state when profile changes
   useEffect(() => {
@@ -37,7 +44,7 @@ export const ProfileView: React.FC = () => {
       setSuccess(true);
       setIsEditing(false);
       refreshProfile();
-      
+
       // Clear success message after 3 seconds
       setTimeout(() => setSuccess(false), 3000);
     } catch (err: any) {
@@ -53,6 +60,91 @@ export const ProfileView: React.FC = () => {
       // Redirect will be handled by parent component
     } catch (error) {
       console.error('Error signing out:', error);
+    }
+  };
+
+  // Handle file selection
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+    if (!validTypes.includes(file.type)) {
+      setError('ประเภทไฟล์ไม่ถูกต้อง กรุณาเลือกไฟล์ jpg, png หรือ webp');
+      return;
+    }
+
+    // Validate file size (2MB max)
+    const maxSize = 2 * 1024 * 1024;
+    if (file.size > maxSize) {
+      setError('ขนาดไฟล์ใหญ่เกินไป กรุณาเลือกไฟล์ที่มีขนาดไม่เกิน 2MB');
+      return;
+    }
+
+    setSelectedFile(file);
+    setError(null);
+
+    // Create preview
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setAvatarPreview(reader.result as string);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // Handle avatar upload
+  const handleAvatarUpload = async () => {
+    if (!selectedFile) return;
+
+    setUploadingAvatar(true);
+    setError(null);
+    setSuccess(false);
+
+    try {
+      await profileService.updateAvatar(selectedFile);
+      setSuccess(true);
+      setSelectedFile(null);
+      setAvatarPreview(null);
+      refreshProfile();
+
+      // Clear success message after 3 seconds
+      setTimeout(() => setSuccess(false), 3000);
+    } catch (err: any) {
+      setError(err.message || 'เกิดข้อผิดพลาดในการอัพโหลดรูปภาพ');
+    } finally {
+      setUploadingAvatar(false);
+    }
+  };
+
+  // Handle avatar delete
+  const handleAvatarDelete = async () => {
+    if (!confirm('คุณต้องการลบรูปภาพโปรไฟล์หรือไม่?')) return;
+
+    setUploadingAvatar(true);
+    setError(null);
+    setSuccess(false);
+
+    try {
+      await profileService.removeAvatar();
+      setSuccess(true);
+      refreshProfile();
+
+      // Clear success message after 3 seconds
+      setTimeout(() => setSuccess(false), 3000);
+    } catch (err: any) {
+      setError(err.message || 'เกิดข้อผิดพลาดในการลบรูปภาพ');
+    } finally {
+      setUploadingAvatar(false);
+    }
+  };
+
+  // Cancel avatar selection
+  const handleCancelAvatarSelection = () => {
+    setSelectedFile(null);
+    setAvatarPreview(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
     }
   };
 
@@ -86,6 +178,81 @@ export const ProfileView: React.FC = () => {
                 แก้ไข
               </Button>
             )}
+          </div>
+
+          {/* Avatar Upload Section */}
+          <div className="mb-6 pb-6 border-b border-slate-200 dark:border-slate-700">
+            <div className="flex flex-col sm:flex-row items-center gap-6">
+              {/* Avatar Display */}
+              <div className="relative">
+                <Avatar
+                  src={avatarPreview || profile?.avatar_url}
+                  alt={profile?.full_name || user?.email || 'User'}
+                  size="xl"
+                  fallback={profile?.full_name || user?.email}
+                />
+                {(profile?.avatar_url || avatarPreview) && !uploadingAvatar && (
+                  <button
+                    onClick={handleAvatarDelete}
+                    className="absolute -bottom-1 -right-1 p-2 bg-red-500 hover:bg-red-600 text-white rounded-full shadow-lg transition-colors"
+                    title="ลบรูปภาพ"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                )}
+              </div>
+
+              {/* Upload Controls */}
+              <div className="flex-1 space-y-3">
+                <div>
+                  <h3 className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                    รูปภาพโปรไฟล์
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    รองรับไฟล์ JPG, PNG, WEBP ขนาดไม่เกิน 2MB
+                  </p>
+                </div>
+
+                {selectedFile ? (
+                  <div className="flex gap-2">
+                    <Button
+                      onClick={handleAvatarUpload}
+                      disabled={uploadingAvatar}
+                      isLoading={uploadingAvatar}
+                      size="sm"
+                    >
+                      <Upload className="w-4 h-4 mr-2" />
+                      อัพโหลด
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={handleCancelAvatarSelection}
+                      disabled={uploadingAvatar}
+                      size="sm"
+                    >
+                      ยกเลิก
+                    </Button>
+                  </div>
+                ) : (
+                  <div>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/jpeg,image/jpg,image/png,image/webp"
+                      onChange={handleFileSelect}
+                      className="hidden"
+                      id="avatar-upload"
+                    />
+                    <label htmlFor="avatar-upload" className="cursor-pointer">
+                      <span className="inline-flex items-center px-3 py-1.5 text-sm border border-slate-300 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 bg-transparent rounded-lg font-medium transition-colors duration-200">
+                        <Camera className="w-4 h-4 mr-2" />
+                        {profile?.avatar_url ? 'เปลี่ยนรูปภาพ' : 'เพิ่มรูปภาพ'}
+                      </span>
+                    </label>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
 
           <div className="space-y-4">
