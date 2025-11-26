@@ -20,6 +20,7 @@ import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Card } from '../components/ui/Card';
 import { PageLayout } from '../components/layout/PageLayout';
+import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { useVehicles, useActiveTrips, useTripCheckout, useTripCheckin, useVehicleStatus, useAuth } from '../hooks';
 import { tripLogService } from '../services/tripLogService';
 import { useDataCacheStore, createCacheKey } from '../stores/dataCacheStore';
@@ -94,6 +95,11 @@ export const TripLogFormView: React.FC<TripLogFormViewProps> = ({
   const [successMode, setSuccessMode] = useState<'checkout' | 'checkin' | null>(null); // Track which mode succeeded
   const [tripData, setTripData] = useState<any>(null); // Store full trip data for check-in
   const [userMismatch, setUserMismatch] = useState(false);
+
+  // Distance confirmation dialog state
+  const [showDistanceConfirm, setShowDistanceConfirm] = useState(false);
+  const [pendingDistance, setPendingDistance] = useState<number>(0);
+  const [pendingSubmit, setPendingSubmit] = useState<(() => void) | null>(null);
 
   // Refresh active trips when component mounts or user changes
   useEffect(() => {
@@ -412,17 +418,43 @@ export const TripLogFormView: React.FC<TripLogFormViewProps> = ({
         // Validate distance > 500 km - show confirmation instead of blocking
         if (tripStart && (odometerValue - tripStart) > 500) {
           const distance = odometerValue - tripStart;
-          const confirmed = confirm(
-            `ระยะทางที่บันทึก: ${distance.toLocaleString()} กม.\n\n` +
-            `ระยะทางนี้เกิน 500 กม. กรุณาตรวจสอบว่าเลขไมล์ถูกต้องหรือไม่\n\n` +
-            `ถ้าระยะทางนี้ถูกต้อง กด "ตกลง" เพื่อบันทึก\n` +
-            `ถ้าไม่แน่ใจ กด "ยกเลิก" เพื่อตรวจสอบอีกครั้ง`
-          );
+          setPendingDistance(distance);
+          setPendingSubmit(() => async () => {
+            // Proceed with check-in
+            await checkin(selectedTripId, {
+              odometer_end: odometerValue,
+            });
 
-          if (!confirmed) {
-            setSaving(false);
-            return;
-          }
+            setSuccessMode('checkin');
+            setSuccess(true);
+            refetchActiveTrips();
+
+            setTimeout(() => {
+              setFormData({
+                odometer: '',
+                checkout_time: '',
+                destination: '',
+                route: '',
+                notes: '',
+              });
+              setSelectedVehicleId('');
+              setSelectedTripId('');
+              setVehicleSearchQuery('');
+              setTripData(null);
+              setOdometerValidation(null);
+              setShowVehicleDropdown(false);
+              setUserMismatch(false);
+              setSuccessMode(null);
+              setSuccess(false);
+              setError(null);
+              setIsBackfillMode(false);
+              setMode('checkout');
+              if (onSave) onSave();
+            }, 1500);
+          });
+          setShowDistanceConfirm(true);
+          setSaving(false);
+          return;
         }
 
         // For check-in, only send odometer_end (other fields are read-only)
@@ -1119,6 +1151,35 @@ export const TripLogFormView: React.FC<TripLogFormViewProps> = ({
           )}
         </div>
       </form>
+
+      {/* Distance Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={showDistanceConfirm}
+        title="ตรวจสอบระยะทาง"
+        message={`ระยะทางที่บันทึก: ${pendingDistance.toLocaleString()} กม.\n\nระยะทางนี้เกิน 500 กม. กรุณาตรวจสอบว่าเลขไมล์ถูกต้องหรือไม่\n\nถ้าระยะทางนี้ถูกต้อง กด "ยืนยัน" เพื่อบันทึก\nถ้าไม่แน่ใจ กด "ยกเลิก" เพื่อตรวจสอบอีกครั้ง`}
+        confirmText="ยืนยัน"
+        cancelText="ยกเลิก"
+        variant="warning"
+        onConfirm={async () => {
+          setShowDistanceConfirm(false);
+          if (pendingSubmit) {
+            try {
+              setSaving(true);
+              await pendingSubmit();
+            } catch (err: any) {
+              setError(err.message || 'เกิดข้อผิดพลาดในการบันทึกข้อมูล');
+            } finally {
+              setSaving(false);
+              setPendingSubmit(null);
+            }
+          }
+        }}
+        onCancel={() => {
+          setShowDistanceConfirm(false);
+          setPendingSubmit(null);
+          setSaving(false);
+        }}
+      />
     </PageLayout>
   );
 };
