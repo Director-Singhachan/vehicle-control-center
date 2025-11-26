@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import { useTicket, useTicketCosts, useAuth } from '../hooks';
 import { ticketService, maintenanceService } from '../services';
 import { supabase } from '../lib/supabase';
+import { pdfService } from '../services/pdfService';
 import {
   FileText,
   Edit,
@@ -21,7 +22,8 @@ import {
   Lock,
   Wrench,
   Building2,
-  Image as ImageIcon
+  Image as ImageIcon,
+  Download
 } from 'lucide-react';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
@@ -502,6 +504,34 @@ export const TicketDetailView: React.FC<TicketDetailViewProps> = ({
               กลับ
             </Button>
           )}
+          <Button
+            variant="outline"
+            onClick={() => pdfService.generateMaintenanceTicketPDF({
+              id: ticket.id.toString(),
+              ticket_number: ticket.ticket_number,
+              vehicle_plate: ticket.vehicle_plate,
+              vehicle_make: ticket.vehicle_make,
+              vehicle_model: ticket.vehicle_model,
+              vehicle_type: (ticket as any).vehicle_type,
+              branch: (ticket as any).branch,
+              reporter_name: (ticket as any).reporter_name,
+              reporter_email: ticket.reporter_email,
+              problem: ticket.problem,
+              description: ticket.description,
+              urgency: ticket.urgency,
+              status: ticket.status,
+              created_at: ticket.created_at,
+              odometer: ticket.odometer,
+              garage: ticket.garage,
+              notes: ticket.notes,
+              last_repair_date: lastRepairHistory?.performed_at,
+              last_repair_description: lastRepairHistory?.description || lastRepairHistory?.maintenance_name,
+              last_repair_garage: lastRepairHistory?.garage
+            })}
+          >
+            <Download className="w-4 h-4 mr-2" />
+            ดาวน์โหลด PDF
+          </Button>
           {canUpdateStatus() && onEdit && (
             <Button variant="outline" onClick={() => onEdit(ticketId)}>
               <Edit className="w-4 h-4 mr-2" />
@@ -512,7 +542,6 @@ export const TicketDetailView: React.FC<TicketDetailViewProps> = ({
       }
     >
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Main Info */}
         <div className="lg:col-span-2 space-y-6">
           {/* Ticket Info Card */}
           <Card className="p-6">
@@ -1132,7 +1161,7 @@ export const TicketDetailView: React.FC<TicketDetailViewProps> = ({
             </div>
           </Card>
         </div>
-      </div>
+      </div >
 
       <ApprovalDialog
         isOpen={showApprovalDialog}
@@ -1144,229 +1173,235 @@ export const TicketDetailView: React.FC<TicketDetailViewProps> = ({
       />
 
       {/* Add Cost Dialog */}
-      {showCostDialog && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <Card className="p-6 max-w-md w-full">
-            <h3 className="text-xl font-semibold text-slate-900 dark:text-white mb-4">
-              เพิ่มค่าใช้จ่าย
-            </h3>
+      {
+        showCostDialog && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <Card className="p-6 max-w-md w-full">
+              <h3 className="text-xl font-semibold text-slate-900 dark:text-white mb-4">
+                เพิ่มค่าใช้จ่าย
+              </h3>
 
-            <div className="space-y-4">
-              <Input
-                label="รายละเอียด *"
-                type="text"
-                value={costForm.description}
-                onChange={(e) => setCostForm(prev => ({ ...prev, description: e.target.value }))}
-                placeholder="เช่น เปลี่ยนยาง, ซ่อมเครื่องยนต์"
-                disabled={addingCost}
-              />
-              <Input
-                label="จำนวนเงิน (บาท) *"
-                type="number"
-                value={costForm.cost}
-                onChange={(e) => setCostForm(prev => ({ ...prev, cost: e.target.value }))}
-                placeholder="0.00"
-                disabled={addingCost}
-              />
-              <Input
-                label="หมวดหมู่"
-                type="text"
-                value={costForm.category}
-                onChange={(e) => setCostForm(prev => ({ ...prev, category: e.target.value }))}
-                placeholder="เช่น อะไหล่, ค่าซ่อม, ค่าบริการ"
-                disabled={addingCost}
-              />
-              <div>
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                  หมายเหตุ
-                </label>
-                <textarea
-                  value={costForm.note}
-                  onChange={(e) => setCostForm(prev => ({ ...prev, note: e.target.value }))}
-                  placeholder="เพิ่มหมายเหตุ..."
-                  rows={3}
+              <div className="space-y-4">
+                <Input
+                  label="รายละเอียด *"
+                  type="text"
+                  value={costForm.description}
+                  onChange={(e) => setCostForm(prev => ({ ...prev, description: e.target.value }))}
+                  placeholder="เช่น เปลี่ยนยาง, ซ่อมเครื่องยนต์"
                   disabled={addingCost}
-                  className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-enterprise-500 focus:border-transparent resize-none"
                 />
+                <Input
+                  label="จำนวนเงิน (บาท) *"
+                  type="number"
+                  value={costForm.cost}
+                  onChange={(e) => setCostForm(prev => ({ ...prev, cost: e.target.value }))}
+                  placeholder="0.00"
+                  disabled={addingCost}
+                />
+                <Input
+                  label="หมวดหมู่"
+                  type="text"
+                  value={costForm.category}
+                  onChange={(e) => setCostForm(prev => ({ ...prev, category: e.target.value }))}
+                  placeholder="เช่น อะไหล่, ค่าซ่อม, ค่าบริการ"
+                  disabled={addingCost}
+                />
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                    หมายเหตุ
+                  </label>
+                  <textarea
+                    value={costForm.note}
+                    onChange={(e) => setCostForm(prev => ({ ...prev, note: e.target.value }))}
+                    placeholder="เพิ่มหมายเหตุ..."
+                    rows={3}
+                    disabled={addingCost}
+                    className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-enterprise-500 focus:border-transparent resize-none"
+                  />
+                </div>
               </div>
-            </div>
 
-            <div className="flex gap-3 mt-6">
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setShowCostDialog(false);
-                  setCostForm({ description: '', cost: '', category: '', note: '' });
-                }}
-                disabled={addingCost}
-                className="flex-1"
-              >
-                ยกเลิก
-              </Button>
-              <Button
-                onClick={handleAddCost}
-                disabled={addingCost || !costForm.description || !costForm.cost}
-                isLoading={addingCost}
-                className="flex-1"
-              >
-                <Save className="w-4 h-4 mr-2" />
-                บันทึก
-              </Button>
-            </div>
-          </Card>
-        </div>
-      )}
+              <div className="flex gap-3 mt-6">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setShowCostDialog(false);
+                    setCostForm({ description: '', cost: '', category: '', note: '' });
+                  }}
+                  disabled={addingCost}
+                  className="flex-1"
+                >
+                  ยกเลิก
+                </Button>
+                <Button
+                  onClick={handleAddCost}
+                  disabled={addingCost || !costForm.description || !costForm.cost}
+                  isLoading={addingCost}
+                  className="flex-1"
+                >
+                  <Save className="w-4 h-4 mr-2" />
+                  บันทึก
+                </Button>
+              </div>
+            </Card>
+          </div>
+        )
+      }
 
       {/* Start Repair Dialog */}
-      {showStartRepairDialog && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <Card className="p-6 max-w-md w-full">
-            <h3 className="text-xl font-semibold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
-              <Wrench className="w-5 h-5" />
-              เริ่มการซ่อม
-            </h3>
-
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                  ชื่ออู่ซ่อม <span className="text-red-500">*</span>
-                </label>
-                <Input
-                  type="text"
-                  value={repairForm.garage}
-                  onChange={(e) => setRepairForm(prev => ({ ...prev, garage: e.target.value }))}
-                  placeholder="ระบุชื่ออู่ซ่อม"
-                  disabled={startingRepair}
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                    วันที่เข้าซ่อม <span className="text-red-500">*</span>
-                  </label>
-                  <Input
-                    type="date"
-                    value={repairForm.repairDate}
-                    onChange={(e) => setRepairForm(prev => ({ ...prev, repairDate: e.target.value }))}
-                    disabled={startingRepair}
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                    วันที่คาดว่าจะเสร็จ
-                  </label>
-                  <Input
-                    type="date"
-                    value={repairForm.expectedCompletionDate}
-                    onChange={(e) => setRepairForm(prev => ({ ...prev, expectedCompletionDate: e.target.value }))}
-                    disabled={startingRepair}
-                    min={repairForm.repairDate}
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                  ผู้รับผิดชอบ
-                </label>
-                <select
-                  value={repairForm.assignedTo}
-                  onChange={(e) => setRepairForm(prev => ({ ...prev, assignedTo: e.target.value }))}
-                  className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-enterprise-500 focus:border-transparent"
-                  disabled={startingRepair}
-                >
-                  <option value="">เลือกผู้รับผิดชอบ</option>
-                  {profiles.map(p => (
-                    <option key={p.id} value={p.id}>{p.full_name || p.email}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                  หมายเหตุ
-                </label>
-                <textarea
-                  value={repairForm.notes}
-                  onChange={(e) => setRepairForm(prev => ({ ...prev, notes: e.target.value }))}
-                  placeholder="รายละเอียดเพิ่มเติม..."
-                  rows={3}
-                  className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-enterprise-500 focus:border-transparent resize-none"
-                  disabled={startingRepair}
-                />
-              </div>
-            </div>
-
-            <div className="flex gap-3 mt-6">
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setShowStartRepairDialog(false);
-                  setRepairForm({ garage: '', repairDate: '' });
-                }}
-                disabled={startingRepair}
-                className="flex-1"
-              >
-                ยกเลิก
-              </Button>
-              <Button
-                onClick={handleStartRepair}
-                disabled={startingRepair || !repairForm.garage || !repairForm.repairDate}
-                isLoading={startingRepair}
-                className="flex-1"
-              >
-                <Wrench className="w-4 h-4 mr-2" />
+      {
+        showStartRepairDialog && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <Card className="p-6 max-w-md w-full">
+              <h3 className="text-xl font-semibold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
+                <Wrench className="w-5 h-5" />
                 เริ่มการซ่อม
-              </Button>
-            </div>
-          </Card>
-        </div>
-      )}
+              </h3>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                    ชื่ออู่ซ่อม <span className="text-red-500">*</span>
+                  </label>
+                  <Input
+                    type="text"
+                    value={repairForm.garage}
+                    onChange={(e) => setRepairForm(prev => ({ ...prev, garage: e.target.value }))}
+                    placeholder="ระบุชื่ออู่ซ่อม"
+                    disabled={startingRepair}
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                      วันที่เข้าซ่อม <span className="text-red-500">*</span>
+                    </label>
+                    <Input
+                      type="date"
+                      value={repairForm.repairDate}
+                      onChange={(e) => setRepairForm(prev => ({ ...prev, repairDate: e.target.value }))}
+                      disabled={startingRepair}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                      วันที่คาดว่าจะเสร็จ
+                    </label>
+                    <Input
+                      type="date"
+                      value={repairForm.expectedCompletionDate}
+                      onChange={(e) => setRepairForm(prev => ({ ...prev, expectedCompletionDate: e.target.value }))}
+                      disabled={startingRepair}
+                      min={repairForm.repairDate}
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                    ผู้รับผิดชอบ
+                  </label>
+                  <select
+                    value={repairForm.assignedTo}
+                    onChange={(e) => setRepairForm(prev => ({ ...prev, assignedTo: e.target.value }))}
+                    className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-enterprise-500 focus:border-transparent"
+                    disabled={startingRepair}
+                  >
+                    <option value="">เลือกผู้รับผิดชอบ</option>
+                    {profiles.map(p => (
+                      <option key={p.id} value={p.id}>{p.full_name || p.email}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                    หมายเหตุ
+                  </label>
+                  <textarea
+                    value={repairForm.notes}
+                    onChange={(e) => setRepairForm(prev => ({ ...prev, notes: e.target.value }))}
+                    placeholder="รายละเอียดเพิ่มเติม..."
+                    rows={3}
+                    className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-enterprise-500 focus:border-transparent resize-none"
+                    disabled={startingRepair}
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-3 mt-6">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setShowStartRepairDialog(false);
+                    setRepairForm({ garage: '', repairDate: '' });
+                  }}
+                  disabled={startingRepair}
+                  className="flex-1"
+                >
+                  ยกเลิก
+                </Button>
+                <Button
+                  onClick={handleStartRepair}
+                  disabled={startingRepair || !repairForm.garage || !repairForm.repairDate}
+                  isLoading={startingRepair}
+                  className="flex-1"
+                >
+                  <Wrench className="w-4 h-4 mr-2" />
+                  เริ่มการซ่อม
+                </Button>
+              </div>
+            </Card>
+          </div>
+        )
+      }
 
       {/* Complete Repair Dialog */}
-      {showCompleteRepairDialog && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <Card className="p-6 max-w-md w-full">
-            <h3 className="text-xl font-semibold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
-              <CheckCircle className="w-5 h-5" />
-              ยืนยันการซ่อมเสร็จ
-            </h3>
-
-            <div className="p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg mb-4">
-              <p className="text-sm text-green-700 dark:text-green-300 font-medium mb-2">
-                ยืนยันการซ่อมเสร็จสิ้น?
-              </p>
-              <div className="space-y-1 text-sm text-green-600 dark:text-green-400">
-                <p>• สถานะตั๋วจะเปลี่ยนเป็น "เสร็จสิ้น"</p>
-                <p>• ข้อมูลการซ่อมจะถูกบันทึกลงในประวัติการบำรุงรักษา</p>
-                <p>• คุณสามารถเพิ่มค่าใช้จ่ายเพิ่มเติมได้หลังจากนี้</p>
-              </div>
-            </div>
-
-            <div className="flex gap-3 mt-6">
-              <Button
-                variant="outline"
-                onClick={() => setShowCompleteRepairDialog(false)}
-                disabled={completingRepair}
-                className="flex-1"
-              >
-                ยกเลิก
-              </Button>
-              <Button
-                onClick={handleCompleteRepair}
-                disabled={completingRepair}
-                isLoading={completingRepair}
-                className="flex-1"
-              >
-                <CheckCircle className="w-4 h-4 mr-2" />
+      {
+        showCompleteRepairDialog && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <Card className="p-6 max-w-md w-full">
+              <h3 className="text-xl font-semibold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
+                <CheckCircle className="w-5 h-5" />
                 ยืนยันการซ่อมเสร็จ
-              </Button>
-            </div>
-          </Card>
-        </div>
-      )}
-    </PageLayout>
+              </h3>
+
+              <div className="p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg mb-4">
+                <p className="text-sm text-green-700 dark:text-green-300 font-medium mb-2">
+                  ยืนยันการซ่อมเสร็จสิ้น?
+                </p>
+                <div className="space-y-1 text-sm text-green-600 dark:text-green-400">
+                  <p>• สถานะตั๋วจะเปลี่ยนเป็น "เสร็จสิ้น"</p>
+                  <p>• ข้อมูลการซ่อมจะถูกบันทึกลงในประวัติการบำรุงรักษา</p>
+                  <p>• คุณสามารถเพิ่มค่าใช้จ่ายเพิ่มเติมได้หลังจากนี้</p>
+                </div>
+              </div>
+
+              <div className="flex gap-3 mt-6">
+                <Button
+                  variant="outline"
+                  onClick={() => setShowCompleteRepairDialog(false)}
+                  disabled={completingRepair}
+                  className="flex-1"
+                >
+                  ยกเลิก
+                </Button>
+                <Button
+                  onClick={handleCompleteRepair}
+                  disabled={completingRepair}
+                  isLoading={completingRepair}
+                  className="flex-1"
+                >
+                  <CheckCircle className="w-4 h-4 mr-2" />
+                  ยืนยันการซ่อมเสร็จ
+                </Button>
+              </div>
+            </Card>
+          </div>
+        )
+      }
+    </PageLayout >
   );
 };
 
