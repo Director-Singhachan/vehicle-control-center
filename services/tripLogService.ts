@@ -105,10 +105,8 @@ export const tripLogService = {
       throw new Error('Odometer end must be greater than odometer start');
     }
 
-    const distance = data.odometer_end - trip.odometer_start;
-    if (distance > 500) {
-      throw new Error('Distance exceeds maximum allowed (500 km). Please verify.');
-    }
+    // Note: Distance validation (e.g., > 500km) should be handled at UI level with user confirmation
+    // We don't block saving here to allow legitimate long-distance trips
 
     const updateData: TripLogUpdate = {
       odometer_end: data.odometer_end,
