@@ -16,7 +16,8 @@ import {
   User,
   Shield,
   CheckSquare,
-  Route
+  Route,
+  Droplet
 } from 'lucide-react';
 import { DashboardView } from './views/DashboardView';
 import { ProfileView } from './views/ProfileView';
@@ -30,6 +31,8 @@ import { TicketFormView } from './views/TicketFormView';
 import { ApprovalBoardView } from './views/ApprovalBoardView';
 import { TripLogFormView } from './views/TripLogFormView';
 import { TripLogListView } from './views/TripLogListView';
+import { FuelLogFormView } from './views/FuelLogFormView';
+import { FuelLogListView } from './views/FuelLogListView';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { useAuth, usePendingTickets } from './hooks';
 import { prefetchService } from './services/prefetchService';
@@ -99,11 +102,11 @@ const AppContent = () => {
 
 
   // Redirect drivers to trip log form page when they login (like maintenance form)
-  // Drivers can access: triplogs, maintenance, profile, settings
+  // Drivers can access: triplogs, fuellogs, maintenance, profile, settings
   useEffect(() => {
     if (isDriver) {
       // If driver tries to access restricted areas, redirect to triplogs form
-      if (activeTab !== 'triplogs' && activeTab !== 'maintenance' && activeTab !== 'profile' && activeTab !== 'settings') {
+      if (activeTab !== 'triplogs' && activeTab !== 'fuellogs' && activeTab !== 'maintenance' && activeTab !== 'profile' && activeTab !== 'settings') {
         setActiveTab('triplogs');
         setTripLogView('form');
         setTripLogMode('checkout');
@@ -148,6 +151,7 @@ const AppContent = () => {
   const [ticketView, setTicketView] = useState<'list' | 'detail' | 'form'>('list');
   const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
   const [tripLogView, setTripLogView] = useState<'list' | 'form'>('list');
+  const [fuelLogView, setFuelLogView] = useState<'list' | 'form'>('list');
   const [tripLogMode, setTripLogMode] = useState<'checkout' | 'checkin'>('checkout');
   const [selectedTripId, setSelectedTripId] = useState<string | null>(null);
 
@@ -260,6 +264,16 @@ const AppContent = () => {
             onClick={() => {
               setActiveTab('triplogs');
               setTripLogView('list');
+            }}
+            isCollapsed={!isSidebarOpen}
+          />
+          <SidebarItem
+            icon={Droplet}
+            label={isSidebarOpen ? "บันทึกการเติมน้ำมัน" : ""}
+            active={activeTab === 'fuellogs'}
+            onClick={() => {
+              setActiveTab('fuellogs');
+              setFuelLogView('list');
             }}
             isCollapsed={!isSidebarOpen}
           />
@@ -569,6 +583,26 @@ const AppContent = () => {
                 onCancel={() => {
                   setTripLogView('list');
                   setSelectedTripId(null);
+                  setSelectedVehicleId(null);
+                }}
+              />
+            ) : null
+          ) : activeTab === 'fuellogs' ? (
+            fuelLogView === 'list' ? (
+              <FuelLogListView
+                onCreate={() => {
+                  setFuelLogView('form');
+                }}
+              />
+            ) : fuelLogView === 'form' ? (
+              <FuelLogFormView
+                vehicleId={selectedVehicleId || undefined}
+                onSave={() => {
+                  setFuelLogView('list');
+                  setSelectedVehicleId(null);
+                }}
+                onCancel={() => {
+                  setFuelLogView('list');
                   setSelectedVehicleId(null);
                 }}
               />
