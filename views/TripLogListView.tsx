@@ -14,7 +14,9 @@ import {
   ArrowRight,
   Plus,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  X,
+  ZoomIn
 } from 'lucide-react';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
@@ -47,6 +49,7 @@ export const TripLogListView: React.FC<TripLogListViewProps> = ({
   const [currentPage, setCurrentPage] = useState(1);
   const [pageInput, setPageInput] = useState('');
   const itemsPerPage = 20;
+  const [expandedImage, setExpandedImage] = useState<{ src: string; alt: string } | null>(null);
 
   // Calculate pagination
   const offset = (currentPage - 1) * itemsPerPage;
@@ -337,12 +340,34 @@ export const TripLogListView: React.FC<TripLogListViewProps> = ({
                           {trip.vehicle?.plate || 'N/A'}
                         </h3>
                         <div className="flex items-center gap-2 mt-1">
-                          <Avatar
-                            src={trip.driver?.avatar_url}
-                            alt={trip.driver?.full_name || 'Driver'}
-                            size="sm"
-                            fallback={trip.driver?.full_name}
-                          />
+                          {trip.driver?.avatar_url ? (
+                            <button
+                              onClick={() => setExpandedImage({
+                                src: trip.driver.avatar_url!,
+                                alt: trip.driver.full_name || 'Driver'
+                              })}
+                              className="relative group cursor-pointer transition-transform hover:scale-105"
+                              title="คลิกเพื่อขยายรูป"
+                            >
+                              <Avatar
+                                src={trip.driver.avatar_url}
+                                alt={trip.driver.full_name || 'Driver'}
+                                size="sm"
+                                fallback={trip.driver.full_name}
+                                className="ring-2 ring-transparent group-hover:ring-enterprise-500 transition-all"
+                              />
+                              <div className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/20 rounded-full transition-colors">
+                                <ZoomIn size={12} className="text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+                              </div>
+                            </button>
+                          ) : (
+                            <Avatar
+                              src={trip.driver?.avatar_url}
+                              alt={trip.driver?.full_name || 'Driver'}
+                              size="sm"
+                              fallback={trip.driver?.full_name}
+                            />
+                          )}
                           <p className="text-sm text-slate-600 dark:text-slate-400">
                             {trip.driver?.full_name || 'N/A'}
                           </p>
@@ -617,6 +642,37 @@ export const TripLogListView: React.FC<TripLogListViewProps> = ({
             )}
           </div>
         </>
+      )}
+
+      {/* Image Expansion Modal */}
+      {expandedImage && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4"
+          onClick={() => setExpandedImage(null)}
+        >
+          <div className="relative max-w-4xl max-h-[90vh] w-full">
+            <button
+              onClick={() => setExpandedImage(null)}
+              className="absolute -top-12 right-0 text-white hover:text-slate-300 transition-colors p-2"
+              aria-label="ปิด"
+            >
+              <X size={24} />
+            </button>
+            <div className="bg-white dark:bg-slate-800 rounded-lg overflow-hidden shadow-2xl">
+              <img
+                src={expandedImage.src}
+                alt={expandedImage.alt}
+                className="w-full h-auto max-h-[80vh] object-contain"
+                onClick={(e) => e.stopPropagation()}
+              />
+              <div className="p-4 border-t border-slate-200 dark:border-slate-700">
+                <p className="text-center text-slate-700 dark:text-slate-300 font-medium">
+                  {expandedImage.alt}
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </PageLayout>
   );

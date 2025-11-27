@@ -1,10 +1,13 @@
 // Approval History Component - แสดง approval chain
-import React from 'react';
-import { CheckCircle, XCircle, Clock, User, Shield } from 'lucide-react';
+import React, { useState } from 'react';
+import { CheckCircle, XCircle, Clock, User, Shield, ZoomIn, X } from 'lucide-react';
 import { Card } from './ui/Card';
+import { Avatar } from './ui/Avatar';
 import type { Database } from '../types/database';
 
-type Approval = Database['public']['Tables']['ticket_approvals']['Row'];
+type Approval = Database['public']['Tables']['ticket_approvals']['Row'] & {
+  approver?: { full_name: string; avatar_url?: string | null } | null;
+};
 
 interface ApprovalHistoryProps {
   ticketId: number;
@@ -30,6 +33,7 @@ export const ApprovalHistory: React.FC<ApprovalHistoryProps> = ({
   approvals,
   loading = false,
 }) => {
+  const [expandedImage, setExpandedImage] = useState<{ src: string; alt: string } | null>(null);
   if (loading) {
     return (
       <Card className="p-6">
@@ -151,8 +155,35 @@ export const ApprovalHistory: React.FC<ApprovalHistoryProps> = ({
                 {isCompleted ? (
                   <>
                     <div className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400 mb-1">
-                      <User className="w-4 h-4" />
-                      <span>User ID: {approval.approved_by?.substring(0, 8)}...</span>
+                      {approval.approver?.avatar_url ? (
+                        <button
+                          onClick={() => setExpandedImage({
+                            src: approval.approver.avatar_url!,
+                            alt: approval.approver.full_name || 'Approver'
+                          })}
+                          className="relative group cursor-pointer transition-transform hover:scale-105"
+                          title="คลิกเพื่อขยายรูป"
+                        >
+                          <Avatar
+                            src={approval.approver.avatar_url}
+                            alt={approval.approver.full_name || 'Approver'}
+                            size="sm"
+                            fallback={approval.approver.full_name}
+                            className="ring-2 ring-transparent group-hover:ring-enterprise-500 transition-all"
+                          />
+                          <div className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/20 rounded-full transition-colors">
+                            <ZoomIn size={12} className="text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+                          </div>
+                        </button>
+                      ) : (
+                        <Avatar
+                          src={approval.approver?.avatar_url}
+                          alt={approval.approver?.full_name || 'Approver'}
+                          size="sm"
+                          fallback={approval.approver?.full_name}
+                        />
+                      )}
+                      <span>{approval.approver?.full_name || `User ID: ${approval.approved_by?.substring(0, 8)}...`}</span>
                     </div>
                     <p className="text-xs text-slate-500 dark:text-slate-500">
                       อนุมัติเมื่อ: {new Date(approval.created_at).toLocaleString('th-TH', {
@@ -196,6 +227,37 @@ export const ApprovalHistory: React.FC<ApprovalHistoryProps> = ({
           );
         })}
       </div>
+
+      {/* Image Expansion Modal */}
+      {expandedImage && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4"
+          onClick={() => setExpandedImage(null)}
+        >
+          <div className="relative max-w-4xl max-h-[90vh] w-full">
+            <button
+              onClick={() => setExpandedImage(null)}
+              className="absolute -top-12 right-0 text-white hover:text-slate-300 transition-colors p-2"
+              aria-label="ปิด"
+            >
+              <X size={24} />
+            </button>
+            <div className="bg-white dark:bg-slate-800 rounded-lg overflow-hidden shadow-2xl">
+              <img
+                src={expandedImage.src}
+                alt={expandedImage.alt}
+                className="w-full h-auto max-h-[80vh] object-contain"
+                onClick={(e) => e.stopPropagation()}
+              />
+              <div className="p-4 border-t border-slate-200 dark:border-slate-700">
+                <p className="text-center text-slate-700 dark:text-slate-300 font-medium">
+                  {expandedImage.alt}
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </Card>
   );
 };

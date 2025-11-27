@@ -32,7 +32,10 @@ export const useApprovalHistory = (ticketId: number | null) => {
       try {
         const { data, error: fetchError } = await supabase
           .from('ticket_approvals')
-          .select('*')
+          .select(`
+            *,
+            approver:profiles!ticket_approvals_approved_by_fkey(full_name, avatar_url)
+          `)
           .eq('ticket_id', ticketId)
           .order('created_at', { ascending: true });
 
@@ -79,7 +82,10 @@ export const useApprovalHistory = (ticketId: number | null) => {
       cache.invalidate(cacheKey);
       const { data, error: fetchError } = await supabase
         .from('ticket_approvals')
-        .select('*')
+        .select(`
+          *,
+          approver:profiles!ticket_approvals_approved_by_fkey(full_name, avatar_url)
+        `)
         .eq('ticket_id', ticketId)
         .order('created_at', { ascending: true });
 
