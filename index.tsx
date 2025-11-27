@@ -103,6 +103,14 @@ const AppContent = () => {
   // State declarations - must be before useEffect that uses them
   const [vehicleView, setVehicleView] = useState<'list' | 'detail' | 'form'>('list');
   const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(null);
+
+  // Fix: Reset vehicleView to 'list' if it's 'detail' but no selectedVehicleId
+  useEffect(() => {
+    if (vehicleView === 'detail' && !selectedVehicleId) {
+      console.log('[AppContent] ⚠️ Fixing: vehicleView is detail but no selectedVehicleId - resetting to list');
+      setVehicleView('list');
+    }
+  }, [vehicleView, selectedVehicleId]);
   const [ticketView, setTicketView] = useState<'list' | 'detail' | 'form'>('list');
   const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
   const [tripLogView, setTripLogView] = useState<'list' | 'form'>('list');
@@ -451,6 +459,7 @@ const AppContent = () => {
             (() => {
               console.log('[AppContent] ✅✅✅ ENTERED vehicles branch!');
               console.log('[AppContent] ✅ activeTab is vehicles, vehicleView:', vehicleView, 'selectedVehicleId:', selectedVehicleId);
+              
               if (vehicleView === 'list') {
                 console.log('[AppContent] ✅ Rendering VehiclesView (list)');
                 return (
@@ -473,6 +482,7 @@ const AppContent = () => {
                   />
                 );
               } else if (vehicleView === 'detail' && selectedVehicleId) {
+                console.log('[AppContent] ✅ Rendering VehicleDetailView');
                 return (
                   <VehicleDetailView
                     vehicleId={selectedVehicleId}
@@ -487,6 +497,7 @@ const AppContent = () => {
                   />
                 );
               } else if (vehicleView === 'form') {
+                console.log('[AppContent] ✅ Rendering VehicleFormView');
                 return (
                   <VehicleFormView
                     vehicleId={selectedVehicleId || undefined}
@@ -505,6 +516,7 @@ const AppContent = () => {
                   />
                 );
               }
+              console.log('[AppContent] ⚠️ No matching view - returning null');
               return null;
             })()
           ) : activeTab === 'maintenance' ? (
