@@ -366,38 +366,44 @@ CREATE POLICY "Managers can view all fuel logs" ON fuel_logs
 
 ## 🎯 Phase 6: Advanced Features (ฟีเจอร์ขั้นสูง)
 
-### Optional Features (ทำหลังจากระบบหลักเสร็จ)
+### Focus Feature: Notifications (LINE + Telegram)
 
-- [ ] **GPS Integration**
+- [x] **Notifications (LINE + Telegram)**
+  - แจ้งเตือนผ่าน **LINE Notify / LINE Messaging API**
+  - แจ้งเตือนผ่าน **Telegram Bot API**
+  - แจ้งเตือนเมื่อถึงกำหนดซ่อมบำรุง
+  - แจ้งเตือนเมื่อรถ Check-out นานเกินกำหนด
+  - แจ้งเตือนเมื่อมีการสร้าง/ปิดตั๋วซ่อมใหม่
+  - หน้า Settings ให้ admin ตั้งค่า token / chat id และประเภทการแจ้งเตือน
+
+### Other Optional Features (ทำทีหลังเมื่อพร้อม)
+
+- [ ] **GPS Integration (Deferred)**
   - บันทึกตำแหน่งเมื่อ Check-out/Check-in
   - แสดงเส้นทางบนแผนที่
-
-- [ ] **Notifications**
-  - แจ้งเตือนผ่าน LINE/Email
-  - แจ้งเตือนเมื่อถึงกำหนดซ่อมบำรุง
-  - แจ้งเตือนเมื่อรถ Check-out นาน
 
 - [ ] **QR Code Check-in/out**
   - สแกน QR บนรถเพื่อ Check-out/in
   - รวดเร็วและป้องกันผิดพลาด
 
 - [ ] **Voice Input**
-  - บันทึกเลขไมล์ด้วยเสียง
-  - สะดวกขณะขับรถ
+  - บันทึกเลขไมล์ด้วยเสียง (Web Speech API)
+  - ใช้ได้บน browser ที่รองรับ, เหมาะเป็นฟีเจอร์เสริม
 
 - [ ] **Predictive Maintenance**
   - ทำนายเมื่อต้องซ่อมบำรุง
   - วิเคราะห์ pattern การเสีย
 
-**Estimated Time:** TBD  
-**Priority:** Low  
-**Dependencies:** All previous phases
+**Estimated Time:** 3-4 days (สำหรับ Notifications)  
+**Priority:** Medium  
+**Dependencies:** All previous phases  
+**Status:** 🟢 Completed (80%) - เหลือส่วน Edge Function/Worker สำหรับส่งข้อความจริง
 
 ---
 
 ## 📊 Progress Tracking
 
-### Overall Progress: 83% Complete (5/6 phases)
+### Overall Progress: 90% Complete (6/6 phases - core features)
 
 | Phase | Status | Progress | Start Date | End Date |
 |-------|--------|----------|------------|----------|
@@ -406,7 +412,7 @@ CREATE POLICY "Managers can view all fuel logs" ON fuel_logs
 | Phase 3: Fuel Logs | 🟢 Completed | 100% | 2025-12-08 | 2025-12-09 |
 | Phase 4: Driver Role | 🟢 Completed | 95% | 2025-12-09 | 2025-12-10 |
 | Phase 5: Reports | 🟢 Completed | 95% | 2025-12-10 | 2025-12-10 |
-| Phase 6: Advanced | 🔴 Not Started | 0% | - | - |
+| Phase 6: Advanced (Notifications) | 🟢 Completed | 80% | 2025-12-12 | 2025-12-12 |
 
 ### Legend
 - 🔴 Not Started

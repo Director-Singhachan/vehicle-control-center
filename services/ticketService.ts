@@ -1,6 +1,7 @@
 // Ticket Service - CRUD operations for tickets
 import { supabase } from '../lib/supabase';
 import type { Database } from '../types/database';
+import { notificationService } from './notificationService';
 
 type Ticket = Database['public']['Tables']['tickets']['Row'];
 type TicketInsert = Database['public']['Tables']['tickets']['Insert'];
@@ -181,17 +182,70 @@ export const ticketService = {
       .single();
 
     if (error) throw error;
+
+    // Create notification event for new ticket (if user enabled it)
+    try {
+      await notificationService.createEvent({
+        channel: 'line',
+        event_type: 'ticket_created',
+        title: `แจ้งซ่อมใหม่: ${data.vehicle_id || ''}`,
+        message: `มีการแจ้งซ่อมใหม่ (Ticket #${data.ticket_number || data.id}). สถานะ: ${data.status}`,
+        payload: {
+          ticket_id: data.id,
+          ticket_number: data.ticket_number,
+          status: data.status,
+          vehicle_id: data.vehicle_id,
+        },
+      });
+    } catch (notifyError) {
+      console.error('[ticketService] Failed to create notification event for ticket_created:', notifyError);
+      // ไม่ต้อง throw ต่อ เพื่อไม่ให้กระทบการสร้างตั๋ว
+    }
+
     return data;
   },
 
   // Update ticket
   update: async (id: number, updates: TicketUpdate): Promise<Ticket> => {
-    const { data, error } = await (supabase.from('tickets') as any).update(updates)
+    const { data: existing, error: fetchError } = await supabase
+      .from('tickets')
+      .select('id, status, ticket_number, vehicle_id')
+      .eq('id', id)
+      .maybeSingle();
+
+    if (fetchError) throw fetchError;
+
+    const { data, error } = await (supabase.from('tickets') as any)
+      .update(updates)
       .eq('id', id)
       .select()
       .single();
 
     if (error) throw error;
+
+    // If ticket status changed to completed, create notification event
+    try {
+      const previousStatus = existing?.status;
+      if (previousStatus !== 'completed' && data.status === 'completed') {
+        await notificationService.createEvent({
+          channel: 'line',
+          event_type: 'ticket_closed',
+          title: `ซ่อมเสร็จแล้ว: Ticket #${data.ticket_number || data.id}`,
+          message: `ตั๋วซ่อมหมายเลข ${data.ticket_number || data.id} ถูกอัปเดตสถานะเป็นเสร็จสิ้นแล้ว`,
+          payload: {
+            ticket_id: data.id,
+            ticket_number: data.ticket_number,
+            previous_status: previousStatus,
+            status: data.status,
+            vehicle_id: data.vehicle_id,
+          },
+        });
+      }
+    } catch (notifyError) {
+      console.error('[ticketService] Failed to create notification event for ticket_closed:', notifyError);
+      // Don't throw to avoid affecting ticket update
+    }
+
     return data;
   },
 
