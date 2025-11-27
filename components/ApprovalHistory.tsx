@@ -183,7 +183,7 @@ export const ApprovalHistory: React.FC<ApprovalHistoryProps> = ({
                           fallback={approval.approver?.full_name}
                         />
                       )}
-                      <span>{approval.approver?.full_name || `User ID: ${approval.approved_by?.substring(0, 8)}...`}</span>
+                      <span>{approval.approver?.full_name || `User ID: ${approval.approver_id?.substring(0, 8)}...`}</span>
                     </div>
                     <p className="text-xs text-slate-500 dark:text-slate-500">
                       อนุมัติเมื่อ: {new Date(approval.created_at).toLocaleString('th-TH', {
