@@ -4,6 +4,7 @@ import { useTicket, useTicketCosts, useAuth } from '../hooks';
 import { ticketService, maintenanceService } from '../services';
 import { supabase } from '../lib/supabase';
 import { pdfService } from '../services/pdfService';
+import { useDataCacheStore, createCacheKey } from '../stores/dataCacheStore';
 import {
   FileText,
   Edit,
@@ -55,6 +56,7 @@ export const TicketDetailView: React.FC<TicketDetailViewProps> = ({
   const { ticket, loading, error, refetch } = useTicket(ticketId);
   const { costs, loading: loadingCosts, refetch: refetchCosts } = useTicketCosts(ticketId);
   const { approvals, loading: loadingApprovals, refetch: refetchApprovals } = useApprovalHistory(ticketId);
+  const cache = useDataCacheStore();
 
   // Auto-fix status if approval history shows all levels approved but status is not updated
   React.useEffect(() => {
@@ -400,6 +402,33 @@ export const TicketDetailView: React.FC<TicketDetailViewProps> = ({
         comment,
         newStatus
       );
+
+      // Invalidate cache for tickets-with-relations to force ApprovalBoardView to refetch
+      // This ensures the ticket moves to the correct column immediately
+      // Invalidate all tickets-with-relations cache entries by pattern
+      const cacheStore = cache as any;
+      if (cacheStore.cache && cacheStore.cache instanceof Map) {
+        const keysToInvalidate: string[] = [];
+        cacheStore.cache.forEach((value: any, key: string) => {
+          if (key.startsWith('tickets-with-relations:')) {
+            keysToInvalidate.push(key);
+          }
+        });
+        if (keysToInvalidate.length > 0) {
+          cache.invalidate(keysToInvalidate);
+        }
+      }
+      
+      // Also invalidate specific cache keys that might be used
+      cache.invalidate([
+        createCacheKey('tickets-with-relations', {}),
+        createCacheKey('tickets', {}),
+      ]);
+
+      // Dispatch custom event to notify other components (like ApprovalBoardView) to refetch
+      window.dispatchEvent(new CustomEvent('ticket-approved', { 
+        detail: { ticketId, newStatus } 
+      }));
 
       // Refresh data
       await Promise.all([refetch(), refetchApprovals()]);

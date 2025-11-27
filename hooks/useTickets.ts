@@ -140,7 +140,7 @@ export const useTicketsWithRelations = (filters?: {
   const [loading, setLoading] = useState(!cached);
   const [error, setError] = useState<Error | null>(null);
 
-  const fetchTickets = async (useCache = true) => {
+  const fetchTickets = async (useCache = true, forceLoading = false) => {
     if (useCache) {
       const cached = cache.get<{ data: TicketWithRelations[]; count: number }>(cacheKey);
       if (cached !== null && cached !== undefined) {
@@ -149,14 +149,13 @@ export const useTicketsWithRelations = (filters?: {
         setLoading(false);
         setError(null);
         // Background refresh - don't block UI
-        setTimeout(() => fetchTickets(false), 100);
+        setTimeout(() => fetchTickets(false, false), 100);
         return;
       }
     }
 
-    // Only set loading if we truly have no data
-    const currentTickets = tickets.length > 0 ? tickets : cache.get<{ data: TicketWithRelations[]; count: number }>(cacheKey)?.data || [];
-    if (currentTickets.length === 0 && !loading) {
+    // Set loading if forced (refetch) or if we have no data
+    if (forceLoading || (tickets.length === 0 && !loading)) {
       setLoading(true);
     }
     setError(null);
@@ -188,7 +187,25 @@ export const useTicketsWithRelations = (filters?: {
     totalCount,
     loading,
     error,
-    refetch: () => fetchTickets(false),
+    refetch: async () => {
+      // Invalidate cache first to force fresh fetch
+      cache.invalidate(cacheKey);
+      // Also invalidate all tickets-with-relations cache entries
+      const cacheStore = cache as any;
+      if (cacheStore.cache && cacheStore.cache instanceof Map) {
+        const keysToInvalidate: string[] = [];
+        cacheStore.cache.forEach((value: any, key: string) => {
+          if (key.startsWith('tickets-with-relations:')) {
+            keysToInvalidate.push(key);
+          }
+        });
+        if (keysToInvalidate.length > 0) {
+          cache.invalidate(keysToInvalidate);
+        }
+      }
+      // Force fetch without cache and show loading state
+      await fetchTickets(false, true);
+    },
   };
 };
 

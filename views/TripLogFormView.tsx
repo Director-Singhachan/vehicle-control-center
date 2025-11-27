@@ -351,6 +351,12 @@ export const TripLogFormView: React.FC<TripLogFormViewProps> = ({
       return;
     }
 
+    // Validate destination for checkout mode
+    if (mode === 'checkout' && !formData.destination.trim()) {
+      setError('กรุณากรอกปลายทาง');
+      return;
+    }
+
     setSaving(true);
 
     try {
@@ -1092,12 +1098,13 @@ export const TripLogFormView: React.FC<TripLogFormViewProps> = ({
                 label={
                   <span className="flex items-center gap-2">
                     <MapPin size={18} />
-                    ปลายทาง (ไม่บังคับ)
+                    ปลายทาง
                   </span>
                 }
                 value={formData.destination}
                 onChange={(e) => setFormData({ ...formData, destination: e.target.value })}
                 placeholder="กรอกปลายทาง"
+                required
               />
 
               <Input

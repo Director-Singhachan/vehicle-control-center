@@ -1,5 +1,5 @@
 // Approval Board View - Kanban board สำหรับดูภาพรวมสถานะการอนุมัติ
-import React, { useMemo } from 'react';
+import React, { useMemo, useEffect } from 'react';
 import { useTicketsWithRelations, useAuth } from '../hooks';
 
 // จำกัดจำนวนตั๋วที่แสดงในแต่ละคอลัมน์
@@ -45,6 +45,19 @@ export const ApprovalBoardView: React.FC<ApprovalBoardViewProps> = ({
 }) => {
   const { profile, isAdmin, isInspector, isManager, isExecutive } = useAuth();
   const { tickets = [], loading, error, refetch } = useTicketsWithRelations();
+
+  // Listen for ticket approval events and refetch immediately
+  useEffect(() => {
+    const handleTicketApproved = () => {
+      // Refetch tickets immediately when a ticket is approved
+      refetch();
+    };
+
+    window.addEventListener('ticket-approved', handleTicketApproved);
+    return () => {
+      window.removeEventListener('ticket-approved', handleTicketApproved);
+    };
+  }, [refetch]);
 
   // Stable tickets reference to prevent unnecessary re-renders
   // Only update if tickets actually change (by comparing IDs)

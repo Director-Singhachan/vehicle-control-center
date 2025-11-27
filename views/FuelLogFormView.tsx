@@ -31,11 +31,11 @@ interface FuelLogFormViewProps {
 }
 
 const FUEL_TYPES = [
+  { value: 'diesel', label: 'ดีเซล' },
   { value: 'gasoline_91', label: 'เบนซิน 91' },
   { value: 'gasoline_95', label: 'เบนซิน 95' },
   { value: 'gasohol_91', label: 'แก๊สโซฮอล์ 91' },
   { value: 'gasohol_95', label: 'แก๊สโซฮอล์ 95' },
-  { value: 'diesel', label: 'ดีเซล' },
   { value: 'e20', label: 'E20' },
   { value: 'e85', label: 'E85' },
 ];
@@ -57,7 +57,7 @@ export const FuelLogFormView: React.FC<FuelLogFormViewProps> = ({
 
   const [formData, setFormData] = useState({
     odometer: '',
-    fuel_type: 'gasoline_95',
+    fuel_type: 'diesel',
     liters: '',
     price_per_liter: '',
     fuel_station: '',
@@ -275,7 +275,7 @@ export const FuelLogFormView: React.FC<FuelLogFormViewProps> = ({
       setTimeout(() => {
         setFormData({
           odometer: '',
-          fuel_type: 'gasoline_95',
+          fuel_type: 'diesel',
           liters: '',
           price_per_liter: '',
           fuel_station: '',
