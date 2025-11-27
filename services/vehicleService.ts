@@ -35,13 +35,31 @@ export interface VehicleForMap {
 export const vehicleService = {
   // Get all vehicles
   getAll: async (): Promise<Vehicle[]> => {
-    const { data, error } = await supabase
-      .from('vehicles')
-      .select('*')
-      .order('created_at', { ascending: false });
+    try {
+      console.log('[vehicleService] getAll: Starting...');
+      const { data, error } = await supabase
+        .from('vehicles')
+        .select('*')
+        .order('created_at', { ascending: false });
 
-    if (error) throw error;
-    return data || [];
+      if (error) {
+        console.error('[vehicleService] getAll: Error:', error);
+        // Check for common deployment issues
+        if (error.message.includes('JWT') || error.message.includes('permission') || error.message.includes('policy')) {
+          throw new Error('ไม่มีสิทธิ์เข้าถึงข้อมูล กรุณาตรวจสอบการ login และสิทธิ์การเข้าถึง');
+        }
+        if (error.message.includes('fetch') || error.message.includes('network')) {
+          throw new Error('ไม่สามารถเชื่อมต่อกับฐานข้อมูลได้ กรุณาตรวจสอบการเชื่อมต่ออินเทอร์เน็ต');
+        }
+        throw error;
+      }
+
+      console.log('[vehicleService] getAll: Success, count:', data?.length || 0);
+      return data || [];
+    } catch (err) {
+      console.error('[vehicleService] getAll: Exception:', err);
+      throw err;
+    }
   },
 
   // Get vehicle by ID
@@ -58,12 +76,27 @@ export const vehicleService = {
 
   // Get vehicles with status (using view)
   getWithStatus: async (): Promise<VehicleWithStatus[]> => {
-    const { data, error } = await supabase
-      .from('vehicles_with_status')
-      .select('*');
+    try {
+      console.log('[vehicleService] getWithStatus: Starting...');
+      const { data, error } = await supabase
+        .from('vehicles_with_status')
+        .select('*');
 
-    if (error) throw error;
-    return data || [];
+      if (error) {
+        console.error('[vehicleService] getWithStatus: Error:', error);
+        // Don't throw - return empty array so vehicles list can still show
+        // This view might not exist or have permission issues
+        console.warn('[vehicleService] getWithStatus: Returning empty array due to error');
+        return [];
+      }
+
+      console.log('[vehicleService] getWithStatus: Success, count:', data?.length || 0);
+      return data || [];
+    } catch (err) {
+      console.error('[vehicleService] getWithStatus: Exception:', err);
+      // Don't throw - return empty array so vehicles list can still show
+      return [];
+    }
   },
 
   // Get vehicle dashboard data (using view)
