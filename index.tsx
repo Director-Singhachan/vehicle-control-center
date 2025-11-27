@@ -418,6 +418,12 @@ const AppContent = () => {
 
         {/* View Content */}
         <div className="p-6">
+          {(() => {
+            console.log('[AppContent] 🔍 Checking activeTab:', activeTab, 'vehicleView:', vehicleView, 'selectedVehicleId:', selectedVehicleId);
+            console.log('[AppContent] 🔍 activeTab === "vehicles":', activeTab === 'vehicles');
+            console.log('[AppContent] 🔍 activeTab === "dashboard":', activeTab === 'dashboard');
+            return null;
+          })()}
           {activeTab === 'dashboard' ? (
             <DashboardView
               isDark={isDark}
@@ -442,50 +448,65 @@ const AppContent = () => {
               }}
             />
           ) : activeTab === 'vehicles' ? (
-            vehicleView === 'list' ? (
-              <VehiclesView
-                onViewDetail={(id) => {
-                  setSelectedVehicleId(id);
-                  setVehicleView('detail');
-                }}
-                onEdit={(id) => {
-                  setSelectedVehicleId(id);
-                  setVehicleView('form');
-                }}
-                onCreate={() => {
-                  setSelectedVehicleId(undefined);
-                  setVehicleView('form');
-                }}
-              />
-            ) : vehicleView === 'detail' && selectedVehicleId ? (
-              <VehicleDetailView
-                vehicleId={selectedVehicleId}
-                onEdit={(id) => {
-                  setSelectedVehicleId(id);
-                  setVehicleView('form');
-                }}
-                onBack={() => {
-                  setVehicleView('list');
-                  setSelectedVehicleId(null);
-                }}
-              />
-            ) : vehicleView === 'form' ? (
-              <VehicleFormView
-                vehicleId={selectedVehicleId || undefined}
-                onSave={() => {
-                  setVehicleView('list');
-                  setSelectedVehicleId(null);
-                }}
-                onCancel={() => {
-                  if (selectedVehicleId) {
-                    setVehicleView('detail');
-                  } else {
-                    setVehicleView('list');
-                    setSelectedVehicleId(null);
-                  }
-                }}
-              />
-            ) : null
+            (() => {
+              console.log('[AppContent] ✅✅✅ ENTERED vehicles branch!');
+              console.log('[AppContent] ✅ activeTab is vehicles, vehicleView:', vehicleView, 'selectedVehicleId:', selectedVehicleId);
+              if (vehicleView === 'list') {
+                console.log('[AppContent] ✅ Rendering VehiclesView (list)');
+                return (
+                  <VehiclesView
+                    onViewDetail={(id) => {
+                      console.log('[AppContent] onViewDetail called:', id);
+                      setSelectedVehicleId(id);
+                      setVehicleView('detail');
+                    }}
+                    onEdit={(id) => {
+                      console.log('[AppContent] onEdit called:', id);
+                      setSelectedVehicleId(id);
+                      setVehicleView('form');
+                    }}
+                    onCreate={() => {
+                      console.log('[AppContent] onCreate called');
+                      setSelectedVehicleId(undefined);
+                      setVehicleView('form');
+                    }}
+                  />
+                );
+              } else if (vehicleView === 'detail' && selectedVehicleId) {
+                return (
+                  <VehicleDetailView
+                    vehicleId={selectedVehicleId}
+                    onEdit={(id) => {
+                      setSelectedVehicleId(id);
+                      setVehicleView('form');
+                    }}
+                    onBack={() => {
+                      setVehicleView('list');
+                      setSelectedVehicleId(null);
+                    }}
+                  />
+                );
+              } else if (vehicleView === 'form') {
+                return (
+                  <VehicleFormView
+                    vehicleId={selectedVehicleId || undefined}
+                    onSave={() => {
+                      setVehicleView('list');
+                      setSelectedVehicleId(null);
+                    }}
+                    onCancel={() => {
+                      if (selectedVehicleId) {
+                        setVehicleView('detail');
+                      } else {
+                        setVehicleView('list');
+                        setSelectedVehicleId(null);
+                      }
+                    }}
+                  />
+                );
+              }
+              return null;
+            })()
           ) : activeTab === 'maintenance' ? (
             // For drivers, show the form by default if they are in list view
             isDriver && ticketView === 'list' ? (
