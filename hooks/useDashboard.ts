@@ -43,7 +43,7 @@ export const useDashboard = () => {
   const [loading, setLoading] = useState(false); 
   const [error, setError] = useState<Error | null>(null);
 
-  const fetchDashboardData = async (useCache = true) => {
+  const fetchDashboardData = async (useCache = true, forceLoading = false) => {
     // Check cache first
     if (useCache) {
       const cached = cache.get<DashboardData>(cacheKey);
@@ -52,15 +52,14 @@ export const useDashboard = () => {
         setData(cached);
         setLoading(false);
         // Fetch in background to update cache
-        setTimeout(() => fetchDashboardData(false), 100);
+        setTimeout(() => fetchDashboardData(false, false), 100);
         return;
       }
     }
 
     console.log('[useDashboard] Fetching dashboard data...');
-    // Don't set loading to true if we already have some data
-    // This prevents showing loading spinner when we have partial data
-    if (!data?.summary && !data?.financials && !data?.usageData && !data?.maintenanceTrends) {
+    // Set loading if forced (refetch) or if we have no data
+    if (forceLoading || (!data?.summary && !data?.financials && !data?.usageData && !data?.maintenanceTrends)) {
       setLoading(true);
     }
     setError(null);
@@ -237,7 +236,17 @@ export const useDashboard = () => {
     data,
     loading,
     error,
-    refetch: () => fetchDashboardData(false),
+    refetch: async () => {
+      // Invalidate cache first to force fresh fetch
+      cache.invalidate(cacheKey);
+      // Also invalidate related cache entries
+      cache.invalidate([
+        createCacheKey('tickets-with-relations', {}),
+        createCacheKey('tickets', {}),
+      ]);
+      // Force fetch without cache and show loading state
+      await fetchDashboardData(false, true);
+    },
   };
 };
 

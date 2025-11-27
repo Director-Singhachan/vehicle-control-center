@@ -100,6 +100,15 @@ const AppContent = () => {
     }
   }, [isMobile]);
 
+  // State declarations - must be before useEffect that uses them
+  const [vehicleView, setVehicleView] = useState<'list' | 'detail' | 'form'>('list');
+  const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(null);
+  const [ticketView, setTicketView] = useState<'list' | 'detail' | 'form'>('list');
+  const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
+  const [tripLogView, setTripLogView] = useState<'list' | 'form'>('list');
+  const [fuelLogView, setFuelLogView] = useState<'list' | 'form'>('list');
+  const [tripLogMode, setTripLogMode] = useState<'checkout' | 'checkin'>('checkout');
+  const [selectedTripId, setSelectedTripId] = useState<string | null>(null);
 
   // Redirect drivers to trip log form page when they login (like maintenance form)
   // Drivers can access: triplogs, fuellogs, maintenance, profile, settings
@@ -117,8 +126,12 @@ const AppContent = () => {
         setTripLogView('form');
         setTripLogMode('checkout');
       }
+      // If driver tries to access fuel log list, redirect to form
+      else if (activeTab === 'fuellogs' && fuelLogView === 'list') {
+        setFuelLogView('form');
+      }
     }
-  }, [isDriver, activeTab]);
+  }, [isDriver, activeTab, fuelLogView]);
 
   // Set initial tab for drivers when profile loads - go directly to form
   useEffect(() => {
@@ -146,14 +159,6 @@ const AppContent = () => {
       role: profile?.role
     });
   }, [user, profile, activeTab, authLoading]);
-  const [vehicleView, setVehicleView] = useState<'list' | 'detail' | 'form'>('list');
-  const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(null);
-  const [ticketView, setTicketView] = useState<'list' | 'detail' | 'form'>('list');
-  const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
-  const [tripLogView, setTripLogView] = useState<'list' | 'form'>('list');
-  const [fuelLogView, setFuelLogView] = useState<'list' | 'form'>('list');
-  const [tripLogMode, setTripLogMode] = useState<'checkout' | 'checkin'>('checkout');
-  const [selectedTripId, setSelectedTripId] = useState<string | null>(null);
 
   // Load navigation state from localStorage on mount
   useEffect(() => {
@@ -273,7 +278,8 @@ const AppContent = () => {
             active={activeTab === 'fuellogs'}
             onClick={() => {
               setActiveTab('fuellogs');
-              setFuelLogView('list');
+              // Drivers go directly to form, others go to list
+              setFuelLogView(isDriver ? 'form' : 'list');
             }}
             isCollapsed={!isSidebarOpen}
           />
@@ -589,21 +595,50 @@ const AppContent = () => {
             ) : null
           ) : activeTab === 'fuellogs' ? (
             fuelLogView === 'list' ? (
-              <FuelLogListView
-                onCreate={() => {
-                  setFuelLogView('form');
-                }}
-              />
+              // Don't show list view for drivers - redirect to form
+              isDriver ? (
+                <FuelLogFormView
+                  vehicleId={selectedVehicleId || undefined}
+                  onSave={() => {
+                    // Stay on form for drivers, don't redirect to list
+                    setSelectedVehicleId(null);
+                  }}
+                  onCancel={() => {
+                    // For drivers, cancel goes back to triplogs form
+                    setActiveTab('triplogs');
+                    setTripLogView('form');
+                    setSelectedVehicleId(null);
+                  }}
+                />
+              ) : (
+                <FuelLogListView
+                  onCreate={() => {
+                    setFuelLogView('form');
+                  }}
+                />
+              )
             ) : fuelLogView === 'form' ? (
               <FuelLogFormView
                 vehicleId={selectedVehicleId || undefined}
                 onSave={() => {
-                  setFuelLogView('list');
-                  setSelectedVehicleId(null);
+                  // For drivers, stay on form; for others, go to list
+                  if (isDriver) {
+                    setSelectedVehicleId(null);
+                  } else {
+                    setFuelLogView('list');
+                    setSelectedVehicleId(null);
+                  }
                 }}
                 onCancel={() => {
-                  setFuelLogView('list');
-                  setSelectedVehicleId(null);
+                  // For drivers, cancel goes back to triplogs form; for others, go to list
+                  if (isDriver) {
+                    setActiveTab('triplogs');
+                    setTripLogView('form');
+                    setSelectedVehicleId(null);
+                  } else {
+                    setFuelLogView('list');
+                    setSelectedVehicleId(null);
+                  }
                 }}
               />
             ) : null
