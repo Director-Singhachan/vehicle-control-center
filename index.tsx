@@ -33,6 +33,7 @@ import { TripLogFormView } from './views/TripLogFormView';
 import { TripLogListView } from './views/TripLogListView';
 import { FuelLogFormView } from './views/FuelLogFormView';
 import { FuelLogListView } from './views/FuelLogListView';
+import { ReportsView } from './views/ReportsView';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { useAuth, usePendingTickets } from './hooks';
 import { prefetchService } from './services/prefetchService';
@@ -748,11 +749,13 @@ const AppContent = () => {
             <ProfileView />
           ) : activeTab === 'rls-test' ? (
             <RLSTestView />
+          ) : activeTab === 'reports' ? (
+            <ReportsView isDark={isDark} />
           ) : (
             <div className="flex flex-col items-center justify-center h-[60vh] text-slate-400">
               <Wrench size={48} className="mb-4 opacity-50" />
               <h3 className="text-xl font-medium text-slate-600 dark:text-slate-300">กำลังพัฒนา</h3>
-              <p>โมดูล {activeTab === 'reports' ? 'รายงาน' : activeTab === 'settings' ? 'ตั้งค่า' : activeTab} กำลังอยู่ระหว่างการพัฒนา</p>
+              <p>โมดูล {activeTab === 'settings' ? 'ตั้งค่า' : activeTab} กำลังอยู่ระหว่างการพัฒนา</p>
             </div>
           )}
         </div>

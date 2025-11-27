@@ -1,0 +1,724 @@
+// Reports View - Comprehensive reports and analytics
+import React, { useState } from 'react';
+import {
+  Droplet,
+  Route,
+  Wrench,
+  DollarSign,
+  Download,
+  Calendar,
+  TrendingUp,
+  Truck,
+  User,
+  FileText,
+} from 'lucide-react';
+import { PageLayout } from '../components/layout/PageLayout';
+import { Card } from '../components/ui/Card';
+import { Button } from '../components/ui/Button';
+import { excelExport } from '../utils/excelExport';
+import {
+  useMonthlyFuelReport,
+  useVehicleFuelComparison,
+  useFuelTrend,
+  useMonthlyTripReport,
+  useVehicleTripSummary,
+  useDriverTripReport,
+  useMonthlyMaintenanceReport,
+  useVehicleMaintenanceComparison,
+  useCostPerKm,
+  useMonthlyCostTrend,
+} from '../hooks/useReports';
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  BarElement,
+  LineElement,
+  PointElement,
+  Title,
+  Tooltip,
+  Legend,
+  Filler,
+} from 'chart.js';
+import { Bar, Line } from 'react-chartjs-2';
+
+ChartJS.register(
+  CategoryScale,
+  LinearScale,
+  BarElement,
+  LineElement,
+  PointElement,
+  Title,
+  Tooltip,
+  Legend,
+  Filler
+);
+
+interface ReportsViewProps {
+  isDark?: boolean;
+}
+
+type ReportTab = 'fuel' | 'trip' | 'maintenance' | 'cost';
+
+export const ReportsView: React.FC<ReportsViewProps> = ({ isDark = false }) => {
+  const [activeTab, setActiveTab] = useState<ReportTab>('fuel');
+  const [months, setMonths] = useState(6);
+
+  // Fuel Reports
+  const { data: monthlyFuelReport, loading: fuelLoading } = useMonthlyFuelReport(months);
+  const { data: vehicleFuelComparison, loading: fuelComparisonLoading } = useVehicleFuelComparison(months);
+  const { data: fuelTrend, loading: fuelTrendLoading } = useFuelTrend(months);
+
+  // Trip Reports
+  const { data: monthlyTripReport, loading: tripLoading } = useMonthlyTripReport(months);
+  const { data: vehicleTripSummary, loading: tripSummaryLoading } = useVehicleTripSummary(months);
+  const { data: driverTripReport, loading: driverTripLoading } = useDriverTripReport(months);
+
+  // Maintenance Reports
+  const { data: monthlyMaintenanceReport, loading: maintenanceLoading } = useMonthlyMaintenanceReport(months);
+  const { data: vehicleMaintenanceComparison, loading: maintenanceComparisonLoading } = useVehicleMaintenanceComparison(months);
+
+  // Cost Analysis
+  const { data: costPerKm, loading: costPerKmLoading } = useCostPerKm(months);
+  const { data: monthlyCostTrend, loading: costTrendLoading } = useMonthlyCostTrend(months);
+
+  // Export functions
+  const exportFuelReport = () => {
+    if (!monthlyFuelReport || monthlyFuelReport.length === 0) return;
+
+    excelExport.exportToExcel(
+      monthlyFuelReport,
+      [
+        { key: 'monthLabel', label: 'เดือน', width: 15 },
+        { key: 'totalLiters', label: 'รวมลิตร', width: 12, format: excelExport.formatNumber },
+        { key: 'totalCost', label: 'รวมค่าใช้จ่าย (฿)', width: 18, format: excelExport.formatCurrency },
+        { key: 'averagePricePerLiter', label: 'ราคาเฉลี่ยต่อลิตร (฿)', width: 20, format: excelExport.formatCurrency },
+        { key: 'averageEfficiency', label: 'ประสิทธิภาพเฉลี่ย (km/L)', width: 22, format: excelExport.formatNumber },
+        { key: 'fillCount', label: 'จำนวนครั้ง', width: 12 },
+      ],
+      `รายงานการใช้น้ำมัน_${new Date().toISOString().split('T')[0]}.xlsx`,
+      'รายงานการใช้น้ำมัน'
+    );
+  };
+
+  const exportTripReport = () => {
+    if (!monthlyTripReport || monthlyTripReport.length === 0) return;
+
+    excelExport.exportToExcel(
+      monthlyTripReport,
+      [
+        { key: 'monthLabel', label: 'เดือน', width: 15 },
+        { key: 'totalTrips', label: 'จำนวนเที่ยว', width: 12 },
+        { key: 'totalDistance', label: 'ระยะทางรวม (km)', width: 18, format: excelExport.formatNumber },
+        { key: 'totalHours', label: 'เวลารวม (ชม.)', width: 15, format: excelExport.formatNumber },
+        { key: 'averageDistance', label: 'ระยะทางเฉลี่ย (km)', width: 20, format: excelExport.formatNumber },
+        { key: 'averageHours', label: 'เวลาเฉลี่ย (ชม.)', width: 18, format: excelExport.formatNumber },
+      ],
+      `รายงานการเดินทาง_${new Date().toISOString().split('T')[0]}.xlsx`,
+      'รายงานการเดินทาง'
+    );
+  };
+
+  const exportMaintenanceReport = () => {
+    if (!monthlyMaintenanceReport || monthlyMaintenanceReport.length === 0) return;
+
+    excelExport.exportToExcel(
+      monthlyMaintenanceReport,
+      [
+        { key: 'monthLabel', label: 'เดือน', width: 15 },
+        { key: 'totalCost', label: 'ค่าใช้จ่ายรวม (฿)', width: 18, format: excelExport.formatCurrency },
+        { key: 'ticketCount', label: 'จำนวนตั๋ว', width: 12 },
+        { key: 'averageCost', label: 'ค่าใช้จ่ายเฉลี่ย (฿)', width: 20, format: excelExport.formatCurrency },
+      ],
+      `รายงานการซ่อมบำรุง_${new Date().toISOString().split('T')[0]}.xlsx`,
+      'รายงานการซ่อมบำรุง'
+    );
+  };
+
+  const exportCostAnalysis = () => {
+    if (!costPerKm || costPerKm.length === 0) return;
+
+    excelExport.exportToExcel(
+      costPerKm,
+      [
+        { key: 'plate', label: 'ทะเบียน', width: 15 },
+        { key: 'make', label: 'ยี่ห้อ', width: 15 },
+        { key: 'model', label: 'รุ่น', width: 15 },
+        { key: 'totalDistance', label: 'ระยะทางรวม (km)', width: 18, format: excelExport.formatNumber },
+        { key: 'totalFuelCost', label: 'ค่าน้ำมัน (฿)', width: 15, format: excelExport.formatCurrency },
+        { key: 'totalMaintenanceCost', label: 'ค่าซ่อม (฿)', width: 18, format: excelExport.formatCurrency },
+        { key: 'totalCost', label: 'รวมค่าใช้จ่าย (฿)', width: 18, format: excelExport.formatCurrency },
+        { key: 'costPerKm', label: 'ค่าใช้จ่ายต่อ km (฿)', width: 20, format: excelExport.formatCurrency },
+      ],
+      `วิเคราะห์ค่าใช้จ่าย_${new Date().toISOString().split('T')[0]}.xlsx`,
+      'วิเคราะห์ค่าใช้จ่าย'
+    );
+  };
+
+  const formatCurrency = (value: number) => {
+    return new Intl.NumberFormat('th-TH', {
+      style: 'currency',
+      currency: 'THB',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    }).format(value);
+  };
+
+  const formatNumber = (value: number, decimals: number = 1) => {
+    return value.toFixed(decimals);
+  };
+
+  return (
+    <PageLayout
+      title="รายงานและการวิเคราะห์"
+      subtitle="สรุปข้อมูลการใช้น้ำมัน การเดินทาง การซ่อมบำรุง และค่าใช้จ่าย"
+      actions={
+        <div className="flex items-center gap-3">
+          <select
+            value={months}
+            onChange={(e) => setMonths(Number(e.target.value))}
+            className="px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
+          >
+            <option value={3}>3 เดือนล่าสุด</option>
+            <option value={6}>6 เดือนล่าสุด</option>
+            <option value={12}>12 เดือนล่าสุด</option>
+          </select>
+        </div>
+      }
+    >
+      {/* Tabs */}
+      <div className="flex gap-2 border-b border-slate-200 dark:border-slate-700 mb-6">
+        <button
+          onClick={() => setActiveTab('fuel')}
+          className={`px-4 py-2 font-medium transition-colors ${
+            activeTab === 'fuel'
+              ? 'border-b-2 border-enterprise-600 text-enterprise-600 dark:text-enterprise-400'
+              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+          }`}
+        >
+          <Droplet className="inline-block w-4 h-4 mr-2" />
+          รายงานน้ำมัน
+        </button>
+        <button
+          onClick={() => setActiveTab('trip')}
+          className={`px-4 py-2 font-medium transition-colors ${
+            activeTab === 'trip'
+              ? 'border-b-2 border-enterprise-600 text-enterprise-600 dark:text-enterprise-400'
+              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+          }`}
+        >
+          <Route className="inline-block w-4 h-4 mr-2" />
+          รายงานการเดินทาง
+        </button>
+        <button
+          onClick={() => setActiveTab('maintenance')}
+          className={`px-4 py-2 font-medium transition-colors ${
+            activeTab === 'maintenance'
+              ? 'border-b-2 border-enterprise-600 text-enterprise-600 dark:text-enterprise-400'
+              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+          }`}
+        >
+          <Wrench className="inline-block w-4 h-4 mr-2" />
+          รายงานการซ่อม
+        </button>
+        <button
+          onClick={() => setActiveTab('cost')}
+          className={`px-4 py-2 font-medium transition-colors ${
+            activeTab === 'cost'
+              ? 'border-b-2 border-enterprise-600 text-enterprise-600 dark:text-enterprise-400'
+              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+          }`}
+        >
+          <DollarSign className="inline-block w-4 h-4 mr-2" />
+          วิเคราะห์ค่าใช้จ่าย
+        </button>
+      </div>
+
+      {/* Fuel Reports Tab */}
+      {activeTab === 'fuel' && (
+        <div className="space-y-6">
+          {/* Monthly Fuel Trend Chart */}
+          <Card>
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+                กราฟแสดงการใช้น้ำมันรายเดือน
+              </h3>
+              <Button onClick={exportFuelReport} variant="outline" size="sm">
+                <Download className="w-4 h-4 mr-2" />
+                Export Excel
+              </Button>
+            </div>
+            {fuelTrendLoading ? (
+              <div className="h-64 flex items-center justify-center text-slate-400">กำลังโหลด...</div>
+            ) : fuelTrend ? (
+              <div className="h-64">
+                <Line
+                  data={{
+                    labels: fuelTrend.labels,
+                    datasets: [
+                      {
+                        label: 'ค่าใช้จ่าย (฿)',
+                        data: fuelTrend.costs,
+                        borderColor: isDark ? '#8b5cf6' : '#7c3aed',
+                        backgroundColor: isDark ? 'rgba(139, 92, 246, 0.1)' : 'rgba(124, 58, 237, 0.1)',
+                        borderWidth: 2,
+                        tension: 0.4,
+                        fill: true,
+                        yAxisID: 'y',
+                      },
+                      {
+                        label: 'ประสิทธิภาพ (km/L)',
+                        data: fuelTrend.efficiency,
+                        borderColor: isDark ? '#10b981' : '#059669',
+                        backgroundColor: isDark ? 'rgba(16, 185, 129, 0.1)' : 'rgba(5, 150, 105, 0.1)',
+                        borderWidth: 2,
+                        tension: 0.4,
+                        yAxisID: 'y1',
+                      },
+                    ],
+                  }}
+                  options={{
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                      legend: { display: true },
+                      tooltip: {
+                        backgroundColor: isDark ? '#020617' : '#ffffff',
+                        titleColor: isDark ? '#f8fafc' : '#0f172a',
+                        bodyColor: isDark ? '#cbd5e1' : '#475569',
+                      },
+                    },
+                    scales: {
+                      y: {
+                        type: 'linear' as const,
+                        display: true,
+                        position: 'left' as const,
+                        ticks: { color: isDark ? '#94a3b8' : '#64748b' },
+                        grid: { color: isDark ? '#334155' : '#e2e8f0' },
+                      },
+                      y1: {
+                        type: 'linear' as const,
+                        display: true,
+                        position: 'right' as const,
+                        ticks: { color: isDark ? '#94a3b8' : '#64748b' },
+                        grid: { drawOnChartArea: false },
+                      },
+                    },
+                  }}
+                />
+              </div>
+            ) : (
+              <div className="h-64 flex items-center justify-center text-slate-400">ไม่มีข้อมูล</div>
+            )}
+          </Card>
+
+          {/* Vehicle Fuel Comparison */}
+          <Card>
+            <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-4">
+              เปรียบเทียบค่าใช้จ่ายน้ำมันแต่ละรถ
+            </h3>
+            {fuelComparisonLoading ? (
+              <div className="text-center py-8 text-slate-400">กำลังโหลด...</div>
+            ) : vehicleFuelComparison && vehicleFuelComparison.length > 0 ? (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-slate-200 dark:border-slate-700">
+                      <th className="text-left py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">ทะเบียน</th>
+                      <th className="text-left py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">ยี่ห้อ/รุ่น</th>
+                      <th className="text-right py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">รวมลิตร</th>
+                      <th className="text-right py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">ค่าใช้จ่าย (฿)</th>
+                      <th className="text-right py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">ประสิทธิภาพ (km/L)</th>
+                      <th className="text-right py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">จำนวนครั้ง</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {vehicleFuelComparison.map((vehicle) => (
+                      <tr key={vehicle.vehicle_id} className="border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                        <td className="py-3 px-4 text-slate-900 dark:text-slate-100 font-medium">{vehicle.plate}</td>
+                        <td className="py-3 px-4 text-slate-600 dark:text-slate-400">
+                          {vehicle.make} {vehicle.model}
+                        </td>
+                        <td className="py-3 px-4 text-right text-slate-900 dark:text-slate-100">{formatNumber(vehicle.totalLiters)}</td>
+                        <td className="py-3 px-4 text-right text-slate-900 dark:text-slate-100">{formatCurrency(vehicle.totalCost)}</td>
+                        <td className="py-3 px-4 text-right text-slate-900 dark:text-slate-100">
+                          {vehicle.averageEfficiency ? formatNumber(vehicle.averageEfficiency) : '-'}
+                        </td>
+                        <td className="py-3 px-4 text-right text-slate-600 dark:text-slate-400">{vehicle.fillCount}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="text-center py-8 text-slate-400">ไม่มีข้อมูล</div>
+            )}
+          </Card>
+        </div>
+      )}
+
+      {/* Trip Reports Tab */}
+      {activeTab === 'trip' && (
+        <div className="space-y-6">
+          {/* Monthly Trip Report */}
+          <Card>
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+                รายงานการเดินทางรายเดือน
+              </h3>
+              <Button onClick={exportTripReport} variant="outline" size="sm">
+                <Download className="w-4 h-4 mr-2" />
+                Export Excel
+              </Button>
+            </div>
+            {tripLoading ? (
+              <div className="text-center py-8 text-slate-400">กำลังโหลด...</div>
+            ) : monthlyTripReport && monthlyTripReport.length > 0 ? (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-slate-200 dark:border-slate-700">
+                      <th className="text-left py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">เดือน</th>
+                      <th className="text-right py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">จำนวนเที่ยว</th>
+                      <th className="text-right py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">ระยะทางรวม (km)</th>
+                      <th className="text-right py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">เวลารวม (ชม.)</th>
+                      <th className="text-right py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">ระยะทางเฉลี่ย (km)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {monthlyTripReport.map((report) => (
+                      <tr key={report.month} className="border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                        <td className="py-3 px-4 text-slate-900 dark:text-slate-100 font-medium">{report.monthLabel}</td>
+                        <td className="py-3 px-4 text-right text-slate-900 dark:text-slate-100">{report.totalTrips}</td>
+                        <td className="py-3 px-4 text-right text-slate-900 dark:text-slate-100">{formatNumber(report.totalDistance, 0)}</td>
+                        <td className="py-3 px-4 text-right text-slate-900 dark:text-slate-100">{formatNumber(report.totalHours, 1)}</td>
+                        <td className="py-3 px-4 text-right text-slate-900 dark:text-slate-100">{formatNumber(report.averageDistance, 1)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="text-center py-8 text-slate-400">ไม่มีข้อมูล</div>
+            )}
+          </Card>
+
+          {/* Vehicle Trip Summary */}
+          <Card>
+            <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-4">
+              สรุปการใช้รถแต่ละคัน
+            </h3>
+            {tripSummaryLoading ? (
+              <div className="text-center py-8 text-slate-400">กำลังโหลด...</div>
+            ) : vehicleTripSummary && vehicleTripSummary.length > 0 ? (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-slate-200 dark:border-slate-700">
+                      <th className="text-left py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">ทะเบียน</th>
+                      <th className="text-left py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">ยี่ห้อ/รุ่น</th>
+                      <th className="text-right py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">จำนวนเที่ยว</th>
+                      <th className="text-right py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">ระยะทางรวม (km)</th>
+                      <th className="text-right py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">ระยะทางเฉลี่ย (km)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {vehicleTripSummary.map((vehicle) => (
+                      <tr key={vehicle.vehicle_id} className="border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                        <td className="py-3 px-4 text-slate-900 dark:text-slate-100 font-medium">{vehicle.plate}</td>
+                        <td className="py-3 px-4 text-slate-600 dark:text-slate-400">
+                          {vehicle.make} {vehicle.model}
+                        </td>
+                        <td className="py-3 px-4 text-right text-slate-900 dark:text-slate-100">{vehicle.totalTrips}</td>
+                        <td className="py-3 px-4 text-right text-slate-900 dark:text-slate-100">{formatNumber(vehicle.totalDistance, 0)}</td>
+                        <td className="py-3 px-4 text-right text-slate-900 dark:text-slate-100">{formatNumber(vehicle.averageDistance, 1)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="text-center py-8 text-slate-400">ไม่มีข้อมูล</div>
+            )}
+          </Card>
+
+          {/* Driver Trip Report */}
+          <Card>
+            <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-4">
+              รายงานพนักงานขับรถ
+            </h3>
+            {driverTripLoading ? (
+              <div className="text-center py-8 text-slate-400">กำลังโหลด...</div>
+            ) : driverTripReport && driverTripReport.length > 0 ? (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-slate-200 dark:border-slate-700">
+                      <th className="text-left py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">ชื่อพนักงาน</th>
+                      <th className="text-right py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">จำนวนเที่ยว</th>
+                      <th className="text-right py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">ระยะทางรวม (km)</th>
+                      <th className="text-right py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">เวลารวม (ชม.)</th>
+                      <th className="text-left py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">รถที่ใช้</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {driverTripReport.map((driver) => (
+                      <tr key={driver.driver_id} className="border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                        <td className="py-3 px-4 text-slate-900 dark:text-slate-100 font-medium">{driver.driver_name}</td>
+                        <td className="py-3 px-4 text-right text-slate-900 dark:text-slate-100">{driver.totalTrips}</td>
+                        <td className="py-3 px-4 text-right text-slate-900 dark:text-slate-100">{formatNumber(driver.totalDistance, 0)}</td>
+                        <td className="py-3 px-4 text-right text-slate-900 dark:text-slate-100">{formatNumber(driver.totalHours, 1)}</td>
+                        <td className="py-3 px-4 text-slate-600 dark:text-slate-400">
+                          {driver.vehicles_used.join(', ')}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="text-center py-8 text-slate-400">ไม่มีข้อมูล</div>
+            )}
+          </Card>
+        </div>
+      )}
+
+      {/* Maintenance Reports Tab */}
+      {activeTab === 'maintenance' && (
+        <div className="space-y-6">
+          {/* Monthly Maintenance Chart */}
+          <Card>
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+                กราฟแสดงค่าซ่อมบำรุงรายเดือน
+              </h3>
+              <Button onClick={exportMaintenanceReport} variant="outline" size="sm">
+                <Download className="w-4 h-4 mr-2" />
+                Export Excel
+              </Button>
+            </div>
+            {maintenanceLoading ? (
+              <div className="h-64 flex items-center justify-center text-slate-400">กำลังโหลด...</div>
+            ) : monthlyMaintenanceReport && monthlyMaintenanceReport.length > 0 ? (
+              <div className="h-64">
+                <Bar
+                  data={{
+                    labels: monthlyMaintenanceReport.map(r => r.monthLabel),
+                    datasets: [
+                      {
+                        label: 'ค่าใช้จ่ายการซ่อมบำรุง (฿)',
+                        data: monthlyMaintenanceReport.map(r => r.totalCost),
+                        backgroundColor: isDark ? '#8b5cf6' : '#7c3aed',
+                        borderRadius: 4,
+                      },
+                    ],
+                  }}
+                  options={{
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                      legend: { display: false },
+                      tooltip: {
+                        backgroundColor: isDark ? '#020617' : '#ffffff',
+                        titleColor: isDark ? '#f8fafc' : '#0f172a',
+                        bodyColor: isDark ? '#cbd5e1' : '#475569',
+                        callbacks: {
+                          label: (context) => formatCurrency(context.parsed.y),
+                        },
+                      },
+                    },
+                    scales: {
+                      x: {
+                        grid: { display: false },
+                        ticks: { color: isDark ? '#94a3b8' : '#64748b' },
+                      },
+                      y: {
+                        grid: { color: isDark ? '#334155' : '#e2e8f0' },
+                        ticks: {
+                          color: isDark ? '#94a3b8' : '#64748b',
+                          callback: (value) => formatCurrency(Number(value)),
+                        },
+                      },
+                    },
+                  }}
+                />
+              </div>
+            ) : (
+              <div className="h-64 flex items-center justify-center text-slate-400">ไม่มีข้อมูล</div>
+            )}
+          </Card>
+
+          {/* Vehicle Maintenance Comparison */}
+          <Card>
+            <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-4">
+              เปรียบเทียบค่าซ่อมแต่ละรถ
+            </h3>
+            {maintenanceComparisonLoading ? (
+              <div className="text-center py-8 text-slate-400">กำลังโหลด...</div>
+            ) : vehicleMaintenanceComparison && vehicleMaintenanceComparison.length > 0 ? (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-slate-200 dark:border-slate-700">
+                      <th className="text-left py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">ทะเบียน</th>
+                      <th className="text-left py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">ยี่ห้อ/รุ่น</th>
+                      <th className="text-right py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">ค่าใช้จ่ายรวม (฿)</th>
+                      <th className="text-right py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">จำนวนตั๋ว</th>
+                      <th className="text-right py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">ค่าใช้จ่ายเฉลี่ย (฿)</th>
+                      <th className="text-left py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">ซ่อมล่าสุด</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {vehicleMaintenanceComparison.map((vehicle) => (
+                      <tr key={vehicle.vehicle_id} className="border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                        <td className="py-3 px-4 text-slate-900 dark:text-slate-100 font-medium">{vehicle.plate}</td>
+                        <td className="py-3 px-4 text-slate-600 dark:text-slate-400">
+                          {vehicle.make} {vehicle.model}
+                        </td>
+                        <td className="py-3 px-4 text-right text-slate-900 dark:text-slate-100">{formatCurrency(vehicle.totalCost)}</td>
+                        <td className="py-3 px-4 text-right text-slate-600 dark:text-slate-400">{vehicle.ticketCount}</td>
+                        <td className="py-3 px-4 text-right text-slate-900 dark:text-slate-100">{formatCurrency(vehicle.averageCost)}</td>
+                        <td className="py-3 px-4 text-slate-600 dark:text-slate-400">
+                          {vehicle.lastMaintenanceDate
+                            ? new Date(vehicle.lastMaintenanceDate).toLocaleDateString('th-TH')
+                            : '-'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="text-center py-8 text-slate-400">ไม่มีข้อมูล</div>
+            )}
+          </Card>
+        </div>
+      )}
+
+      {/* Cost Analysis Tab */}
+      {activeTab === 'cost' && (
+        <div className="space-y-6">
+          {/* Monthly Cost Trend Chart */}
+          <Card>
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+                กราฟแสดงค่าใช้จ่ายรายเดือน (น้ำมัน + ซ่อม)
+              </h3>
+              <Button onClick={exportCostAnalysis} variant="outline" size="sm">
+                <Download className="w-4 h-4 mr-2" />
+                Export Excel
+              </Button>
+            </div>
+            {costTrendLoading ? (
+              <div className="h-64 flex items-center justify-center text-slate-400">กำลังโหลด...</div>
+            ) : monthlyCostTrend && monthlyCostTrend.length > 0 ? (
+              <div className="h-64">
+                <Bar
+                  data={{
+                    labels: monthlyCostTrend.map(r => r.monthLabel),
+                    datasets: [
+                      {
+                        label: 'ค่าน้ำมัน (฿)',
+                        data: monthlyCostTrend.map(r => r.fuelCost),
+                        backgroundColor: isDark ? '#10b981' : '#059669',
+                        borderRadius: 4,
+                      },
+                      {
+                        label: 'ค่าซ่อม (฿)',
+                        data: monthlyCostTrend.map(r => r.maintenanceCost),
+                        backgroundColor: isDark ? '#8b5cf6' : '#7c3aed',
+                        borderRadius: 4,
+                      },
+                      {
+                        label: 'รวม (฿)',
+                        data: monthlyCostTrend.map(r => r.totalCost),
+                        backgroundColor: isDark ? '#f59e0b' : '#d97706',
+                        borderRadius: 4,
+                      },
+                    ],
+                  }}
+                  options={{
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                      legend: { display: true },
+                      tooltip: {
+                        backgroundColor: isDark ? '#020617' : '#ffffff',
+                        titleColor: isDark ? '#f8fafc' : '#0f172a',
+                        bodyColor: isDark ? '#cbd5e1' : '#475569',
+                        callbacks: {
+                          label: (context) => formatCurrency(context.parsed.y),
+                        },
+                      },
+                    },
+                    scales: {
+                      x: {
+                        grid: { display: false },
+                        ticks: { color: isDark ? '#94a3b8' : '#64748b' },
+                      },
+                      y: {
+                        grid: { color: isDark ? '#334155' : '#e2e8f0' },
+                        ticks: {
+                          color: isDark ? '#94a3b8' : '#64748b',
+                          callback: (value) => formatCurrency(Number(value)),
+                        },
+                      },
+                    },
+                  }}
+                />
+              </div>
+            ) : (
+              <div className="h-64 flex items-center justify-center text-slate-400">ไม่มีข้อมูล</div>
+            )}
+          </Card>
+
+          {/* Cost Per Km */}
+          <Card>
+            <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-4">
+              ค่าใช้จ่ายต่อ km แต่ละรถ
+            </h3>
+            {costPerKmLoading ? (
+              <div className="text-center py-8 text-slate-400">กำลังโหลด...</div>
+            ) : costPerKm && costPerKm.length > 0 ? (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-slate-200 dark:border-slate-700">
+                      <th className="text-left py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">ทะเบียน</th>
+                      <th className="text-left py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">ยี่ห้อ/รุ่น</th>
+                      <th className="text-right py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">ระยะทางรวม (km)</th>
+                      <th className="text-right py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">ค่าน้ำมัน (฿)</th>
+                      <th className="text-right py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">ค่าซ่อม (฿)</th>
+                      <th className="text-right py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">รวมค่าใช้จ่าย (฿)</th>
+                      <th className="text-right py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">ค่าใช้จ่ายต่อ km (฿)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {costPerKm.map((vehicle) => (
+                      <tr key={vehicle.vehicle_id} className="border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                        <td className="py-3 px-4 text-slate-900 dark:text-slate-100 font-medium">{vehicle.plate}</td>
+                        <td className="py-3 px-4 text-slate-600 dark:text-slate-400">
+                          {vehicle.make} {vehicle.model}
+                        </td>
+                        <td className="py-3 px-4 text-right text-slate-900 dark:text-slate-100">{formatNumber(vehicle.totalDistance, 0)}</td>
+                        <td className="py-3 px-4 text-right text-slate-900 dark:text-slate-100">{formatCurrency(vehicle.totalFuelCost)}</td>
+                        <td className="py-3 px-4 text-right text-slate-900 dark:text-slate-100">{formatCurrency(vehicle.totalMaintenanceCost)}</td>
+                        <td className="py-3 px-4 text-right text-slate-900 dark:text-slate-100 font-semibold">{formatCurrency(vehicle.totalCost)}</td>
+                        <td className="py-3 px-4 text-right text-slate-900 dark:text-slate-100 font-semibold text-enterprise-600 dark:text-enterprise-400">
+                          {formatCurrency(vehicle.costPerKm)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="text-center py-8 text-slate-400">ไม่มีข้อมูล</div>
+            )}
+          </Card>
+        </div>
+      )}
+    </PageLayout>
+  );
+};
+
