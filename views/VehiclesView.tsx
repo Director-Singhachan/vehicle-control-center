@@ -1,5 +1,5 @@
 // Vehicles View - List all vehicles with filters and search
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import { useVehicles, useVehiclesWithStatus } from '../hooks';
 import { useAuth } from '../hooks';
 import {
@@ -24,6 +24,131 @@ import type { Database } from '../types/database';
 
 type Vehicle = Database['public']['Tables']['vehicles']['Row'];
 type VehicleWithStatus = Database['public']['Views']['vehicles_with_status']['Row'];
+
+// Vehicle Card Component - Memoized to prevent unnecessary re-renders
+interface VehicleCardProps {
+  vehicle: Vehicle;
+  statusBadge: {
+    label: string;
+    className: string;
+    icon: React.ComponentType<{ className?: string; size?: number }>;
+  };
+  canEdit: boolean;
+  onViewDetail?: (vehicleId: string) => void;
+  onEdit?: (vehicleId: string) => void;
+}
+
+const VehicleCard = React.memo<VehicleCardProps>(({
+  vehicle,
+  statusBadge,
+  canEdit,
+  onViewDetail,
+  onEdit,
+}) => {
+  const StatusIcon = statusBadge.icon;
+  const handleViewDetail = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    onViewDetail?.(vehicle.id);
+  }, [vehicle.id, onViewDetail]);
+
+  const handleEdit = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    onEdit?.(vehicle.id);
+  }, [vehicle.id, onEdit]);
+
+  const handleImageError = useCallback((e: React.SyntheticEvent<HTMLImageElement>) => {
+    e.currentTarget.src = 'https://images.unsplash.com/photo-1533473359331-0135ef1b58bf?auto=format&fit=crop&q=80&w=1000';
+  }, []);
+
+  return (
+    <Card className="overflow-hidden hover:shadow-lg transition-shadow group">
+      <div className="relative h-48 bg-slate-100 dark:bg-slate-800">
+        <img
+          src={vehicle.image_url || 'https://images.unsplash.com/photo-1533473359331-0135ef1b58bf?auto=format&fit=crop&q=80&w=1000'}
+          alt={vehicle.plate}
+          className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+          onError={handleImageError}
+          loading="lazy"
+        />
+        <div className="absolute top-3 right-3">
+          <span className={`px-2 py-1 rounded-full text-xs font-medium flex items-center gap-1 shadow-sm ${statusBadge.className}`}>
+            <StatusIcon className="w-3 h-3" />
+            {statusBadge.label}
+          </span>
+        </div>
+      </div>
+
+      <div className="p-6">
+        <div className="flex items-start justify-between mb-4">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-enterprise-100 dark:bg-enterprise-900 rounded-lg">
+              <Truck className="w-5 h-5 text-enterprise-600 dark:text-enterprise-400" />
+            </div>
+            <div>
+              <h3 className="font-semibold text-lg text-slate-900 dark:text-white">
+                {vehicle.plate}
+              </h3>
+              <p className="text-sm text-slate-500 dark:text-slate-400">
+                {vehicle.make} {vehicle.model}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="space-y-2 mb-4">
+          {vehicle.type && (
+            <div className="flex items-center text-sm text-slate-600 dark:text-slate-400">
+              <span className="w-20">ประเภท:</span>
+              <span className="font-medium">{vehicle.type}</span>
+            </div>
+          )}
+          {vehicle.branch && (
+            <div className="flex items-center text-sm text-slate-600 dark:text-slate-400">
+              <MapPin className="w-4 h-4 mr-1" />
+              <span>{vehicle.branch}</span>
+            </div>
+          )}
+        </div>
+
+        <div className="flex gap-2 pt-4 border-t border-slate-200 dark:border-slate-700">
+          <Button
+            variant="outline"
+            size="sm"
+            className="flex-1"
+            onClick={handleViewDetail}
+          >
+            <Eye className="w-4 h-4 mr-1" />
+            ดูรายละเอียด
+          </Button>
+          {canEdit && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleEdit}
+            >
+              <Edit className="w-4 h-4" />
+            </Button>
+          )}
+        </div>
+      </div>
+    </Card>
+  );
+}, (prevProps, nextProps) => {
+  // Custom comparison function for React.memo
+  return (
+    prevProps.vehicle.id === nextProps.vehicle.id &&
+    prevProps.vehicle.plate === nextProps.vehicle.plate &&
+    prevProps.vehicle.make === nextProps.vehicle.make &&
+    prevProps.vehicle.model === nextProps.vehicle.model &&
+    prevProps.vehicle.branch === nextProps.vehicle.branch &&
+    prevProps.vehicle.type === nextProps.vehicle.type &&
+    prevProps.vehicle.image_url === nextProps.vehicle.image_url &&
+    prevProps.statusBadge.label === nextProps.statusBadge.label &&
+    prevProps.canEdit === nextProps.canEdit
+  );
+});
+
+VehicleCard.displayName = 'VehicleCard';
 
 interface VehiclesViewProps {
   onViewDetail?: (vehicleId: string) => void;
@@ -64,6 +189,13 @@ export const VehiclesView: React.FC<VehiclesViewProps> = ({
   const [branchFilter, setBranchFilter] = useState<string>('all');
   const [showFilters, setShowFilters] = useState(false);
 
+  // Memoize filter handlers to prevent unnecessary re-renders
+  const handleStatusFilterAll = useCallback(() => setStatusFilter('all'), []);
+  const handleStatusFilterActive = useCallback(() => setStatusFilter('active'), []);
+  const handleStatusFilterMaintenance = useCallback(() => setStatusFilter('maintenance'), []);
+  const handleStatusFilterIdle = useCallback(() => setStatusFilter('idle'), []);
+  const handleToggleFilters = useCallback(() => setShowFilters(prev => !prev), []);
+
   // Create status map from vehiclesWithStatus
   // If status view is not available, all vehicles default to 'idle'
   const statusMap = useMemo(() => {
@@ -88,19 +220,23 @@ export const VehiclesView: React.FC<VehiclesViewProps> = ({
     return Array.from(branchSet).sort();
   }, [vehicles]);
 
-  // Filter vehicles
+  // Filter vehicles - Optimized with useMemo to prevent recalculation on every render
   const filteredVehicles = useMemo(() => {
+    // Early return if no vehicles
+    if (vehicles.length === 0) return [];
+
     let filtered = vehicles;
 
-    // Search filter
-    if (searchQuery) {
+    // Search filter - use early return for better performance
+    if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
-      filtered = filtered.filter(v =>
-        v.plate.toLowerCase().includes(query) ||
-        v.make?.toLowerCase().includes(query) ||
-        v.model?.toLowerCase().includes(query) ||
-        v.branch?.toLowerCase().includes(query)
-      );
+      filtered = filtered.filter(v => {
+        const plate = v.plate?.toLowerCase() || '';
+        const make = v.make?.toLowerCase() || '';
+        const model = v.model?.toLowerCase() || '';
+        const branch = v.branch?.toLowerCase() || '';
+        return plate.includes(query) || make.includes(query) || model.includes(query) || branch.includes(query);
+      });
     }
 
     // Status filter (only if status map has data)
@@ -166,7 +302,7 @@ export const VehiclesView: React.FC<VehiclesViewProps> = ({
           )}
           <Button
             variant="outline"
-            onClick={() => setShowFilters(!showFilters)}
+            onClick={handleToggleFilters}
           >
             <Filter className="w-4 h-4 mr-2" />
             กรอง
@@ -195,7 +331,7 @@ export const VehiclesView: React.FC<VehiclesViewProps> = ({
             {/* Quick Status Filters */}
             <div className="flex gap-2">
               <button
-                onClick={() => setStatusFilter('all')}
+                onClick={handleStatusFilterAll}
                 className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${statusFilter === 'all'
                     ? 'bg-enterprise-600 text-white'
                     : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
@@ -204,7 +340,7 @@ export const VehiclesView: React.FC<VehiclesViewProps> = ({
                 ทั้งหมด
               </button>
               <button
-                onClick={() => setStatusFilter('active')}
+                onClick={handleStatusFilterActive}
                 className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${statusFilter === 'active'
                     ? 'bg-green-600 text-white'
                     : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
@@ -213,7 +349,7 @@ export const VehiclesView: React.FC<VehiclesViewProps> = ({
                 ใช้งาน
               </button>
               <button
-                onClick={() => setStatusFilter('maintenance')}
+                onClick={handleStatusFilterMaintenance}
                 className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${statusFilter === 'maintenance'
                     ? 'bg-yellow-600 text-white'
                     : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
@@ -222,7 +358,7 @@ export const VehiclesView: React.FC<VehiclesViewProps> = ({
                 ซ่อมบำรุง
               </button>
               <button
-                onClick={() => setStatusFilter('idle')}
+                onClick={handleStatusFilterIdle}
                 className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${statusFilter === 'idle'
                     ? 'bg-slate-600 text-white'
                     : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
@@ -328,85 +464,16 @@ export const VehiclesView: React.FC<VehiclesViewProps> = ({
           </Card>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredVehicles.map((vehicle) => {
-              const statusBadge = getStatusBadge(vehicle.id);
-              const StatusIcon = statusBadge.icon;
-
-              return (
-                <Card key={vehicle.id} className="overflow-hidden hover:shadow-lg transition-shadow group">
-                  <div className="relative h-48 bg-slate-100 dark:bg-slate-800">
-                    <img
-                      src={vehicle.image_url || 'https://images.unsplash.com/photo-1533473359331-0135ef1b58bf?auto=format&fit=crop&q=80&w=1000'}
-                      alt={vehicle.plate}
-                      className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
-                      onError={(e) => {
-                        (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1533473359331-0135ef1b58bf?auto=format&fit=crop&q=80&w=1000';
-                      }}
-                    />
-                    <div className="absolute top-3 right-3">
-                      <span className={`px-2 py-1 rounded-full text-xs font-medium flex items-center gap-1 shadow-sm ${statusBadge.className}`}>
-                        <StatusIcon className="w-3 h-3" />
-                        {statusBadge.label}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="p-6">
-                    <div className="flex items-start justify-between mb-4">
-                      <div className="flex items-center gap-3">
-                        <div className="p-2 bg-enterprise-100 dark:bg-enterprise-900 rounded-lg">
-                          <Truck className="w-5 h-5 text-enterprise-600 dark:text-enterprise-400" />
-                        </div>
-                        <div>
-                          <h3 className="font-semibold text-lg text-slate-900 dark:text-white">
-                            {vehicle.plate}
-                          </h3>
-                          <p className="text-sm text-slate-500 dark:text-slate-400">
-                            {vehicle.make} {vehicle.model}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="space-y-2 mb-4">
-                      {vehicle.type && (
-                        <div className="flex items-center text-sm text-slate-600 dark:text-slate-400">
-                          <span className="w-20">ประเภท:</span>
-                          <span className="font-medium">{vehicle.type}</span>
-                        </div>
-                      )}
-                      {vehicle.branch && (
-                        <div className="flex items-center text-sm text-slate-600 dark:text-slate-400">
-                          <MapPin className="w-4 h-4 mr-1" />
-                          <span>{vehicle.branch}</span>
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="flex gap-2 pt-4 border-t border-slate-200 dark:border-slate-700">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="flex-1"
-                        onClick={() => onViewDetail?.(vehicle.id)}
-                      >
-                        <Eye className="w-4 h-4 mr-1" />
-                        ดูรายละเอียด
-                      </Button>
-                      {canEdit && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => onEdit?.(vehicle.id)}
-                        >
-                          <Edit className="w-4 h-4" />
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                </Card>
-              );
-            })}
+            {filteredVehicles.map((vehicle) => (
+              <VehicleCard
+                key={vehicle.id}
+                vehicle={vehicle}
+                statusBadge={getStatusBadge(vehicle.id)}
+                canEdit={canEdit}
+                onViewDetail={onViewDetail}
+                onEdit={onEdit}
+              />
+            ))}
           </div>
         )}
       </div>
