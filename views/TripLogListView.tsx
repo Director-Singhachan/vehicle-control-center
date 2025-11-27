@@ -14,7 +14,9 @@ import {
   ArrowRight,
   Plus,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  X,
+  ZoomIn
 } from 'lucide-react';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
@@ -40,12 +42,14 @@ export const TripLogListView: React.FC<TripLogListViewProps> = ({
     start_date?: string;
     end_date?: string;
     status?: 'checked_out' | 'checked_in';
+    branch?: string;
   }>({});
 
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [pageInput, setPageInput] = useState('');
   const itemsPerPage = 20;
+  const [expandedImage, setExpandedImage] = useState<{ src: string; alt: string } | null>(null);
 
   // Calculate pagination
   const offset = (currentPage - 1) * itemsPerPage;
@@ -62,7 +66,6 @@ export const TripLogListView: React.FC<TripLogListViewProps> = ({
   const totalPages = Math.ceil(totalCount / itemsPerPage);
   const startIndex = offset;
   const endIndex = Math.min(startIndex + itemsPerPage, totalCount);
-  const paginatedTrips = trips;
 
   // Reset to page 1 when filters or search change
   useEffect(() => {
@@ -91,10 +94,43 @@ export const TripLogListView: React.FC<TripLogListViewProps> = ({
     alert('ฟีเจอร์ Export to Excel กำลังพัฒนา');
   };
 
+  // Get unique branches from vehicles
+  const branches = useMemo(() => {
+    const uniqueBranches = new Set<string>();
+    vehicles.forEach(v => {
+      if (v.branch) {
+        uniqueBranches.add(v.branch);
+      }
+    });
+    return Array.from(uniqueBranches).sort();
+  }, [vehicles]);
+
+  // Filter vehicles by branch if branch filter is selected
+  const filteredVehicles = useMemo(() => {
+    if (!filters.branch) return vehicles;
+    return vehicles.filter(v => v.branch === filters.branch);
+  }, [vehicles, filters.branch]);
+
+  // Filter trips by branch if branch filter is active but no specific vehicle is selected
+  const displayedTrips = useMemo(() => {
+    if (!filters.branch || filters.vehicle_id) return trips;
+    // Filter by vehicle branch
+    return trips.filter(trip => {
+      const vehicle = vehicles.find(v => v.id === trip.vehicle_id);
+      return vehicle?.branch === filters.branch;
+    });
+  }, [trips, vehicles, filters.branch, filters.vehicle_id]);
+
+  // Adjust total count if filtering by branch
+  const displayedTotalCount = useMemo(() => {
+    if (!filters.branch || filters.vehicle_id) return totalCount;
+    return displayedTrips.length;
+  }, [totalCount, displayedTrips, filters.branch, filters.vehicle_id]);
+
   return (
     <PageLayout
       title="ประวัติการเดินทาง"
-      subtitle={loading ? 'กำลังโหลด...' : `ทั้งหมด ${totalCount.toLocaleString('th-TH')} รายการ${totalPages > 1 ? ` (หน้า ${currentPage}/${totalPages})` : ''}`}
+      subtitle={loading ? 'กำลังโหลด...' : `ทั้งหมด ${displayedTotalCount.toLocaleString('th-TH')} รายการ${totalPages > 1 ? ` (หน้า ${currentPage}/${totalPages})` : ''}`}
       actions={
         <div className="flex gap-2">
           {onCreateCheckout && (
@@ -125,7 +161,28 @@ export const TripLogListView: React.FC<TripLogListViewProps> = ({
             <span className="font-semibold">ตัวกรอง</span>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+            {/* Branch Filter */}
+            <div>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                สาขา
+              </label>
+              <select
+                value={filters.branch || ''}
+                onChange={(e) => {
+                  setFilters({ ...filters, branch: e.target.value || undefined, vehicle_id: undefined });
+                }}
+                className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
+              >
+                <option value="">ทั้งหมด</option>
+                {branches.map((branch) => (
+                  <option key={branch} value={branch}>
+                    {branch}
+                  </option>
+                ))}
+              </select>
+            </div>
+
             <div>
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                 รถ
@@ -138,7 +195,7 @@ export const TripLogListView: React.FC<TripLogListViewProps> = ({
                 className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
               >
                 <option value="">ทั้งหมด</option>
-                {vehicles.map((vehicle) => (
+                {filteredVehicles.map((vehicle) => (
                   <option key={vehicle.id} value={vehicle.id}>
                     {vehicle.plate} {vehicle.make && vehicle.model ? `(${vehicle.make} ${vehicle.model})` : ''}
                   </option>
@@ -193,6 +250,13 @@ export const TripLogListView: React.FC<TripLogListViewProps> = ({
             </div>
           </div>
 
+          {/* Branch filter info */}
+          {filters.branch && (
+            <div className="text-sm text-slate-600 dark:text-slate-400 mt-2">
+              กำลังแสดงเฉพาะรถในสาขา: <span className="font-medium">{filters.branch}</span>
+            </div>
+          )}
+
           {/* Search */}
           <div>
             <Input
@@ -225,7 +289,7 @@ export const TripLogListView: React.FC<TripLogListViewProps> = ({
       )}
 
       {/* Trips List */}
-      {!loading && totalCount === 0 && (
+      {!loading && displayedTotalCount === 0 && (
         <Card className="p-12 text-center">
           <Truck className="mx-auto mb-4 text-slate-400" size={48} />
           <p className="text-slate-600 dark:text-slate-400">
@@ -243,7 +307,7 @@ export const TripLogListView: React.FC<TripLogListViewProps> = ({
               พบทั้งหมด {totalCount.toLocaleString('th-TH')} รายการ
             </div>
 
-            {paginatedTrips.map((trip) => (
+            {displayedTrips.map((trip) => (
               <Card key={trip.id} className="p-6 hover:shadow-md transition-shadow">
                 <div className="flex items-start gap-4">
                   {/* Vehicle Image */}
@@ -276,12 +340,34 @@ export const TripLogListView: React.FC<TripLogListViewProps> = ({
                           {trip.vehicle?.plate || 'N/A'}
                         </h3>
                         <div className="flex items-center gap-2 mt-1">
-                          <Avatar
-                            src={trip.driver?.avatar_url}
-                            alt={trip.driver?.full_name || 'Driver'}
-                            size="sm"
-                            fallback={trip.driver?.full_name}
-                          />
+                          {trip.driver?.avatar_url ? (
+                            <button
+                              onClick={() => setExpandedImage({
+                                src: trip.driver.avatar_url!,
+                                alt: trip.driver.full_name || 'Driver'
+                              })}
+                              className="relative group cursor-pointer transition-transform hover:scale-105"
+                              title="คลิกเพื่อขยายรูป"
+                            >
+                              <Avatar
+                                src={trip.driver.avatar_url}
+                                alt={trip.driver.full_name || 'Driver'}
+                                size="sm"
+                                fallback={trip.driver.full_name}
+                                className="ring-2 ring-transparent group-hover:ring-enterprise-500 transition-all"
+                              />
+                              <div className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/20 rounded-full transition-colors">
+                                <ZoomIn size={12} className="text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+                              </div>
+                            </button>
+                          ) : (
+                            <Avatar
+                              src={trip.driver?.avatar_url}
+                              alt={trip.driver?.full_name || 'Driver'}
+                              size="sm"
+                              fallback={trip.driver?.full_name}
+                            />
+                          )}
                           <p className="text-sm text-slate-600 dark:text-slate-400">
                             {trip.driver?.full_name || 'N/A'}
                           </p>
@@ -556,6 +642,37 @@ export const TripLogListView: React.FC<TripLogListViewProps> = ({
             )}
           </div>
         </>
+      )}
+
+      {/* Image Expansion Modal */}
+      {expandedImage && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4"
+          onClick={() => setExpandedImage(null)}
+        >
+          <div className="relative max-w-4xl max-h-[90vh] w-full">
+            <button
+              onClick={() => setExpandedImage(null)}
+              className="absolute -top-12 right-0 text-white hover:text-slate-300 transition-colors p-2"
+              aria-label="ปิด"
+            >
+              <X size={24} />
+            </button>
+            <div className="bg-white dark:bg-slate-800 rounded-lg overflow-hidden shadow-2xl">
+              <img
+                src={expandedImage.src}
+                alt={expandedImage.alt}
+                className="w-full h-auto max-h-[80vh] object-contain"
+                onClick={(e) => e.stopPropagation()}
+              />
+              <div className="p-4 border-t border-slate-200 dark:border-slate-700">
+                <p className="text-center text-slate-700 dark:text-slate-300 font-medium">
+                  {expandedImage.alt}
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </PageLayout>
   );

@@ -15,7 +15,8 @@ import {
   Zap,
   ChevronLeft,
   ChevronRight,
-  Download
+  Download,
+  ZoomIn
 } from 'lucide-react';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
@@ -46,6 +47,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
   const [currentPage, setCurrentPage] = useState(1);
   const [pageInput, setPageInput] = useState('');
   const itemsPerPage = 20;
+  const [expandedImage, setExpandedImage] = useState<{ src: string; alt: string } | null>(null);
 
   // Calculate pagination
   const offset = (currentPage - 1) * itemsPerPage;
@@ -390,12 +392,34 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                       <div>
                         <p className="text-slate-500 dark:text-slate-400 mb-1">ผู้รายงาน</p>
                         <div className="flex items-center gap-2">
-                          <Avatar
-                            src={ticket.reporter_avatar_url}
-                            alt={ticket.reporter_name || 'Reporter'}
-                            size="sm"
-                            fallback={ticket.reporter_name}
-                          />
+                          {ticket.reporter_avatar_url ? (
+                            <button
+                              onClick={() => setExpandedImage({
+                                src: ticket.reporter_avatar_url!,
+                                alt: ticket.reporter_name || 'Reporter'
+                              })}
+                              className="relative group cursor-pointer transition-transform hover:scale-105"
+                              title="คลิกเพื่อขยายรูป"
+                            >
+                              <Avatar
+                                src={ticket.reporter_avatar_url}
+                                alt={ticket.reporter_name || 'Reporter'}
+                                size="sm"
+                                fallback={ticket.reporter_name}
+                                className="ring-2 ring-transparent group-hover:ring-enterprise-500 transition-all"
+                              />
+                              <div className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/20 rounded-full transition-colors">
+                                <ZoomIn size={12} className="text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+                              </div>
+                            </button>
+                          ) : (
+                            <Avatar
+                              src={ticket.reporter_avatar_url}
+                              alt={ticket.reporter_name || 'Reporter'}
+                              size="sm"
+                              fallback={ticket.reporter_name}
+                            />
+                          )}
                           <p className="font-medium text-slate-900 dark:text-white">
                             {ticket.reporter_name || ticket.reporter_email || '-'}
                           </p>
@@ -609,6 +633,37 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
               </Card>
             )}
           </>
+        )}
+
+        {/* Image Expansion Modal */}
+        {expandedImage && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4"
+            onClick={() => setExpandedImage(null)}
+          >
+            <div className="relative max-w-4xl max-h-[90vh] w-full">
+              <button
+                onClick={() => setExpandedImage(null)}
+                className="absolute -top-12 right-0 text-white hover:text-slate-300 transition-colors p-2"
+                aria-label="ปิด"
+              >
+                <X size={24} />
+              </button>
+              <div className="bg-white dark:bg-slate-800 rounded-lg overflow-hidden shadow-2xl">
+                <img
+                  src={expandedImage.src}
+                  alt={expandedImage.alt}
+                  className="w-full h-auto max-h-[80vh] object-contain"
+                  onClick={(e) => e.stopPropagation()}
+                />
+                <div className="p-4 border-t border-slate-200 dark:border-slate-700">
+                  <p className="text-center text-slate-700 dark:text-slate-300 font-medium">
+                    {expandedImage.alt}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
         )}
       </div>
     </PageLayout>

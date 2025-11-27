@@ -23,7 +23,8 @@ import {
   Wrench,
   Building2,
   Image as ImageIcon,
-  Download
+  Download,
+  ZoomIn
 } from 'lucide-react';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
@@ -101,6 +102,7 @@ export const TicketDetailView: React.FC<TicketDetailViewProps> = ({
   // Repair management states
   // Repair management states
   const [showStartRepairDialog, setShowStartRepairDialog] = useState(false);
+  const [expandedImage, setExpandedImage] = useState<{ src: string; alt: string } | null>(null);
   const [repairForm, setRepairForm] = useState({
     garage: ticket?.garage || '',
     repairDate: new Date().toISOString().split('T')[0],
@@ -591,12 +593,34 @@ export const TicketDetailView: React.FC<TicketDetailViewProps> = ({
                   ผู้รายงาน
                 </label>
                 <div className="flex items-center gap-2">
-                  <Avatar
-                    src={(ticket as any).reporter_avatar_url}
-                    alt={(ticket as any).reporter_name || 'Reporter'}
-                    size="sm"
-                    fallback={(ticket as any).reporter_name}
-                  />
+                  {(ticket as any).reporter_avatar_url ? (
+                    <button
+                      onClick={() => setExpandedImage({
+                        src: (ticket as any).reporter_avatar_url,
+                        alt: (ticket as any).reporter_name || 'Reporter'
+                      })}
+                      className="relative group cursor-pointer transition-transform hover:scale-105"
+                      title="คลิกเพื่อขยายรูป"
+                    >
+                      <Avatar
+                        src={(ticket as any).reporter_avatar_url}
+                        alt={(ticket as any).reporter_name || 'Reporter'}
+                        size="sm"
+                        fallback={(ticket as any).reporter_name}
+                        className="ring-2 ring-transparent group-hover:ring-enterprise-500 transition-all"
+                      />
+                      <div className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/20 rounded-full transition-colors">
+                        <ZoomIn size={12} className="text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+                      </div>
+                    </button>
+                  ) : (
+                    <Avatar
+                      src={(ticket as any).reporter_avatar_url}
+                      alt={(ticket as any).reporter_name || 'Reporter'}
+                      size="sm"
+                      fallback={(ticket as any).reporter_name}
+                    />
+                  )}
                   <p className="text-lg text-slate-900 dark:text-white">
                     {(ticket as any).reporter_name || '-'}
                   </p>
@@ -851,10 +875,46 @@ export const TicketDetailView: React.FC<TicketDetailViewProps> = ({
                   <label className="block text-sm font-medium text-slate-500 dark:text-slate-400 mb-1">
                     ผู้รับผิดชอบ
                   </label>
-                  <p className="text-lg text-slate-900 dark:text-white">
-                    {/* We display ID for now, ideally we should fetch name */}
-                    {ticket.repair_assigned_to ? (profiles.find(p => p.id === ticket.repair_assigned_to)?.full_name || 'ไม่ระบุชื่อ') : '-'}
-                  </p>
+                  {ticket.repair_assigned_to ? (() => {
+                    const assignedProfile = profiles.find(p => p.id === ticket.repair_assigned_to);
+                    return (
+                      <div className="flex items-center gap-2">
+                        {assignedProfile?.avatar_url ? (
+                          <button
+                            onClick={() => setExpandedImage({
+                              src: assignedProfile.avatar_url,
+                              alt: assignedProfile.full_name || 'ผู้รับผิดชอบ'
+                            })}
+                            className="relative group cursor-pointer transition-transform hover:scale-105"
+                            title="คลิกเพื่อขยายรูป"
+                          >
+                            <Avatar
+                              src={assignedProfile.avatar_url}
+                              alt={assignedProfile.full_name || 'ผู้รับผิดชอบ'}
+                              size="sm"
+                              fallback={assignedProfile.full_name}
+                              className="ring-2 ring-transparent group-hover:ring-enterprise-500 transition-all"
+                            />
+                            <div className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/20 rounded-full transition-colors">
+                              <ZoomIn size={12} className="text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+                            </div>
+                          </button>
+                        ) : (
+                          <Avatar
+                            src={assignedProfile?.avatar_url}
+                            alt={assignedProfile?.full_name || 'ผู้รับผิดชอบ'}
+                            size="sm"
+                            fallback={assignedProfile?.full_name}
+                          />
+                        )}
+                        <p className="text-lg text-slate-900 dark:text-white">
+                          {assignedProfile?.full_name || 'ไม่ระบุชื่อ'}
+                        </p>
+                      </div>
+                    );
+                  })() : (
+                    <p className="text-lg text-slate-900 dark:text-white">-</p>
+                  )}
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-slate-500 dark:text-slate-400 mb-1">
@@ -1403,6 +1463,37 @@ export const TicketDetailView: React.FC<TicketDetailViewProps> = ({
           </div>
         )
       }
+
+      {/* Image Expansion Modal */}
+      {expandedImage && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4"
+          onClick={() => setExpandedImage(null)}
+        >
+          <div className="relative max-w-4xl max-h-[90vh] w-full">
+            <button
+              onClick={() => setExpandedImage(null)}
+              className="absolute -top-12 right-0 text-white hover:text-slate-300 transition-colors p-2"
+              aria-label="ปิด"
+            >
+              <X size={24} />
+            </button>
+            <div className="bg-white dark:bg-slate-800 rounded-lg overflow-hidden shadow-2xl">
+              <img
+                src={expandedImage.src}
+                alt={expandedImage.alt}
+                className="w-full h-auto max-h-[80vh] object-contain"
+                onClick={(e) => e.stopPropagation()}
+              />
+              <div className="p-4 border-t border-slate-200 dark:border-slate-700">
+                <p className="text-center text-slate-700 dark:text-slate-300 font-medium">
+                  {expandedImage.alt}
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </PageLayout >
   );
 };
