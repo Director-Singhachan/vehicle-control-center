@@ -1,5 +1,5 @@
 // Fuel Log List View - Display fuel fill-up history
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Truck,
   Gauge,
@@ -49,6 +49,7 @@ export const FuelLogListView: React.FC<FuelLogListViewProps> = ({
     start_date?: string;
     end_date?: string;
     fuel_type?: string;
+    branch?: string;
   }>({});
 
   const [currentPage, setCurrentPage] = useState(1);
@@ -103,10 +104,49 @@ export const FuelLogListView: React.FC<FuelLogListViewProps> = ({
 
   const selectedVehicle = vehicles.find(v => v.id === filters.vehicle_id);
 
+  // Get unique branches from vehicles
+  const branches = useMemo(() => {
+    const uniqueBranches = new Set<string>();
+    vehicles.forEach(v => {
+      if (v.branch) {
+        uniqueBranches.add(v.branch);
+      }
+    });
+    return Array.from(uniqueBranches).sort();
+  }, [vehicles]);
+
+  // Filter vehicles by branch if branch filter is selected
+  const filteredVehicles = useMemo(() => {
+    if (!filters.branch) return vehicles;
+    return vehicles.filter(v => v.branch === filters.branch);
+  }, [vehicles, filters.branch]);
+
+  // Get vehicle IDs for the selected branch (if branch filter is active but no specific vehicle selected)
+  const branchVehicleIds = useMemo(() => {
+    if (!filters.branch || filters.vehicle_id) return undefined;
+    return filteredVehicles.map(v => v.id);
+  }, [filteredVehicles, filters.branch, filters.vehicle_id]);
+
+  // Filter fuel logs by branch if branch filter is active but no specific vehicle is selected
+  const displayedFuelLogs = useMemo(() => {
+    if (!filters.branch || filters.vehicle_id) return fuelLogs;
+    // Filter by vehicle branch
+    return fuelLogs.filter(record => {
+      const vehicle = vehicles.find(v => v.id === record.vehicle_id);
+      return vehicle?.branch === filters.branch;
+    });
+  }, [fuelLogs, vehicles, filters.branch, filters.vehicle_id]);
+
+  // Adjust total count if filtering by branch
+  const displayedTotalCount = useMemo(() => {
+    if (!filters.branch || filters.vehicle_id) return totalCount;
+    return displayedFuelLogs.length;
+  }, [totalCount, displayedFuelLogs, filters.branch, filters.vehicle_id]);
+
   return (
-    <PageLayout
-      title="ประวัติการเติมน้ำมัน"
-      subtitle={loading ? 'กำลังโหลด...' : `ทั้งหมด ${totalCount.toLocaleString('th-TH')} รายการ${totalPages > 1 ? ` (หน้า ${currentPage}/${totalPages})` : ''}`}
+      <PageLayout
+        title="ประวัติการเติมน้ำมัน"
+        subtitle={loading ? 'กำลังโหลด...' : `ทั้งหมด ${displayedTotalCount.toLocaleString('th-TH')} รายการ${totalPages > 1 ? ` (หน้า ${currentPage}/${totalPages})` : ''}`}
       actions={
         <div className="flex gap-2">
           {onCreate && (
@@ -159,6 +199,27 @@ export const FuelLogListView: React.FC<FuelLogListViewProps> = ({
         {/* Filters */}
         <Card className="p-4">
           <div className="flex flex-col md:flex-row gap-4">
+            {/* Branch Filter */}
+            <div className="flex-1">
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                สาขา
+              </label>
+              <select
+                value={filters.branch || ''}
+                onChange={(e) => {
+                  setFilters({ ...filters, branch: e.target.value || undefined, vehicle_id: undefined });
+                }}
+                className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-enterprise-500 focus:border-transparent"
+              >
+                <option value="">ทั้งหมด</option>
+                {branches.map((branch) => (
+                  <option key={branch} value={branch}>
+                    {branch}
+                  </option>
+                ))}
+              </select>
+            </div>
+
             {/* Vehicle Filter */}
             <div className="flex-1">
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
@@ -170,7 +231,7 @@ export const FuelLogListView: React.FC<FuelLogListViewProps> = ({
                 className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-enterprise-500 focus:border-transparent"
               >
                 <option value="">ทั้งหมด</option>
-                {vehicles.map((vehicle) => (
+                {filteredVehicles.map((vehicle) => (
                   <option key={vehicle.id} value={vehicle.id}>
                     {vehicle.plate} {vehicle.make && vehicle.model && `(${vehicle.make} ${vehicle.model})`}
                   </option>
@@ -236,8 +297,15 @@ export const FuelLogListView: React.FC<FuelLogListViewProps> = ({
           </div>
         </Card>
 
+        {/* Branch filter info */}
+        {filters.branch && (
+          <div className="text-sm text-slate-600 dark:text-slate-400">
+            กำลังแสดงเฉพาะรถในสาขา: <span className="font-medium">{filters.branch}</span>
+          </div>
+        )}
+
         {/* Fuel Logs List */}
-        {totalCount === 0 ? (
+        {displayedTotalCount === 0 ? (
           <Card className="p-12 text-center">
             <Droplet className="w-16 h-16 mx-auto mb-4 text-slate-400 opacity-50" />
             <h3 className="text-lg font-medium text-slate-600 dark:text-slate-300 mb-2">
@@ -254,7 +322,7 @@ export const FuelLogListView: React.FC<FuelLogListViewProps> = ({
         ) : (
           <>
             <div className="space-y-4">
-              {fuelLogs.map((record) => {
+              {displayedFuelLogs.map((record) => {
                 const vehicle = vehicles.find(v => v.id === record.vehicle_id);
                 return (
                   <Card key={record.id} className="p-6 hover:shadow-lg transition-shadow">

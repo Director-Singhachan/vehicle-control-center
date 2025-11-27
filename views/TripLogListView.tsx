@@ -40,6 +40,7 @@ export const TripLogListView: React.FC<TripLogListViewProps> = ({
     start_date?: string;
     end_date?: string;
     status?: 'checked_out' | 'checked_in';
+    branch?: string;
   }>({});
 
   const [searchTerm, setSearchTerm] = useState('');
@@ -62,7 +63,6 @@ export const TripLogListView: React.FC<TripLogListViewProps> = ({
   const totalPages = Math.ceil(totalCount / itemsPerPage);
   const startIndex = offset;
   const endIndex = Math.min(startIndex + itemsPerPage, totalCount);
-  const paginatedTrips = trips;
 
   // Reset to page 1 when filters or search change
   useEffect(() => {
@@ -91,10 +91,43 @@ export const TripLogListView: React.FC<TripLogListViewProps> = ({
     alert('ฟีเจอร์ Export to Excel กำลังพัฒนา');
   };
 
+  // Get unique branches from vehicles
+  const branches = useMemo(() => {
+    const uniqueBranches = new Set<string>();
+    vehicles.forEach(v => {
+      if (v.branch) {
+        uniqueBranches.add(v.branch);
+      }
+    });
+    return Array.from(uniqueBranches).sort();
+  }, [vehicles]);
+
+  // Filter vehicles by branch if branch filter is selected
+  const filteredVehicles = useMemo(() => {
+    if (!filters.branch) return vehicles;
+    return vehicles.filter(v => v.branch === filters.branch);
+  }, [vehicles, filters.branch]);
+
+  // Filter trips by branch if branch filter is active but no specific vehicle is selected
+  const displayedTrips = useMemo(() => {
+    if (!filters.branch || filters.vehicle_id) return trips;
+    // Filter by vehicle branch
+    return trips.filter(trip => {
+      const vehicle = vehicles.find(v => v.id === trip.vehicle_id);
+      return vehicle?.branch === filters.branch;
+    });
+  }, [trips, vehicles, filters.branch, filters.vehicle_id]);
+
+  // Adjust total count if filtering by branch
+  const displayedTotalCount = useMemo(() => {
+    if (!filters.branch || filters.vehicle_id) return totalCount;
+    return displayedTrips.length;
+  }, [totalCount, displayedTrips, filters.branch, filters.vehicle_id]);
+
   return (
     <PageLayout
       title="ประวัติการเดินทาง"
-      subtitle={loading ? 'กำลังโหลด...' : `ทั้งหมด ${totalCount.toLocaleString('th-TH')} รายการ${totalPages > 1 ? ` (หน้า ${currentPage}/${totalPages})` : ''}`}
+      subtitle={loading ? 'กำลังโหลด...' : `ทั้งหมด ${displayedTotalCount.toLocaleString('th-TH')} รายการ${totalPages > 1 ? ` (หน้า ${currentPage}/${totalPages})` : ''}`}
       actions={
         <div className="flex gap-2">
           {onCreateCheckout && (
@@ -125,7 +158,28 @@ export const TripLogListView: React.FC<TripLogListViewProps> = ({
             <span className="font-semibold">ตัวกรอง</span>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+            {/* Branch Filter */}
+            <div>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                สาขา
+              </label>
+              <select
+                value={filters.branch || ''}
+                onChange={(e) => {
+                  setFilters({ ...filters, branch: e.target.value || undefined, vehicle_id: undefined });
+                }}
+                className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
+              >
+                <option value="">ทั้งหมด</option>
+                {branches.map((branch) => (
+                  <option key={branch} value={branch}>
+                    {branch}
+                  </option>
+                ))}
+              </select>
+            </div>
+
             <div>
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                 รถ
@@ -138,7 +192,7 @@ export const TripLogListView: React.FC<TripLogListViewProps> = ({
                 className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
               >
                 <option value="">ทั้งหมด</option>
-                {vehicles.map((vehicle) => (
+                {filteredVehicles.map((vehicle) => (
                   <option key={vehicle.id} value={vehicle.id}>
                     {vehicle.plate} {vehicle.make && vehicle.model ? `(${vehicle.make} ${vehicle.model})` : ''}
                   </option>
@@ -193,6 +247,13 @@ export const TripLogListView: React.FC<TripLogListViewProps> = ({
             </div>
           </div>
 
+          {/* Branch filter info */}
+          {filters.branch && (
+            <div className="text-sm text-slate-600 dark:text-slate-400 mt-2">
+              กำลังแสดงเฉพาะรถในสาขา: <span className="font-medium">{filters.branch}</span>
+            </div>
+          )}
+
           {/* Search */}
           <div>
             <Input
@@ -225,7 +286,7 @@ export const TripLogListView: React.FC<TripLogListViewProps> = ({
       )}
 
       {/* Trips List */}
-      {!loading && totalCount === 0 && (
+      {!loading && displayedTotalCount === 0 && (
         <Card className="p-12 text-center">
           <Truck className="mx-auto mb-4 text-slate-400" size={48} />
           <p className="text-slate-600 dark:text-slate-400">
@@ -243,7 +304,7 @@ export const TripLogListView: React.FC<TripLogListViewProps> = ({
               พบทั้งหมด {totalCount.toLocaleString('th-TH')} รายการ
             </div>
 
-            {paginatedTrips.map((trip) => (
+            {displayedTrips.map((trip) => (
               <Card key={trip.id} className="p-6 hover:shadow-md transition-shadow">
                 <div className="flex items-start gap-4">
                   {/* Vehicle Image */}
