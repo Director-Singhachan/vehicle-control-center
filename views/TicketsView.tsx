@@ -43,6 +43,8 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<TicketStatus[] | 'all'>('all');
   const [urgencyFilter, setUrgencyFilter] = useState<UrgencyLevel[] | 'all'>('all');
+  const [startDate, setStartDate] = useState<string>('');
+  const [endDate, setEndDate] = useState<string>('');
   const [showFilters, setShowFilters] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [pageInput, setPageInput] = useState('');
@@ -56,6 +58,8 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
   const { tickets, totalCount, loading, error, refetch } = useTicketsWithRelations({
     status: statusFilter !== 'all' && Array.isArray(statusFilter) ? statusFilter : undefined,
     urgency: urgencyFilter !== 'all' && Array.isArray(urgencyFilter) ? urgencyFilter : undefined,
+    start_date: startDate || undefined,
+    end_date: endDate || undefined,
     limit: itemsPerPage,
     offset: offset,
     search: searchQuery || undefined,
@@ -72,7 +76,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
   // Reset to page 1 when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, statusFilter, urgencyFilter]);
+  }, [searchQuery, statusFilter, urgencyFilter, startDate, endDate]);
 
   const getStatusBadge = (status: TicketStatus) => {
     const badges = {
@@ -236,7 +240,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
           {/* Advanced Filters */}
           {showFilters && (
             <div className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-700">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                     สถานะ
@@ -303,6 +307,43 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                       );
                     })}
                   </div>
+                </div>
+
+                <div className="space-y-2">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                        วันที่เริ่มต้น
+                      </label>
+                      <Input
+                        type="date"
+                        value={startDate}
+                        onChange={(e) => setStartDate(e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                        วันที่สิ้นสุด
+                      </label>
+                      <Input
+                        type="date"
+                        value={endDate}
+                        onChange={(e) => setEndDate(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                  {(startDate || endDate) && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setStartDate('');
+                        setEndDate('');
+                      }}
+                      className="text-xs text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 underline"
+                    >
+                      ล้างตัวกรองวันที่
+                    </button>
+                  )}
                 </div>
               </div>
             </div>

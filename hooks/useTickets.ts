@@ -127,6 +127,8 @@ export const useTicketsWithRelations = (filters?: {
   status?: string[];
   vehicle_id?: string;
   urgency?: string[]; // Add urgency filter
+  start_date?: string;
+  end_date?: string;
   limit?: number;
   offset?: number;
   search?: string;

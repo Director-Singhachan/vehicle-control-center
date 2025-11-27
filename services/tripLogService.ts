@@ -1,5 +1,6 @@
 // Trip Log Service - CRUD operations for trip logs (check-out/check-in)
 import { supabase } from '../lib/supabase';
+import { notificationService } from './notificationService';
 import type { Database } from '../types/database';
 
 type TripLog = Database['public']['Tables']['trip_logs']['Row'];
@@ -70,6 +71,83 @@ export const tripLogService = {
       throw error;
     }
 
+    // Create notification event for trip started (vehicle checkout)
+    try {
+      // Enrich with vehicle & driver info for nicer notification message
+      const { data: tripWithRelations } = await supabase
+        .from('trip_logs')
+        .select(`
+          *,
+          vehicle:vehicles(plate, make, model),
+          driver:profiles(full_name)
+        `)
+        .eq('id', result.id)
+        .maybeSingle();
+
+      const vehicle = (tripWithRelations as any)?.vehicle as {
+        plate?: string;
+        make?: string | null;
+        model?: string | null;
+      } | null;
+      const driver = (tripWithRelations as any)?.driver as {
+        full_name?: string;
+      } | null;
+
+      const plate = vehicle?.plate || result.vehicle_id;
+      const vehicleLabel = vehicle?.make && vehicle?.model
+        ? `${plate} (${vehicle.make} ${vehicle.model})`
+        : plate;
+
+      const driverName = driver?.full_name || 'ไม่ทราบชื่อผู้ขับ';
+
+      const checkoutDate = new Date(result.checkout_time || checkoutTime);
+      const checkoutAt = checkoutDate.toLocaleString('th-TH', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+
+      const destination = result.destination || (data.destination || 'ไม่ระบุ');
+      const route = result.route || data.route;
+
+      const messageLines = [
+        `🟢 [ออกเดินทาง]`,
+        `🚗 รถ: ${vehicleLabel}`,
+        `🧑‍✈️ คนขับ: ${driverName}`,
+        `📍 ปลายทาง: ${destination}`,
+        route ? `🗺️ เส้นทาง: ${route}` : undefined,
+        `⏰ เวลาออก: ${checkoutAt}`,
+        `📏 เลขไมล์เริ่มต้น: ${result.odometer_start?.toLocaleString() ?? data.odometer_start.toLocaleString()} km`,
+      ].filter(Boolean);
+
+      const message = messageLines.join('\n');
+
+      console.log('[tripLogService] Creating trip_started notification event', {
+        trip_id: result.id,
+        vehicle_id: result.vehicle_id,
+      });
+      await notificationService.createEvent({
+        channel: 'telegram',
+        event_type: 'trip_started',
+        title: 'รถถูกนำออกใช้งาน',
+        message,
+        payload: {
+          trip_id: result.id,
+          vehicle_id: result.vehicle_id,
+          odometer_start: result.odometer_start,
+          checkout_time: result.checkout_time,
+        },
+      }, user.id);
+    } catch (notifyError) {
+      console.error(
+        '[tripLogService] Failed to create notification event for trip_started:',
+        notifyError
+      );
+      // ไม่ throw ต่อ เพื่อไม่ให้กระทบการบันทึกทริป
+    }
+
     return result;
   },
 
@@ -127,6 +205,110 @@ export const tripLogService = {
     if (error) {
       console.error('[tripLogService] Error updating checkin:', error);
       throw error;
+    }
+
+    // Create notification event for trip finished (vehicle checkin)
+    try {
+      // Enrich with vehicle & driver info for nicer notification message
+      const { data: tripWithRelations } = await supabase
+        .from('trip_logs')
+        .select(`
+          *,
+          vehicle:vehicles(plate, make, model),
+          driver:profiles(full_name)
+        `)
+        .eq('id', result.id)
+        .maybeSingle();
+
+      const vehicle = (tripWithRelations as any)?.vehicle as {
+        plate?: string;
+        make?: string | null;
+        model?: string | null;
+      } | null;
+      const driver = (tripWithRelations as any)?.driver as {
+        full_name?: string;
+      } | null;
+
+      const plate = vehicle?.plate || result.vehicle_id;
+      const vehicleLabel = vehicle?.make && vehicle?.model
+        ? `${plate} (${vehicle.make} ${vehicle.model})`
+        : plate;
+
+      const driverName = driver?.full_name || 'ไม่ทราบชื่อผู้ขับ';
+
+      const checkoutDate = new Date(trip.checkout_time);
+      const checkinDate = new Date(result.checkin_time || new Date().toISOString());
+
+      const checkoutAt = checkoutDate.toLocaleString('th-TH', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+
+      const checkinAt = checkinDate.toLocaleString('th-TH', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+
+      const destination = result.destination || trip.destination || 'ไม่ระบุ';
+      const route = result.route || trip.route;
+
+      const odometerStart = trip.odometer_start;
+      const odometerEnd = result.odometer_end!;
+      const distance = odometerEnd - odometerStart;
+
+      // คำนวณระยะเวลาเดินทาง
+      const diffMs = checkinDate.getTime() - checkoutDate.getTime();
+      const totalMinutes = Math.max(0, Math.round(diffMs / 1000 / 60));
+      const hours = Math.floor(totalMinutes / 60);
+      const minutes = totalMinutes % 60;
+      const durationLabel =
+        hours > 0
+          ? `${hours} ชม. ${minutes} นาที`
+          : `${minutes} นาที`;
+
+      const messageLines = [
+        `✅ [รถกลับจากการใช้งาน]`,
+        `🚗 รถ: ${vehicleLabel}`,
+        `🧑‍✈️ คนขับ: ${driverName}`,
+        `📍 ปลายทาง: ${destination}`,
+        route ? `🗺️ เส้นทาง: ${route}` : undefined,
+        `⏰ เวลาออก: ${checkoutAt}`,
+        `⏱️ เวลากลับ: ${checkinAt}`,
+        `📏 เลขไมล์ออก: ${odometerStart.toLocaleString()} km`,
+        `📏 เลขไมล์กลับ: ${odometerEnd.toLocaleString()} km`,
+        `🚘 ระยะทางรวม: ${distance.toLocaleString()} km`,
+        `⏳ ระยะเวลาเดินทาง: ${durationLabel}`,
+      ].filter(Boolean);
+
+      const message = messageLines.join('\n');
+
+      console.log('[tripLogService] Creating trip_finished notification event', {
+        trip_id: result.id,
+        vehicle_id: result.vehicle_id,
+      });
+      await notificationService.createEvent({
+        channel: 'telegram',
+        event_type: 'trip_finished',
+        title: 'รถกลับจากการใช้งาน',
+        message,
+        payload: {
+          trip_id: result.id,
+          vehicle_id: result.vehicle_id,
+          odometer_start: trip.odometer_start,
+          odometer_end: result.odometer_end,
+          checkout_time: trip.checkout_time,
+          checkin_time: result.checkin_time,
+        },
+      }, user.id);
+    } catch (notifyError) {
+      console.error('[tripLogService] Failed to create notification event for trip_finished:', notifyError);
+      // ไม่ throw ต่อ เพื่อไม่ให้กระทบการบันทึกทริป
     }
 
     return result;

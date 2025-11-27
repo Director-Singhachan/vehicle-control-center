@@ -51,6 +51,8 @@ export const ticketService = {
     status?: string[];
     vehicle_id?: string;
     urgency?: string[]; // Add urgency filter
+    start_date?: string;
+    end_date?: string;
     limit?: number;
     offset?: number;
     search?: string; // For text search (database-level)
@@ -74,6 +76,17 @@ export const ticketService = {
       // Add urgency filter at database level
       if (filters?.urgency && filters.urgency.length > 0) {
         query = query.in('urgency', filters.urgency);
+      }
+
+      // Date range filter using created_at
+      if (filters?.start_date) {
+        query = query.gte('created_at', filters.start_date);
+      }
+      if (filters?.end_date) {
+        // Include the whole end date by extending to end of day
+        const endDate = new Date(filters.end_date);
+        endDate.setHours(23, 59, 59, 999);
+        query = query.lte('created_at', endDate.toISOString());
       }
 
       // Database-level text search using ILIKE (case-insensitive pattern matching)

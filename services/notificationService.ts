@@ -6,7 +6,10 @@ export type NotificationEventType =
   | 'maintenance_due'
   | 'long_checkout'
   | 'ticket_created'
-  | 'ticket_closed';
+  | 'ticket_closed'
+  | 'trip_started'
+  | 'trip_finished'
+  | 'daily_usage_summary';
 
 export interface NotificationSettings {
   id?: string;
@@ -110,14 +113,20 @@ export const notificationService = {
   },
 
   // Create notification event (to be processed by external worker / Supabase Edge Function)
-  createEvent: async (input: NotificationEventInput): Promise<void> => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      throw new Error('User not authenticated');
+  // Optional userIdOverride ใช้ในกรณีที่ caller มี user.id อยู่แล้ว เพื่อลดปัญหา getUser timeout
+  createEvent: async (input: NotificationEventInput, userIdOverride?: string): Promise<void> => {
+    let userId = userIdOverride;
+
+    if (!userId) {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        throw new Error('User not authenticated');
+      }
+      userId = user.id;
     }
 
     const { error } = await supabase.from('notification_events').insert({
-      user_id: user.id,
+      user_id: userId,
       channel: input.channel,
       event_type: input.event_type,
       title: input.title,
@@ -129,6 +138,17 @@ export const notificationService = {
     if (error) {
       console.error('[notificationService] Error creating notification event:', error);
       throw error;
+    }
+
+    // Trigger worker function immediately so notifications are sent without waiting for cron/manual run
+    try {
+      // Fire-and-forget; we don't care about response body here
+      await supabase.functions.invoke('notification-worker', {
+        body: { source: 'app', event_type: input.event_type },
+      });
+    } catch (invokeError) {
+      console.warn('[notificationService] Failed to invoke notification-worker:', invokeError);
+      // ไม่ต้อง throw ต่อ เพื่อไม่ให้กระทบ UX การบันทึกข้อมูล
     }
   },
 };
