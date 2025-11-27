@@ -161,7 +161,11 @@ export const VehiclesView: React.FC<VehiclesViewProps> = ({
   onEdit,
   onCreate,
 }) => {
+  console.log('[VehiclesView] ✅✅✅ Component rendered - START');
+  console.log('[VehiclesView] Props:', { onViewDetail: !!onViewDetail, onEdit: !!onEdit, onCreate: !!onCreate });
+  
   const { isManager, isAdmin } = useAuth();
+  console.log('[VehiclesView] Auth:', { isManager, isAdmin });
   const { vehicles, loading, error, refetch } = useVehicles();
   
   // Try to get vehicles with status, but don't block if it fails
@@ -169,6 +173,21 @@ export const VehiclesView: React.FC<VehiclesViewProps> = ({
   
   // If status view fails, we can still show vehicles without status
   const hasStatusData = !statusError && vehiclesWithStatus && vehiclesWithStatus.length > 0;
+
+  // Log initial state
+  React.useEffect(() => {
+    console.log('[VehiclesView] Initial render:', {
+      vehiclesCount: vehicles.length,
+      loading,
+      hasError: !!error,
+      errorMessage: error?.message,
+      vehiclesWithStatusCount: vehiclesWithStatus?.length || 0,
+      loadingStatus,
+      hasStatusError: !!statusError,
+      statusErrorMessage: statusError?.message,
+      hasStatusData,
+    });
+  }, []); // Only log on mount
 
   // Debug logging for production issues
   React.useEffect(() => {
@@ -280,12 +299,18 @@ export const VehiclesView: React.FC<VehiclesViewProps> = ({
 
   const canEdit = isManager || isAdmin;
 
+  // Never show loading state - always show UI (even if empty or error)
+  // This prevents infinite loading when API calls timeout or are slow
+  // Data will appear when it's ready
+  const showLoading = false; // Always false - never show loading spinner
+  const showError = false; // Don't show error state - show UI with empty data instead
+
   return (
     <PageLayout
       title="ยานพาหนะ"
       subtitle={`ทั้งหมด ${filteredVehicles.length} คัน${!hasStatusData && statusError ? ' (แสดงเฉพาะข้อมูลพื้นฐาน)' : ''}`}
-      loading={loading}
-      error={!!error}
+      loading={showLoading}
+      error={showError}
       onRetry={() => {
         refetch();
         if (statusError) {
@@ -393,19 +418,23 @@ export const VehiclesView: React.FC<VehiclesViewProps> = ({
           )}
         </Card>
 
-        {/* Error Messages */}
+        {/* Error Messages - Show but don't block UI */}
         {error && (
-          <Card className="p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800">
-            <div className="flex items-center gap-2 text-red-800 dark:text-red-200">
+          <Card className="p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 mb-6">
+            <div className="flex items-center gap-2 text-amber-800 dark:text-amber-200">
               <AlertTriangle size={20} />
               <div className="flex-1">
-                <p className="font-medium">เกิดข้อผิดพลาดในการโหลดข้อมูลรถ</p>
+                <p className="font-medium">⚠️ ไม่สามารถโหลดข้อมูลรถได้</p>
                 <p className="text-sm mt-1">{error.message}</p>
+                <p className="text-xs mt-2 text-amber-700 dark:text-amber-300">
+                  💡 ตรวจสอบ: Environment variables ใน Vercel, RLS policies, Network connection
+                </p>
               </div>
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => {
+                  console.log('[VehiclesView] Retry clicked');
                   refetch();
                   if (statusError) refetchStatus();
                 }}
