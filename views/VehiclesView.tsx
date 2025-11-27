@@ -13,7 +13,8 @@ import {
   Activity,
   Wrench,
   Clock,
-  X
+  X,
+  AlertTriangle
 } from 'lucide-react';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
@@ -37,7 +38,26 @@ export const VehiclesView: React.FC<VehiclesViewProps> = ({
 }) => {
   const { isManager, isAdmin } = useAuth();
   const { vehicles, loading, error, refetch } = useVehicles();
+  
+  // Try to get vehicles with status, but don't block if it fails
   const { vehicles: vehiclesWithStatus, loading: loadingStatus, error: statusError, refetch: refetchStatus } = useVehiclesWithStatus();
+  
+  // If status view fails, we can still show vehicles without status
+  const hasStatusData = !statusError && vehiclesWithStatus && vehiclesWithStatus.length > 0;
+
+  // Debug logging for production issues
+  React.useEffect(() => {
+    console.log('[VehiclesView] State:', {
+      vehiclesCount: vehicles.length,
+      loading,
+      hasError: !!error,
+      errorMessage: error?.message,
+      vehiclesWithStatusCount: vehiclesWithStatus?.length || 0,
+      loadingStatus,
+      hasStatusError: !!statusError,
+      statusErrorMessage: statusError?.message,
+    });
+  }, [vehicles, loading, error, vehiclesWithStatus, loadingStatus, statusError]);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'maintenance' | 'idle'>('all');
@@ -45,17 +65,19 @@ export const VehiclesView: React.FC<VehiclesViewProps> = ({
   const [showFilters, setShowFilters] = useState(false);
 
   // Create status map from vehiclesWithStatus
+  // If status view is not available, all vehicles default to 'idle'
   const statusMap = useMemo(() => {
     const map = new Map<string, 'active' | 'maintenance' | 'idle'>();
-    if (vehiclesWithStatus && Array.isArray(vehiclesWithStatus) && vehiclesWithStatus.length > 0) {
+    if (hasStatusData && vehiclesWithStatus && Array.isArray(vehiclesWithStatus) && vehiclesWithStatus.length > 0) {
       vehiclesWithStatus.forEach(v => {
         if (v && v.id && v.status) {
           map.set(v.id, v.status as 'active' | 'maintenance' | 'idle');
         }
       });
     }
+    // If no status data, all vehicles default to 'idle' (don't block rendering)
     return map;
-  }, [vehiclesWithStatus]);
+  }, [vehiclesWithStatus, hasStatusData]);
 
   // Get unique branches
   const branches = useMemo(() => {
@@ -125,8 +147,8 @@ export const VehiclesView: React.FC<VehiclesViewProps> = ({
   return (
     <PageLayout
       title="ยานพาหนะ"
-      subtitle={`ทั้งหมด ${filteredVehicles.length} คัน`}
-      loading={loading || loadingStatus}
+      subtitle={`ทั้งหมด ${filteredVehicles.length} คัน${!hasStatusData && statusError ? ' (แสดงเฉพาะข้อมูลพื้นฐาน)' : ''}`}
+      loading={loading}
       error={!!error}
       onRetry={() => {
         refetch();
@@ -235,20 +257,74 @@ export const VehiclesView: React.FC<VehiclesViewProps> = ({
           )}
         </Card>
 
+        {/* Error Messages */}
+        {error && (
+          <Card className="p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800">
+            <div className="flex items-center gap-2 text-red-800 dark:text-red-200">
+              <AlertTriangle size={20} />
+              <div className="flex-1">
+                <p className="font-medium">เกิดข้อผิดพลาดในการโหลดข้อมูลรถ</p>
+                <p className="text-sm mt-1">{error.message}</p>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  refetch();
+                  if (statusError) refetchStatus();
+                }}
+              >
+                ลองอีกครั้ง
+              </Button>
+            </div>
+          </Card>
+        )}
+
+        {statusError && !error && (
+          <Card className="p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
+            <div className="flex items-center gap-2 text-amber-800 dark:text-amber-200">
+              <AlertTriangle size={20} />
+              <div className="flex-1">
+                <p className="text-sm">ไม่สามารถโหลดสถานะรถได้ (แสดงเฉพาะข้อมูลพื้นฐาน)</p>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => refetchStatus()}
+              >
+                ลองอีกครั้ง
+              </Button>
+            </div>
+          </Card>
+        )}
+
         {/* Vehicles Grid/List */}
-        {filteredVehicles.length === 0 ? (
+        {filteredVehicles.length === 0 && !loading && !loadingStatus ? (
           <Card className="p-12 text-center">
             <Truck className="w-16 h-16 mx-auto mb-4 text-slate-400 opacity-50" />
             <h3 className="text-lg font-medium text-slate-600 dark:text-slate-300 mb-2">
-              ไม่พบยานพาหนะ
+              {vehicles.length === 0
+                ? 'ไม่พบยานพาหนะ'
+                : 'ไม่พบยานพาหนะที่ตรงกับเงื่อนไข'}
             </h3>
-            <p className="text-sm text-slate-500 dark:text-slate-400">
+            <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">
               {searchQuery || statusFilter !== 'all' || branchFilter !== 'all'
                 ? 'ลองเปลี่ยนเงื่อนไขการค้นหา'
                 : canEdit
                   ? 'เริ่มต้นด้วยการเพิ่มยานพาหนะ'
                   : 'ยังไม่มีข้อมูลยานพาหนะ'}
             </p>
+            {vehicles.length === 0 && (
+              <Button
+                variant="outline"
+                onClick={() => {
+                  refetch();
+                  if (statusError) refetchStatus();
+                }}
+              >
+                รีเฟรชข้อมูล
+              </Button>
+            )}
           </Card>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
