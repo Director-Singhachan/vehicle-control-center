@@ -266,9 +266,9 @@ CREATE POLICY "Managers can view all fuel logs" ON fuel_logs
 
 #### 3.4 Analytics & Alerts
 - [x] คำนวณอัตราการใช้น้ำมันเฉลี่ย (ใน useFuelStats)
-- [ ] เตือนเมื่อ fuel efficiency ต่ำกว่าปกติ 20%
-- [ ] รายงานค่าใช้จ่ายน้ำมันรายเดือน
-- [ ] เปรียบเทียบประสิทธิภาพรถ
+- [x] เตือนเมื่อ fuel efficiency ต่ำกว่าปกติ 20% (เพิ่ม `getEfficiencyAlerts()` และ `useFuelEfficiencyAlerts()`)
+- [x] รายงานค่าใช้จ่ายน้ำมันรายเดือน (เพิ่ม `getMonthlyFuelCosts()` และ `useMonthlyFuelCosts()`)
+- [x] เปรียบเทียบประสิทธิภาพรถ (เพิ่ม `getVehicleEfficiencyComparison()` และ `useVehicleEfficiencyComparison()`)
 
 **Estimated Time:** 4-5 days  
 **Priority:** High  
@@ -394,7 +394,7 @@ CREATE POLICY "Managers can view all fuel logs" ON fuel_logs
 |-------|--------|----------|------------|----------|
 | Phase 1: Dashboard | 🔴 Not Started | 0% | - | - |
 | Phase 2: Trip Logs | 🔴 Not Started | 0% | - | - |
-| Phase 3: Fuel Logs | 🟡 In Progress | 75% | 2025-12-08 | - |
+| Phase 3: Fuel Logs | 🟢 Completed | 100% | 2025-12-08 | 2025-12-09 |
 | Phase 4: Driver Role | 🔴 Not Started | 0% | - | - |
 | Phase 5: Reports | 🔴 Not Started | 0% | - | - |
 | Phase 6: Advanced | 🔴 Not Started | 0% | - | - |

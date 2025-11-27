@@ -229,5 +229,255 @@ export const fuelService = {
 
     return publicUrl;
   },
+
+  // Get fuel efficiency alerts (vehicles with efficiency 20% below average)
+  getEfficiencyAlerts: async (): Promise<Array<{
+    vehicle_id: string;
+    vehicle_plate: string;
+    vehicle_make: string | null;
+    vehicle_model: string | null;
+    current_efficiency: number;
+    average_efficiency: number;
+    efficiency_drop_percent: number;
+    last_fill_date: string;
+  }>> => {
+    // Get all vehicles with their efficiency data
+    const { data: efficiencySummary, error } = await supabase
+      .from('fuel_efficiency_summary')
+      .select('*')
+      .not('avg_efficiency', 'is', null)
+      .order('month', { ascending: false });
+
+    if (error) throw error;
+
+    // Group by vehicle and calculate overall average
+    const vehicleAverages = new Map<string, {
+      plate: string;
+      make: string | null;
+      model: string | null;
+      efficiencies: number[];
+      lastMonth: string;
+    }>();
+
+    efficiencySummary?.forEach((record) => {
+      if (!record.avg_efficiency) return;
+      
+      const existing = vehicleAverages.get(record.vehicle_id) || {
+        plate: record.plate,
+        make: record.make,
+        model: record.model,
+        efficiencies: [],
+        lastMonth: record.month,
+      };
+
+      existing.efficiencies.push(record.avg_efficiency);
+      if (record.month > existing.lastMonth) {
+        existing.lastMonth = record.month;
+      }
+
+      vehicleAverages.set(record.vehicle_id, existing);
+    });
+
+    // Calculate alerts
+    const alerts: Array<{
+      vehicle_id: string;
+      vehicle_plate: string;
+      vehicle_make: string | null;
+      vehicle_model: string | null;
+      current_efficiency: number;
+      average_efficiency: number;
+      efficiency_drop_percent: number;
+      last_fill_date: string;
+    }> = [];
+
+    vehicleAverages.forEach((data, vehicleId) => {
+      if (data.efficiencies.length < 2) return; // Need at least 2 months to compare
+
+      // Get overall average (excluding last month)
+      const historicalEfficiencies = data.efficiencies.slice(1); // Exclude most recent
+      const overallAverage = historicalEfficiencies.reduce((sum, eff) => sum + eff, 0) / historicalEfficiencies.length;
+      const currentEfficiency = data.efficiencies[0]; // Most recent month
+
+      // Check if current efficiency is 20% below average
+      const dropPercent = ((overallAverage - currentEfficiency) / overallAverage) * 100;
+      
+      if (dropPercent >= 20) {
+        // Get last fill date
+        alerts.push({
+          vehicle_id: vehicleId,
+          vehicle_plate: data.plate,
+          vehicle_make: data.make,
+          vehicle_model: data.model,
+          current_efficiency: currentEfficiency,
+          average_efficiency: overallAverage,
+          efficiency_drop_percent: dropPercent,
+          last_fill_date: data.lastMonth,
+        });
+      }
+    });
+
+    return alerts.sort((a, b) => b.efficiency_drop_percent - a.efficiency_drop_percent);
+  },
+
+  // Get monthly fuel costs report
+  getMonthlyFuelCosts: async (months: number = 12): Promise<Array<{
+    month: string;
+    total_cost: number;
+    total_liters: number;
+    average_price_per_liter: number;
+    fill_count: number;
+    vehicles: Array<{
+      vehicle_id: string;
+      plate: string;
+      cost: number;
+      liters: number;
+    }>;
+  }>> => {
+    const { data: summary, error } = await supabase
+      .from('fuel_efficiency_summary')
+      .select('*')
+      .order('month', { ascending: false })
+      .limit(months);
+
+    if (error) throw error;
+
+    // Group by month
+    const monthlyData = new Map<string, {
+      month: string;
+      total_cost: number;
+      total_liters: number;
+      total_price: number;
+      fill_count: number;
+      vehicles: Map<string, { vehicle_id: string; plate: string; cost: number; liters: number }>;
+    }>();
+
+    summary?.forEach((record) => {
+      const monthKey = record.month;
+      const existing = monthlyData.get(monthKey) || {
+        month: monthKey,
+        total_cost: 0,
+        total_liters: 0,
+        total_price: 0,
+        fill_count: 0,
+        vehicles: new Map(),
+      };
+
+      existing.total_cost += Number(record.total_cost) || 0;
+      existing.total_liters += Number(record.total_liters) || 0;
+      existing.fill_count += Number(record.fill_count) || 0;
+
+      // Track per vehicle
+      const vehicleData = existing.vehicles.get(record.vehicle_id) || {
+        vehicle_id: record.vehicle_id,
+        plate: record.plate,
+        cost: 0,
+        liters: 0,
+      };
+      vehicleData.cost += Number(record.total_cost) || 0;
+      vehicleData.liters += Number(record.total_liters) || 0;
+      existing.vehicles.set(record.vehicle_id, vehicleData);
+
+      monthlyData.set(monthKey, existing);
+    });
+
+    // Convert to array format
+    return Array.from(monthlyData.values())
+      .map((data) => ({
+        month: data.month,
+        total_cost: data.total_cost,
+        total_liters: data.total_liters,
+        average_price_per_liter: data.total_liters > 0 ? data.total_cost / data.total_liters : 0,
+        fill_count: data.fill_count,
+        vehicles: Array.from(data.vehicles.values()),
+      }))
+      .sort((a, b) => b.month.localeCompare(a.month));
+  },
+
+  // Get vehicle efficiency comparison
+  getVehicleEfficiencyComparison: async (months: number = 6): Promise<Array<{
+    vehicle_id: string;
+    plate: string;
+    make: string | null;
+    model: string | null;
+    average_efficiency: number;
+    total_distance: number;
+    total_liters: number;
+    total_cost: number;
+    fill_count: number;
+    efficiency_rank: number;
+  }>> => {
+    const startDate = new Date();
+    startDate.setMonth(startDate.getMonth() - months);
+    startDate.setDate(1); // First day of month
+
+    const { data: summary, error } = await supabase
+      .from('fuel_efficiency_summary')
+      .select('*')
+      .gte('month', startDate.toISOString().split('T')[0])
+      .not('avg_efficiency', 'is', null);
+
+    if (error) throw error;
+
+    // Group by vehicle
+    const vehicleData = new Map<string, {
+      vehicle_id: string;
+      plate: string;
+      make: string | null;
+      model: string | null;
+      efficiencies: number[];
+      total_liters: number;
+      total_cost: number;
+      fill_count: number;
+    }>();
+
+    summary?.forEach((record) => {
+      if (!record.avg_efficiency) return;
+
+      const existing = vehicleData.get(record.vehicle_id) || {
+        vehicle_id: record.vehicle_id,
+        plate: record.plate,
+        make: record.make,
+        model: record.model,
+        efficiencies: [],
+        total_liters: 0,
+        total_cost: 0,
+        fill_count: 0,
+      };
+
+      existing.efficiencies.push(record.avg_efficiency);
+      existing.total_liters += Number(record.total_liters) || 0;
+      existing.total_cost += Number(record.total_cost) || 0;
+      existing.fill_count += Number(record.fill_count) || 0;
+
+      vehicleData.set(record.vehicle_id, existing);
+    });
+
+    // Calculate averages and total distance
+    const comparison = Array.from(vehicleData.values())
+      .map((data) => {
+        const averageEfficiency = data.efficiencies.reduce((sum, eff) => sum + eff, 0) / data.efficiencies.length;
+        const totalDistance = averageEfficiency * data.total_liters;
+
+        return {
+          vehicle_id: data.vehicle_id,
+          plate: data.plate,
+          make: data.make,
+          model: data.model,
+          average_efficiency: averageEfficiency,
+          total_distance: totalDistance,
+          total_liters: data.total_liters,
+          total_cost: data.total_cost,
+          fill_count: data.fill_count,
+          efficiency_rank: 0, // Will be set after sorting
+        };
+      })
+      .sort((a, b) => b.average_efficiency - a.average_efficiency)
+      .map((item, index) => ({
+        ...item,
+        efficiency_rank: index + 1,
+      }));
+
+    return comparison;
+  },
 };
 
