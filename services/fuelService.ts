@@ -121,7 +121,7 @@ export const fuelService = {
     fuel_type?: string;
     limit?: number;
     offset?: number;
-  }): Promise<{ data: (FuelRecord & { user?: { full_name: string; email?: string } })[]; count: number }> => {
+  }): Promise<{ data: (FuelRecord & { user?: { full_name: string; email?: string; avatar_url?: string | null } })[]; count: number }> => {
     const limit = filters?.limit || 100;
     const offset = filters?.offset || 0;
 
@@ -129,7 +129,7 @@ export const fuelService = {
       .from('fuel_records')
       .select(`
         *,
-        user:profiles!user_id(full_name, email)
+        user:profiles!user_id(full_name, email, avatar_url)
       `, { count: 'exact' })
       .order('filled_at', { ascending: false })
       .range(offset, offset + limit - 1);

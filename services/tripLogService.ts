@@ -266,7 +266,7 @@ export const tripLogService = {
   // Get last odometer reading for a vehicle
   getLastOdometer: async (vehicleId: string): Promise<number | null> => {
     // Get last known odometer reading
-    const [fuelResult, tripResult] = await Promise.all([
+    const [fuelResult, tripCheckinResult, tripCheckoutResult] = await Promise.all([
       // From fuel records
       supabase
         .from('fuel_records')
@@ -276,7 +276,7 @@ export const tripLogService = {
         .limit(1)
         .maybeSingle(),
 
-      // From trip logs - only get checked-in trips (where odometer_end is not null)
+      // From trip logs - get checked-in trips (where odometer_end is not null) - PRIORITY
       supabase
         .from('trip_logs')
         .select('odometer_end')
@@ -285,11 +285,25 @@ export const tripLogService = {
         .order('checkin_time', { ascending: false })
         .limit(1)
         .maybeSingle(),
+
+      // From trip logs - get checked-out trips (odometer_start) - FALLBACK if no checkin
+      supabase
+        .from('trip_logs')
+        .select('odometer_start')
+        .eq('vehicle_id', vehicleId)
+        .eq('status', 'checked_out')
+        .order('checkout_time', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
     ]);
 
     // Handle errors gracefully - if query fails, just ignore that source
     const lastFuelOdometer = fuelResult.error ? null : fuelResult.data?.odometer;
-    const lastTripOdometer = tripResult.error ? null : tripResult.data?.odometer_end;
+    const lastTripCheckinOdometer = tripCheckinResult.error ? null : tripCheckinResult.data?.odometer_end;
+    const lastTripCheckoutOdometer = tripCheckoutResult.error ? null : tripCheckoutResult.data?.odometer_start;
+
+    // Priority: checkin (odometer_end) > checkout (odometer_start) > fuel records
+    const lastTripOdometer = lastTripCheckinOdometer || lastTripCheckoutOdometer;
 
     const lastOdometer = Math.max(
       lastFuelOdometer || 0,
@@ -306,7 +320,7 @@ export const tripLogService = {
     warning?: string;
   }> => {
     // Get last known odometer reading
-    const [fuelResult, tripResult] = await Promise.all([
+    const [fuelResult, tripCheckinResult, tripCheckoutResult] = await Promise.all([
       // From fuel records
       supabase
         .from('fuel_records')
@@ -316,7 +330,7 @@ export const tripLogService = {
         .limit(1)
         .maybeSingle(),
 
-      // From trip logs - only get checked-in trips (where odometer_end is not null)
+      // From trip logs - get checked-in trips (where odometer_end is not null) - PRIORITY
       supabase
         .from('trip_logs')
         .select('odometer_end')
@@ -325,11 +339,25 @@ export const tripLogService = {
         .order('checkin_time', { ascending: false })
         .limit(1)
         .maybeSingle(),
+
+      // From trip logs - get checked-out trips (odometer_start) - FALLBACK if no checkin
+      supabase
+        .from('trip_logs')
+        .select('odometer_start')
+        .eq('vehicle_id', vehicleId)
+        .eq('status', 'checked_out')
+        .order('checkout_time', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
     ]);
 
     // Handle errors gracefully - if query fails, just ignore that source
     const lastFuelOdometer = fuelResult.error ? null : fuelResult.data?.odometer;
-    const lastTripOdometer = tripResult.error ? null : tripResult.data?.odometer_end;
+    const lastTripCheckinOdometer = tripCheckinResult.error ? null : tripCheckinResult.data?.odometer_end;
+    const lastTripCheckoutOdometer = tripCheckoutResult.error ? null : tripCheckoutResult.data?.odometer_start;
+
+    // Priority: checkin (odometer_end) > checkout (odometer_start) > fuel records
+    const lastTripOdometer = lastTripCheckinOdometer || lastTripCheckoutOdometer;
 
     const lastOdometer = Math.max(
       lastFuelOdometer || 0,

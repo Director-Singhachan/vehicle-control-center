@@ -184,6 +184,8 @@ export interface Database {
           comments: string | null;
           signature_url: string | null;
           created_at: string;
+          level?: number | null;
+          approved_by?: string | null;
         };
         Insert: {
           id?: string;
@@ -194,6 +196,8 @@ export interface Database {
           comments?: string | null;
           signature_url?: string | null;
           created_at?: string;
+          level?: number | null;
+          approved_by?: string | null;
         };
         Update: {
           id?: string;
@@ -204,6 +208,8 @@ export interface Database {
           comments?: string | null;
           signature_url?: string | null;
           created_at?: string;
+          level?: number | null;
+          approved_by?: string | null;
         };
       };
       ticket_costs: {

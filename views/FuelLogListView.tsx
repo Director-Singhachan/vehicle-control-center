@@ -15,11 +15,13 @@ import {
   MapPin,
   FileText,
   User,
+  X,
 } from 'lucide-react';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Card } from '../components/ui/Card';
 import { PageLayout } from '../components/layout/PageLayout';
+import { Avatar } from '../components/ui/Avatar';
 import { useFuelLogs, useFuelStats, useVehicles } from '../hooks';
 import type { Database } from '../types/database';
 
@@ -43,6 +45,7 @@ export const FuelLogListView: React.FC<FuelLogListViewProps> = ({
   onCreate,
 }) => {
   const { vehicles } = useVehicles();
+  const [expandedImage, setExpandedImage] = useState<{ src: string; alt: string } | null>(null);
 
   const [filters, setFilters] = useState<{
     vehicle_id?: string;
@@ -388,9 +391,36 @@ export const FuelLogListView: React.FC<FuelLogListViewProps> = ({
                               <User size={14} />
                               เติมโดย
                             </p>
-                            <p className="font-medium text-slate-900 dark:text-white">
-                              {(record as any).user?.full_name || 'N/A'}
-                            </p>
+                            <div className="flex items-center gap-2">
+                              {(record as any).user?.avatar_url ? (
+                                <button
+                                  type="button"
+                                  onClick={() => setExpandedImage({
+                                    src: (record as any).user.avatar_url,
+                                    alt: (record as any).user?.full_name || 'User'
+                                  })}
+                                  className="cursor-pointer hover:opacity-80 transition-opacity"
+                                  title="คลิกเพื่อดูรูปขนาดเต็ม"
+                                >
+                                  <Avatar
+                                    src={(record as any).user?.avatar_url}
+                                    alt={(record as any).user?.full_name || 'User'}
+                                    size="sm"
+                                    fallback={(record as any).user?.full_name || (record as any).user?.email}
+                                  />
+                                </button>
+                              ) : (
+                                <Avatar
+                                  src={(record as any).user?.avatar_url}
+                                  alt={(record as any).user?.full_name || 'User'}
+                                  size="sm"
+                                  fallback={(record as any).user?.full_name || (record as any).user?.email}
+                                />
+                              )}
+                              <p className="font-medium text-slate-900 dark:text-white">
+                                {(record as any).user?.full_name || 'N/A'}
+                              </p>
+                            </div>
                           </div>
                         </div>
 
@@ -619,6 +649,37 @@ export const FuelLogListView: React.FC<FuelLogListViewProps> = ({
           </>
         )}
       </div>
+
+      {/* Expanded Image Modal */}
+      {expandedImage && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4"
+          onClick={() => setExpandedImage(null)}
+        >
+          <div className="relative max-w-4xl max-h-[90vh] w-full">
+            <button
+              onClick={() => setExpandedImage(null)}
+              className="absolute -top-12 right-0 text-white hover:text-slate-300 transition-colors p-2"
+              aria-label="ปิด"
+            >
+              <X size={24} />
+            </button>
+            <div className="bg-white dark:bg-slate-800 rounded-lg overflow-hidden shadow-2xl">
+              <img
+                src={expandedImage.src}
+                alt={expandedImage.alt}
+                className="w-full h-auto max-h-[80vh] object-contain"
+                onClick={(e) => e.stopPropagation()}
+              />
+              <div className="p-4 border-t border-slate-200 dark:border-slate-700">
+                <p className="text-center text-slate-700 dark:text-slate-300 font-medium">
+                  {expandedImage.alt}
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </PageLayout>
   );
 };

@@ -34,7 +34,7 @@ export const useApprovalHistory = (ticketId: number | null) => {
           .from('ticket_approvals')
           .select(`
             *,
-            approver:profiles!ticket_approvals_approved_by_fkey(full_name, avatar_url)
+            approver:profiles!approver_id(full_name, avatar_url)
           `)
           .eq('ticket_id', ticketId)
           .order('created_at', { ascending: true });
@@ -84,7 +84,7 @@ export const useApprovalHistory = (ticketId: number | null) => {
         .from('ticket_approvals')
         .select(`
           *,
-          approver:profiles!ticket_approvals_approved_by_fkey(full_name, avatar_url)
+          approver:profiles!approver_id(full_name, avatar_url)
         `)
         .eq('ticket_id', ticketId)
         .order('created_at', { ascending: true });

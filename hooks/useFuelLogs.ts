@@ -5,7 +5,7 @@ import { useDataCacheStore, createCacheKey } from '../stores/dataCacheStore';
 import type { Database } from '../types/database';
 
 type FuelRecord = Database['public']['Tables']['fuel_records']['Row'];
-type FuelRecordWithUser = FuelRecord & { user?: { full_name: string; email?: string } };
+type FuelRecordWithUser = FuelRecord & { user?: { full_name: string; email?: string; avatar_url?: string | null } };
 
 export const useFuelLogs = (filters?: {
   vehicle_id?: string;
