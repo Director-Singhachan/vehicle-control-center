@@ -105,7 +105,8 @@ const AppContent = () => {
   const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(null);
 
   // Fix: Reset vehicleView to 'list' if it's 'detail' but no selectedVehicleId
-  useEffect(() => {
+  // Use useLayoutEffect to fix before render to prevent flickering
+  React.useLayoutEffect(() => {
     if (vehicleView === 'detail' && !selectedVehicleId) {
       console.log('[AppContent] ⚠️ Fixing: vehicleView is detail but no selectedVehicleId - resetting to list');
       setVehicleView('list');
@@ -460,7 +461,10 @@ const AppContent = () => {
               console.log('[AppContent] ✅✅✅ ENTERED vehicles branch!');
               console.log('[AppContent] ✅ activeTab is vehicles, vehicleView:', vehicleView, 'selectedVehicleId:', selectedVehicleId);
               
-              if (vehicleView === 'list') {
+              // Fix: If vehicleView is 'detail' but no selectedVehicleId, show list instead
+              const effectiveView = (vehicleView === 'detail' && !selectedVehicleId) ? 'list' : vehicleView;
+              
+              if (effectiveView === 'list') {
                 console.log('[AppContent] ✅ Rendering VehiclesView (list)');
                 return (
                   <VehiclesView
@@ -481,7 +485,7 @@ const AppContent = () => {
                     }}
                   />
                 );
-              } else if (vehicleView === 'detail' && selectedVehicleId) {
+              } else if (effectiveView === 'detail' && selectedVehicleId) {
                 console.log('[AppContent] ✅ Rendering VehicleDetailView');
                 return (
                   <VehicleDetailView
@@ -496,7 +500,7 @@ const AppContent = () => {
                     }}
                   />
                 );
-              } else if (vehicleView === 'form') {
+              } else if (effectiveView === 'form') {
                 console.log('[AppContent] ✅ Rendering VehicleFormView');
                 return (
                   <VehicleFormView

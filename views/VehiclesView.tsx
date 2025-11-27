@@ -14,7 +14,8 @@ import {
   Wrench,
   Clock,
   X,
-  AlertTriangle
+  AlertTriangle,
+  RefreshCw
 } from 'lucide-react';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
@@ -174,35 +175,6 @@ export const VehiclesView: React.FC<VehiclesViewProps> = ({
   // If status view fails, we can still show vehicles without status
   const hasStatusData = !statusError && vehiclesWithStatus && vehiclesWithStatus.length > 0;
 
-  // Log initial state
-  React.useEffect(() => {
-    console.log('[VehiclesView] Initial render:', {
-      vehiclesCount: vehicles.length,
-      loading,
-      hasError: !!error,
-      errorMessage: error?.message,
-      vehiclesWithStatusCount: vehiclesWithStatus?.length || 0,
-      loadingStatus,
-      hasStatusError: !!statusError,
-      statusErrorMessage: statusError?.message,
-      hasStatusData,
-    });
-  }, []); // Only log on mount
-
-  // Debug logging for production issues
-  React.useEffect(() => {
-    console.log('[VehiclesView] State:', {
-      vehiclesCount: vehicles.length,
-      loading,
-      hasError: !!error,
-      errorMessage: error?.message,
-      vehiclesWithStatusCount: vehiclesWithStatus?.length || 0,
-      loadingStatus,
-      hasStatusError: !!statusError,
-      statusErrorMessage: statusError?.message,
-    });
-  }, [vehicles, loading, error, vehiclesWithStatus, loadingStatus, statusError]);
-
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'maintenance' | 'idle'>('all');
   const [branchFilter, setBranchFilter] = useState<string>('all');
@@ -274,6 +246,37 @@ export const VehiclesView: React.FC<VehiclesViewProps> = ({
     return filtered;
   }, [vehicles, searchQuery, statusFilter, branchFilter, statusMap]);
 
+  // Log initial state - moved after filteredVehicles declaration
+  React.useEffect(() => {
+    console.log('[VehiclesView] Initial render:', {
+      vehiclesCount: vehicles.length,
+      loading,
+      hasError: !!error,
+      errorMessage: error?.message,
+      vehiclesWithStatusCount: vehiclesWithStatus?.length || 0,
+      loadingStatus,
+      hasStatusError: !!statusError,
+      statusErrorMessage: statusError?.message,
+      hasStatusData,
+      filteredVehiclesCount: filteredVehicles.length,
+    });
+  }, []); // Only log on mount
+
+  // Debug logging for production issues
+  React.useEffect(() => {
+    console.log('[VehiclesView] State:', {
+      vehiclesCount: vehicles.length,
+      loading,
+      hasError: !!error,
+      errorMessage: error?.message,
+      vehiclesWithStatusCount: vehiclesWithStatus?.length || 0,
+      loadingStatus,
+      hasStatusError: !!statusError,
+      statusErrorMessage: statusError?.message,
+      filteredVehiclesCount: filteredVehicles.length,
+    });
+  }, [vehicles, loading, error, vehiclesWithStatus, loadingStatus, statusError, filteredVehicles]);
+
   const getStatusBadge = (vehicleId: string) => {
     // If status map is empty or error, default to idle
     const status = (statusMap.size > 0 ? statusMap.get(vehicleId) : null) || 'idle';
@@ -305,6 +308,15 @@ export const VehiclesView: React.FC<VehiclesViewProps> = ({
   const showLoading = false; // Always false - never show loading spinner
   const showError = false; // Don't show error state - show UI with empty data instead
 
+  console.log('[VehiclesView] About to render:', {
+    vehiclesCount: vehicles.length,
+    filteredVehiclesCount: filteredVehicles.length,
+    loading,
+    hasError: !!error,
+    showLoading,
+    showError,
+  });
+
   return (
     <PageLayout
       title="ยานพาหนะ"
@@ -312,6 +324,7 @@ export const VehiclesView: React.FC<VehiclesViewProps> = ({
       loading={showLoading}
       error={showError}
       onRetry={() => {
+        console.log('[VehiclesView] Retry clicked');
         refetch();
         if (statusError) {
           refetchStatus();
@@ -464,7 +477,16 @@ export const VehiclesView: React.FC<VehiclesViewProps> = ({
         )}
 
         {/* Vehicles Grid/List */}
-        {filteredVehicles.length === 0 && !loading && !loadingStatus ? (
+        {loading && vehicles.length === 0 ? (
+          // Show loading state only if we have no cached data
+          <Card className="p-12 text-center">
+            <div className="flex flex-col items-center">
+              <RefreshCw className="w-8 h-8 animate-spin text-slate-400 mb-4" />
+              <p className="text-slate-600 dark:text-slate-400">กำลังโหลดข้อมูล...</p>
+            </div>
+          </Card>
+        ) : filteredVehicles.length === 0 ? (
+          // Empty state - show when no vehicles match filters
           <Card className="p-12 text-center">
             <Truck className="w-16 h-16 mx-auto mb-4 text-slate-400 opacity-50" />
             <h3 className="text-lg font-medium text-slate-600 dark:text-slate-300 mb-2">
@@ -492,6 +514,7 @@ export const VehiclesView: React.FC<VehiclesViewProps> = ({
             )}
           </Card>
         ) : (
+          // Show vehicles grid
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredVehicles.map((vehicle) => (
               <VehicleCard
