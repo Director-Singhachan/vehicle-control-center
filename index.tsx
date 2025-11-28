@@ -330,7 +330,16 @@ const AppContent = () => {
           {(isAdmin || isManager) && (
             <SidebarItem icon={Shield} label={isSidebarOpen ? "ทดสอบ RLS" : ""} active={activeTab === 'rls-test'} onClick={() => setActiveTab('rls-test')} isCollapsed={!isSidebarOpen} />
           )}
-          <SidebarItem icon={Settings} label={isSidebarOpen ? "ตั้งค่า" : ""} active={activeTab === 'settings'} onClick={() => setActiveTab('settings')} isCollapsed={!isSidebarOpen} />
+          {/* ซ่อนเมนูตั้งค่าสำหรับพนักงานขับรถ เพื่อไม่ให้ไปตั้งค่า Telegram/LINE เอง */}
+          {(!isDriver || isAdmin || isManager || isInspector || isExecutive) && (
+            <SidebarItem
+              icon={Settings}
+              label={isSidebarOpen ? "ตั้งค่า" : ""}
+              active={activeTab === 'settings'}
+              onClick={() => setActiveTab('settings')}
+              isCollapsed={!isSidebarOpen}
+            />
+          )}
           <SidebarItem icon={LogOut} label={isSidebarOpen ? "ออกจากระบบ" : ""} onClick={async () => {
             try {
               await signOut();

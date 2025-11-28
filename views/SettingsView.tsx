@@ -6,15 +6,30 @@ import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Bell, MessageCircle, Send } from 'lucide-react';
 import { notificationService, type NotificationSettings } from '../services/notificationService';
+import { useAuth } from '../hooks';
 
 export const SettingsView: React.FC = () => {
+  const { profile, isAdmin, isManager, isInspector, isExecutive, isDriver, loading: authLoading } = useAuth();
   const [settings, setSettings] = useState<NotificationSettings | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
 
+  const hasPermission =
+    isAdmin ||
+    isManager ||
+    isInspector ||
+    isExecutive ||
+    (profile?.role && ['admin', 'manager', 'inspector', 'executive'].includes(profile.role));
+
   useEffect(() => {
+    // ถ้าเป็นพนักงานขับรถ (driver) หรือไม่มีสิทธิ์ ไม่ต้องโหลด settings เลย
+    if (isDriver && !hasPermission) {
+      setLoading(false);
+      return;
+    }
+
     const loadSettings = async () => {
       try {
         setLoading(true);
@@ -30,7 +45,7 @@ export const SettingsView: React.FC = () => {
     };
 
     loadSettings();
-  }, []);
+  }, [isDriver, hasPermission]);
 
   const handleToggle = (key: keyof NotificationSettings) => {
     if (!settings) return;
@@ -68,6 +83,29 @@ export const SettingsView: React.FC = () => {
       setSaving(false);
     }
   };
+
+  // ถ้าไม่มีสิทธิ์ดูหน้า Settings (เช่น พนักงานขับรถ)
+  if (!authLoading && (isDriver && !hasPermission)) {
+    return (
+      <PageLayout
+        title="ตั้งค่า"
+        subtitle="การตั้งค่าการแจ้งเตือน"
+        loading={false}
+        error={false}
+      >
+        <div className="max-w-xl mx-auto mt-8 border border-slate-200 dark:border-slate-800 rounded-xl p-6 bg-slate-50/80 dark:bg-slate-900/60">
+          <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-50 mb-2">
+            ไม่สามารถตั้งค่าด้วยตัวเองได้
+          </h3>
+          <p className="text-sm text-slate-600 dark:text-slate-300">
+            การตั้งค่าการแจ้งเตือนถูกจำกัดให้{' '}
+            <span className="font-medium">ผู้ดูแลระบบ / ผู้จัดการ / ผู้ตรวจสอบ / ผู้บริหาร</span>{' '}
+            เป็นผู้กำหนดเท่านั้น หากต้องการเปลี่ยนแปลงการแจ้งเตือน กรุณาติดต่อผู้ดูแลระบบของคุณ
+          </p>
+        </div>
+      </PageLayout>
+    );
+  }
 
   return (
     <PageLayout
