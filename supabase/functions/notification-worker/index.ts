@@ -165,6 +165,8 @@ async function sendTelegramNotificationToChat(
 
   const message = `*${event.title}*\n\n${event.message}`;
 
+  const isApprovalPdf = event.event_type === 'ticket_pdf_for_approval';
+
   // If PDF data exists, send as document
   if (event.pdf_data) {
     try {
@@ -179,6 +181,24 @@ async function sendTelegramNotificationToChat(
       formData.append('chat_id', chatId);
       formData.append('caption', message);
       formData.append('parse_mode', 'Markdown');
+
+      // ถ้าเป็น PDF สำหรับการอนุมัติแนบปุ่มกด อนุมัติ / ไม่อนุมัติ
+      if (isApprovalPdf && event.payload?.ticket_id && event.payload?.approval_role) {
+        const callbackBase = `ticket:${event.payload.ticket_id}:${event.payload.approval_role}`;
+        const replyMarkup = {
+          inline_keyboard: [[
+            {
+              text: '✅ อนุมัติผ่าน Telegram',
+              callback_data: `approve:${callbackBase}`,
+            },
+            {
+              text: '❌ ไม่อนุมัติ',
+              callback_data: `reject:${callbackBase}`,
+            },
+          ]],
+        };
+        formData.append('reply_markup', JSON.stringify(replyMarkup));
+      }
 
       const response = await fetch(
         `https://api.telegram.org/bot${botToken}/sendDocument`,
@@ -221,15 +241,18 @@ async function sendTelegramNotification(event: any, settings: any) {
 
 // Send Telegram text message
 async function sendTelegramTextMessage(botToken: string, chatId: string, message: string) {
-  const response = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      chat_id: chatId,
-      text: message,
-      parse_mode: 'Markdown',
-    }),
-  });
+  const response = await fetch(
+    `https://api.telegram.org/bot${botToken}/sendMessage`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text: message,
+        parse_mode: 'Markdown',
+      }),
+    },
+  );
 
   if (!response.ok) {
     const errorText = await response.text();
