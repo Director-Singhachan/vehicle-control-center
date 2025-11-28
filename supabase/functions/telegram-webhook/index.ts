@@ -54,6 +54,14 @@ Deno.serve(async (req) => {
   }
 
   try {
+    // If someone calls with GET (like opening in browser), just return a simple OK
+    if (req.method !== 'POST') {
+      return new Response(
+        JSON.stringify({ ok: true, message: 'telegram-webhook is running' }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     
@@ -92,8 +100,17 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Parse Telegram webhook update
-    const update: TelegramUpdate = await req.json();
+    // Parse Telegram webhook update (POST with JSON body)
+    let update: TelegramUpdate;
+    try {
+      update = await req.json();
+    } catch (_e) {
+      // If body is empty or not valid JSON, just acknowledge to avoid 500
+      return new Response(
+        JSON.stringify({ received: false, message: 'No valid JSON body' }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
     if (!update.message) {
       return new Response(
