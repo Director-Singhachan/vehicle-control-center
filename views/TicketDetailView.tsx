@@ -123,6 +123,11 @@ export const TicketDetailView: React.FC<TicketDetailViewProps> = ({
   const [lastRepairHistory, setLastRepairHistory] = useState<any | null>(null);
   const [loadingHistory, setLoadingHistory] = useState(false);
 
+  // Signed PDF upload state
+  const [uploadingPDF, setUploadingPDF] = useState(false);
+  const [pdfFile, setPdfFile] = useState<File | null>(null);
+  const [showUploadSuccess, setShowUploadSuccess] = useState(false);
+
   // Fetch vehicle data for image
   React.useEffect(() => {
     if (ticket?.vehicle_id) {
@@ -418,7 +423,7 @@ export const TicketDetailView: React.FC<TicketDetailViewProps> = ({
           cache.invalidate(keysToInvalidate);
         }
       }
-      
+
       // Also invalidate specific cache keys that might be used
       cache.invalidate([
         createCacheKey('tickets-with-relations', {}),
@@ -426,8 +431,8 @@ export const TicketDetailView: React.FC<TicketDetailViewProps> = ({
       ]);
 
       // Dispatch custom event to notify other components (like ApprovalBoardView) to refetch
-      window.dispatchEvent(new CustomEvent('ticket-approved', { 
-        detail: { ticketId, newStatus } 
+      window.dispatchEvent(new CustomEvent('ticket-approved', {
+        detail: { ticketId, newStatus }
       }));
 
       // Refresh data
@@ -1200,6 +1205,181 @@ export const TicketDetailView: React.FC<TicketDetailViewProps> = ({
             loading={loadingApprovals}
           />
 
+          {/* Upload Signed PDF */}
+          {(isInspector || isManager || isExecutive || isAdmin) && (
+            <Card className="p-6">
+              <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
+                <FileText className="w-5 h-5" />
+                อัปโหลด PDF ที่เซ็นแล้ว
+              </h3>
+
+              <div className="space-y-4">
+                <div className="p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+                  <p className="text-sm text-blue-700 dark:text-blue-300 font-medium mb-2">
+                    📋 วิธีส่ง PDF ที่เซ็นแล้ว:
+                  </p>
+                  <ul className="text-sm text-blue-600 dark:text-blue-400 space-y-1 list-disc list-inside">
+                    <li>วิธีที่ 1: ส่ง PDF ผ่าน Telegram Bot พร้อมระบุเลขที่ตั๋ว (เช่น "Ticket #2501-001")</li>
+                    <li>วิธีที่ 2: อัปโหลด PDF ผ่านระบบด้านล่าง</li>
+                  </ul>
+                </div>
+
+                {/* Show existing signatures */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {ticket.inspector_signature_url && (
+                    <div className="p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
+                      <p className="text-sm font-medium text-green-700 dark:text-green-300 mb-2">
+                        ✅ ผู้ตรวจสอบ (Level 1)
+                      </p>
+                      <a
+                        href={ticket.inspector_signature_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs text-green-600 dark:text-green-400 hover:underline flex items-center gap-1"
+                      >
+                        <Download className="w-3 h-3" />
+                        ดู PDF ที่เซ็นแล้ว
+                      </a>
+                      {ticket.inspector_signed_at && (
+                        <p className="text-xs text-green-500 dark:text-green-500 mt-1">
+                          {new Date(ticket.inspector_signed_at).toLocaleString('th-TH')}
+                        </p>
+                      )}
+                    </div>
+                  )}
+                  {ticket.manager_signature_url && (
+                    <div className="p-3 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 rounded-lg">
+                      <p className="text-sm font-medium text-indigo-700 dark:text-indigo-300 mb-2">
+                        ✅ ผู้จัดการ (Level 2)
+                      </p>
+                      <a
+                        href={ticket.manager_signature_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1"
+                      >
+                        <Download className="w-3 h-3" />
+                        ดู PDF ที่เซ็นแล้ว
+                      </a>
+                      {ticket.manager_signed_at && (
+                        <p className="text-xs text-indigo-500 dark:text-indigo-500 mt-1">
+                          {new Date(ticket.manager_signed_at).toLocaleString('th-TH')}
+                        </p>
+                      )}
+                    </div>
+                  )}
+                  {ticket.executive_signature_url && (
+                    <div className="p-3 bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-lg">
+                      <p className="text-sm font-medium text-purple-700 dark:text-purple-300 mb-2">
+                        ✅ ผู้บริหาร (Level 3)
+                      </p>
+                      <a
+                        href={ticket.executive_signature_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs text-purple-600 dark:text-purple-400 hover:underline flex items-center gap-1"
+                      >
+                        <Download className="w-3 h-3" />
+                        ดู PDF ที่เซ็นแล้ว
+                      </a>
+                      {ticket.executive_signed_at && (
+                        <p className="text-xs text-purple-500 dark:text-purple-500 mt-1">
+                          {new Date(ticket.executive_signed_at).toLocaleString('th-TH')}
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Upload form */}
+                <div className="border border-slate-200 dark:border-slate-700 rounded-lg p-4">
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                    เลือกไฟล์ PDF ที่เซ็นแล้ว
+                  </label>
+                  <input
+                    type="file"
+                    accept=".pdf,application/pdf"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
+                          alert('กรุณาเลือกไฟล์ PDF เท่านั้น');
+                          return;
+                        }
+                        setPdfFile(file);
+                      }
+                    }}
+                    className="block w-full text-sm text-slate-500 dark:text-slate-400
+                      file:mr-4 file:py-2 file:px-4
+                      file:rounded-lg file:border-0
+                      file:text-sm file:font-semibold
+                      file:bg-enterprise-50 file:text-enterprise-700
+                      hover:file:bg-enterprise-100
+                      dark:file:bg-enterprise-900/30 dark:file:text-enterprise-300
+                      dark:hover:file:bg-enterprise-900/50
+                      cursor-pointer"
+                    disabled={uploadingPDF}
+                  />
+                  {pdfFile && (
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">
+                      ไฟล์ที่เลือก: {pdfFile.name} ({(pdfFile.size / 1024).toFixed(2)} KB)
+                    </p>
+                  )}
+
+                  <Button
+                    onClick={async () => {
+                      if (!pdfFile) {
+                        alert('กรุณาเลือกไฟล์ PDF');
+                        return;
+                      }
+
+                      // Determine user role
+                      let role: 'inspector' | 'manager' | 'executive' | null = null;
+                      if (isInspector) role = 'inspector';
+                      else if (isManager) role = 'manager';
+                      else if (isExecutive) role = 'executive';
+
+                      if (!role) {
+                        alert('คุณไม่มีสิทธิ์อัปโหลด PDF ที่เซ็นแล้ว');
+                        return;
+                      }
+
+                      setUploadingPDF(true);
+                      try {
+                        await ticketService.uploadSignedPDF(ticketId, pdfFile, role);
+                        setShowUploadSuccess(true);
+                        setPdfFile(null);
+                        // Reset file input
+                        const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+                        if (fileInput) fileInput.value = '';
+                        await refetch();
+                      } catch (error: any) {
+                        console.error('Error uploading PDF:', error);
+                        alert('เกิดข้อผิดพลาดในการอัปโหลด: ' + (error.message || 'Unknown error'));
+                      } finally {
+                        setUploadingPDF(false);
+                      }
+                    }}
+                    disabled={!pdfFile || uploadingPDF}
+                    className="mt-4 w-full"
+                  >
+                    {uploadingPDF ? (
+                      <>
+                        <Clock className="w-4 h-4 mr-2 animate-spin" />
+                        กำลังอัปโหลด...
+                      </>
+                    ) : (
+                      <>
+                        <FileText className="w-4 h-4 mr-2" />
+                        อัปโหลด PDF ที่เซ็นแล้ว
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </div>
+            </Card>
+          )}
+
           {/* Issue Images */}
           {ticket.image_urls && Array.isArray(ticket.image_urls) && (ticket.image_urls as string[]).length > 0 && (
             <Card className="p-6">
@@ -1521,6 +1701,29 @@ export const TicketDetailView: React.FC<TicketDetailViewProps> = ({
               </div>
             </div>
           </div>
+        </div>
+      )}
+      {/* Upload Success Modal */}
+      {showUploadSuccess && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <Card className="p-8 max-w-sm w-full bg-white dark:bg-slate-800 shadow-2xl transform transition-all scale-100 animate-in zoom-in-95 duration-200 text-center">
+            <div className="mx-auto w-16 h-16 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center mb-6">
+              <CheckCircle className="w-10 h-10 text-green-600 dark:text-green-400 animate-in zoom-in duration-300 delay-150" />
+            </div>
+            <h3 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">
+              อัปโหลดสำเร็จ!
+            </h3>
+            <p className="text-slate-600 dark:text-slate-400 mb-8">
+              ไฟล์ PDF ที่เซ็นแล้วถูกบันทึกเรียบร้อยแล้ว
+            </p>
+            <Button
+              onClick={() => setShowUploadSuccess(false)}
+              className="w-full bg-green-600 hover:bg-green-700 text-white shadow-lg shadow-green-600/20"
+              size="lg"
+            >
+              ตกลง
+            </Button>
+          </Card>
         </div>
       )}
     </PageLayout >

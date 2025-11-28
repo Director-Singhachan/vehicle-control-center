@@ -9,7 +9,8 @@ export type NotificationEventType =
   | 'ticket_closed'
   | 'trip_started'
   | 'trip_finished'
-  | 'daily_usage_summary';
+  | 'daily_usage_summary'
+  | 'ticket_pdf_for_approval';
 
 export interface NotificationSettings {
   id?: string;
@@ -31,6 +32,8 @@ export interface NotificationEventInput {
   title: string;
   message: string;
   payload?: Record<string, any>;
+  pdf_data?: string; // Base64 encoded PDF
+  target_user_id?: string; // User ID to send notification to (for approval workflow)
 }
 
 export const notificationService = {
@@ -132,6 +135,8 @@ export const notificationService = {
       title: input.title,
       message: input.message,
       payload: input.payload || null,
+      pdf_data: input.pdf_data || null,
+      target_user_id: input.target_user_id || null,
       status: 'pending',
     });
 
