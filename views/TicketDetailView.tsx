@@ -126,6 +126,7 @@ export const TicketDetailView: React.FC<TicketDetailViewProps> = ({
   // Signed PDF upload state
   const [uploadingPDF, setUploadingPDF] = useState(false);
   const [pdfFile, setPdfFile] = useState<File | null>(null);
+  const [showUploadSuccess, setShowUploadSuccess] = useState(false);
 
   // Fetch vehicle data for image
   React.useEffect(() => {
@@ -422,7 +423,7 @@ export const TicketDetailView: React.FC<TicketDetailViewProps> = ({
           cache.invalidate(keysToInvalidate);
         }
       }
-      
+
       // Also invalidate specific cache keys that might be used
       cache.invalidate([
         createCacheKey('tickets-with-relations', {}),
@@ -430,8 +431,8 @@ export const TicketDetailView: React.FC<TicketDetailViewProps> = ({
       ]);
 
       // Dispatch custom event to notify other components (like ApprovalBoardView) to refetch
-      window.dispatchEvent(new CustomEvent('ticket-approved', { 
-        detail: { ticketId, newStatus } 
+      window.dispatchEvent(new CustomEvent('ticket-approved', {
+        detail: { ticketId, newStatus }
       }));
 
       // Refresh data
@@ -1211,7 +1212,7 @@ export const TicketDetailView: React.FC<TicketDetailViewProps> = ({
                 <FileText className="w-5 h-5" />
                 อัปโหลด PDF ที่เซ็นแล้ว
               </h3>
-              
+
               <div className="space-y-4">
                 <div className="p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
                   <p className="text-sm text-blue-700 dark:text-blue-300 font-medium mb-2">
@@ -1324,7 +1325,7 @@ export const TicketDetailView: React.FC<TicketDetailViewProps> = ({
                       ไฟล์ที่เลือก: {pdfFile.name} ({(pdfFile.size / 1024).toFixed(2)} KB)
                     </p>
                   )}
-                  
+
                   <Button
                     onClick={async () => {
                       if (!pdfFile) {
@@ -1346,7 +1347,7 @@ export const TicketDetailView: React.FC<TicketDetailViewProps> = ({
                       setUploadingPDF(true);
                       try {
                         await ticketService.uploadSignedPDF(ticketId, pdfFile, role);
-                        alert('อัปโหลด PDF ที่เซ็นแล้วสำเร็จ!');
+                        setShowUploadSuccess(true);
                         setPdfFile(null);
                         // Reset file input
                         const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
@@ -1700,6 +1701,29 @@ export const TicketDetailView: React.FC<TicketDetailViewProps> = ({
               </div>
             </div>
           </div>
+        </div>
+      )}
+      {/* Upload Success Modal */}
+      {showUploadSuccess && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <Card className="p-8 max-w-sm w-full bg-white dark:bg-slate-800 shadow-2xl transform transition-all scale-100 animate-in zoom-in-95 duration-200 text-center">
+            <div className="mx-auto w-16 h-16 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center mb-6">
+              <CheckCircle className="w-10 h-10 text-green-600 dark:text-green-400 animate-in zoom-in duration-300 delay-150" />
+            </div>
+            <h3 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">
+              อัปโหลดสำเร็จ!
+            </h3>
+            <p className="text-slate-600 dark:text-slate-400 mb-8">
+              ไฟล์ PDF ที่เซ็นแล้วถูกบันทึกเรียบร้อยแล้ว
+            </p>
+            <Button
+              onClick={() => setShowUploadSuccess(false)}
+              className="w-full bg-green-600 hover:bg-green-700 text-white shadow-lg shadow-green-600/20"
+              size="lg"
+            >
+              ตกลง
+            </Button>
+          </Card>
         </div>
       )}
     </PageLayout >
