@@ -53,6 +53,42 @@ Deno.serve(async (req) => {
     // Process each event
     for (const event of events) {
       try {
+        // Determine if this is an approval PDF event (needs per-user settings)
+        const isApprovalPdf = event.event_type === 'ticket_pdf_for_approval';
+
+        // For normal operational Telegram events (แจ้งซ่อม, ใช้งานรถ, etc.) 
+        // ให้ยิงเข้า "กลุ่มกลาง" จาก Environment Variable แทน ไม่ต้องพึ่ง settings ของคนขับ
+        if (event.channel === 'telegram' && !isApprovalPdf) {
+          const botToken =
+            Deno.env.get('TELEGRAM_BOT_TOKEN') ||
+            Deno.env.get('TELEGRAM_MAINTENANCE_BOT_TOKEN');
+          const groupChatId =
+            Deno.env.get('TELEGRAM_MAINTENANCE_GROUP_CHAT_ID') ||
+            Deno.env.get('TELEGRAM_GROUP_CHAT_ID') ||
+            Deno.env.get('TELEGRAM_CHAT_ID');
+
+          if (!botToken || !groupChatId) {
+            console.warn(
+              `[notification-worker] Global Telegram group not configured (botToken or groupChatId missing), event ${event.id}`,
+            );
+            await markEventFailed(
+              supabase,
+              event.id,
+              'Global Telegram group chat not configured',
+            );
+            failed++;
+            continue;
+          }
+
+          await sendTelegramNotificationToChat(event, botToken, groupChatId);
+          await markEventSent(supabase, event.id);
+          processed++;
+          continue;
+        }
+
+        // จากนี้ไปคือเคสที่ "ต้องผูกกับ user คนใดคนหนึ่ง" 
+        // เช่น ticket_pdf_for_approval ที่ยิงไปหาผู้อนุมัติแบบตัวต่อตัว
+
         // Determine target user (use target_user_id if available, otherwise use user_id)
         const targetUserId = event.target_user_id || event.user_id;
 
@@ -116,11 +152,12 @@ Deno.serve(async (req) => {
   }
 });
 
-// Send Telegram notification (with optional PDF attachment)
-async function sendTelegramNotification(event: any, settings: any) {
-  const botToken = settings.telegram_bot_token || Deno.env.get('TELEGRAM_BOT_TOKEN');
-  const chatId = settings.telegram_chat_id || Deno.env.get('TELEGRAM_CHAT_ID');
-
+// ส่ง Telegram notification โดยระบุ chat ตรงๆ (ใช้ได้ทั้งกลุ่มกลางและแบบตัวต่อตัว)
+async function sendTelegramNotificationToChat(
+  event: any,
+  botToken: string,
+  chatId: string,
+) {
   if (!botToken || !chatId) {
     console.warn('[notification-worker] Telegram token or chat ID missing, skipping');
     return;
@@ -132,8 +169,8 @@ async function sendTelegramNotification(event: any, settings: any) {
   if (event.pdf_data) {
     try {
       // Convert base64 to binary
-      const pdfBuffer = Uint8Array.from(atob(event.pdf_data), c => c.charCodeAt(0));
-      
+      const pdfBuffer = Uint8Array.from(atob(event.pdf_data), (c) => c.charCodeAt(0));
+
       // Create FormData for multipart/form-data
       const formData = new FormData();
       const blob = new Blob([pdfBuffer], { type: 'application/pdf' });
@@ -143,19 +180,27 @@ async function sendTelegramNotification(event: any, settings: any) {
       formData.append('caption', message);
       formData.append('parse_mode', 'Markdown');
 
-      const response = await fetch(`https://api.telegram.org/bot${botToken}/sendDocument`, {
-        method: 'POST',
-        body: formData,
-      });
+      const response = await fetch(
+        `https://api.telegram.org/bot${botToken}/sendDocument`,
+        {
+          method: 'POST',
+          body: formData,
+        },
+      );
 
       if (!response.ok) {
         const errorText = await response.text();
         throw new Error(`Telegram API error: ${response.status} - ${errorText}`);
       }
 
-      console.log(`[notification-worker] Sent PDF to Telegram for event ${event.id}`);
+      console.log(
+        `[notification-worker] Sent PDF to Telegram for event ${event.id}`,
+      );
     } catch (error) {
-      console.error('[notification-worker] Error sending PDF to Telegram:', error);
+      console.error(
+        '[notification-worker] Error sending PDF to Telegram:',
+        error,
+      );
       // Fallback: try sending text message only
       await sendTelegramTextMessage(botToken, chatId, message);
     }
@@ -163,6 +208,15 @@ async function sendTelegramNotification(event: any, settings: any) {
     // Send text message only
     await sendTelegramTextMessage(botToken, chatId, message);
   }
+}
+
+// Send Telegram notification (กับ user ที่มี settings ของตัวเอง – ใช้ใน approval flow)
+async function sendTelegramNotification(event: any, settings: any) {
+  const botToken =
+    settings.telegram_bot_token || Deno.env.get('TELEGRAM_BOT_TOKEN');
+  const chatId = settings.telegram_chat_id || Deno.env.get('TELEGRAM_CHAT_ID');
+
+  await sendTelegramNotificationToChat(event, botToken, chatId);
 }
 
 // Send Telegram text message

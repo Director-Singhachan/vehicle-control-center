@@ -35,6 +35,11 @@ interface TelegramUpdate {
 
 // Use Deno.serve to handle Telegram webhooks (which don't send auth headers)
 Deno.serve(async (req) => {
+  console.log('[telegram-webhook] Incoming request:', {
+    method: req.method,
+    url: req.url,
+    hasBody: !!req.body,
+  });
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -112,7 +117,10 @@ Deno.serve(async (req) => {
       );
     }
 
+    console.log('[telegram-webhook] Parsed update:', update);
+
     if (!update.message) {
+      console.log('[telegram-webhook] No message field in update');
       return new Response(
         JSON.stringify({ received: true, message: 'No message in update' }),
         { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -122,6 +130,14 @@ Deno.serve(async (req) => {
     const message = update.message;
     const chatId = message.chat.id;
     const userId = message.from?.id;
+
+    console.log('[telegram-webhook] Message received:', {
+      chatId,
+      userId,
+      hasDocument: !!message.document,
+      text: message.text,
+      caption: message.caption,
+    });
 
     // Check if message contains a document (PDF file)
     if (message.document) {
