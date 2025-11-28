@@ -22,8 +22,34 @@ import { Input } from '../components/ui/Input';
 import { Card } from '../components/ui/Card';
 import { PageLayout } from '../components/layout/PageLayout';
 import { Avatar } from '../components/ui/Avatar';
-import { useFuelLogs, useFuelStats, useVehicles } from '../hooks';
+import { useFuelLogs, useFuelStats, useVehicles, useVehicleEfficiencyComparison } from '../hooks';
+import { useVehicleFuelComparison, useFuelTrend } from '../hooks/useReports';
 import type { Database } from '../types/database';
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  BarElement,
+  LineElement,
+  PointElement,
+  Title,
+  Tooltip,
+  Legend,
+  Filler,
+} from 'chart.js';
+import { Bar, Line } from 'react-chartjs-2';
+
+ChartJS.register(
+  CategoryScale,
+  LinearScale,
+  BarElement,
+  LineElement,
+  PointElement,
+  Title,
+  Tooltip,
+  Legend,
+  Filler
+);
 
 type FuelRecord = Database['public']['Tables']['fuel_records']['Row'];
 
@@ -71,6 +97,40 @@ export const FuelLogListView: React.FC<FuelLogListViewProps> = ({
 
   // Fetch fuel stats
   const { stats } = useFuelStats(filters);
+
+  // Fetch chart data (use 6 months for comparison)
+  const { data: vehicleFuelComparison, loading: comparisonLoading } = useVehicleFuelComparison(6);
+  const { data: fuelTrend, loading: trendLoading } = useFuelTrend(6);
+  
+  // Fetch vehicle efficiency comparison
+  const { comparison: vehicleEfficiency, loading: efficiencyLoading } = useVehicleEfficiencyComparison(6);
+
+  // Debug logging
+  useEffect(() => {
+    console.log('[FuelLogListView] Chart data:', {
+      vehicleFuelComparison: vehicleFuelComparison ? {
+        length: vehicleFuelComparison.length,
+        data: vehicleFuelComparison.slice(0, 3).map(v => ({
+          plate: v.plate,
+          totalCost: v.totalCost,
+          totalLiters: v.totalLiters,
+        })),
+      } : null,
+      fuelTrend: fuelTrend ? {
+        hasLabels: !!fuelTrend.labels,
+        labelsCount: fuelTrend.labels?.length || 0,
+        labels: fuelTrend.labels?.slice(0, 3),
+        hasCosts: !!fuelTrend.costs,
+        costsCount: fuelTrend.costs?.length || 0,
+        costs: fuelTrend.costs?.slice(0, 3),
+        hasLiters: !!fuelTrend.liters,
+        litersCount: fuelTrend.liters?.length || 0,
+        liters: fuelTrend.liters?.slice(0, 3),
+      } : null,
+      comparisonLoading,
+      trendLoading,
+    });
+  }, [vehicleFuelComparison, fuelTrend, comparisonLoading, trendLoading]);
 
   // Pagination (using server-side count)
   const totalPages = Math.ceil(totalCount / itemsPerPage);
@@ -197,6 +257,293 @@ export const FuelLogListView: React.FC<FuelLogListViewProps> = ({
               </div>
             </Card>
           </div>
+        )}
+
+        {/* Charts Section */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Fuel Trend Chart */}
+          <Card className="p-6">
+            <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-4">
+              กราฟแสดงการใช้น้ำมันรายเดือน
+            </h3>
+            {trendLoading ? (
+              <div className="h-64 flex items-center justify-center text-slate-400">
+                กำลังโหลด...
+              </div>
+            ) : fuelTrend && fuelTrend.labels && fuelTrend.labels.length > 0 && fuelTrend.costs && fuelTrend.costs.length > 0 ? (
+              <div className="h-64">
+                <Line
+                  data={{
+                    labels: fuelTrend.labels,
+                    datasets: [
+                      {
+                        label: 'ค่าใช้จ่าย (฿)',
+                        data: fuelTrend.costs,
+                        borderColor: '#7c3aed',
+                        backgroundColor: 'rgba(124, 58, 237, 0.1)',
+                        borderWidth: 2,
+                        tension: 0.4,
+                        fill: true,
+                        yAxisID: 'y',
+                      },
+                      {
+                        label: 'จำนวนลิตร (L)',
+                        data: fuelTrend.liters,
+                        borderColor: '#3b82f6',
+                        backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                        borderWidth: 2,
+                        tension: 0.4,
+                        fill: true,
+                        yAxisID: 'y1',
+                      },
+                    ],
+                  }}
+                  options={{
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                      mode: 'index' as const,
+                      intersect: false,
+                    },
+                    plugins: {
+                      legend: {
+                        display: true,
+                        position: 'top' as const,
+                        labels: {
+                          color: '#64748b',
+                        },
+                      },
+                      tooltip: {
+                        backgroundColor: '#ffffff',
+                        titleColor: '#0f172a',
+                        bodyColor: '#475569',
+                        borderColor: '#e2e8f0',
+                        borderWidth: 1,
+                      },
+                    },
+                    scales: {
+                      x: {
+                        grid: { display: false },
+                        ticks: { color: '#64748b' },
+                      },
+                      y: {
+                        type: 'linear' as const,
+                        display: true,
+                        position: 'left' as const,
+                        title: {
+                          display: true,
+                          text: 'ค่าใช้จ่าย (฿)',
+                          color: '#64748b',
+                        },
+                        grid: {
+                          color: '#e2e8f0',
+                          borderDash: [4, 4],
+                        },
+                        ticks: { color: '#64748b' },
+                      },
+                      y1: {
+                        type: 'linear' as const,
+                        display: true,
+                        position: 'right' as const,
+                        title: {
+                          display: true,
+                          text: 'จำนวนลิตร (L)',
+                          color: '#64748b',
+                        },
+                        grid: {
+                          drawOnChartArea: false,
+                        },
+                        ticks: { color: '#64748b' },
+                      },
+                    },
+                  }}
+                />
+              </div>
+            ) : (
+              <div className="h-64 flex items-center justify-center text-slate-400">
+                ไม่มีข้อมูลการใช้น้ำมันใน 6 เดือนล่าสุด
+              </div>
+            )}
+          </Card>
+
+          {/* Vehicle Fuel Cost Comparison Chart */}
+          <Card className="p-6">
+            <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-4">
+              เปรียบเทียบค่าใช้จ่ายน้ำมันแต่ละรถ
+            </h3>
+            {comparisonLoading ? (
+              <div className="h-64 flex items-center justify-center text-slate-400">
+                กำลังโหลด...
+              </div>
+            ) : vehicleFuelComparison && vehicleFuelComparison.length > 0 ? (
+              <div className="h-64">
+                <Bar
+                  data={{
+                    labels: vehicleFuelComparison.map(v => v.plate),
+                    datasets: [
+                      {
+                        label: 'ค่าใช้จ่าย (฿)',
+                        data: vehicleFuelComparison.map(v => v.totalCost),
+                        backgroundColor: '#7c3aed',
+                        borderRadius: 4,
+                      },
+                    ],
+                  }}
+                  options={{
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                      legend: {
+                        display: false,
+                      },
+                      tooltip: {
+                        backgroundColor: '#ffffff',
+                        titleColor: '#0f172a',
+                        bodyColor: '#475569',
+                        borderColor: '#e2e8f0',
+                        borderWidth: 1,
+                        callbacks: {
+                          label: function(context) {
+                            const vehicle = vehicleFuelComparison[context.dataIndex];
+                            return [
+                              `ค่าใช้จ่าย: ฿${vehicle.totalCost.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+                              `จำนวนลิตร: ${vehicle.totalLiters.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} L`,
+                              `ประสิทธิภาพ: ${vehicle.averageEfficiency ? vehicle.averageEfficiency.toFixed(2) : 'N/A'} km/L`,
+                            ];
+                          },
+                        },
+                      },
+                    },
+                    scales: {
+                      x: {
+                        grid: { display: false },
+                        ticks: { 
+                          color: '#64748b',
+                          maxRotation: 45,
+                          minRotation: 45,
+                        },
+                      },
+                      y: {
+                        grid: {
+                          color: '#e2e8f0',
+                          borderDash: [4, 4],
+                        },
+                        ticks: { 
+                          color: '#64748b',
+                          callback: function(value) {
+                            return '฿' + Number(value).toLocaleString('th-TH');
+                          },
+                        },
+                      },
+                    },
+                  }}
+                />
+              </div>
+            ) : (
+              <div className="h-64 flex flex-col items-center justify-center text-slate-400">
+                <Truck className="w-12 h-12 mb-2 opacity-50" />
+                <p className="text-sm">ไม่มีข้อมูลการเปรียบเทียบค่าใช้จ่ายน้ำมันแต่ละรถ</p>
+                <p className="text-xs mt-1 text-slate-500 dark:text-slate-500">
+                  {vehicleFuelComparison ? `พบ ${vehicleFuelComparison.length} รายการ แต่ไม่มีข้อมูลค่าใช้จ่าย` : 'กำลังโหลดข้อมูล...'}
+                </p>
+              </div>
+            )}
+          </Card>
+        </div>
+
+        {/* Vehicle Efficiency Table */}
+        {vehicleEfficiency && vehicleEfficiency.length > 0 && (
+          <Card className="p-6">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
+                ประสิทธิภาพการใช้น้ำมันแต่ละรถ (6 เดือนล่าสุด)
+              </h3>
+              <div className="text-sm text-slate-600 dark:text-slate-400">
+                เรียงตามประสิทธิภาพ (km/L)
+              </div>
+            </div>
+            {efficiencyLoading ? (
+              <div className="text-center py-8 text-slate-400">กำลังโหลด...</div>
+            ) : vehicleEfficiency.length > 0 ? (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-slate-200 dark:border-slate-700">
+                      <th className="text-left py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">อันดับ</th>
+                      <th className="text-left py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">ทะเบียน</th>
+                      <th className="text-left py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">ยี่ห้อ/รุ่น</th>
+                      <th className="text-right py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">ประสิทธิภาพ (km/L)</th>
+                      <th className="text-right py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">ระยะทางรวม (km)</th>
+                      <th className="text-right py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">จำนวนลิตร</th>
+                      <th className="text-right py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">ค่าใช้จ่าย (฿)</th>
+                      <th className="text-right py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">จำนวนครั้ง</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {vehicleEfficiency.map((vehicle, index) => (
+                      <tr 
+                        key={vehicle.vehicle_id} 
+                        className={`border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50 ${
+                          index === 0 ? 'bg-green-50 dark:bg-green-900/10' : ''
+                        }`}
+                      >
+                        <td className="py-3 px-4">
+                          {index === 0 ? (
+                            <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-green-500 text-white font-bold text-sm">
+                              1
+                            </span>
+                          ) : index === 1 ? (
+                            <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-blue-500 text-white font-bold text-sm">
+                              2
+                            </span>
+                          ) : index === 2 ? (
+                            <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-yellow-500 text-white font-bold text-sm">
+                              3
+                            </span>
+                          ) : (
+                            <span className="text-slate-600 dark:text-slate-400 font-medium">
+                              {index + 1}
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-3 px-4 text-slate-900 dark:text-slate-100 font-medium">
+                          {vehicle.plate}
+                        </td>
+                        <td className="py-3 px-4 text-slate-600 dark:text-slate-400">
+                          {vehicle.make && vehicle.model ? `${vehicle.make} ${vehicle.model}` : '-'}
+                        </td>
+                        <td className="py-3 px-4 text-right">
+                          <span className={`font-bold text-lg ${
+                            index === 0 ? 'text-green-600 dark:text-green-400' :
+                            index === 1 ? 'text-blue-600 dark:text-blue-400' :
+                            index === 2 ? 'text-yellow-600 dark:text-yellow-400' :
+                            'text-slate-900 dark:text-slate-100'
+                          }`}>
+                            {vehicle.average_efficiency ? vehicle.average_efficiency.toFixed(2) : '-'}
+                          </span>
+                          <span className="text-sm text-slate-500 dark:text-slate-400 ml-1">km/L</span>
+                        </td>
+                        <td className="py-3 px-4 text-right text-slate-900 dark:text-slate-100">
+                          {vehicle.total_distance.toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                        </td>
+                        <td className="py-3 px-4 text-right text-slate-900 dark:text-slate-100">
+                          {vehicle.total_liters.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} L
+                        </td>
+                        <td className="py-3 px-4 text-right text-slate-900 dark:text-slate-100">
+                          ฿{vehicle.total_cost.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </td>
+                        <td className="py-3 px-4 text-right text-slate-600 dark:text-slate-400">
+                          {vehicle.fill_count} ครั้ง
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="text-center py-8 text-slate-400">ไม่มีข้อมูล</div>
+            )}
+          </Card>
         )}
 
         {/* Filters */}

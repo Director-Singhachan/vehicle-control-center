@@ -28,6 +28,9 @@ export { profileService } from './services/profileService';
 // Trip Log Service
 export { tripLogService, type TripLogWithRelations, type CheckoutData, type CheckinData } from './services/tripLogService';
 
+// Daily Summary Service
+export { dailySummaryService, type DailySummary, type DailyVehicleSummary } from './services/dailySummaryService';
+
 // Legacy Vehicle interface for backward compatibility
 export interface Vehicle {
   id: string;

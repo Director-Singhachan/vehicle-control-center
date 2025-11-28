@@ -17,7 +17,8 @@ import {
   Shield,
   CheckSquare,
   Route,
-  Droplet
+  Droplet,
+  Calendar
 } from 'lucide-react';
 import { DashboardView } from './views/DashboardView';
 import { ProfileView } from './views/ProfileView';
@@ -34,6 +35,7 @@ import { TripLogListView } from './views/TripLogListView';
 import { FuelLogFormView } from './views/FuelLogFormView';
 import { FuelLogListView } from './views/FuelLogListView';
 import { ReportsView } from './views/ReportsView';
+import { DailySummaryView } from './views/DailySummaryView';
 import { SettingsView } from './views/SettingsView';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { useAuth, usePendingTickets } from './hooks';
@@ -132,7 +134,7 @@ const AppContent = () => {
         setTripLogMode('checkout');
       }
       // If driver is on dashboard or other restricted pages, redirect to triplogs form
-      else if (activeTab === 'dashboard' || activeTab === 'vehicles' || activeTab === 'approvals' || activeTab === 'reports') {
+      else if (activeTab === 'dashboard' || activeTab === 'vehicles' || activeTab === 'approvals' || activeTab === 'reports' || activeTab === 'daily-summary') {
         setActiveTab('triplogs');
         setTripLogView('form');
         setTripLogMode('checkout');
@@ -314,6 +316,15 @@ const AppContent = () => {
               />
             ) : null;
           })()}
+          {!isDriver && (
+            <SidebarItem
+              icon={Calendar}
+              label={isSidebarOpen ? "สรุปการใช้รถรายวัน" : ""}
+              active={activeTab === 'daily-summary'}
+              onClick={() => setActiveTab('daily-summary')}
+              isCollapsed={!isSidebarOpen}
+            />
+          )}
           {!isDriver && (
             <SidebarItem
               icon={FileText}
@@ -759,6 +770,8 @@ const AppContent = () => {
             <ProfileView />
           ) : activeTab === 'rls-test' ? (
             <RLSTestView />
+          ) : activeTab === 'daily-summary' ? (
+            <DailySummaryView isDark={isDark} />
           ) : activeTab === 'reports' ? (
             <ReportsView isDark={isDark} />
           ) : activeTab === 'settings' ? (
