@@ -2,6 +2,7 @@
 import { supabase } from '../lib/supabase';
 import type { Database } from '../types/database';
 import { notificationService } from './notificationService';
+import { pdfService } from './pdfService';
 
 type Ticket = Database['public']['Tables']['tickets']['Row'];
 type TicketInsert = Database['public']['Tables']['tickets']['Insert'];
@@ -212,6 +213,77 @@ export const ticketService = {
       });
     } catch (notifyError) {
       console.error('[ticketService] Failed to create notification event for ticket_created:', notifyError);
+      // ไม่ต้อง throw ต่อ เพื่อไม่ให้กระทบการสร้างตั๋ว
+    }
+
+    // Send PDF to inspector for approval (Level 1)
+    try {
+      // Get ticket with relations for PDF generation
+      const ticketWithRelations = await ticketService.getByIdWithRelations(data.id);
+      if (ticketWithRelations) {
+        // Find inspector user (first available inspector)
+        const { data: inspectors, error: inspectorError } = await supabase
+          .from('profiles')
+          .select('id')
+          .eq('role', 'inspector')
+          .limit(1);
+
+        if (!inspectorError && inspectors && inspectors.length > 0) {
+          const inspectorId = inspectors[0].id;
+
+          // Get full ticket data for PDF (with ticket_number, garage, etc.)
+          const fullTicket = await ticketService.getById(data.id);
+
+          // Generate PDF as base64
+          const pdfBase64 = await pdfService.generateMaintenanceTicketPDFAsBase64({
+            id: String(ticketWithRelations.id),
+            ticket_number: fullTicket?.ticket_number || null,
+            vehicle_plate: ticketWithRelations.vehicle_plate || '',
+            vehicle_make: ticketWithRelations.make,
+            vehicle_model: ticketWithRelations.model,
+            vehicle_type: ticketWithRelations.vehicle_type,
+            branch: ticketWithRelations.branch,
+            reporter_name: ticketWithRelations.reporter_name || '',
+            reporter_email: ticketWithRelations.reporter_email,
+            problem: ticketWithRelations.repair_type,
+            description: ticketWithRelations.problem_description,
+            urgency: ticketWithRelations.urgency || 'medium',
+            status: ticketWithRelations.status || 'pending',
+            created_at: ticketWithRelations.created_at,
+            odometer: ticketWithRelations.odometer,
+            garage: (fullTicket as any)?.garage || null,
+            notes: (fullTicket as any)?.repair_notes || null,
+            last_repair_date: (fullTicket as any)?.last_repair_date || null,
+            last_repair_description: (fullTicket as any)?.last_repair_description || null,
+            last_repair_garage: (fullTicket as any)?.last_repair_garage || null,
+            estimated_cost: (fullTicket as any)?.estimated_cost || null,
+          });
+
+          // Send PDF notification to inspector
+          await notificationService.createEvent({
+            channel: 'telegram', // Use telegram for PDF (better file support)
+            event_type: 'ticket_pdf_for_approval',
+            title: `📋 ใบแจ้งซ่อมรอการอนุมัติ - Level 1 (ผู้ตรวจสอบ)`,
+            message: `มีใบแจ้งซ่อมใหม่รอการอนุมัติ\n\n` +
+              `เลขที่: ${fullTicket?.ticket_number || ticketWithRelations.id}\n` +
+              `ทะเบียนรถ: ${ticketWithRelations.vehicle_plate || '-'}\n` +
+              `ผู้แจ้ง: ${ticketWithRelations.reporter_name || '-'}\n` +
+              `ประเภทการซ่อม: ${ticketWithRelations.repair_type || '-'}\n` +
+              `ความเร่งด่วน: ${ticketWithRelations.urgency || 'medium'}\n\n` +
+              `กรุณาตรวจสอบและอนุมัติผ่านระบบ`,
+            payload: {
+              ticket_id: data.id,
+              ticket_number: fullTicket?.ticket_number || null,
+              approval_level: 1,
+              approval_role: 'inspector',
+            },
+            pdf_data: pdfBase64,
+            target_user_id: inspectorId,
+          }, data.reporter_id); // Use reporter's user_id for the event
+        }
+      }
+    } catch (pdfError) {
+      console.error('[ticketService] Failed to send PDF to inspector:', pdfError);
       // ไม่ต้อง throw ต่อ เพื่อไม่ให้กระทบการสร้างตั๋ว
     }
 
@@ -430,6 +502,106 @@ export const ticketService = {
 
       if (updateError) throw updateError;
     }
+
+    // 5. Send PDF to next approver if applicable
+    try {
+      const ticketWithRelations = await ticketService.getByIdWithRelations(parseInt(ticketId, 10));
+      if (ticketWithRelations) {
+        let nextApproverId: string | null = null;
+        let nextLevel: number | null = null;
+        let nextRole: string | null = null;
+
+        // Determine next approver based on current approval level
+        if (level === 1) {
+          // Level 1 approved → send to manager (Level 2)
+          const { data: managers } = await supabase
+            .from('profiles')
+            .select('id')
+            .eq('role', 'manager')
+            .limit(1);
+          if (managers && managers.length > 0) {
+            nextApproverId = managers[0].id;
+            nextLevel = 2;
+            nextRole = 'manager';
+          }
+        } else if (level === 2) {
+          // Level 2 approved → send to executive (Level 3)
+          const { data: executives } = await supabase
+            .from('profiles')
+            .select('id')
+            .eq('role', 'executive')
+            .limit(1);
+          if (executives && executives.length > 0) {
+            nextApproverId = executives[0].id;
+            nextLevel = 3;
+            nextRole = 'executive';
+          }
+        }
+        // Level 3 is final, no next approver
+
+        if (nextApproverId && nextLevel && nextRole) {
+          // Get full ticket data for PDF (with ticket_number, garage, etc.)
+          const fullTicket = await ticketService.getById(ticketWithRelations.id);
+
+          // Generate PDF as base64
+          const pdfBase64 = await pdfService.generateMaintenanceTicketPDFAsBase64({
+            id: String(ticketWithRelations.id),
+            ticket_number: fullTicket?.ticket_number || null,
+            vehicle_plate: ticketWithRelations.vehicle_plate || '',
+            vehicle_make: ticketWithRelations.make,
+            vehicle_model: ticketWithRelations.model,
+            vehicle_type: ticketWithRelations.vehicle_type,
+            branch: ticketWithRelations.branch,
+            reporter_name: ticketWithRelations.reporter_name || '',
+            reporter_email: ticketWithRelations.reporter_email,
+            problem: ticketWithRelations.repair_type,
+            description: ticketWithRelations.problem_description,
+            urgency: ticketWithRelations.urgency || 'medium',
+            status: ticketWithRelations.status || 'pending',
+            created_at: ticketWithRelations.created_at,
+            odometer: ticketWithRelations.odometer,
+            garage: (fullTicket as any)?.garage || null,
+            notes: (fullTicket as any)?.repair_notes || null,
+            last_repair_date: (fullTicket as any)?.last_repair_date || null,
+            last_repair_description: (fullTicket as any)?.last_repair_description || null,
+            last_repair_garage: (fullTicket as any)?.last_repair_garage || null,
+            estimated_cost: (fullTicket as any)?.estimated_cost || null,
+          });
+
+          // Send PDF notification to next approver
+          const levelLabels: Record<number, string> = {
+            2: 'Level 2 (ผู้จัดการ)',
+            3: 'Level 3 (ผู้บริหาร)',
+          };
+
+          await notificationService.createEvent({
+            channel: 'telegram',
+            event_type: 'ticket_pdf_for_approval',
+            title: `📋 ใบแจ้งซ่อมรอการอนุมัติ - ${levelLabels[nextLevel]}`,
+            message: `มีใบแจ้งซ่อมรอการอนุมัติ\n\n` +
+              `เลขที่: ${fullTicket?.ticket_number || ticketWithRelations.id}\n` +
+              `ทะเบียนรถ: ${ticketWithRelations.vehicle_plate || '-'}\n` +
+              `ผู้แจ้ง: ${ticketWithRelations.reporter_name || '-'}\n` +
+              `ประเภทการซ่อม: ${ticketWithRelations.repair_type || '-'}\n` +
+              `ความเร่งด่วน: ${ticketWithRelations.urgency || 'medium'}\n` +
+              `สถานะ: อนุมัติ Level ${level} แล้ว\n\n` +
+              `กรุณาตรวจสอบและอนุมัติผ่านระบบ`,
+            payload: {
+              ticket_id: ticketWithRelations.id,
+              ticket_number: fullTicket?.ticket_number || null,
+              approval_level: nextLevel,
+              approval_role: nextRole,
+              previous_level: level,
+            },
+            pdf_data: pdfBase64,
+            target_user_id: nextApproverId,
+          }, userId);
+        }
+      }
+    } catch (pdfError) {
+      console.error('[ticketService] Failed to send PDF to next approver:', pdfError);
+      // ไม่ต้อง throw ต่อ เพื่อไม่ให้กระทบการอนุมัติ
+    }
   },
 
   // Start repair
@@ -464,6 +636,47 @@ export const ticketService = {
       .eq('id', ticketId);
 
     if (error) throw error;
+  },
+
+  // Upload signed PDF and update signature URL
+  uploadSignedPDF: async (
+    ticketId: number,
+    pdfFile: File,
+    role: 'inspector' | 'manager' | 'executive'
+  ): Promise<string> => {
+    // Import storageService dynamically to avoid circular dependency
+    const { storageService } = await import('./storageService');
+
+    // Upload PDF to storage
+    const timestamp = Date.now();
+    const fileName = `${role}_${timestamp}.pdf`;
+    const publicUrl = await storageService.uploadFile(
+      pdfFile,
+      'ticket-attachments',
+      `signed-tickets/${ticketId}`
+    );
+
+    // Update ticket signature URL based on role
+    const updateData: any = {};
+    if (role === 'inspector') {
+      updateData.inspector_signature_url = publicUrl;
+      updateData.inspector_signed_at = new Date().toISOString();
+    } else if (role === 'manager') {
+      updateData.manager_signature_url = publicUrl;
+      updateData.manager_signed_at = new Date().toISOString();
+    } else if (role === 'executive') {
+      updateData.executive_signature_url = publicUrl;
+      updateData.executive_signed_at = new Date().toISOString();
+    }
+
+    const { error } = await supabase
+      .from('tickets')
+      .update(updateData)
+      .eq('id', ticketId);
+
+    if (error) throw error;
+
+    return publicUrl;
   },
 };
 

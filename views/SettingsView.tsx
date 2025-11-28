@@ -172,20 +172,20 @@ export const SettingsView: React.FC = () => {
 
                 <div className="space-y-3">
                   <Input
-                    label="Telegram Bot Token"
+                    label="Telegram Bot Token (ไม่บังคับ)"
                     type="password"
-                    placeholder="ใส่ Telegram Bot token"
+                    placeholder="เว้นว่างไว้ถ้าใช้ Token เดียวกันกับระบบ"
                     value={settings.telegram_bot_token || ''}
                     onChange={(e) => handleChange('telegram_bot_token', e.target.value)}
-                    helperText="สร้าง bot ผ่าน @BotFather แล้วนำ token มาวางที่นี่"
+                    helperText="เว้นว่างไว้ = ใช้ Token จากระบบ (แนะนำ) | ใส่ Token = ใช้ Token ของตัวเอง (ถ้าต้องการใช้ Bot ต่างกัน)"
                     disabled={!settings.enable_telegram}
                   />
                   <Input
-                    label="Telegram Chat ID"
+                    label="Telegram Chat ID (จำเป็น)"
                     placeholder="เช่น 123456789 หรือ -1001234567890 (group)"
                     value={settings.telegram_chat_id || ''}
                     onChange={(e) => handleChange('telegram_chat_id', e.target.value)}
-                    helperText="ใช้ /getid bot หรือวิธีอื่นในการหา chat id"
+                    helperText="จำเป็นต้องใส่ - ใช้ @userinfobot หรือ @getidsbot เพื่อหา Chat ID ของคุณ"
                     disabled={!settings.enable_telegram}
                   />
                 </div>
