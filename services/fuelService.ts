@@ -1,6 +1,7 @@
 // Fuel Service - CRUD operations for fuel_records
 import { supabase } from '../lib/supabase';
 import type { Database } from '../types/database';
+import { notificationService } from './notificationService';
 
 type FuelRecord = Database['public']['Tables']['fuel_records']['Row'];
 type FuelRecordInsert = Database['public']['Tables']['fuel_records']['Insert'];
@@ -17,16 +18,16 @@ export const fuelService = {
       .from('fuel_records')
       .select('*')
       .order('filled_at', { ascending: false });
-    
+
     if (filters?.vehicle_id) {
       query = query.eq('vehicle_id', filters.vehicle_id);
     }
     if (filters?.user_id) {
       query = query.eq('user_id', filters.user_id);
     }
-    
+
     const { data, error } = await query;
-    
+
     if (error) throw error;
     return data || [];
   },
@@ -38,7 +39,7 @@ export const fuelService = {
       .select('*')
       .eq('id', id)
       .single();
-    
+
     if (error) throw error;
     return data;
   },
@@ -49,13 +50,13 @@ export const fuelService = {
       .from('fuel_efficiency_summary')
       .select('*')
       .order('month', { ascending: false });
-    
+
     if (vehicleId) {
       query = query.eq('vehicle_id', vehicleId);
     }
-    
+
     const { data, error } = await query;
-    
+
     if (error) throw error;
     return data || [];
   },
@@ -69,7 +70,7 @@ export const fuelService = {
       .order('filled_at', { ascending: false })
       .limit(1)
       .single();
-    
+
     if (error && error.code !== 'PGRST116') throw error; // PGRST116 = no rows returned
     return data || null;
   },
@@ -81,8 +82,70 @@ export const fuelService = {
       .insert(record)
       .select()
       .single();
-    
+
     if (error) throw error;
+
+    // Create notification event for fuel refill
+    try {
+      // Fetch vehicle and user details for notification
+      const { data: vehicle } = await supabase
+        .from('vehicles')
+        .select('plate, make, model')
+        .eq('id', record.vehicle_id)
+        .single();
+
+      const { data: user } = await supabase
+        .from('profiles')
+        .select('full_name')
+        .eq('id', record.user_id)
+        .single();
+
+      const vehicleLabel = vehicle?.make && vehicle?.model
+        ? `${vehicle.plate} (${vehicle.make} ${vehicle.model})`
+        : (vehicle?.plate || 'ไม่ระบุทะเบียน');
+
+      const filledAt = new Date(record.filled_at).toLocaleString('th-TH', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+
+      const totalCost = record.liters * record.price_per_liter;
+
+      const messageLines = [
+        `⛽ [บันทึกการเติมน้ำมัน]`,
+        `🚗 รถ: ${vehicleLabel}`,
+        `👤 ผู้เติม: ${user?.full_name || 'ไม่ระบุ'}`,
+        `💧 ปริมาณ: ${Number(record.liters).toLocaleString()} ลิตร`,
+        `💰 ราคา: ${totalCost.toLocaleString()} บาท`,
+        `🏷️ ราคา/ลิตร: ${Number(record.price_per_liter).toLocaleString()} บาท`,
+        `📏 เลขไมล์: ${Number(record.odometer).toLocaleString()} km`,
+        `⛽ ประเภท: ${record.fuel_type}`,
+        `⏰ เวลา: ${filledAt}`,
+        record.fuel_station ? `🏪 ปั๊ม: ${record.fuel_station}` : undefined,
+        record.notes ? `📝 หมายเหตุ: ${record.notes}` : undefined,
+      ].filter(Boolean);
+
+      await notificationService.createEvent({
+        channel: 'telegram', // Send fuel refill notifications via Telegram
+        event_type: 'fuel_refill',
+        title: `เติมน้ำมัน: ${vehicle?.plate}`,
+        message: messageLines.join('\n'),
+        payload: {
+          fuel_record_id: data.id,
+          vehicle_id: record.vehicle_id,
+          liters: record.liters,
+          total_cost: totalCost,
+        },
+      });
+
+    } catch (notifyError) {
+      console.error('[fuelService] Failed to create notification event for fuel_refill:', notifyError);
+      // Don't throw to avoid affecting the save operation
+    }
+
     return data;
   },
 
@@ -97,7 +160,7 @@ export const fuelService = {
       .eq('id', id)
       .select()
       .single();
-    
+
     if (error) throw error;
     return data;
   },
@@ -108,7 +171,7 @@ export const fuelService = {
       .from('fuel_records')
       .delete()
       .eq('id', id);
-    
+
     if (error) throw error;
   },
 
@@ -261,7 +324,7 @@ export const fuelService = {
 
     efficiencySummary?.forEach((record) => {
       if (!record.avg_efficiency) return;
-      
+
       const existing = vehicleAverages.get(record.vehicle_id) || {
         plate: record.plate,
         make: record.make,
@@ -300,7 +363,7 @@ export const fuelService = {
 
       // Check if current efficiency is 20% below average
       const dropPercent = ((overallAverage - currentEfficiency) / overallAverage) * 100;
-      
+
       if (dropPercent >= 20) {
         // Get last fill date
         alerts.push({

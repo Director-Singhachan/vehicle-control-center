@@ -10,7 +10,8 @@ export type NotificationEventType =
   | 'trip_started'
   | 'trip_finished'
   | 'daily_usage_summary'
-  | 'ticket_pdf_for_approval';
+  | 'ticket_pdf_for_approval'
+  | 'fuel_refill';
 
 export interface NotificationSettings {
   id?: string;

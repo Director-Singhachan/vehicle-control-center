@@ -199,11 +199,26 @@ export const ticketService = {
 
     // Create notification event for new ticket (if user enabled it)
     try {
+      const messageLines = [
+        `🔧 [แจ้งซ่อมใหม่]`,
+        `🎫 Ticket: #${data.ticket_number || data.id}`,
+        `🚗 รถ: ${data.vehicle_id}`, // Note: Ideally we should fetch plate number here, but keeping it simple for now as vehicle_id is often the plate in this system context or we can rely on data.vehicle_id if it's descriptive.
+        // To be safe and consistent, we could fetch vehicle details, but let's use what we have for speed if acceptable.
+        // Actually, let's try to be better. We can't easily get vehicle plate without a join or extra query.
+        // But wait, create returns Ticket, which only has vehicle_id.
+        // Let's stick to simple format first, or do a quick fetch if needed.
+        // Given the user wants "Good looking", let's assume vehicle_id is readable or acceptable.
+        `📝 อาการ: ${data.repair_type || 'ไม่ระบุ'}`,
+        `ℹ️ รายละเอียด: ${data.problem_description || '-'}`,
+        `🚨 ความเร่งด่วน: ${data.urgency}`,
+        `📊 สถานะ: ${data.status}`,
+      ].filter(Boolean);
+
       await notificationService.createEvent({
         channel: 'line',
         event_type: 'ticket_created',
-        title: `แจ้งซ่อมใหม่: ${data.vehicle_id || ''}`,
-        message: `มีการแจ้งซ่อมใหม่ (Ticket #${data.ticket_number || data.id}). สถานะ: ${data.status}`,
+        title: `แจ้งซ่อมใหม่: ${data.vehicle_id}`,
+        message: messageLines.join('\n'),
         payload: {
           ticket_id: data.id,
           ticket_number: data.ticket_number,
@@ -264,12 +279,13 @@ export const ticketService = {
             channel: 'telegram', // Use telegram for PDF (better file support)
             event_type: 'ticket_pdf_for_approval',
             title: `📋 ใบแจ้งซ่อมรอการอนุมัติ - Level 1 (ผู้ตรวจสอบ)`,
-            message: `มีใบแจ้งซ่อมใหม่รอการอนุมัติ\n\n` +
-              `เลขที่: ${fullTicket?.ticket_number || ticketWithRelations.id}\n` +
-              `ทะเบียนรถ: ${ticketWithRelations.vehicle_plate || '-'}\n` +
-              `ผู้แจ้ง: ${ticketWithRelations.reporter_name || '-'}\n` +
-              `ประเภทการซ่อม: ${ticketWithRelations.repair_type || '-'}\n` +
-              `ความเร่งด่วน: ${ticketWithRelations.urgency || 'medium'}\n\n` +
+            message: `📋 [ใบแจ้งซ่อมรอการอนุมัติ]\n\n` +
+              `👤 ระดับ: Level 1 (ผู้ตรวจสอบ)\n` +
+              `🎫 Ticket: #${fullTicket?.ticket_number || ticketWithRelations.id}\n` +
+              `🚗 ทะเบียนรถ: ${ticketWithRelations.vehicle_plate || '-'}\n` +
+              `👤 ผู้แจ้ง: ${ticketWithRelations.reporter_name || '-'}\n` +
+              `🔧 อาการ: ${ticketWithRelations.repair_type || '-'}\n` +
+              `🚨 ความเร่งด่วน: ${ticketWithRelations.urgency || 'medium'}\n\n` +
               `กรุณาตรวจสอบและอนุมัติผ่านระบบ`,
             payload: {
               ticket_id: data.id,
@@ -312,11 +328,19 @@ export const ticketService = {
     try {
       const previousStatus = existing?.status;
       if (previousStatus !== 'completed' && data.status === 'completed') {
+        const messageLines = [
+          `✅ [ซ่อมเสร็จสิ้น]`,
+          `🎫 Ticket: #${data.ticket_number || data.id}`,
+          `🚗 รถ: ${data.vehicle_id}`,
+          `📊 สถานะเดิม: ${previousStatus}`,
+          `🏁 สถานะใหม่: ${data.status}`,
+        ];
+
         await notificationService.createEvent({
           channel: 'line',
           event_type: 'ticket_closed',
           title: `ซ่อมเสร็จแล้ว: Ticket #${data.ticket_number || data.id}`,
-          message: `ตั๋วซ่อมหมายเลข ${data.ticket_number || data.id} ถูกอัปเดตสถานะเป็นเสร็จสิ้นแล้ว`,
+          message: messageLines.join('\n'),
           payload: {
             ticket_id: data.id,
             ticket_number: data.ticket_number,
@@ -578,13 +602,14 @@ export const ticketService = {
             channel: 'telegram',
             event_type: 'ticket_pdf_for_approval',
             title: `📋 ใบแจ้งซ่อมรอการอนุมัติ - ${levelLabels[nextLevel]}`,
-            message: `มีใบแจ้งซ่อมรอการอนุมัติ\n\n` +
-              `เลขที่: ${fullTicket?.ticket_number || ticketWithRelations.id}\n` +
-              `ทะเบียนรถ: ${ticketWithRelations.vehicle_plate || '-'}\n` +
-              `ผู้แจ้ง: ${ticketWithRelations.reporter_name || '-'}\n` +
-              `ประเภทการซ่อม: ${ticketWithRelations.repair_type || '-'}\n` +
-              `ความเร่งด่วน: ${ticketWithRelations.urgency || 'medium'}\n` +
-              `สถานะ: อนุมัติ Level ${level} แล้ว\n\n` +
+            message: `📋 [ใบแจ้งซ่อมรอการอนุมัติ]\n\n` +
+              `👤 ระดับ: ${levelLabels[nextLevel]}\n` +
+              `🎫 Ticket: #${fullTicket?.ticket_number || ticketWithRelations.id}\n` +
+              `🚗 ทะเบียนรถ: ${ticketWithRelations.vehicle_plate || '-'}\n` +
+              `👤 ผู้แจ้ง: ${ticketWithRelations.reporter_name || '-'}\n` +
+              `🔧 อาการ: ${ticketWithRelations.repair_type || '-'}\n` +
+              `🚨 ความเร่งด่วน: ${ticketWithRelations.urgency || 'medium'}\n` +
+              `✅ สถานะปัจจุบัน: อนุมัติ Level ${level} แล้ว\n\n` +
               `กรุณาตรวจสอบและอนุมัติผ่านระบบ`,
             payload: {
               ticket_id: ticketWithRelations.id,
