@@ -39,6 +39,7 @@ import { DailySummaryView } from './views/DailySummaryView';
 import { SettingsView } from './views/SettingsView';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { useAuth, usePendingTickets } from './hooks';
+import { ticketService, type TicketWithRelations } from './services/ticketService';
 import { prefetchService } from './services/prefetchService';
 import { Avatar } from './components/ui/Avatar';
 
@@ -122,6 +123,9 @@ const AppContent = () => {
   const [fuelLogView, setFuelLogView] = useState<'list' | 'form'>('list');
   const [tripLogMode, setTripLogMode] = useState<'checkout' | 'checkin'>('checkout');
   const [selectedTripId, setSelectedTripId] = useState<string | null>(null);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [notificationItems, setNotificationItems] = useState<TicketWithRelations[]>([]);
+  const [loadingNotifications, setLoadingNotifications] = useState(false);
 
   // Redirect drivers to trip log form page when they login (like maintenance form)
   // Drivers can access: triplogs, fuellogs, maintenance, profile, settings
@@ -161,6 +165,48 @@ const AppContent = () => {
       refreshProfile();
     }
   }, [user]);
+
+  // Load pending tickets for notification dropdown when opened
+  useEffect(() => {
+    const loadNotifications = async () => {
+      if (!showNotifications) return;
+      if (!profile) return;
+
+      setLoadingNotifications(true);
+      try {
+        let statusFilter: string[] = [];
+        const role = profile.role;
+
+        if (role === 'inspector') {
+          statusFilter = ['pending'];
+        } else if (role === 'manager') {
+          statusFilter = ['approved_inspector'];
+        } else if (role === 'executive') {
+          statusFilter = ['approved_manager'];
+        } else {
+          statusFilter = [];
+        }
+
+        if (statusFilter.length === 0) {
+          setNotificationItems([]);
+          return;
+        }
+
+        const { data } = await ticketService.getWithRelations({
+          status: statusFilter,
+          limit: 10,
+        });
+        setNotificationItems(data);
+      } catch (err) {
+        console.error('[AppContent] Failed to load notification items:', err);
+        setNotificationItems([]);
+      } finally {
+        setLoadingNotifications(false);
+      }
+    };
+
+    loadNotifications();
+  }, [showNotifications, profile]);
 
   // Debug logging
   React.useEffect(() => {
@@ -387,22 +433,87 @@ const AppContent = () => {
             </div>
           </div>
 
-          <div className="flex items-center space-x-4">
+          <div className="flex items-center space-x-4 relative">
             <button onClick={() => setIsDark(!isDark)} className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-yellow-400 transition-colors">
               {isDark ? <Sun size={20} /> : <Moon size={20} />}
             </button>
-            <button
-              onClick={() => setActiveTab('maintenance')}
-              className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400 relative"
-              title={pendingCount > 0 ? `${pendingCount} ตั๋วรออนุมัติ` : 'การแจ้งเตือน'}
-            >
-              <Bell size={20} />
-              {pendingCount > 0 && (
-                <span className="absolute top-1.5 right-1.5 min-w-[18px] h-[18px] bg-red-500 rounded-full border-2 border-white dark:border-charcoal-900 flex items-center justify-center text-xs text-white font-semibold px-1">
-                  {pendingCount > 9 ? '9+' : pendingCount}
-                </span>
+            <div className="relative">
+              <button
+                onClick={() => setShowNotifications((prev) => !prev)}
+                className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400 relative"
+                title={pendingCount > 0 ? `${pendingCount} ตั๋วรออนุมัติ` : 'การแจ้งเตือน'}
+              >
+                <Bell size={20} />
+                {pendingCount > 0 && (
+                  <span className="absolute top-1.5 right-1.5 min-w-[18px] h-[18px] bg-red-500 rounded-full border-2 border-white dark:border-charcoal-900 flex items-center justify-center text-xs text-white font-semibold px-1">
+                    {pendingCount > 9 ? '9+' : pendingCount}
+                  </span>
+                )}
+              </button>
+
+              {showNotifications && (
+                <div className="absolute right-0 mt-2 w-80 sm:w-96 bg-white dark:bg-charcoal-900 border border-slate-200 dark:border-slate-700 rounded-xl shadow-xl z-20 overflow-hidden">
+                  <div className="px-4 py-3 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
+                    <span className="text-sm font-semibold text-slate-900 dark:text-white">
+                      การแจ้งเตือน
+                    </span>
+                    <button
+                      className="text-xs text-enterprise-600 dark:text-enterprise-400 hover:underline"
+                      onClick={() => {
+                        setActiveTab('maintenance');
+                        setTicketView('list');
+                        setShowNotifications(false);
+                      }}
+                    >
+                      ดูทั้งหมด
+                    </button>
+                  </div>
+                  <div className="max-h-80 overflow-auto">
+                    {loadingNotifications ? (
+                      <div className="px-4 py-6 text-sm text-slate-500 dark:text-slate-400 flex items-center gap-2">
+                        <span className="inline-block w-4 h-4 border-2 border-slate-300 border-t-transparent rounded-full animate-spin" />
+                        กำลังโหลดรายการ...
+                      </div>
+                    ) : notificationItems.length === 0 ? (
+                      <div className="px-4 py-6 text-sm text-slate-500 dark:text-slate-400 text-center">
+                        ไม่มีตั๋วที่รออนุมัติ
+                      </div>
+                    ) : (
+                      notificationItems.map((ticket) => (
+                        <button
+                          key={ticket.id}
+                          className="w-full text-left px-4 py-3 hover:bg-slate-50 dark:hover:bg-slate-800/70 border-b border-slate-100 dark:border-slate-800 last:border-b-0"
+                          onClick={() => {
+                            setActiveTab('maintenance');
+                            setSelectedTicketId(ticket.id.toString());
+                            setTicketView('detail');
+                            setShowNotifications(false);
+                          }}
+                        >
+                          <div className="flex justify-between items-center gap-2">
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium text-slate-900 dark:text-slate-100 truncate">
+                                {ticket.ticket_number || `ตั๋ว #${ticket.id}`}
+                              </p>
+                              <p className="text-xs text-slate-600 dark:text-slate-400 truncate mt-0.5">
+                                {ticket.repair_type || 'ตั๋วซ่อมบำรุง'} ·{' '}
+                                {ticket.vehicle_plate || '-'}
+                              </p>
+                              <p className="text-[11px] text-slate-500 dark:text-slate-500 mt-0.5 truncate">
+                                {ticket.problem_description || 'ไม่มีคำอธิบาย'}
+                              </p>
+                            </div>
+                            <span className="ml-2 inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
+                              รออนุมัติ
+                            </span>
+                          </div>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                </div>
               )}
-            </button>
+            </div>
             <div className="flex items-center space-x-3 border-l border-slate-200 dark:border-slate-700 pl-4">
               <div className="text-right hidden sm:block">
                 <p className="text-sm font-medium text-slate-900 dark:text-white">
