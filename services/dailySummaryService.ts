@@ -6,6 +6,7 @@ export interface DailyVehicleSummary {
   vehicle_plate: string;
   vehicle_make?: string | null;
   vehicle_model?: string | null;
+  branch?: string | null; // สาขาของรถ
   trip_count: number;
   total_distance_km: number;
   odometer_start: number | null; // ไมล์เริ่มต้นของวัน (จากทริปแรก)
@@ -49,7 +50,8 @@ export const dailySummaryService = {
           id,
           plate,
           make,
-          model
+          model,
+          branch
         ),
         driver:profiles!trip_logs_driver_id_fkey(
           id,
@@ -82,6 +84,7 @@ export const dailySummaryService = {
       vehicle_plate: string;
       vehicle_make?: string | null;
       vehicle_model?: string | null;
+      branch?: string | null;
       trip_count: number;
       total_distance_km: number;
       odometer_start: number | null;
@@ -115,9 +118,9 @@ export const dailySummaryService = {
       if (vehicleMap.has(vehicleId)) {
         const existing = vehicleMap.get(vehicleId)!;
         existing.trip_count += 1;
-        existing.total_distance_km += distance;
+          existing.total_distance_km += distance;
         existing.drivers.add(driverName);
-        existing.trips.push(trip);
+          existing.trips.push(trip);
         
         // อัปเดต odometer_start (ใช้ค่าที่น้อยที่สุด)
         if (trip.odometer_start && (!existing.odometer_start || trip.odometer_start < existing.odometer_start)) {
@@ -134,6 +137,7 @@ export const dailySummaryService = {
           vehicle_plate: vehicle.plate,
           vehicle_make: vehicle.make,
           vehicle_model: vehicle.model,
+          branch: (vehicle as any).branch,
           trip_count: 1,
           total_distance_km: distance,
           odometer_start: trip.odometer_start || null,
@@ -150,6 +154,7 @@ export const dailySummaryService = {
       vehicle_plate: v.vehicle_plate,
       vehicle_make: v.vehicle_make,
       vehicle_model: v.vehicle_model,
+      branch: v.branch,
       trip_count: v.trip_count,
       total_distance_km: Math.round(v.total_distance_km * 100) / 100,
       odometer_start: v.odometer_start,

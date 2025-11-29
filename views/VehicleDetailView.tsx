@@ -1,6 +1,6 @@
 // Vehicle Detail View - Show detailed information about a vehicle
 import React from 'react';
-import { useVehicle } from '../hooks';
+import { useVehicle, useMaintenanceHistory } from '../hooks';
 import { useAuth } from '../hooks';
 import {
   Truck,
@@ -23,15 +23,22 @@ interface VehicleDetailViewProps {
   vehicleId: string;
   onEdit?: (vehicleId: string) => void;
   onBack?: () => void;
+  onViewTicket?: (ticketId: number) => void;
 }
 
 export const VehicleDetailView: React.FC<VehicleDetailViewProps> = ({
   vehicleId,
   onEdit,
   onBack,
+  onViewTicket,
 }) => {
   const { isManager, isAdmin } = useAuth();
   const { vehicle, loading, error } = useVehicle(vehicleId);
+  const {
+    history: maintenanceHistory,
+    loading: loadingHistory,
+    error: maintenanceError,
+  } = useMaintenanceHistory(vehicleId);
   const { tickets, loading: loadingTickets, error: ticketsError } = useTickets({
     filters: { vehicle_id: vehicleId },
     autoFetch: true
@@ -220,6 +227,96 @@ export const VehicleDetailView: React.FC<VehicleDetailViewProps> = ({
             </div>
           </Card>
 
+          {/* Maintenance History Table */}
+          <Card className="p-6">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-xl font-semibold text-slate-900 dark:text-white flex items-center gap-2">
+                <Wrench className="w-5 h-5" />
+                ประวัติการซ่อมบำรุงของคันนี้
+              </h2>
+              <span className="text-sm text-slate-500 dark:text-slate-400">
+                {maintenanceHistory.length} รายการ
+              </span>
+            </div>
+
+            {loadingHistory ? (
+              <div className="text-sm text-slate-500 dark:text-slate-400 py-4">
+                กำลังโหลดประวัติการซ่อมบำรุง...
+              </div>
+            ) : maintenanceError ? (
+              <div className="text-sm text-red-500 dark:text-red-400 py-4">
+                ไม่สามารถโหลดประวัติการซ่อมบำรุงได้: {maintenanceError.message}
+              </div>
+            ) : maintenanceHistory.length === 0 ? (
+              <div className="text-center py-8 text-slate-500 dark:text-slate-400">
+                <Wrench className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                <p>ยังไม่มีประวัติการซ่อมบำรุงสำหรับรถคันนี้</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60">
+                      <th className="px-3 py-2 text-left font-medium text-slate-600 dark:text-slate-300">
+                        วันที่ซ่อม
+                      </th>
+                      <th className="px-3 py-2 text-left font-medium text-slate-600 dark:text-slate-300">
+                        ประเภทงาน
+                      </th>
+                      <th className="px-3 py-2 text-left font-medium text-slate-600 dark:text-slate-300">
+                        เลขไมล์
+                      </th>
+                      <th className="px-3 py-2 text-left font-medium text-slate-600 dark:text-slate-300">
+                        ค่าใช้จ่าย
+                      </th>
+                      <th className="px-3 py-2 text-left font-medium text-slate-600 dark:text-slate-300">
+                        อู่ซ่อม
+                      </th>
+                      <th className="px-3 py-2 text-left font-medium text-slate-600 dark:text-slate-300">
+                        หมายเหตุ
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {maintenanceHistory.map((item) => (
+                      <tr
+                        key={item.id}
+                        className="border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/60"
+                      >
+                        <td className="px-3 py-2 text-slate-800 dark:text-slate-100 whitespace-nowrap">
+                          {item.performed_at
+                            ? new Date(item.performed_at).toLocaleDateString('th-TH', {
+                                year: 'numeric',
+                                month: 'short',
+                                day: 'numeric',
+                              })
+                            : '-'}
+                        </td>
+                        <td className="px-3 py-2 text-slate-800 dark:text-slate-100">
+                          {item.maintenance_name || item.maintenance_type || '-'}
+                        </td>
+                        <td className="px-3 py-2 text-slate-700 dark:text-slate-200">
+                          {item.odometer ? `${item.odometer.toLocaleString()} กม.` : '-'}
+                        </td>
+                        <td className="px-3 py-2 text-slate-800 dark:text-slate-100 whitespace-nowrap">
+                          {typeof item.cost === 'number'
+                            ? `฿${item.cost.toLocaleString()}`
+                            : '-'}
+                        </td>
+                        <td className="px-3 py-2 text-slate-700 dark:text-slate-200">
+                          {item.garage || '-'}
+                        </td>
+                        <td className="px-3 py-2 text-slate-600 dark:text-slate-300 max-w-xs">
+                          {item.description || item.notes || '-'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </Card>
+
           {/* Recent Tickets */}
           <Card className="p-6">
             <div className="flex items-center justify-between mb-6">
@@ -242,7 +339,8 @@ export const VehicleDetailView: React.FC<VehicleDetailViewProps> = ({
                 {tickets.slice(0, 5).map((ticket) => (
                   <div
                     key={ticket.id}
-                    className="p-4 border border-slate-200 dark:border-slate-700 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+                    className="p-4 border border-slate-200 dark:border-slate-700 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                    onClick={() => onViewTicket?.(ticket.id)}
                   >
                     <div className="flex items-start justify-between">
                       <div className="flex-1">

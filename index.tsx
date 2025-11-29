@@ -520,6 +520,12 @@ const AppContent = () => {
                       setVehicleView('list');
                       setSelectedVehicleId(null);
                     }}
+                    onViewTicket={(ticketId) => {
+                      // ไปหน้ารายละเอียดตั๋วซ่อมบำรุง
+                      setActiveTab('maintenance');
+                      setSelectedTicketId(ticketId.toString());
+                      setTicketView('detail');
+                    }}
                   />
                 );
               } else if (effectiveView === 'form') {
