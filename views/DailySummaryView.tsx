@@ -1,5 +1,5 @@
 // Daily Summary View - สรุปการใช้รถรายวัน
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Calendar,
   Truck,
@@ -11,11 +11,13 @@ import {
   ChevronRight,
   Gauge,
   Users,
+  Clock,
 } from 'lucide-react';
 import { PageLayout } from '../components/layout/PageLayout';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { dailySummaryService, type DailySummary, type DailyVehicleSummary } from '../services/dailySummaryService';
+import { tripLogService, type TripLogWithRelations } from '../services/tripLogService';
 
 interface DailySummaryViewProps {
   isDark?: boolean;
@@ -28,6 +30,11 @@ export const DailySummaryView: React.FC<DailySummaryViewProps> = ({ isDark = fal
   const [selectedDate, setSelectedDate] = useState<string>(
     new Date().toISOString().split('T')[0]
   );
+  const [branchFilter, setBranchFilter] = useState<string>('all');
+  const [selectedVehicle, setSelectedVehicle] = useState<DailyVehicleSummary | null>(null);
+  const [vehicleTrips, setVehicleTrips] = useState<TripLogWithRelations[]>([]);
+  const [loadingTrips, setLoadingTrips] = useState(false);
+  const [tripsError, setTripsError] = useState<string | null>(null);
 
   const fetchSummary = async (date: string) => {
     setLoading(true);
@@ -70,6 +77,39 @@ export const DailySummaryView: React.FC<DailySummaryViewProps> = ({ isDark = fal
   const handleToday = () => {
     setSelectedDate(new Date().toISOString().split('T')[0]);
   };
+
+  const handleViewVehicleTrips = async (vehicle: DailyVehicleSummary) => {
+    setSelectedVehicle(vehicle);
+    setLoadingTrips(true);
+    setTripsError(null);
+    setVehicleTrips([]);
+
+    try {
+      // ดึงทริปของรถคันนี้เฉพาะวันที่เลือก
+      const start = `${selectedDate}T00:00:00.000Z`;
+      const end = `${selectedDate}T23:59:59.999Z`;
+      const result = await tripLogService.getTripHistory({
+        vehicle_id: vehicle.vehicle_id,
+        start_date: start,
+        end_date: end,
+      });
+      setVehicleTrips(result.data);
+    } catch (err) {
+      console.error('[DailySummaryView] Error fetching vehicle trips:', err);
+      setTripsError(err instanceof Error ? err.message : 'ไม่สามารถโหลดรายละเอียดทริปได้');
+    } finally {
+      setLoadingTrips(false);
+    }
+  };
+
+  const branches = useMemo(() => {
+    if (!summary) return [];
+    const set = new Set<string>();
+    summary.vehicles.forEach(v => {
+      if (v.branch) set.add(v.branch);
+    });
+    return Array.from(set).sort();
+  }, [summary]);
 
   const formatDate = (dateStr: string) => {
     const date = new Date(dateStr);
@@ -198,6 +238,29 @@ export const DailySummaryView: React.FC<DailySummaryViewProps> = ({ isDark = fal
         </div>
       </Card>
 
+      {/* Branch Filter */}
+      {summary && branches.length > 0 && (
+        <Card className="mb-6">
+          <div className="flex items-center gap-3">
+            <span className="text-slate-700 dark:text-slate-300 text-sm font-medium">
+              สาขา:
+            </span>
+            <select
+              value={branchFilter}
+              onChange={(e) => setBranchFilter(e.target.value)}
+              className="px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-enterprise-500 text-sm"
+            >
+              <option value="all">ทุกสาขา</option>
+              {branches.map((branch) => (
+                <option key={branch} value={branch}>
+                  {branch}
+                </option>
+              ))}
+            </select>
+          </div>
+        </Card>
+      )}
+
       {/* Summary Cards */}
       {summary && (
         <>
@@ -292,10 +355,14 @@ export const DailySummaryView: React.FC<DailySummaryViewProps> = ({ isDark = fal
                         <th className="text-left py-3 px-4 text-slate-700 dark:text-slate-300 font-medium">
                           พนักงานที่ใช้รถ
                         </th>
+                        <th className="text-right py-3 px-4 text-slate-700 dark:text-slate-300 font-medium">
+                          ทริป
+                        </th>
                       </tr>
                     </thead>
                     <tbody>
                       {summary.vehicles
+                        .filter((v) => branchFilter === 'all' || v.branch === branchFilter)
                         .sort((a, b) => b.total_distance_km - a.total_distance_km)
                         .map((vehicle, index) => (
                           <tr
@@ -342,6 +409,21 @@ export const DailySummaryView: React.FC<DailySummaryViewProps> = ({ isDark = fal
                                 '-'
                               )}
                             </td>
+                            <td className="py-3 px-4 text-right">
+                              {vehicle.trip_count > 0 ? (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => handleViewVehicleTrips(vehicle)}
+                                >
+                                  ดูทริป
+                                </Button>
+                              ) : (
+                                <span className="text-slate-400 dark:text-slate-600 text-sm">
+                                  -
+                                </span>
+                              )}
+                            </td>
                           </tr>
                         ))}
                     </tbody>
@@ -363,6 +445,141 @@ export const DailySummaryView: React.FC<DailySummaryViewProps> = ({ isDark = fal
             </Card>
           )}
         </>
+      )}
+
+      {/* Vehicle Trips Detail Modal */}
+      {selectedVehicle && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <Card className="max-w-4xl w-full max-h-[80vh] overflow-hidden flex flex-col">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-700">
+              <div>
+                <h3 className="text-lg font-semibold text-slate-900 dark:text-white flex items-center gap-2">
+                  <Route className="w-5 h-5" />
+                  รายละเอียดทริปของรถ {selectedVehicle.vehicle_plate}
+                </h3>
+                <p className="text-sm text-slate-500 dark:text-slate-400">
+                  {formatDate(selectedDate)}
+                </p>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setSelectedVehicle(null);
+                  setVehicleTrips([]);
+                  setTripsError(null);
+                }}
+              >
+                ปิด
+              </Button>
+            </div>
+
+            <div className="flex-1 overflow-auto px-6 py-4">
+              {loadingTrips ? (
+                <div className="flex items-center justify-center py-8 text-slate-500 dark:text-slate-400 gap-2">
+                  <RefreshCw size={18} className="animate-spin" />
+                  <span>กำลังโหลดรายละเอียดทริป...</span>
+                </div>
+              ) : tripsError ? (
+                <div className="text-sm text-red-500 dark:text-red-400 py-4">
+                  {tripsError}
+                </div>
+              ) : vehicleTrips.length === 0 ? (
+                <div className="text-center py-8 text-slate-500 dark:text-slate-400">
+                  <Route className="mx-auto mb-4 text-slate-400 dark:text-slate-600" size={32} />
+                  <p>ไม่มีทริปของรถคันนี้ในวันที่เลือก</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60">
+                        <th className="text-left py-2 px-3 text-slate-700 dark:text-slate-300 font-medium">
+                          เวลาออก
+                        </th>
+                        <th className="text-left py-2 px-3 text-slate-700 dark:text-slate-300 font-medium">
+                          เวลากลับ
+                        </th>
+                        <th className="text-right py-2 px-3 text-slate-700 dark:text-slate-300 font-medium">
+                          เลขไมล์ออก
+                        </th>
+                        <th className="text-right py-2 px-3 text-slate-700 dark:text-slate-300 font-medium">
+                          เลขไมล์กลับ
+                        </th>
+                        <th className="text-right py-2 px-3 text-slate-700 dark:text-slate-300 font-medium">
+                          ระยะทาง (กม.)
+                        </th>
+                        <th className="text-left py-2 px-3 text-slate-700 dark:text-slate-300 font-medium">
+                          คนขับ
+                        </th>
+                        <th className="text-left py-2 px-3 text-slate-700 dark:text-slate-300 font-medium">
+                          ปลายทาง / เส้นทาง
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {vehicleTrips.map((trip) => {
+                        const checkoutDate = trip.checkout_time ? new Date(trip.checkout_time) : null;
+                        const checkinDate = trip.checkin_time ? new Date(trip.checkin_time) : null;
+                        const odometerStart = trip.odometer_start || 0;
+                        const odometerEnd = trip.odometer_end || 0;
+                        const distance =
+                          odometerStart && odometerEnd && odometerEnd > odometerStart
+                            ? odometerEnd - odometerStart
+                            : null;
+
+                        return (
+                          <tr
+                            key={trip.id}
+                            className="border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/60"
+                          >
+                            <td className="py-2 px-3 text-slate-800 dark:text-slate-100 whitespace-nowrap">
+                              {checkoutDate
+                                ? checkoutDate.toLocaleTimeString('th-TH', {
+                                    hour: '2-digit',
+                                    minute: '2-digit',
+                                  })
+                                : '-'}
+                            </td>
+                            <td className="py-2 px-3 text-slate-800 dark:text-slate-100 whitespace-nowrap">
+                              {checkinDate
+                                ? checkinDate.toLocaleTimeString('th-TH', {
+                                    hour: '2-digit',
+                                    minute: '2-digit',
+                                  })
+                                : '-'}
+                            </td>
+                            <td className="py-2 px-3 text-right text-slate-800 dark:text-slate-100 whitespace-nowrap">
+                              {trip.odometer_start !== null && trip.odometer_start !== undefined
+                                ? trip.odometer_start.toLocaleString('th-TH')
+                                : '-'}
+                            </td>
+                            <td className="py-2 px-3 text-right text-slate-800 dark:text-slate-100 whitespace-nowrap">
+                              {trip.odometer_end !== null && trip.odometer_end !== undefined
+                                ? trip.odometer_end.toLocaleString('th-TH')
+                                : '-'}
+                            </td>
+                            <td className="py-2 px-3 text-right text-slate-800 dark:text-slate-100 whitespace-nowrap">
+                              {distance !== null
+                                ? distance.toLocaleString('th-TH')
+                                : '-'}
+                            </td>
+                            <td className="py-2 px-3 text-slate-800 dark:text-slate-100 whitespace-nowrap">
+                              {trip.driver?.full_name || '-'}
+                            </td>
+                            <td className="py-2 px-3 text-slate-700 dark:text-slate-200">
+                              {trip.destination || trip.route || trip.notes || '-'}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </Card>
+        </div>
       )}
     </PageLayout>
   );
