@@ -7,7 +7,7 @@ import { pdfService } from './pdfService';
 type Ticket = Database['public']['Tables']['tickets']['Row'];
 type TicketInsert = Database['public']['Tables']['tickets']['Insert'];
 type TicketUpdate = Database['public']['Tables']['tickets']['Update'];
-type TicketWithRelations = Database['public']['Views']['tickets_with_relations']['Row'];
+export type TicketWithRelations = Database['public']['Views']['tickets_with_relations']['Row'];
 
 export interface TicketCost {
   id: string;
