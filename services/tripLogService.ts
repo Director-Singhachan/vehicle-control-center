@@ -128,9 +128,9 @@ export const tripLogService = {
         trip_id: result.id,
         vehicle_id: result.vehicle_id,
       });
-      await notificationService.createEvent({
-        channel: 'telegram',
-        event_type: 'trip_started',
+
+      const baseEvent = {
+        event_type: 'trip_started' as const,
         title: 'รถถูกนำออกใช้งาน',
         message,
         payload: {
@@ -139,7 +139,25 @@ export const tripLogService = {
           odometer_start: result.odometer_start,
           checkout_time: result.checkout_time,
         },
-      }, user.id);
+      };
+
+      // Telegram (กลุ่มกลาง)
+      await notificationService.createEvent(
+        {
+          channel: 'telegram',
+          ...baseEvent,
+        },
+        user.id,
+      );
+
+      // LINE (กลุ่มกลาง)
+      await notificationService.createEvent(
+        {
+          channel: 'line',
+          ...baseEvent,
+        },
+        user.id,
+      );
     } catch (notifyError) {
       console.error(
         '[tripLogService] Failed to create notification event for trip_started:',
@@ -292,9 +310,9 @@ export const tripLogService = {
         trip_id: result.id,
         vehicle_id: result.vehicle_id,
       });
-      await notificationService.createEvent({
-        channel: 'telegram',
-        event_type: 'trip_finished',
+
+      const baseEvent = {
+        event_type: 'trip_finished' as const,
         title: 'รถกลับจากการใช้งาน',
         message,
         payload: {
@@ -305,7 +323,25 @@ export const tripLogService = {
           checkout_time: trip.checkout_time,
           checkin_time: result.checkin_time,
         },
-      }, user.id);
+      };
+
+      // Telegram (กลุ่มกลาง)
+      await notificationService.createEvent(
+        {
+          channel: 'telegram',
+          ...baseEvent,
+        },
+        user.id,
+      );
+
+      // LINE (กลุ่มกลาง)
+      await notificationService.createEvent(
+        {
+          channel: 'line',
+          ...baseEvent,
+        },
+        user.id,
+      );
     } catch (notifyError) {
       console.error('[tripLogService] Failed to create notification event for trip_finished:', notifyError);
       // ไม่ throw ต่อ เพื่อไม่ให้กระทบการบันทึกทริป
