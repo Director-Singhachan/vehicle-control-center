@@ -225,18 +225,20 @@ export const ticketService = {
         `📊 สถานะ: ${data.status}`,
       ].filter(Boolean);
 
-      await notificationService.createEvent({
-        channel: 'line',
-        event_type: 'ticket_created',
-        title: `แจ้งซ่อมใหม่: ${vehiclePlate}`,
-        message: messageLines.join('\n'),
-        payload: {
-          ticket_id: data.id,
-          ticket_number: data.ticket_number,
-          status: data.status,
-          vehicle_id: data.vehicle_id,
-        },
-      });
+      // ไม่ส่ง ticket_created ไป LINE เพื่อหลีกเลี่ยงการส่งซ้ำกับ ticket_pdf_for_approval
+      // ส่งแค่ "ใบแจ้งซ่อมรอการอนุมัติ" เท่านั้น (จะส่งในส่วน ticket_pdf_for_approval)
+      // await notificationService.createEvent({
+      //   channel: 'line',
+      //   event_type: 'ticket_created',
+      //   title: `แจ้งซ่อมใหม่: ${vehiclePlate}`,
+      //   message: messageLines.join('\n'),
+      //   payload: {
+      //     ticket_id: data.id,
+      //     ticket_number: data.ticket_number,
+      //     status: data.status,
+      //     vehicle_id: data.vehicle_id,
+      //   },
+      // });
     } catch (notifyError) {
       console.error('[ticketService] Failed to create notification event for ticket_created:', notifyError);
       // ไม่ต้อง throw ต่อ เพื่อไม่ให้กระทบการสร้างตั๋ว
@@ -285,28 +287,43 @@ export const ticketService = {
             estimated_cost: (fullTicket as any)?.estimated_cost || null,
           });
 
-          // Send PDF notification to inspector
+          // Send PDF notification to inspector (both Telegram and LINE)
+          const notificationPayload = {
+            ticket_id: data.id,
+            ticket_number: fullTicket?.ticket_number || null,
+            approval_level: 1,
+            approval_role: 'inspector',
+          };
+          const notificationMessage = `📋 [ใบแจ้งซ่อมรอการอนุมัติ]\n\n` +
+            `👤 ระดับ: Level 1 (ผู้ตรวจสอบ)\n` +
+            `🎫 Ticket: #${fullTicket?.ticket_number || ticketWithRelations.id}\n` +
+            `🚗 ทะเบียนรถ: ${ticketWithRelations.vehicle_plate || '-'}\n` +
+            `👤 ผู้แจ้ง: ${ticketWithRelations.reporter_name || '-'}\n` +
+            `🔧 อาการ: ${ticketWithRelations.repair_type || '-'}\n` +
+            `🚨 ความเร่งด่วน: ${ticketWithRelations.urgency || 'medium'}\n\n` +
+            `กรุณาตรวจสอบและอนุมัติผ่านระบบ`;
+
+          // Send to Telegram
           await notificationService.createEvent({
-            channel: 'telegram', // Use telegram for PDF (better file support)
+            channel: 'telegram',
             event_type: 'ticket_pdf_for_approval',
             title: `📋 ใบแจ้งซ่อมรอการอนุมัติ - Level 1 (ผู้ตรวจสอบ)`,
-            message: `📋 [ใบแจ้งซ่อมรอการอนุมัติ]\n\n` +
-              `👤 ระดับ: Level 1 (ผู้ตรวจสอบ)\n` +
-              `🎫 Ticket: #${fullTicket?.ticket_number || ticketWithRelations.id}\n` +
-              `🚗 ทะเบียนรถ: ${ticketWithRelations.vehicle_plate || '-'}\n` +
-              `👤 ผู้แจ้ง: ${ticketWithRelations.reporter_name || '-'}\n` +
-              `🔧 อาการ: ${ticketWithRelations.repair_type || '-'}\n` +
-              `🚨 ความเร่งด่วน: ${ticketWithRelations.urgency || 'medium'}\n\n` +
-              `กรุณาตรวจสอบและอนุมัติผ่านระบบ`,
-            payload: {
-              ticket_id: data.id,
-              ticket_number: fullTicket?.ticket_number || null,
-              approval_level: 1,
-              approval_role: 'inspector',
-            },
+            message: notificationMessage,
+            payload: notificationPayload,
             pdf_data: pdfBase64,
             target_user_id: inspectorId,
-          }, data.reporter_id); // Use reporter's user_id for the event
+          }, data.reporter_id);
+
+          // Send to LINE (if user has LINE enabled)
+          await notificationService.createEvent({
+            channel: 'line',
+            event_type: 'ticket_pdf_for_approval',
+            title: `📋 ใบแจ้งซ่อมรอการอนุมัติ - Level 1 (ผู้ตรวจสอบ)`,
+            message: notificationMessage,
+            payload: notificationPayload,
+            pdf_data: pdfBase64,
+            target_user_id: inspectorId,
+          }, data.reporter_id);
         }
       }
     } catch (pdfError) {
@@ -630,33 +647,73 @@ export const ticketService = {
             estimated_cost: (fullTicket as any)?.estimated_cost || null,
           });
 
-          // Send PDF notification to next approver
+          // อัปโหลด PDF ไปยัง Storage ครั้งเดียว (เพื่อใช้ร่วมกันทั้ง Telegram และ LINE)
+          const pdfBuffer = Uint8Array.from(atob(pdfBase64), c => c.charCodeAt(0));
+          const timestamp = Date.now();
+          const storageFileName = `ticket-pdfs/${ticketWithRelations.id}/approval_${nextRole}_${timestamp}.pdf`;
+          
+          const { data: uploadData, error: uploadError } = await supabase.storage
+            .from('ticket-attachments')
+            .upload(storageFileName, pdfBuffer, {
+              contentType: 'application/pdf',
+              upsert: false,
+            });
+
+          let pdfUrl: string | null = null;
+          if (!uploadError && uploadData) {
+            // Get public URL
+            const { data: { publicUrl } } = supabase.storage
+              .from('ticket-attachments')
+              .getPublicUrl(storageFileName);
+            pdfUrl = publicUrl;
+          } else {
+            console.error('[ticketService] Error uploading PDF to Storage:', uploadError);
+            // Fallback: ใช้ pdf_data แทน (notification-worker จะอัปโหลดเอง)
+          }
+
+          // Send PDF notification to next approver (both Telegram and LINE)
           const levelLabels: Record<number, string> = {
             2: 'Level 2 (ผู้จัดการ)',
             3: 'Level 3 (ผู้บริหาร)',
           };
 
+          const nextApproverPayload = {
+            ticket_id: ticketWithRelations.id,
+            ticket_number: fullTicket?.ticket_number || null,
+            approval_level: nextLevel,
+            approval_role: nextRole,
+            previous_level: level,
+            ...(pdfUrl ? { pdf_url: pdfUrl } : {}), // เพิ่ม pdf_url ถ้าอัปโหลดสำเร็จ
+          };
+          const nextApproverMessage = `📋 [ใบแจ้งซ่อมรอการอนุมัติ]\n\n` +
+            `👤 ระดับ: ${levelLabels[nextLevel]}\n` +
+            `🎫 Ticket: #${fullTicket?.ticket_number || ticketWithRelations.id}\n` +
+            `🚗 ทะเบียนรถ: ${ticketWithRelations.vehicle_plate || '-'}\n` +
+            `👤 ผู้แจ้ง: ${ticketWithRelations.reporter_name || '-'}\n` +
+            `🔧 อาการ: ${ticketWithRelations.repair_type || '-'}\n` +
+            `🚨 ความเร่งด่วน: ${ticketWithRelations.urgency || 'medium'}\n` +
+            `✅ สถานะปัจจุบัน: อนุมัติ Level ${level} แล้ว\n\n` +
+            `กรุณาตรวจสอบและอนุมัติผ่านระบบ`;
+
+          // Send to Telegram (ใช้ pdf_url ถ้ามี, ไม่งั้นใช้ pdf_data)
           await notificationService.createEvent({
             channel: 'telegram',
             event_type: 'ticket_pdf_for_approval',
             title: `📋 ใบแจ้งซ่อมรอการอนุมัติ - ${levelLabels[nextLevel]}`,
-            message: `📋 [ใบแจ้งซ่อมรอการอนุมัติ]\n\n` +
-              `👤 ระดับ: ${levelLabels[nextLevel]}\n` +
-              `🎫 Ticket: #${fullTicket?.ticket_number || ticketWithRelations.id}\n` +
-              `🚗 ทะเบียนรถ: ${ticketWithRelations.vehicle_plate || '-'}\n` +
-              `👤 ผู้แจ้ง: ${ticketWithRelations.reporter_name || '-'}\n` +
-              `🔧 อาการ: ${ticketWithRelations.repair_type || '-'}\n` +
-              `🚨 ความเร่งด่วน: ${ticketWithRelations.urgency || 'medium'}\n` +
-              `✅ สถานะปัจจุบัน: อนุมัติ Level ${level} แล้ว\n\n` +
-              `กรุณาตรวจสอบและอนุมัติผ่านระบบ`,
-            payload: {
-              ticket_id: ticketWithRelations.id,
-              ticket_number: fullTicket?.ticket_number || null,
-              approval_level: nextLevel,
-              approval_role: nextRole,
-              previous_level: level,
-            },
-            pdf_data: pdfBase64,
+            message: nextApproverMessage,
+            payload: nextApproverPayload,
+            ...(pdfUrl ? {} : { pdf_data: pdfBase64 }), // ใช้ pdf_data เฉพาะเมื่อไม่มี pdf_url
+            target_user_id: nextApproverId,
+          }, userId);
+
+          // Send to LINE (ใช้ pdf_url ถ้ามี, ไม่งั้นใช้ pdf_data)
+          await notificationService.createEvent({
+            channel: 'line',
+            event_type: 'ticket_pdf_for_approval',
+            title: `📋 ใบแจ้งซ่อมรอการอนุมัติ - ${levelLabels[nextLevel]}`,
+            message: nextApproverMessage,
+            payload: nextApproverPayload,
+            ...(pdfUrl ? {} : { pdf_data: pdfBase64 }), // ใช้ pdf_data เฉพาะเมื่อไม่มี pdf_url
             target_user_id: nextApproverId,
           }, userId);
         }

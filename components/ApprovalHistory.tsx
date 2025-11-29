@@ -78,6 +78,16 @@ export const ApprovalHistory: React.FC<ApprovalHistoryProps> = ({
     if (sortedApprovals.length === 0) {
       return '⏳ รอผู้ตรวจสอบอนุมัติ (Level 1)';
     }
+    
+    // ตรวจสอบว่ามีการปฏิเสธหรือไม่
+    const rejectedApproval = sortedApprovals.find(a => a.action === 'rejected');
+    if (rejectedApproval) {
+      const levelLabel = rejectedApproval.level === 1 ? 'ผู้ตรวจสอบ' :
+                        rejectedApproval.level === 2 ? 'ผู้จัดการ' :
+                        rejectedApproval.level === 3 ? 'ผู้บริหาร' : `Level ${rejectedApproval.level}`;
+      return `❌ ${levelLabel}ปฏิเสธแล้ว`;
+    }
+    
     if (sortedApprovals.length === 1) {
       return '✅ ผู้ตรวจสอบอนุมัติแล้ว → ⏳ รอผู้จัดการอนุมัติ (Level 2)';
     }
@@ -103,13 +113,17 @@ export const ApprovalHistory: React.FC<ApprovalHistoryProps> = ({
           const approval = sortedApprovals.find(a => a.level === level);
           const levelInfo = getLevelLabel(level);
           const isCompleted = !!approval;
+          const isRejected = approval?.action === 'rejected';
+          const isApproved = approval?.action === 'approved';
           const isWaiting = !isCompleted && sortedApprovals.some(a => (a.level || 0) < level);
 
           return (
             <div
               key={level}
               className={`flex items-start gap-4 p-4 rounded-lg border ${
-                isCompleted
+                isRejected
+                  ? 'bg-red-50 dark:bg-red-900/10 border-red-200 dark:border-red-800'
+                  : isApproved
                   ? 'bg-green-50 dark:bg-green-900/10 border-green-200 dark:border-green-800'
                   : isWaiting
                   ? 'bg-yellow-50 dark:bg-yellow-900/10 border-yellow-200 dark:border-yellow-800'
@@ -118,9 +132,15 @@ export const ApprovalHistory: React.FC<ApprovalHistoryProps> = ({
             >
               {/* Level Indicator */}
               <div className={`flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center ${
-                isCompleted ? levelInfo.bg : 'bg-slate-200 dark:bg-slate-700'
+                isRejected 
+                  ? 'bg-red-100 dark:bg-red-900/20'
+                  : isApproved 
+                  ? levelInfo.bg 
+                  : 'bg-slate-200 dark:bg-slate-700'
               }`}>
-                {isCompleted ? (
+                {isRejected ? (
+                  <XCircle className="w-6 h-6 text-red-600 dark:text-red-400" />
+                ) : isApproved ? (
                   <CheckCircle className={`w-6 h-6 ${levelInfo.color}`} />
                 ) : (
                   <Clock className="w-6 h-6 text-slate-400 dark:text-slate-500" />
@@ -134,7 +154,12 @@ export const ApprovalHistory: React.FC<ApprovalHistoryProps> = ({
                     <span className={`text-sm font-semibold ${levelInfo.color}`}>
                       Level {level}: {levelInfo.label}
                     </span>
-                    {isCompleted && (
+                    {isRejected && (
+                      <span className="text-xs bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200 px-2 py-0.5 rounded-full">
+                        ❌ ปฏิเสธ
+                      </span>
+                    )}
+                    {isApproved && (
                       <span className="text-xs bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 px-2 py-0.5 rounded-full">
                         ✅ อนุมัติแล้ว
                       </span>
@@ -152,7 +177,7 @@ export const ApprovalHistory: React.FC<ApprovalHistoryProps> = ({
                   </div>
                 </div>
 
-                {isCompleted ? (
+                {isRejected || isApproved ? (
                   <>
                     <div className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400 mb-1">
                       {approval.approver?.avatar_url ? (
@@ -186,7 +211,7 @@ export const ApprovalHistory: React.FC<ApprovalHistoryProps> = ({
                       <span>{approval.approver?.full_name || `User ID: ${approval.approver_id?.substring(0, 8)}...`}</span>
                     </div>
                     <p className="text-xs text-slate-500 dark:text-slate-500">
-                      อนุมัติเมื่อ: {new Date(approval.created_at).toLocaleString('th-TH', {
+                      {isRejected ? 'ปฏิเสธเมื่อ' : 'อนุมัติเมื่อ'}: {new Date(approval.created_at).toLocaleString('th-TH', {
                         year: 'numeric',
                         month: 'long',
                         day: 'numeric',

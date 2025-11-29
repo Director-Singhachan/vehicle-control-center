@@ -223,7 +223,7 @@ Deno.serve(async (req) => {
               await sendLineMessagingApiTextMessage(
                 channelAccessToken,
                 userSetting.line_user_id,
-                `${event.title}\n\n${event.message}`
+                event.message // ใช้แค่ message เท่านั้น (ไม่รวม title)
               );
               sentCount++;
               console.log(`[notification-worker] Successfully sent to user ${userSetting.user_id}`);
@@ -443,7 +443,7 @@ async function sendLineNotification(event: any, settings: any) {
     return;
   }
 
-  await sendLineMessagingApiTextMessage(channelAccessToken, lineUserId, `${event.title}\n\n${event.message}`);
+  await sendLineMessagingApiTextMessage(channelAccessToken, lineUserId, event.message); // ใช้แค่ message เท่านั้น (ไม่รวม title)
 }
 
 // Send LINE notification directly to a given token (global group)
@@ -462,31 +462,105 @@ async function sendLineMessagingApiNotification(event: any, settings: any) {
     return;
   }
 
-  const message = `${event.title}\n\n${event.message}`;
+  // ใช้แค่ message เท่านั้น (ไม่รวม title เพื่อหลีกเลี่ยงการซ้ำ)
+  const message = event.message;
 
-  // ถ้ามี PDF data ให้ส่ง PDF พร้อมปุ่ม
-  if (event.pdf_data && event.payload?.ticket_id && event.payload?.approval_role) {
+  // ถ้ามี PDF data หรือ PDF URL ให้ส่ง PDF พร้อมปุ่ม
+  if ((event.pdf_data || event.payload?.pdf_url) && event.payload?.ticket_id && event.payload?.approval_role) {
     try {
-      // Convert base64 to binary
-      const pdfBuffer = Uint8Array.from(atob(event.pdf_data), c => c.charCodeAt(0));
-      
-      // LINE Messaging API ไม่รองรับการส่ง PDF โดยตรงใน push message
-      // แต่สามารถส่งไฟล์ได้ผ่าน Content API โดยอัปโหลดไฟล์ก่อน แล้วส่ง content URL
-      // หรือใช้วิธีส่งข้อความพร้อมลิงก์ไปยัง PDF ที่เก็บไว้ใน Supabase Storage
-      
       const ticketId = event.payload.ticket_id;
+      const ticketNumber = event.payload.ticket_number || `#${ticketId}`;
       const role = event.payload.approval_role;
       
-      // วิธีที่ 1: ส่งข้อความพร้อมปุ่ม (แนะนำ - เพราะ LINE ไม่รองรับ PDF โดยตรง)
-      // วิธีที่ 2: อัปโหลด PDF ไปยัง LINE Content API แล้วส่งเป็นไฟล์ (ต้องใช้ LINE Content API)
+      let publicUrl: string | null = null;
       
-      // ใช้วิธีที่ 1: ส่งข้อความพร้อมปุ่ม
+      // ถ้ามี pdf_url อยู่แล้ว (จาก line-webhook ที่ส่ง PDF ไปหาผู้อนุมัติถัดไป)
+      if (event.payload.pdf_url) {
+        publicUrl = event.payload.pdf_url;
+        console.log(`[notification-worker] Using existing PDF URL: ${publicUrl}`);
+      } else if (event.pdf_data) {
+        // Convert base64 to binary
+        const pdfBuffer = Uint8Array.from(atob(event.pdf_data), c => c.charCodeAt(0));
+        
+        // อัปโหลด PDF ไปยัง Supabase Storage
+        const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+        const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+        const supabase = createClient(supabaseUrl, supabaseServiceKey);
+        
+        const timestamp = Date.now();
+        const storageFileName = `ticket-pdfs/${ticketId}/approval_${role}_${timestamp}.pdf`;
+        
+        const { data: uploadData, error: uploadError } = await supabase.storage
+          .from('ticket-attachments')
+          .upload(storageFileName, pdfBuffer, {
+            contentType: 'application/pdf',
+            upsert: false,
+          });
+
+        if (uploadError) {
+          console.error('[notification-worker] Error uploading PDF to Supabase Storage:', uploadError);
+          // Fallback: send text message without PDF link
+          const messages = [
+            {
+              type: 'text',
+              text: message + '\n\n📄 กรุณาส่งไฟล์ PDF ที่เซ็นแล้วกลับมา\nหรือกดปุ่ม "ไม่อนุมัติ" ด้านล่าง',
+              quickReply: {
+                items: [
+                  {
+                    type: 'action',
+                    action: {
+                      type: 'postback',
+                      label: '❌ ไม่อนุมัติ',
+                      data: `reject:ticket:${ticketId}:${role}`,
+                      displayText: 'ไม่อนุมัติตั๋วนี้',
+                    },
+                  },
+                ],
+              },
+            },
+          ];
+          
+          await fetch('https://api.line.me/v2/bot/message/push', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${channelAccessToken}`,
+            },
+            body: JSON.stringify({
+              to: lineUserId,
+              messages: messages,
+            }),
+          });
+          return;
+        }
+
+        // Get public URL
+        const { data: { publicUrl: uploadedUrl } } = supabase.storage
+          .from('ticket-attachments')
+          .getPublicUrl(storageFileName);
+        
+        publicUrl = uploadedUrl;
+      }
+
+      if (!publicUrl) {
+        throw new Error('No PDF URL available');
+      }
+
+      // ส่งข้อความพร้อมปุ่ม (ไม่ใส่ลิงค์ PDF ในข้อความ - ใช้แค่ปุ่ม)
       const messages = [
         {
           type: 'text',
-          text: message + '\n\n📄 กรุณาส่งไฟล์ PDF ที่เซ็นแล้วกลับมา\nหรือกดปุ่ม "ไม่อนุมัติ" ด้านล่าง',
+          text: message + `\n\nกรุณาเซ็น PDF แล้วส่งกลับมาพร้อมระบุเลขที่ตั๋ว:\n"Ticket ${ticketNumber}" หรือ "เลขที่ ${ticketNumber}"\n\nหรือกดปุ่ม "ไม่อนุมัติ" ด้านล่าง`,
           quickReply: {
             items: [
+              {
+                type: 'action',
+                action: {
+                  type: 'uri',
+                  label: `📥 Ticket #${ticketNumber}`, // ใช้เลขที่ตั๋วแทนชื่อยาว
+                  uri: publicUrl,
+                },
+              },
               {
                 type: 'action',
                 action: {
@@ -518,7 +592,7 @@ async function sendLineMessagingApiNotification(event: any, settings: any) {
         throw new Error(`LINE Messaging API error: ${response.status} - ${errorText}`);
       }
 
-      console.log(`[notification-worker] Sent approval request to LINE for event ${event.id} (user: ${lineUserId})`);
+      console.log(`[notification-worker] Sent approval request with PDF link to LINE for event ${event.id} (user: ${lineUserId})`);
     } catch (error) {
       console.error('[notification-worker] Error sending approval request to LINE:', error);
       // Fallback: send text message only

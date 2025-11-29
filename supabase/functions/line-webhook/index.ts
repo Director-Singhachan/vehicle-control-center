@@ -5,9 +5,8 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
-// Store pending PDFs temporarily (will be lost on function restart)
-// In production, should use database or cache
-let pendingPdfs: Map<string, { buffer: ArrayBuffer; userId: string; profile: any }> | undefined;
+// NOTE: We now use Supabase Storage + notification_settings table to store pending PDFs
+// instead of in-memory Maps. This ensures data persists across function restarts.
 
 // NOTE:
 // - ใช้กับ LINE Messaging API (ไม่ใช่ LINE Notify)
@@ -275,12 +274,264 @@ Deno.serve(async (req) => {
             continue;
           }
 
-          // เก็บ PDF ไว้ชั่วคราว (ใช้ Map - จะหายเมื่อ function restart แต่พอใช้ได้)
-          // ใน production ควรใช้ database หรือ cache
-          if (!pendingPdfs) {
-            pendingPdfs = new Map<string, { buffer: ArrayBuffer; userId: string; profile: any }>();
+          // ตรวจสอบว่ามี ticket number ที่รออยู่หรือไม่ (กรณีส่งข้อความมาก่อน)
+          // ใช้ database แทน in-memory Map
+          const { data: pendingTicketData } = await supabase
+            .from('notification_settings')
+            .select('line_pending_ticket_number')
+            .eq('line_user_id', lineUserId || '')
+            .maybeSingle();
+
+          const pendingTicketNumber = (pendingTicketData as any)?.line_pending_ticket_number;
+
+          if (pendingTicketNumber) {
+            // มี ticket number รออยู่ → ประมวลผลทันที
+            console.log(`[line-webhook] Found pending ticket number: ${pendingTicketNumber}, processing PDF immediately`);
+            
+            // ลบ ticket number ที่รออยู่
+            await supabase
+              .from('notification_settings')
+              .update({ line_pending_ticket_number: null })
+              .eq('line_user_id', lineUserId || '');
+
+            // ประมวลผล PDF + Ticket Number ทันที
+            // หา ticket
+            const { data: tickets } = await supabase
+              .from('tickets')
+              .select('id, ticket_number, status')
+              .eq('ticket_number', pendingTicketNumber)
+              .limit(1);
+
+            if (!tickets || tickets.length === 0) {
+              const payload = {
+                replyToken: event.replyToken,
+                messages: [{
+                  type: 'text',
+                  text: `❌ ไม่พบตั๋วหมายเลข ${pendingTicketNumber}\n\nกรุณาตรวจสอบเลขที่ตั๋วอีกครั้ง`,
+                }],
+              };
+              await fetch('https://api.line.me/v2/bot/message/reply', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  Authorization: `Bearer ${channelAccessToken}`,
+                },
+                body: JSON.stringify(payload),
+              });
+              continue;
+            }
+
+            const ticket = tickets[0];
+
+            // Upload PDF to Supabase Storage (ย้ายจาก pending-pdfs ไป signed-tickets)
+            const timestamp = Date.now();
+            const storageFileName = `signed-tickets/${ticket.id}/${profile.role}_${timestamp}.pdf`;
+            
+            const { data: uploadData, error: uploadError } = await supabase.storage
+              .from('ticket-attachments')
+              .upload(storageFileName, fileBuffer, {
+                contentType: 'application/pdf',
+                upsert: false,
+              });
+
+            if (uploadError) {
+              console.error('[line-webhook] Upload error:', uploadError);
+              const payload = {
+                replyToken: event.replyToken,
+                messages: [{
+                  type: 'text',
+                  text: '❌ เกิดข้อผิดพลาดในการอัปโหลดไฟล์',
+                }],
+              };
+              await fetch('https://api.line.me/v2/bot/message/reply', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  Authorization: `Bearer ${channelAccessToken}`,
+                },
+                body: JSON.stringify(payload),
+              });
+              continue;
+            }
+
+            // Get public URL
+            const { data: { publicUrl } } = supabase.storage
+              .from('ticket-attachments')
+              .getPublicUrl(storageFileName);
+
+            // Update ticket signature URL based on user role
+            const updateData: any = {};
+            const role = profile.role;
+
+            if (role === 'inspector') {
+              updateData.inspector_signature_url = publicUrl;
+              updateData.inspector_signed_at = new Date().toISOString();
+            } else if (role === 'manager') {
+              updateData.manager_signature_url = publicUrl;
+              updateData.manager_signed_at = new Date().toISOString();
+            } else if (role === 'executive') {
+              updateData.executive_signature_url = publicUrl;
+              updateData.executive_signed_at = new Date().toISOString();
+            } else {
+              const payload = {
+                replyToken: event.replyToken,
+                messages: [{
+                  type: 'text',
+                  text: '❌ บทบาทของคุณไม่สามารถอัปเดตลายเซ็นได้',
+                }],
+              };
+              await fetch('https://api.line.me/v2/bot/message/reply', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  Authorization: `Bearer ${channelAccessToken}`,
+                },
+                body: JSON.stringify(payload),
+              });
+              continue;
+            }
+
+            // Update ticket
+            const { error: updateError } = await supabase
+              .from('tickets')
+              .update(updateData)
+              .eq('id', ticket.id);
+
+            if (updateError) {
+              console.error('[line-webhook] Update error:', updateError);
+              const payload = {
+                replyToken: event.replyToken,
+                messages: [{
+                  type: 'text',
+                  text: '❌ เกิดข้อผิดพลาดในการอัปเดตตั๋ว',
+                }],
+              };
+              await fetch('https://api.line.me/v2/bot/message/reply', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  Authorization: `Bearer ${channelAccessToken}`,
+                },
+                body: JSON.stringify(payload),
+              });
+              continue;
+            }
+
+            // Auto-approve
+            const level =
+              role === 'inspector' ? 1 :
+              role === 'manager' ? 2 :
+              role === 'executive' ? 3 : null;
+
+            if (level) {
+              // เช็คว่ามี approval record อยู่แล้วหรือยัง
+              const { data: existingApprovals } = await supabase
+                .from('ticket_approvals')
+                .select('*')
+                .eq('ticket_id', ticket.id)
+                .eq('approver_id', targetUserId)
+                .eq('level', level)
+                .eq('action', 'approved')
+                .limit(1);
+
+              if (!existingApprovals || existingApprovals.length === 0) {
+                const approvalData: any = {
+                  ticket_id: ticket.id,
+                  approver_id: targetUserId,
+                  role_at_approval: role,
+                  action: 'approved',
+                  comments: 'Approved via LINE (signed PDF upload)',
+                  level: level,
+                };
+
+                await supabase.from('ticket_approvals').insert(approvalData);
+              }
+
+              const nextStatus =
+                role === 'inspector' ? 'approved_inspector' :
+                role === 'manager' ? 'approved_manager' :
+                role === 'executive' ? 'ready_for_repair' :
+                null;
+
+              if (nextStatus) {
+                await supabase
+                  .from('tickets')
+                  .update({ status: nextStatus })
+                  .eq('id', ticket.id);
+              }
+            }
+
+            // Send success message
+            const roleLabelsForPdf: Record<string, string> = {
+              inspector: 'ผู้ตรวจสอบ',
+              manager: 'ผู้จัดการ',
+              executive: 'ผู้บริหาร',
+            };
+
+            const pdfSuccessPayload = {
+              replyToken: event.replyToken,
+              messages: [{
+                type: 'text',
+                text:
+                  `✅ อัปโหลด PDF ที่เซ็นแล้วสำเร็จ!\n\n` +
+                  `ตั๋วหมายเลข: ${ticket.ticket_number}\n` +
+                  `ผู้เซ็น: ${roleLabelsForPdf[role] || role}\n` +
+                  `วันที่: ${new Date().toLocaleString('th-TH')}\n\n` +
+                  `ระบบได้บันทึกลายเซ็นและอนุมัติอัตโนมัติแล้ว`,
+              }],
+            };
+            await fetch('https://api.line.me/v2/bot/message/reply', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${channelAccessToken}`,
+              },
+              body: JSON.stringify(pdfSuccessPayload),
+            });
+            continue;
           }
-          pendingPdfs.set(lineUserId || '', { buffer: fileBuffer, userId: targetUserId, profile });
+
+          // ไม่มี ticket number รออยู่ → อัปโหลด PDF ไปยัง Storage ทันทีเพื่อเก็บไว้
+          const timestamp = Date.now();
+          const tempStorageFileName = `pending-pdfs/${lineUserId || 'unknown'}/${timestamp}.pdf`;
+          
+          console.log(`[line-webhook] No pending ticket number, uploading PDF to storage: ${tempStorageFileName}`);
+          
+          const { data: uploadData, error: uploadError } = await supabase.storage
+            .from('ticket-attachments')
+            .upload(tempStorageFileName, fileBuffer, {
+              contentType: 'application/pdf',
+              upsert: false,
+            });
+
+          if (uploadError) {
+            console.error('[line-webhook] Error uploading PDF to storage:', uploadError);
+            const payload = {
+              replyToken: event.replyToken,
+              messages: [{
+                type: 'text',
+                text: '❌ เกิดข้อผิดพลาดในการอัปโหลดไฟล์ กรุณาลองใหม่อีกครั้ง',
+              }],
+            };
+            await fetch('https://api.line.me/v2/bot/message/reply', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${channelAccessToken}`,
+              },
+              body: JSON.stringify(payload),
+            });
+            continue;
+          }
+
+          // เก็บ metadata ไว้ใน notification_settings
+          await supabase
+            .from('notification_settings')
+            .update({
+              line_pending_pdf_path: tempStorageFileName,
+              line_pending_pdf_uploaded_at: new Date().toISOString(),
+            })
+            .eq('line_user_id', lineUserId || '');
 
           const payload = {
             replyToken: event.replyToken,
@@ -334,18 +585,19 @@ Deno.serve(async (req) => {
         const ticketNumber = ticketNumberMatch[1];
 
         try {
-          // ตรวจสอบว่ามี PDF ที่เก็บไว้หรือไม่
-          if (!pendingPdfs) {
-            pendingPdfs = new Map();
-          }
-          const pendingPdf = pendingPdfs.get(lineUserId);
+          // หา user จาก line_user_id
+          const { data: settings, error: settingsError } = await supabase
+            .from('notification_settings')
+            .select('user_id')
+            .eq('line_user_id', lineUserId || '')
+            .maybeSingle();
 
-          if (!pendingPdf) {
+          if (settingsError || !settings) {
             const payload = {
               replyToken: event.replyToken,
               messages: [{
                 type: 'text',
-                text: `📋 พบตั๋วหมายเลข ${ticketNumber}\n\nกรุณาส่งไฟล์ PDF ที่เซ็นแล้วกลับมาก่อน\nระบบจะอนุมัติอัตโนมัติตามบทบาทของคุณ`,
+                text: '❌ ไม่พบข้อมูลผู้ใช้ กรุณาผูกบัญชี LINE ด้วยคำสั่ง: bind your.email@company.com',
               }],
             };
             await fetch('https://api.line.me/v2/bot/message/reply', {
@@ -359,8 +611,113 @@ Deno.serve(async (req) => {
             continue;
           }
 
-          const { buffer: fileBuffer, userId: targetUserId, profile } = pendingPdf;
+          const targetUserId = settings.user_id;
 
+          // Get user profile to determine role
+          const { data: profile, error: profileError } = await supabase
+            .from('profiles')
+            .select('role, full_name')
+            .eq('id', targetUserId)
+            .single();
+
+          if (profileError || !profile) {
+            const payload = {
+              replyToken: event.replyToken,
+              messages: [{
+                type: 'text',
+                text: '❌ ไม่พบข้อมูลโปรไฟล์ผู้ใช้',
+              }],
+            };
+            await fetch('https://api.line.me/v2/bot/message/reply', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${channelAccessToken}`,
+              },
+              body: JSON.stringify(payload),
+            });
+            continue;
+          }
+
+          // ตรวจสอบว่ามี PDF ที่เก็บไว้ใน Storage หรือไม่
+          const { data: pdfSettings } = await supabase
+            .from('notification_settings')
+            .select('line_pending_pdf_path, line_pending_pdf_uploaded_at')
+            .eq('line_user_id', lineUserId || '')
+            .maybeSingle();
+
+          const pendingPdfPath = (pdfSettings as any)?.line_pending_pdf_path;
+          const pdfUploadedAt = (pdfSettings as any)?.line_pending_pdf_uploaded_at;
+
+          console.log(`[line-webhook] Looking for PDF, ticketNumber: ${ticketNumber}, lineUserId: ${lineUserId}`);
+          console.log(`[line-webhook] Pending PDF path: ${pendingPdfPath}`);
+
+          if (!pendingPdfPath) {
+            // ไม่มี PDF → เก็บ ticket number ไว้รอ PDF
+            await supabase
+              .from('notification_settings')
+              .update({ line_pending_ticket_number: ticketNumber })
+              .eq('line_user_id', lineUserId || '');
+
+            const payload = {
+              replyToken: event.replyToken,
+              messages: [{
+                type: 'text',
+                text: `📋 พบตั๋วหมายเลข ${ticketNumber}\n\nกรุณาส่งไฟล์ PDF ที่เซ็นแล้วกลับมา\nระบบจะอนุมัติอัตโนมัติตามบทบาทของคุณ`,
+              }],
+            };
+            await fetch('https://api.line.me/v2/bot/message/reply', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${channelAccessToken}`,
+              },
+              body: JSON.stringify(payload),
+            });
+            continue;
+          }
+
+          // มี PDF → ดาวน์โหลดจาก Storage และประมวลผลทันที
+          console.log(`[line-webhook] ✅ Found pending PDF at: ${pendingPdfPath}, downloading...`);
+          
+          const { data: pdfFile, error: downloadError } = await supabase.storage
+            .from('ticket-attachments')
+            .download(pendingPdfPath);
+
+          if (downloadError || !pdfFile) {
+            console.error('[line-webhook] Error downloading PDF from storage:', downloadError);
+            const payload = {
+              replyToken: event.replyToken,
+              messages: [{
+                type: 'text',
+                text: '❌ เกิดข้อผิดพลาดในการดาวน์โหลดไฟล์ PDF กรุณาส่งไฟล์ใหม่',
+              }],
+            };
+            await fetch('https://api.line.me/v2/bot/message/reply', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${channelAccessToken}`,
+              },
+              body: JSON.stringify(payload),
+            });
+            // ลบ pending PDF path
+            await supabase
+              .from('notification_settings')
+              .update({ line_pending_pdf_path: null, line_pending_pdf_uploaded_at: null })
+              .eq('line_user_id', lineUserId || '');
+            continue;
+          }
+
+          const fileBuffer = await pdfFile.arrayBuffer();
+          
+          // ลบ pending PDF path
+          await supabase
+            .from('notification_settings')
+            .update({ line_pending_pdf_path: null, line_pending_pdf_uploaded_at: null })
+            .eq('line_user_id', lineUserId || '');
+
+          // ใช้ profile จาก database (เพราะอาจมาจากการส่ง PDF ก่อน)
           // หา ticket
           const { data: tickets } = await supabase
             .from('tickets')
@@ -369,7 +726,6 @@ Deno.serve(async (req) => {
             .limit(1);
 
           if (!tickets || tickets.length === 0) {
-            pendingPdfs.delete(lineUserId);
             const payload = {
               replyToken: event.replyToken,
               messages: [{
@@ -390,10 +746,11 @@ Deno.serve(async (req) => {
 
           const ticket = tickets[0];
 
-          // Upload PDF to Supabase Storage
+          // Copy PDF จาก pending-pdfs ไป signed-tickets (ย้ายไฟล์)
           const timestamp = Date.now();
           const storageFileName = `signed-tickets/${ticket.id}/${profile.role}_${timestamp}.pdf`;
           
+          // อัปโหลด PDF ใหม่ไปยัง signed-tickets (ใช้ fileBuffer ที่ดาวน์โหลดมา)
           const { data: uploadData, error: uploadError } = await supabase.storage
             .from('ticket-attachments')
             .upload(storageFileName, fileBuffer, {
@@ -421,6 +778,16 @@ Deno.serve(async (req) => {
             continue;
           }
 
+          // ลบไฟล์ PDF ชั่วคราว (pending-pdfs)
+          try {
+            await supabase.storage
+              .from('ticket-attachments')
+              .remove([pendingPdfPath]);
+          } catch (removeError) {
+            console.warn('[line-webhook] Failed to remove pending PDF:', removeError);
+            // ไม่ต้อง fail ทั้งหมด แค่ log warning
+          }
+
           // Get public URL
           const { data: { publicUrl } } = supabase.storage
             .from('ticket-attachments')
@@ -440,7 +807,6 @@ Deno.serve(async (req) => {
             updateData.executive_signature_url = publicUrl;
             updateData.executive_signed_at = new Date().toISOString();
           } else {
-            pendingPdfs.delete(lineUserId);
             const payload = {
               replyToken: event.replyToken,
               messages: [{
@@ -467,7 +833,6 @@ Deno.serve(async (req) => {
 
           if (updateError) {
             console.error('[line-webhook] Update error:', updateError);
-            pendingPdfs.delete(lineUserId);
             const payload = {
               replyToken: event.replyToken,
               messages: [{
@@ -498,7 +863,7 @@ Deno.serve(async (req) => {
               .from('ticket_approvals')
               .select('*')
               .eq('ticket_id', ticket.id)
-              .eq('approver_id', targetUserId)
+                .eq('approver_id', targetUserId)
               .eq('level', level)
               .eq('action', 'approved')
               .limit(1);
@@ -530,8 +895,112 @@ Deno.serve(async (req) => {
             }
           }
 
-          // ลบ PDF ที่เก็บไว้
-          pendingPdfs.delete(lineUserId);
+          // ส่ง PDF ไปหาผู้อนุมัติถัดไป (ถ้าอนุมัติแล้ว)
+          if (level) {
+            try {
+              let nextApproverId: string | null = null;
+              let nextLevel: number | null = null;
+              let nextRole: string | null = null;
+
+              // Determine next approver based on current approval level
+              if (level === 1) {
+                // Level 1 approved → send to manager (Level 2)
+                const { data: managers } = await supabase
+                  .from('profiles')
+                  .select('id')
+                  .eq('role', 'manager')
+                  .limit(1);
+                if (managers && managers.length > 0) {
+                  nextApproverId = managers[0].id;
+                  nextLevel = 2;
+                  nextRole = 'manager';
+                }
+              } else if (level === 2) {
+                // Level 2 approved → send to executive (Level 3)
+                const { data: executives } = await supabase
+                  .from('profiles')
+                  .select('id')
+                  .eq('role', 'executive')
+                  .limit(1);
+                if (executives && executives.length > 0) {
+                  nextApproverId = executives[0].id;
+                  nextLevel = 3;
+                  nextRole = 'executive';
+                }
+              }
+              // Level 3 is final, no next approver
+
+              if (nextApproverId && nextLevel && nextRole) {
+                // Get ticket data for notification
+                const { data: ticketFullData } = await supabase
+                  .from('tickets_with_relations')
+                  .select('*')
+                  .eq('id', ticket.id)
+                  .maybeSingle();
+
+                if (ticketFullData) {
+                  const levelLabels: Record<number, string> = {
+                    2: 'Level 2 (ผู้จัดการ)',
+                    3: 'Level 3 (ผู้บริหาร)',
+                  };
+
+                  // สร้าง notification event สำหรับผู้อนุมัติถัดไป
+                  const { error: notifyError } = await supabase
+                    .from('notification_events')
+                    .insert({
+                      user_id: targetUserId, // User who approved (for event tracking)
+                      channel: 'line',
+                      event_type: 'ticket_pdf_for_approval',
+                      title: `📋 ใบแจ้งซ่อมรอการอนุมัติ - ${levelLabels[nextLevel]}`,
+                      message: `📋 [ใบแจ้งซ่อมรอการอนุมัติ]\n\n` +
+                        `👤 ระดับ: ${levelLabels[nextLevel]}\n` +
+                        `🎫 Ticket: #${ticket.ticket_number}\n` +
+                        `🚗 ทะเบียนรถ: ${ticketFullData.vehicle_plate || '-'}\n` +
+                        `👤 ผู้แจ้ง: ${ticketFullData.reporter_name || '-'}\n` +
+                        `🔧 อาการ: ${ticketFullData.repair_type || '-'}\n` +
+                        `🚨 ความเร่งด่วน: ${ticketFullData.urgency || 'medium'}\n` +
+                        `✅ สถานะปัจจุบัน: อนุมัติ Level ${level} แล้ว\n\n` +
+                        `📄 ดาวน์โหลด PDF: ${publicUrl}\n\n` +
+                        `กรุณาเซ็น PDF แล้วส่งกลับมาพร้อมระบุเลขที่ตั๋ว`,
+                      payload: {
+                        ticket_id: ticket.id,
+                        ticket_number: ticket.ticket_number,
+                        approval_level: nextLevel,
+                        approval_role: nextRole,
+                        previous_level: level,
+                        pdf_url: publicUrl, // เก็บ URL ของ PDF ที่อัปโหลดแล้ว
+                      },
+                      target_user_id: nextApproverId,
+                      status: 'pending',
+                      // ไม่ใส่ pdf_data - ใช้ pdf_url แทน
+                    });
+
+                  if (notifyError) {
+                    console.error('[line-webhook] Error creating notification event for next approver:', notifyError);
+                  } else {
+                    console.log(`[line-webhook] Created notification event for next approver (${nextRole})`);
+                    // Trigger notification-worker to process immediately
+                    try {
+                      await fetch(`${supabaseUrl}/functions/v1/notification-worker`, {
+                        method: 'POST',
+                        headers: {
+                          'Authorization': `Bearer ${serviceKey}`,
+                          'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ source: 'line-webhook', event_type: 'ticket_pdf_for_approval' }),
+                      });
+                    } catch (invokeError) {
+                      console.warn('[line-webhook] Failed to trigger notification-worker:', invokeError);
+                      // Continue anyway - cron job will pick it up
+                    }
+                  }
+                }
+              }
+            } catch (nextApproverError) {
+              console.error('[line-webhook] Error sending to next approver:', nextApproverError);
+              // Don't fail the whole approval - just log the error
+            }
+          }
 
           // Send success message
           const roleLabels: Record<string, string> = {
@@ -560,11 +1029,159 @@ Deno.serve(async (req) => {
             },
             body: JSON.stringify(payload),
           });
+
+          // ลบ PDF ที่เก็บไว้
+          // PDF ถูกเก็บไว้ใน Storage แล้ว ไม่ต้องใช้ in-memory Map
+          // (โค้ดเก่าถูกลบแล้ว ใช้ database แทน)
+
+          // ส่ง PDF ไปหาผู้อนุมัติถัดไป (ถ้าอนุมัติแล้ว)
+          if (level) {
+            try {
+              let nextApproverId: string | null = null;
+              let nextLevel: number | null = null;
+              let nextRole: string | null = null;
+
+              // Determine next approver based on current approval level
+              if (level === 1) {
+                // Level 1 approved → send to manager (Level 2)
+                const { data: managers } = await supabase
+                  .from('profiles')
+                  .select('id')
+                  .eq('role', 'manager')
+                  .limit(1);
+                if (managers && managers.length > 0) {
+                  nextApproverId = managers[0].id;
+                  nextLevel = 2;
+                  nextRole = 'manager';
+                }
+              } else if (level === 2) {
+                // Level 2 approved → send to executive (Level 3)
+                const { data: executives } = await supabase
+                  .from('profiles')
+                  .select('id')
+                  .eq('role', 'executive')
+                  .limit(1);
+                if (executives && executives.length > 0) {
+                  nextApproverId = executives[0].id;
+                  nextLevel = 3;
+                  nextRole = 'executive';
+                }
+              }
+              // Level 3 is final, no next approver
+
+              if (nextApproverId && nextLevel && nextRole) {
+                // Get ticket data for notification
+                const { data: ticketFullData } = await supabase
+                  .from('tickets_with_relations')
+                  .select('*')
+                  .eq('id', ticket.id)
+                  .maybeSingle();
+
+                if (ticketFullData) {
+                  const levelLabels: Record<number, string> = {
+                    2: 'Level 2 (ผู้จัดการ)',
+                    3: 'Level 3 (ผู้บริหาร)',
+                  };
+
+                  // สร้าง notification event สำหรับผู้อนุมัติถัดไป
+                  // ใช้ PDF ที่อัปโหลดแล้ว (publicUrl) เป็น pdf_data (base64) หรือส่งลิงก์แทน
+                  const { error: notifyError } = await supabase
+                    .from('notification_events')
+                    .insert({
+                      user_id: targetUserId, // User who approved (for event tracking)
+                      channel: 'line',
+                      event_type: 'ticket_pdf_for_approval',
+                      title: `📋 ใบแจ้งซ่อมรอการอนุมัติ - ${levelLabels[nextLevel]}`,
+                      message: `📋 [ใบแจ้งซ่อมรอการอนุมัติ]\n\n` +
+                        `👤 ระดับ: ${levelLabels[nextLevel]}\n` +
+                        `🎫 Ticket: #${ticket.ticket_number}\n` +
+                        `🚗 ทะเบียนรถ: ${ticketFullData.vehicle_plate || '-'}\n` +
+                        `👤 ผู้แจ้ง: ${ticketFullData.reporter_name || '-'}\n` +
+                        `🔧 อาการ: ${ticketFullData.repair_type || '-'}\n` +
+                        `🚨 ความเร่งด่วน: ${ticketFullData.urgency || 'medium'}\n` +
+                        `✅ สถานะปัจจุบัน: อนุมัติ Level ${level} แล้ว\n\n` +
+                        `📄 ดาวน์โหลด PDF: ${publicUrl}\n\n` +
+                        `กรุณาเซ็น PDF แล้วส่งกลับมาพร้อมระบุเลขที่ตั๋ว`,
+                      payload: {
+                        ticket_id: ticket.id,
+                        ticket_number: ticket.ticket_number,
+                        approval_level: nextLevel,
+                        approval_role: nextRole,
+                        previous_level: level,
+                        pdf_url: publicUrl, // เก็บ URL ของ PDF ที่อัปโหลดแล้ว
+                      },
+                      target_user_id: nextApproverId,
+                      status: 'pending',
+                      // ไม่ใส่ pdf_data - ใช้ pdf_url แทน
+                    });
+
+                  if (notifyError) {
+                    console.error('[line-webhook] Error creating notification event for next approver:', notifyError);
+                  } else {
+                    console.log(`[line-webhook] Created notification event for next approver (${nextRole})`);
+                    // Trigger notification-worker to process immediately
+                    try {
+                      await fetch(`${supabaseUrl}/functions/v1/notification-worker`, {
+                        method: 'POST',
+                        headers: {
+                          'Authorization': `Bearer ${serviceKey}`,
+                          'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ source: 'line-webhook', event_type: 'ticket_pdf_for_approval' }),
+                      });
+                    } catch (invokeError) {
+                      console.warn('[line-webhook] Failed to trigger notification-worker:', invokeError);
+                      // Continue anyway - cron job will pick it up
+                    }
+                  }
+                }
+              }
+            } catch (nextApproverError) {
+              console.error('[line-webhook] Error sending to next approver:', nextApproverError);
+              // Don't fail the whole approval - just log the error
+            }
+          }
+
+          // Send success message
+          const roleLabelsForFinal: Record<string, string> = {
+            inspector: 'ผู้ตรวจสอบ',
+            manager: 'ผู้จัดการ',
+            executive: 'ผู้บริหาร',
+          };
+
+          const finalSuccessPayload = {
+            replyToken: event.replyToken,
+            messages: [{
+              type: 'text',
+              text:
+                `✅ อัปโหลด PDF ที่เซ็นแล้วสำเร็จ!\n\n` +
+                `ตั๋วหมายเลข: ${ticket.ticket_number}\n` +
+                `ผู้เซ็น: ${roleLabelsForFinal[role] || role}\n` +
+                `วันที่: ${new Date().toLocaleString('th-TH')}\n\n` +
+                `ระบบได้บันทึกลายเซ็นและอนุมัติอัตโนมัติแล้ว`,
+            }],
+          };
+          await fetch('https://api.line.me/v2/bot/message/reply', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${channelAccessToken}`,
+            },
+            body: JSON.stringify(finalSuccessPayload),
+          });
           continue;
         } catch (ticketError) {
           console.error('[line-webhook] Error processing ticket number:', ticketError);
-          if (lineUserId && pendingPdfs) {
-            pendingPdfs.delete(lineUserId);
+          // ลบ pending PDF path จาก database ถ้ามี
+          if (lineUserId) {
+            await supabase
+              .from('notification_settings')
+              .update({ 
+                line_pending_pdf_path: null, 
+                line_pending_pdf_uploaded_at: null,
+                line_pending_ticket_number: null 
+              })
+              .eq('line_user_id', lineUserId || '');
           }
           continue;
         }
