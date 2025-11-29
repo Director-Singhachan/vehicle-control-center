@@ -128,9 +128,8 @@ export const fuelService = {
         record.notes ? `📝 หมายเหตุ: ${record.notes}` : undefined,
       ].filter(Boolean);
 
-      await notificationService.createEvent({
-        channel: 'telegram', // Send fuel refill notifications via Telegram
-        event_type: 'fuel_refill',
+      const baseEvent = {
+        event_type: 'fuel_refill' as const,
         title: `เติมน้ำมัน: ${vehicle?.plate}`,
         message: messageLines.join('\n'),
         payload: {
@@ -139,6 +138,18 @@ export const fuelService = {
           liters: record.liters,
           total_cost: totalCost,
         },
+      };
+
+      // Telegram (กลุ่มกลาง)
+      await notificationService.createEvent({
+        channel: 'telegram', // Send fuel refill notifications via Telegram
+        ...baseEvent,
+      });
+
+      // LINE (กลุ่มกลาง)
+      await notificationService.createEvent({
+        channel: 'line',
+        ...baseEvent,
       });
 
     } catch (notifyError) {

@@ -19,6 +19,7 @@ export interface NotificationSettings {
   enable_line: boolean;
   enable_telegram: boolean;
   line_token: string | null;
+  line_user_id?: string | null;
   telegram_bot_token: string | null;
   telegram_chat_id: string | null;
   notify_maintenance_due: boolean;
