@@ -26,6 +26,10 @@ export interface NotificationSettings {
   notify_long_checkout: boolean;
   notify_ticket_created: boolean;
   notify_ticket_closed: boolean;
+  notify_fuel_refill: boolean;
+  notify_trip_started: boolean;
+  notify_trip_finished: boolean;
+  notify_ticket_approval: boolean;
 }
 
 export interface NotificationEventInput {
@@ -74,6 +78,10 @@ export const notificationService = {
       notify_long_checkout: true,
       notify_ticket_created: true,
       notify_ticket_closed: true,
+      notify_fuel_refill: true,
+      notify_trip_started: true,
+      notify_trip_finished: true,
+      notify_ticket_approval: true,
     };
 
     const { data: created, error: insertError } = await supabase

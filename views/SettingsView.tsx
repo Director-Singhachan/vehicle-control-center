@@ -15,6 +15,7 @@ export const SettingsView: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const [isEditing, setIsEditing] = useState(false); // Lock/unlock state
 
   const hasPermission =
     isAdmin ||
@@ -48,7 +49,7 @@ export const SettingsView: React.FC = () => {
   }, [isDriver, hasPermission]);
 
   const handleToggle = (key: keyof NotificationSettings) => {
-    if (!settings) return;
+    if (!settings || !isEditing) return; // Prevent changes when locked
     setSettings({
       ...settings,
       [key]: !settings[key] as any,
@@ -56,15 +57,38 @@ export const SettingsView: React.FC = () => {
   };
 
   const handleChange = (key: keyof NotificationSettings, value: string) => {
-    if (!settings) return;
+    if (!settings || !isEditing) return; // Prevent changes when locked
     setSettings({
       ...settings,
       [key]: value,
     });
   };
 
+  const handleStartEditing = () => {
+    setIsEditing(true);
+    setError(null);
+    setSuccess(false);
+  };
+
+  const handleCancelEditing = async () => {
+    // Reload original settings
+    try {
+      setLoading(true);
+      const result = await notificationService.getMySettings();
+      setSettings(result);
+      setIsEditing(false);
+      setError(null);
+      setSuccess(false);
+    } catch (err: any) {
+      console.error('[SettingsView] Error reloading settings:', err);
+      setError(err.message || 'ไม่สามารถโหลดการตั้งค่าได้');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleSave = async () => {
-    if (!settings) return;
+    if (!settings || !isEditing) return;
 
     setSaving(true);
     setError(null);
@@ -75,6 +99,7 @@ export const SettingsView: React.FC = () => {
       const updated = await notificationService.updateMySettings(updatePayload);
       setSettings(updated);
       setSuccess(true);
+      setIsEditing(false); // Lock after saving
       setTimeout(() => setSuccess(false), 3000);
     } catch (err: any) {
       console.error('[SettingsView] Error saving notification settings:', err);
@@ -156,9 +181,10 @@ export const SettingsView: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => handleToggle('enable_line')}
+                    disabled={!isEditing}
                     className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
                       settings.enable_line ? 'bg-enterprise-600' : 'bg-slate-300 dark:bg-slate-600'
-                    }`}
+                    } ${!isEditing ? 'opacity-50 cursor-not-allowed' : ''}`}
                   >
                     <span
                       className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
@@ -176,7 +202,7 @@ export const SettingsView: React.FC = () => {
                     value={settings.line_token || ''}
                     onChange={(e) => handleChange('line_token', e.target.value)}
                     helperText="สร้าง token ได้จากหน้า LINE Notify แล้วนำมาวางที่นี่"
-                    disabled={!settings.enable_line}
+                    disabled={!settings.enable_line || !isEditing}
                   />
                 </div>
               </div>
@@ -196,9 +222,10 @@ export const SettingsView: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => handleToggle('enable_telegram')}
+                    disabled={!isEditing}
                     className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
                       settings.enable_telegram ? 'bg-enterprise-600' : 'bg-slate-300 dark:bg-slate-600'
-                    }`}
+                    } ${!isEditing ? 'opacity-50 cursor-not-allowed' : ''}`}
                   >
                     <span
                       className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
@@ -216,7 +243,7 @@ export const SettingsView: React.FC = () => {
                     value={settings.telegram_bot_token || ''}
                     onChange={(e) => handleChange('telegram_bot_token', e.target.value)}
                     helperText="เว้นว่างไว้ = ใช้ Token จากระบบ (แนะนำ) | ใส่ Token = ใช้ Token ของตัวเอง (ถ้าต้องการใช้ Bot ต่างกัน)"
-                    disabled={!settings.enable_telegram}
+                    disabled={!settings.enable_telegram || !isEditing}
                   />
                   <Input
                     label="Telegram Chat ID (จำเป็น)"
@@ -224,7 +251,7 @@ export const SettingsView: React.FC = () => {
                     value={settings.telegram_chat_id || ''}
                     onChange={(e) => handleChange('telegram_chat_id', e.target.value)}
                     helperText="จำเป็นต้องใส่ - ใช้ @userinfobot หรือ @getidsbot เพื่อหา Chat ID ของคุณ"
-                    disabled={!settings.enable_telegram}
+                    disabled={!settings.enable_telegram || !isEditing}
                   />
                 </div>
               </div>
@@ -249,6 +276,7 @@ export const SettingsView: React.FC = () => {
                   className="mt-1 h-4 w-4 rounded border-slate-300 text-enterprise-600 focus:ring-enterprise-500"
                   checked={settings.notify_maintenance_due}
                   onChange={() => handleToggle('notify_maintenance_due')}
+                  disabled={!isEditing}
                 />
                 <div>
                   <p className="text-sm font-medium text-slate-900 dark:text-slate-100">
@@ -266,6 +294,7 @@ export const SettingsView: React.FC = () => {
                   className="mt-1 h-4 w-4 rounded border-slate-300 text-enterprise-600 focus:ring-enterprise-500"
                   checked={settings.notify_long_checkout}
                   onChange={() => handleToggle('notify_long_checkout')}
+                  disabled={!isEditing}
                 />
                 <div>
                   <p className="text-sm font-medium text-slate-900 dark:text-slate-100">
@@ -283,6 +312,7 @@ export const SettingsView: React.FC = () => {
                   className="mt-1 h-4 w-4 rounded border-slate-300 text-enterprise-600 focus:ring-enterprise-500"
                   checked={settings.notify_ticket_created}
                   onChange={() => handleToggle('notify_ticket_created')}
+                  disabled={!isEditing}
                 />
                 <div>
                   <p className="text-sm font-medium text-slate-900 dark:text-slate-100">
@@ -300,6 +330,7 @@ export const SettingsView: React.FC = () => {
                   className="mt-1 h-4 w-4 rounded border-slate-300 text-enterprise-600 focus:ring-enterprise-500"
                   checked={settings.notify_ticket_closed}
                   onChange={() => handleToggle('notify_ticket_closed')}
+                  disabled={!isEditing}
                 />
                 <div>
                   <p className="text-sm font-medium text-slate-900 dark:text-slate-100">
@@ -307,6 +338,84 @@ export const SettingsView: React.FC = () => {
                   </p>
                   <p className="text-xs text-slate-500 dark:text-slate-400">
                     ใช้แจ้งให้ผู้เกี่ยวข้องทราบว่าการซ่อมเสร็จแล้ว พร้อมใช้งาน
+                  </p>
+                </div>
+              </label>
+
+              <label className="flex items-start gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="mt-1 h-4 w-4 rounded border-slate-300 text-enterprise-600 focus:ring-enterprise-500"
+                  checked={settings.notify_ticket_approval ?? true}
+                  onChange={() => handleToggle('notify_ticket_approval')}
+                  disabled={!isEditing}
+                />
+                <div>
+                  <p className="text-sm font-medium text-slate-900 dark:text-slate-100">
+                    แจ้งเตือนเมื่อมีการอนุมัติ/ปฏิเสธตั๋ว
+                  </p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    ส่งแจ้งเตือนเมื่อมีการอนุมัติหรือปฏิเสธตั๋วซ่อม (สำหรับผู้ตรวจสอบ/ผู้จัดการ)
+                  </p>
+                </div>
+              </label>
+
+              <div className="border-t border-slate-200 dark:border-slate-700 pt-3 mt-3">
+                <p className="text-xs font-semibold text-slate-600 dark:text-slate-400 mb-2 uppercase tracking-wide">
+                  การแจ้งเตือนการใช้งาน (สามารถปิดได้)
+                </p>
+              </div>
+
+              <label className="flex items-start gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="mt-1 h-4 w-4 rounded border-slate-300 text-enterprise-600 focus:ring-enterprise-500"
+                  checked={settings.notify_fuel_refill ?? true}
+                  onChange={() => handleToggle('notify_fuel_refill')}
+                  disabled={!isEditing}
+                />
+                <div>
+                  <p className="text-sm font-medium text-slate-900 dark:text-slate-100">
+                    แจ้งเตือนเมื่อมีการเติมน้ำมัน
+                  </p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    ส่งแจ้งเตือนทุกครั้งที่มีการเติมน้ำมัน (ผู้บริหาร/ผู้จัดการสามารถปิดได้)
+                  </p>
+                </div>
+              </label>
+
+              <label className="flex items-start gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="mt-1 h-4 w-4 rounded border-slate-300 text-enterprise-600 focus:ring-enterprise-500"
+                  checked={settings.notify_trip_started ?? true}
+                  onChange={() => handleToggle('notify_trip_started')}
+                  disabled={!isEditing}
+                />
+                <div>
+                  <p className="text-sm font-medium text-slate-900 dark:text-slate-100">
+                    แจ้งเตือนเมื่อเริ่มใช้งานรถ
+                  </p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    ส่งแจ้งเตือนเมื่อมีการ Check-out รถ (ผู้บริหาร/ผู้จัดการสามารถปิดได้)
+                  </p>
+                </div>
+              </label>
+
+              <label className="flex items-start gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="mt-1 h-4 w-4 rounded border-slate-300 text-enterprise-600 focus:ring-enterprise-500"
+                  checked={settings.notify_trip_finished ?? true}
+                  onChange={() => handleToggle('notify_trip_finished')}
+                  disabled={!isEditing}
+                />
+                <div>
+                  <p className="text-sm font-medium text-slate-900 dark:text-slate-100">
+                    แจ้งเตือนเมื่อเสร็จสิ้นการใช้งานรถ
+                  </p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    ส่งแจ้งเตือนเมื่อมีการ Check-in รถ (ผู้บริหาร/ผู้จัดการสามารถปิดได้)
                   </p>
                 </div>
               </label>
@@ -321,10 +430,32 @@ export const SettingsView: React.FC = () => {
           {success && !error && (
             <p className="text-green-600 dark:text-green-400">บันทึกการตั้งค่าการแจ้งเตือนเรียบร้อยแล้ว</p>
           )}
+          {!isEditing && (
+            <p className="text-slate-500 dark:text-slate-400 text-xs">
+              การตั้งค่าถูกล็อคอยู่ กดปุ่ม "ตั้งค่า" เพื่อแก้ไข
+            </p>
+          )}
         </div>
-        <Button onClick={handleSave} isLoading={saving} disabled={!settings}>
-          บันทึกการตั้งค่า
-        </Button>
+        <div className="flex items-center gap-3">
+          {isEditing && (
+            <Button
+              onClick={handleCancelEditing}
+              variant="outline"
+              disabled={saving || loading}
+            >
+              ยกเลิก
+            </Button>
+          )}
+          {!isEditing ? (
+            <Button onClick={handleStartEditing} disabled={!settings || loading}>
+              ตั้งค่า
+            </Button>
+          ) : (
+            <Button onClick={handleSave} isLoading={saving} disabled={!settings}>
+              บันทึกการตั้งค่า
+            </Button>
+          )}
+        </div>
       </div>
     </PageLayout>
   );
