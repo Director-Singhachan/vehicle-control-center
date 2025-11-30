@@ -12,6 +12,9 @@ import {
   User,
   FileText,
   Package,
+  ChevronDown,
+  ChevronRight,
+  Eye,
 } from 'lucide-react';
 import { PageLayout } from '../components/layout/PageLayout';
 import { Card } from '../components/ui/Card';
@@ -66,13 +69,14 @@ ChartJS.register(
 
 interface ReportsViewProps {
   isDark?: boolean;
+  onNavigateToStoreDetail?: (storeId: string) => void;
 }
 
 type ReportTab = 'fuel' | 'trip' | 'maintenance' | 'cost' | 'usage' | 'fuel-consumption' | 'delivery';
 
 type FilterPeriod = 'current-month' | 'last-3-months' | 'last-6-months' | 'last-12-months' | 'this-year' | 'custom';
 
-export const ReportsView: React.FC<ReportsViewProps> = ({ isDark = false }) => {
+export const ReportsView: React.FC<ReportsViewProps> = ({ isDark = false, onNavigateToStoreDetail }) => {
   const [activeTab, setActiveTab] = useState<ReportTab>('fuel');
   const [months, setMonths] = useState(6);
   
@@ -1136,6 +1140,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ isDark = false }) => {
           startDate={startDate}
           endDate={endDate}
           isDark={isDark}
+          onNavigateToStoreDetail={onNavigateToStoreDetail}
         />
       )}
     </PageLayout>
@@ -1147,8 +1152,10 @@ const DeliveryReportsTab: React.FC<{
   startDate: Date;
   endDate: Date;
   isDark: boolean;
-}> = ({ startDate, endDate, isDark }) => {
+  onNavigateToStoreDetail?: (storeId: string) => void;
+}> = ({ startDate, endDate, isDark, onNavigateToStoreDetail }) => {
   const [activeSubTab, setActiveSubTab] = useState<'vehicle' | 'store' | 'product' | 'monthly'>('vehicle');
+  const [expandedStores, setExpandedStores] = useState<Set<string>>(new Set());
   
   const { data: vehicleData, loading: vehicleLoading } = useDeliverySummaryByVehicle(startDate, endDate);
   const { data: storeData, loading: storeLoading } = useDeliverySummaryByStore(startDate, endDate);
@@ -1368,16 +1375,91 @@ const DeliveryReportsTab: React.FC<{
                     </tr>
                   </thead>
                   <tbody>
-                    {storeData.map((store) => (
-                      <tr key={store.store_id} className="border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50">
-                        <td className="py-3 px-4 font-medium text-slate-900 dark:text-slate-100">{store.customer_code}</td>
-                        <td className="py-3 px-4 text-slate-900 dark:text-slate-100">{store.customer_name}</td>
-                        <td className="py-3 px-4 text-slate-600 dark:text-slate-400">{store.address || '-'}</td>
-                        <td className="py-3 px-4 text-right text-slate-900 dark:text-slate-100">{formatNumber(store.totalTrips)}</td>
-                        <td className="py-3 px-4 text-right text-slate-900 dark:text-slate-100">{formatNumber(store.totalItems)}</td>
-                        <td className="py-3 px-4 text-right font-medium text-enterprise-600 dark:text-enterprise-400">{formatNumber(store.totalQuantity)}</td>
-                      </tr>
-                    ))}
+                    {storeData.map((store) => {
+                      const isExpanded = expandedStores.has(store.store_id);
+                      const sortedProducts = [...(store.products || [])].sort((a, b) => b.totalQuantity - a.totalQuantity);
+                      
+                      return (
+                        <React.Fragment key={store.store_id}>
+                          <tr className="border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer" onClick={() => {
+                            const newExpanded = new Set(expandedStores);
+                            if (isExpanded) {
+                              newExpanded.delete(store.store_id);
+                            } else {
+                              newExpanded.add(store.store_id);
+                            }
+                            setExpandedStores(newExpanded);
+                          }}>
+                            <td className="py-3 px-4">
+                              <div className="flex items-center gap-2">
+                                {isExpanded ? (
+                                  <ChevronDown className="w-4 h-4 text-slate-500" />
+                                ) : (
+                                  <ChevronRight className="w-4 h-4 text-slate-500" />
+                                )}
+                                <span className="font-medium text-slate-900 dark:text-slate-100">{store.customer_code}</span>
+                              </div>
+                            </td>
+                            <td className="py-3 px-4 text-slate-900 dark:text-slate-100">{store.customer_name}</td>
+                            <td className="py-3 px-4 text-slate-600 dark:text-slate-400">{store.address || '-'}</td>
+                            <td className="py-3 px-4 text-right text-slate-900 dark:text-slate-100">{formatNumber(store.totalTrips)}</td>
+                            <td className="py-3 px-4 text-right text-slate-900 dark:text-slate-100">{formatNumber(store.totalItems)}</td>
+                            <td className="py-3 px-4">
+                              <div className="flex items-center justify-end gap-2">
+                                <span className="font-medium text-enterprise-600 dark:text-enterprise-400">{formatNumber(store.totalQuantity)}</span>
+                                {onNavigateToStoreDetail && (
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      onNavigateToStoreDetail(store.store_id);
+                                    }}
+                                    className="p-1.5 text-slate-500 hover:text-enterprise-600 dark:hover:text-enterprise-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded transition-colors"
+                                    title="ดูรายละเอียด"
+                                  >
+                                    <Eye className="w-4 h-4" />
+                                  </button>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                          {isExpanded && sortedProducts.length > 0 && (
+                            <tr>
+                              <td colSpan={6} className="py-4 px-4 bg-slate-50 dark:bg-slate-900/50">
+                                <div className="ml-6">
+                                  <h4 className="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-3">
+                                    รายละเอียดสินค้าที่ส่ง (เรียงตามจำนวนที่ส่ง)
+                                  </h4>
+                                  <div className="overflow-x-auto">
+                                    <table className="w-full text-sm">
+                                      <thead>
+                                        <tr className="border-b border-slate-200 dark:border-slate-700">
+                                          <th className="text-left py-2 px-3 text-xs font-semibold text-slate-600 dark:text-slate-400">รหัสสินค้า</th>
+                                          <th className="text-left py-2 px-3 text-xs font-semibold text-slate-600 dark:text-slate-400">ชื่อสินค้า</th>
+                                          <th className="text-left py-2 px-3 text-xs font-semibold text-slate-600 dark:text-slate-400">หน่วย</th>
+                                          <th className="text-right py-2 px-3 text-xs font-semibold text-slate-600 dark:text-slate-400">จำนวนรวม</th>
+                                          <th className="text-right py-2 px-3 text-xs font-semibold text-slate-600 dark:text-slate-400">จำนวนครั้ง</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody>
+                                        {sortedProducts.map((product) => (
+                                          <tr key={product.product_id} className="border-b border-slate-100 dark:border-slate-800">
+                                            <td className="py-2 px-3 font-medium text-slate-900 dark:text-slate-100">{product.product_code}</td>
+                                            <td className="py-2 px-3 text-slate-700 dark:text-slate-300">{product.product_name}</td>
+                                            <td className="py-2 px-3 text-slate-600 dark:text-slate-400">{product.unit}</td>
+                                            <td className="py-2 px-3 text-right font-medium text-enterprise-600 dark:text-enterprise-400">{formatNumber(product.totalQuantity)}</td>
+                                            <td className="py-2 px-3 text-right text-slate-600 dark:text-slate-400">{formatNumber(product.deliveryCount)}</td>
+                                          </tr>
+                                        ))}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </React.Fragment>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

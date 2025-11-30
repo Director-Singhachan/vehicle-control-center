@@ -2081,5 +2081,183 @@ export const reportsService = {
       throw error;
     }
   },
+
+  /**
+   * Get detailed delivery history for a specific store and product
+   * รายละเอียดการส่งสินค้าแต่ละครั้งของร้านและสินค้า
+   */
+  getProductDeliveryHistory: async (
+    storeId: string,
+    productId: string,
+    startDate?: Date,
+    endDate?: Date
+  ): Promise<Array<{
+    delivery_date: string;
+    trip_number: string;
+    trip_id: string;
+    quantity: number;
+    vehicle_plate: string | null;
+    driver_name: string | null;
+  }>> => {
+    try {
+      const { supabase } = await import('../lib/supabase');
+      
+      // Default to last 3 months if no date range provided
+      if (!startDate || !endDate) {
+        const now = new Date();
+        endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+        startDate = new Date(now.getFullYear(), now.getMonth() - 2, 1);
+      }
+
+      // Ensure dates are valid
+      if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+        throw new Error('Invalid date range provided');
+      }
+
+      // Format dates properly for Supabase (YYYY-MM-DD)
+      // Use local date to avoid timezone issues
+      const formatDateForQuery = (date: Date): string => {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+      };
+
+      const startDateStr = formatDateForQuery(startDate);
+      const endDateStr = formatDateForQuery(endDate);
+
+      console.log('[getProductDeliveryHistory] Query params:', {
+        storeId,
+        productId,
+        startDate: startDateStr,
+        endDate: endDateStr,
+        startDateObj: startDate,
+        endDateObj: endDate,
+      });
+
+      // Query completed delivery trips
+      let tripsQuery = supabase
+        .from('delivery_trips')
+        .select(`
+          id,
+          trip_number,
+          planned_date,
+          vehicle:vehicles!delivery_trips_vehicle_id_fkey(plate),
+          driver:profiles!delivery_trips_driver_id_fkey(full_name)
+        `)
+        .eq('status', 'completed')
+        .gte('planned_date', startDateStr)
+        .lte('planned_date', endDateStr);
+
+      const { data: trips, error: tripsError } = await tripsQuery;
+
+      if (tripsError) {
+        console.error('[reportsService] Error fetching trips:', {
+          error: tripsError,
+          message: tripsError.message,
+          details: tripsError.details,
+          hint: tripsError.hint,
+          code: tripsError.code,
+          query: {
+            storeId,
+            productId,
+            startDate: startDateStr,
+            endDate: endDateStr,
+          },
+        });
+        throw new Error(`Failed to fetch delivery trips: ${tripsError.message || 'Unknown error'}`);
+      }
+
+      if (!trips || trips.length === 0) {
+        console.log('[getProductDeliveryHistory] No trips found for date range:', {
+          startDate: startDateStr,
+          endDate: endDateStr,
+        });
+        return [];
+      }
+
+      const tripIds = trips.map((t: any) => t.id);
+      const tripMap = new Map(trips.map((t: any) => [t.id, t]));
+
+      // Get trip stores for this store
+      const { data: tripStores } = await supabase
+        .from('delivery_trip_stores')
+        .select('id, delivery_trip_id')
+        .in('delivery_trip_id', tripIds)
+        .eq('store_id', storeId);
+
+      if (!tripStores || tripStores.length === 0) {
+        return [];
+      }
+
+      // Get trip items for this product
+      const tripStoreIds = tripStores.map(ts => ts.id);
+      const { data: tripItems } = await supabase
+        .from('delivery_trip_items')
+        .select('delivery_trip_store_id, quantity')
+        .in('delivery_trip_store_id', tripStoreIds)
+        .eq('product_id', productId);
+
+      if (!tripItems || tripItems.length === 0) {
+        return [];
+      }
+
+      // Map items to trips
+      const result = tripItems.map(item => {
+        const tripStore = tripStores.find(ts => ts.id === item.delivery_trip_store_id);
+        if (!tripStore) {
+          console.warn('[getProductDeliveryHistory] Trip store not found for item:', item);
+          return null;
+        }
+        
+        const trip = tripMap.get(tripStore.delivery_trip_id) as any;
+        if (!trip) {
+          console.warn('[getProductDeliveryHistory] Trip not found for trip_id:', tripStore.delivery_trip_id);
+          return null;
+        }
+
+        const vehicle = trip.vehicle as any;
+        const driver = trip.driver as any;
+
+        return {
+          delivery_date: trip.planned_date,
+          trip_number: trip.trip_number,
+          trip_id: trip.id,
+          quantity: Number(item.quantity || 0),
+          vehicle_plate: vehicle?.plate || null,
+          driver_name: driver?.full_name || null,
+        };
+      }).filter((item): item is {
+        delivery_date: string;
+        trip_number: string;
+        trip_id: string;
+        quantity: number;
+        vehicle_plate: string | null;
+        driver_name: string | null;
+      } => item !== null);
+
+      // Sort by date descending (newest first)
+      const sorted = result.sort((a, b) => {
+        const dateCompare = b.delivery_date.localeCompare(a.delivery_date);
+        if (dateCompare !== 0) return dateCompare;
+        // If same date, sort by trip_number
+        return b.trip_number.localeCompare(a.trip_number);
+      });
+
+      console.log('[getProductDeliveryHistory] Result:', {
+        storeId,
+        productId,
+        totalItems: tripItems.length,
+        totalTrips: trips.length,
+        resultCount: sorted.length,
+        sample: sorted.slice(0, 3),
+      });
+
+      return sorted;
+    } catch (error) {
+      console.error('[reportsService] getProductDeliveryHistory error:', error);
+      throw error;
+    }
+  },
 };
 

@@ -42,6 +42,7 @@ import { SettingsView } from './views/SettingsView';
 import { DeliveryTripListView } from './views/DeliveryTripListView';
 import { DeliveryTripFormView } from './views/DeliveryTripFormView';
 import { DeliveryTripDetailView } from './views/DeliveryTripDetailView';
+import { StoreDeliveryDetailView } from './views/StoreDeliveryDetailView';
 import { ImportDataView } from './views/ImportDataView';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { useAuth, usePendingTickets } from './hooks';
@@ -132,6 +133,8 @@ const AppContent = () => {
   const [selectedTripId, setSelectedTripId] = useState<string | null>(null);
   const [deliveryTripView, setDeliveryTripView] = useState<'list' | 'form' | 'detail'>('list');
   const [selectedDeliveryTripId, setSelectedDeliveryTripId] = useState<string | null>(null);
+  const [storeDetailView, setStoreDetailView] = useState<'list' | 'detail'>('list');
+  const [selectedStoreId, setSelectedStoreId] = useState<string | null>(null);
   const [showNotifications, setShowNotifications] = useState(false);
   const [notificationItems, setNotificationItems] = useState<TicketWithRelations[]>([]);
   const [loadingNotifications, setLoadingNotifications] = useState(false);
@@ -943,7 +946,24 @@ const AppContent = () => {
           ) : activeTab === 'daily-summary' ? (
             <DailySummaryView isDark={isDark} />
           ) : activeTab === 'reports' ? (
-            <ReportsView isDark={isDark} />
+            storeDetailView === 'detail' && selectedStoreId ? (
+              <StoreDeliveryDetailView
+                storeId={selectedStoreId}
+                onBack={() => {
+                  setStoreDetailView('list');
+                  setSelectedStoreId(null);
+                }}
+                isDark={isDark}
+              />
+            ) : (
+              <ReportsView 
+                isDark={isDark}
+                onNavigateToStoreDetail={(storeId) => {
+                  setSelectedStoreId(storeId);
+                  setStoreDetailView('detail');
+                }}
+              />
+            )
           ) : activeTab === 'settings' ? (
             <SettingsView />
           ) : activeTab === 'import-data' ? (
