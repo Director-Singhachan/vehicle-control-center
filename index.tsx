@@ -18,7 +18,9 @@ import {
   CheckSquare,
   Route,
   Droplet,
-  Calendar
+  Calendar,
+  Package,
+  FileSpreadsheet
 } from 'lucide-react';
 import { DashboardView } from './views/DashboardView';
 import { ProfileView } from './views/ProfileView';
@@ -37,6 +39,10 @@ import { FuelLogListView } from './views/FuelLogListView';
 import { ReportsView } from './views/ReportsView';
 import { DailySummaryView } from './views/DailySummaryView';
 import { SettingsView } from './views/SettingsView';
+import { DeliveryTripListView } from './views/DeliveryTripListView';
+import { DeliveryTripFormView } from './views/DeliveryTripFormView';
+import { DeliveryTripDetailView } from './views/DeliveryTripDetailView';
+import { ImportDataView } from './views/ImportDataView';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { useAuth, usePendingTickets } from './hooks';
 import { ticketService, type TicketWithRelations } from './services/ticketService';
@@ -124,6 +130,8 @@ const AppContent = () => {
   const [fuelLogView, setFuelLogView] = useState<'list' | 'form'>('list');
   const [tripLogMode, setTripLogMode] = useState<'checkout' | 'checkin'>('checkout');
   const [selectedTripId, setSelectedTripId] = useState<string | null>(null);
+  const [deliveryTripView, setDeliveryTripView] = useState<'list' | 'form' | 'detail'>('list');
+  const [selectedDeliveryTripId, setSelectedDeliveryTripId] = useState<string | null>(null);
   const [showNotifications, setShowNotifications] = useState(false);
   const [notificationItems, setNotificationItems] = useState<TicketWithRelations[]>([]);
   const [loadingNotifications, setLoadingNotifications] = useState(false);
@@ -409,12 +417,34 @@ const AppContent = () => {
               isCollapsed={!isSidebarOpen}
             />
           )}
+          {!isDriver && (
+            <SidebarItem
+              icon={Package}
+              label={isSidebarOpen ? "ทริปส่งสินค้า" : ""}
+              active={activeTab === 'delivery-trips'}
+              onClick={() => {
+                setActiveTab('delivery-trips');
+                setDeliveryTripView('list');
+                setSelectedDeliveryTripId(null);
+              }}
+              isCollapsed={!isSidebarOpen}
+            />
+          )}
         </div>
 
         <div className="p-3 border-t border-slate-200 dark:border-slate-800/50 space-y-1">
           <SidebarItem icon={User} label={isSidebarOpen ? "โปรไฟล์" : ""} active={activeTab === 'profile'} onClick={() => setActiveTab('profile')} isCollapsed={!isSidebarOpen} />
           {(isAdmin || isManager) && (
             <SidebarItem icon={Shield} label={isSidebarOpen ? "ทดสอบ RLS" : ""} active={activeTab === 'rls-test'} onClick={() => setActiveTab('rls-test')} isCollapsed={!isSidebarOpen} />
+          )}
+          {!isDriver && (
+            <SidebarItem
+              icon={FileSpreadsheet}
+              label={isSidebarOpen ? "Import ข้อมูล" : ""}
+              active={activeTab === 'import-data'}
+              onClick={() => setActiveTab('import-data')}
+              isCollapsed={!isSidebarOpen}
+            />
           )}
           {/* ซ่อนเมนูตั้งค่าสำหรับพนักงานขับรถ เพื่อไม่ให้ไปตั้งค่า Telegram/LINE เอง */}
           {(!isDriver || isAdmin || isManager || isInspector || isExecutive) && (
@@ -922,6 +952,57 @@ const AppContent = () => {
             <ReportsView isDark={isDark} />
           ) : activeTab === 'settings' ? (
             <SettingsView />
+          ) : activeTab === 'import-data' ? (
+            <ImportDataView />
+          ) : activeTab === 'delivery-trips' ? (
+            (() => {
+              if (deliveryTripView === 'detail' && selectedDeliveryTripId) {
+                return (
+                  <DeliveryTripDetailView
+                    tripId={selectedDeliveryTripId}
+                    onEdit={(tripId) => {
+                      setSelectedDeliveryTripId(tripId);
+                      setDeliveryTripView('form');
+                    }}
+                    onBack={() => {
+                      setDeliveryTripView('list');
+                      setSelectedDeliveryTripId(null);
+                    }}
+                  />
+                );
+              } else if (deliveryTripView === 'form') {
+                return (
+                  <DeliveryTripFormView
+                    tripId={selectedDeliveryTripId || undefined}
+                    onSave={() => {
+                      setDeliveryTripView('list');
+                      setSelectedDeliveryTripId(null);
+                    }}
+                    onCancel={() => {
+                      if (selectedDeliveryTripId) {
+                        setDeliveryTripView('detail');
+                      } else {
+                        setDeliveryTripView('list');
+                        setSelectedDeliveryTripId(null);
+                      }
+                    }}
+                  />
+                );
+              } else {
+                return (
+                  <DeliveryTripListView
+                    onViewDetail={(tripId) => {
+                      setSelectedDeliveryTripId(tripId);
+                      setDeliveryTripView('detail');
+                    }}
+                    onCreate={() => {
+                      setSelectedDeliveryTripId(null);
+                      setDeliveryTripView('form');
+                    }}
+                  />
+                );
+              }
+            })()
           ) : (
             <div className="flex flex-col items-center justify-center h-[60vh] text-slate-400">
               <Wrench size={48} className="mb-4 opacity-50" />
