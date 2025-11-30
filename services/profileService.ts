@@ -170,5 +170,16 @@ export const profileService = {
 
     return updatedProfile;
   },
+
+  // Get all profiles (for driver selection, etc.)
+  getAll: async (): Promise<Profile[]> => {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .order('full_name', { ascending: true });
+
+    if (error) throw error;
+    return data || [];
+  },
 };
 

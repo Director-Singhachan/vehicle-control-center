@@ -491,5 +491,194 @@ export const pdfService = {
             console.error('Error generating PDF as Base64:', error);
             throw error;
         }
-    }
+    },
+
+    // Generate Delivery Trip PDF in A5 size
+    generateDeliveryTripPDFA5: async (
+        trip: any,
+        aggregatedProducts: any[]
+    ) => {
+        try {
+            console.log('[pdfService] generateDeliveryTripPDFA5 input:', trip);
+            
+            // Create new PDF document in A5 size (148 x 210 mm)
+            const doc = new jsPDF({
+                orientation: 'portrait',
+                unit: 'mm',
+                format: 'a5',
+            });
+
+            // Load Thai Font (Sarabun)
+            try {
+                const fontUrl = 'https://raw.githubusercontent.com/google/fonts/main/ofl/sarabun/Sarabun-Regular.ttf';
+                const response = await fetch(fontUrl);
+                const buffer = await response.arrayBuffer();
+                let binary = '';
+                const bytes = new Uint8Array(buffer);
+                const len = bytes.byteLength;
+                for (let i = 0; i < len; i++) {
+                    binary += String.fromCharCode(bytes[i]);
+                }
+                const base64Font = window.btoa(binary);
+                doc.addFileToVFS('Sarabun-Regular.ttf', base64Font);
+                doc.addFont('Sarabun-Regular.ttf', 'Sarabun', 'normal');
+                doc.setFont('Sarabun');
+            } catch (fontError) {
+                console.warn('[pdfService] Failed to load Thai font, using default:', fontError);
+            }
+
+            let yPos = 15;
+
+            // Header
+            doc.setFontSize(16);
+            doc.setFont('Sarabun', 'normal');
+            doc.text('ใบส่งสินค้า', 74, yPos, { align: 'center' });
+            yPos += 8;
+
+            // First row: Date (left) and Trip Number (right)
+            doc.setFontSize(11);
+            const plannedDate = new Date(trip.planned_date).toLocaleDateString('th-TH', {
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric',
+            });
+            doc.text(`วันที่: ${plannedDate}`, 10, yPos);
+            doc.text(`รหัสทริป: ${trip.trip_number || 'N/A'}`, 138, yPos, { align: 'right' });
+            yPos += 6;
+
+            // Second row: Vehicle (left) and Driver (right)
+            if (trip.vehicle) {
+                const vehicleText = `รถ: ${trip.vehicle.plate}${trip.vehicle.make && trip.vehicle.model ? ` (${trip.vehicle.make} ${trip.vehicle.model})` : ''}`;
+                doc.text(vehicleText, 10, yPos);
+            }
+            if (trip.driver) {
+                doc.text(`คนขับ: ${trip.driver.full_name}`, 138, yPos, { align: 'right' });
+            }
+            yPos += 6;
+
+            yPos += 3;
+
+            // Stores
+            if (trip.stores && trip.stores.length > 0) {
+                doc.setFontSize(14);
+                doc.text('ร้านค้า', 10, yPos);
+                yPos += 6;
+
+                doc.setFontSize(10);
+                trip.stores
+                    .sort((a: any, b: any) => a.sequence_order - b.sequence_order)
+                    .forEach((storeWithDetails: any, index: number) => {
+                        const store = storeWithDetails.store;
+                        if (!store) return;
+
+                        // Check if we need a new page
+                        if (yPos > 180) {
+                            doc.addPage();
+                            yPos = 15;
+                        }
+
+                        doc.setFontSize(11);
+                        doc.text(`${storeWithDetails.sequence_order}. ${store.customer_code} - ${store.customer_name}`, 10, yPos);
+                        yPos += 5;
+
+                        if (store.address) {
+                            doc.setFontSize(9);
+                            doc.text(`   ที่อยู่: ${store.address}`, 10, yPos);
+                            yPos += 4;
+                        }
+
+                        // Products for this store
+                        if (storeWithDetails.items && storeWithDetails.items.length > 0) {
+                            doc.setFontSize(9);
+                            storeWithDetails.items.forEach((item: any) => {
+                                const product = item.product;
+                                if (!product) return;
+
+                                if (yPos > 190) {
+                                    doc.addPage();
+                                    yPos = 15;
+                                }
+
+                                doc.text(`   • ${product.product_code} - ${product.product_name} (${item.quantity} ${product.unit})`, 10, yPos);
+                                yPos += 4;
+                            });
+                        }
+
+                        yPos += 2;
+                    });
+            }
+
+            yPos += 3;
+
+            // Aggregated Products Summary
+            if (aggregatedProducts.length > 0) {
+                if (yPos > 160) {
+                    doc.addPage();
+                    yPos = 15;
+                }
+
+                doc.setFontSize(14);
+                doc.text('สรุปสินค้าทั้งหมด', 10, yPos);
+                yPos += 6;
+
+                doc.setFontSize(9);
+                const tableData = aggregatedProducts.map((product) => [
+                    product.product_code,
+                    product.product_name,
+                    product.category,
+                    `${product.total_quantity.toLocaleString()} ${product.unit}`,
+                ]);
+
+                // Set font before creating table
+                doc.setFont('Sarabun', 'normal');
+                
+                autoTable(doc, {
+                    head: [['รหัส', 'ชื่อสินค้า', 'หมวดหมู่', 'จำนวน']],
+                    body: tableData,
+                    startY: yPos,
+                    styles: { 
+                        font: 'Sarabun', 
+                        fontSize: 8,
+                        fontStyle: 'normal'
+                    },
+                    headStyles: { 
+                        fillColor: [59, 130, 246], 
+                        textColor: [255, 255, 255],
+                        font: 'Sarabun',
+                        fontSize: 9,
+                        fontStyle: 'normal'
+                    },
+                    columnStyles: {
+                        0: { font: 'Sarabun', fontSize: 8 },
+                        1: { font: 'Sarabun', fontSize: 8 },
+                        2: { font: 'Sarabun', fontSize: 8 },
+                        3: { font: 'Sarabun', fontSize: 8 }
+                    },
+                    margin: { left: 10, right: 10 },
+                });
+
+                yPos = (doc as any).lastAutoTable.finalY + 5;
+            }
+
+            // Notes
+            if (trip.notes) {
+                if (yPos > 180) {
+                    doc.addPage();
+                    yPos = 15;
+                }
+                doc.setFontSize(10);
+                doc.text('หมายเหตุ:', 10, yPos);
+                yPos += 5;
+                doc.setFontSize(9);
+                const notesLines = doc.splitTextToSize(trip.notes, 120);
+                doc.text(notesLines, 10, yPos);
+            }
+
+            // Save PDF
+            doc.save(`delivery-trip-${trip.trip_number || trip.id}.pdf`);
+        } catch (error) {
+            console.error('[pdfService] Error generating delivery trip PDF:', error);
+            throw error;
+        }
+    },
 };

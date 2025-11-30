@@ -1,0 +1,1629 @@
+// Delivery Trip Form View - Create/Edit delivery trip
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { createPortal } from 'react-dom';
+import {
+  ArrowLeft,
+  Save,
+  Plus,
+  X,
+  Trash2,
+  Search,
+  MapPin,
+  Package,
+  Truck,
+  Calendar,
+  User,
+  ChevronDown,
+  ChevronUp,
+} from 'lucide-react';
+import { Button } from '../components/ui/Button';
+import { Input } from '../components/ui/Input';
+import { Card } from '../components/ui/Card';
+import { PageLayout } from '../components/layout/PageLayout';
+import { useDeliveryTrip, useVehicles, useStores, useProducts } from '../hooks';
+import { deliveryTripService, type CreateDeliveryTripData } from '../services/deliveryTripService';
+import { tripLogService } from '../services/tripLogService';
+import { ticketService } from '../services/ticketService';
+import { storeService, type Store } from '../services/storeService';
+import { productService, type Product } from '../services/productService';
+import { profileService } from '../services/profileService';
+import type { DeliveryTripWithRelations } from '../services/deliveryTripService';
+
+interface DeliveryTripFormViewProps {
+  tripId?: string;
+  onSave?: () => void;
+  onCancel?: () => void;
+}
+
+interface StoreWithItems {
+  store_id: string;
+  sequence_order: number;
+  items: Array<{
+    product_id: string;
+    quantity: number;
+    notes?: string;
+  }>;
+}
+
+export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
+  tripId,
+  onSave,
+  onCancel,
+}) => {
+  const isEdit = !!tripId;
+  const { trip, loading: loadingTrip } = useDeliveryTrip(tripId || null);
+  const { vehicles, loading: loadingVehicles } = useVehicles();
+  
+  // Store search with debounce - use backend search instead of frontend filtering
+  const [storeSearchDebounced, setStoreSearchDebounced] = useState('');
+  const { stores, loading: loadingStores } = useStores({ 
+    is_active: true,
+    search: storeSearchDebounced || undefined // Only search if there's a search term
+  });
+  
+  // Cache store info for selected stores to prevent disappearing when stores array is empty
+  const [storeCache, setStoreCache] = React.useState<Map<string, Store>>(new Map());
+  
+  // Update cache when stores are loaded
+  React.useEffect(() => {
+    if (stores.length > 0) {
+      setStoreCache(prev => {
+        const newCache = new Map(prev);
+        stores.forEach(store => {
+          newCache.set(store.id, store);
+        });
+        return newCache;
+      });
+    }
+  }, [stores]);
+  
+  // Get store info - use cache if stores array is empty
+  const getStoreInfo = React.useCallback((storeId: string): Store | null => {
+    // First try to find in current stores array
+    const store = stores.find(s => s.id === storeId);
+    if (store) return store;
+    
+    // If not found, try cache
+    return storeCache.get(storeId) || null;
+  }, [stores, storeCache]);
+  
+  // Product search with debounce - use server-side search (supports millions of records)
+  const [productSearch, setProductSearch] = useState<Map<number, string>>(new Map());
+  const [productSearchDebounced, setProductSearchDebounced] = useState<Map<number, string>>(new Map());
+  
+  // Debounce product search for each store (300ms delay)
+  useEffect(() => {
+    const timers: NodeJS.Timeout[] = [];
+    
+    productSearch.forEach((search, storeIndex) => {
+      const timer = setTimeout(() => {
+        setProductSearchDebounced(prev => {
+          const newMap = new Map(prev);
+          if (search && search.trim()) {
+            newMap.set(storeIndex, search.trim());
+          } else {
+            newMap.delete(storeIndex);
+          }
+          return newMap;
+        });
+      }, 300);
+      timers.push(timer);
+    });
+    
+    // Clean up searches that were removed
+    const currentKeys = new Set(productSearch.keys());
+    setProductSearchDebounced(prev => {
+      const newMap = new Map(prev);
+      prev.forEach((_, key) => {
+        if (!currentKeys.has(key)) {
+          newMap.delete(key);
+        }
+      });
+      return newMap;
+    });
+    
+    return () => {
+      timers.forEach(timer => clearTimeout(timer));
+    };
+  }, [productSearch]);
+  
+  // Get the most recent active search term (for single products fetch)
+  // In a production app, you might want to fetch products per store separately
+  const activeProductSearch = Array.from(productSearchDebounced.values())
+    .find((s): s is string => typeof s === 'string' && s.trim().length > 0) || '';
+  
+  // Fetch products with server-side search (supports millions of records)
+  // Note: This fetches products for the first active search. For multiple stores with different searches,
+  // you'd need a more complex solution (multiple hooks or a custom hook that handles multiple searches)
+  const { products, loading: loadingProducts } = useProducts({ 
+    is_active: true,
+    search: activeProductSearch || undefined 
+  });
+  
+  // Cache product info for selected products to prevent disappearing when products array changes
+  const [productCache, setProductCache] = React.useState<Map<string, Product>>(new Map());
+  
+  // Update cache when products are loaded
+  React.useEffect(() => {
+    if (products.length > 0) {
+      setProductCache(prev => {
+        const newCache = new Map(prev);
+        products.forEach(product => {
+          newCache.set(product.id, product);
+        });
+        return newCache;
+      });
+    }
+  }, [products]);
+  
+  // Get product info - use cache if products array is empty or doesn't contain the product
+  const getProductInfo = React.useCallback((productId: string): Product | null => {
+    // First try to find in current products array
+    const product = products.find(p => p.id === productId);
+    if (product) return product;
+    
+    // If not found, try cache
+    return productCache.get(productId) || null;
+  }, [products, productCache]);
+  
+  // Cache products when they are added to a store
+  const cacheProduct = React.useCallback((product: Product) => {
+    setProductCache(prev => {
+      const newCache = new Map(prev);
+      newCache.set(product.id, product);
+      return newCache;
+    });
+  }, []);
+  
+  // Filter products - server-side search already done for active search
+  // For stores with different search terms, fallback to client-side filtering from cache
+  const getFilteredProducts = useMemo(() => {
+    return (storeIndex: number) => {
+      const searchTerm = productSearchDebounced.get(storeIndex);
+      
+      // If no search for this store, return all cached products (or empty if cache is small)
+      if (!searchTerm) {
+        // Return cached products that are likely to be used
+        // For better UX, we could return recently used products or all cached products
+        return Array.from(productCache.values());
+      }
+      
+      // If this store's search matches the active search, products are already filtered by server
+      if (searchTerm === activeProductSearch) {
+        return products; // Already filtered by server
+      }
+      
+      // If this store has different search, filter client-side from cache (fallback)
+      // Note: For better performance with millions of products, consider fetching separately per store
+      const searchLower = searchTerm.toLowerCase();
+      return Array.from(productCache.values()).filter((product: Product) =>
+        (product.product_code || '').toLowerCase().includes(searchLower) ||
+        (product.product_name || '').toLowerCase().includes(searchLower) ||
+        (product.category || '').toLowerCase().includes(searchLower)
+      );
+    };
+  }, [products, productSearchDebounced, activeProductSearch, productCache]);
+  
+  // Removed debug logging to reduce console noise
+  
+  // Drivers list
+  const [drivers, setDrivers] = React.useState<Array<{ id: string; full_name: string }>>([]);
+  const [loadingDrivers, setLoadingDrivers] = React.useState(false);
+
+  const [formData, setFormData] = useState({
+    vehicle_id: '',
+    driver_id: '',
+    planned_date: new Date().toISOString().split('T')[0],
+    odometer_start: '',
+    notes: '',
+  });
+
+  const [selectedStores, setSelectedStores] = useState<StoreWithItems[]>([]);
+  const [storeSearch, setStoreSearch] = useState('');
+  const [showStoreDropdown, setShowStoreDropdown] = useState(false);
+  
+  // Debounce store search for server-side search (supports millions of records)
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setStoreSearchDebounced(storeSearch.trim());
+    }, 300); // 300ms delay - wait for user to finish typing
+    
+    return () => clearTimeout(timer);
+  }, [storeSearch]);
+  const [expandedStoreIndex, setExpandedStoreIndex] = useState<number | null>(null);
+  const [productQuantityInput, setProductQuantityInput] = useState<Map<string, string>>(new Map()); // key: `${storeIndex}-${productId}`
+  
+  // Vehicle search
+  const [vehicleSearch, setVehicleSearch] = useState('');
+  const [showVehicleDropdown, setShowVehicleDropdown] = useState(false);
+
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState(false);
+  const [latestOdometer, setLatestOdometer] = useState<number | null>(null);
+  const [activeVehicleIds, setActiveVehicleIds] = useState<Set<string>>(new Set()); // Vehicles in use (trip logs)
+  const [vehiclesWithActiveTickets, setVehiclesWithActiveTickets] = useState<Set<string>>(new Set()); // Vehicles with active maintenance tickets
+  const [vehiclesWithActiveDeliveryTrips, setVehiclesWithActiveDeliveryTrips] = useState<Set<string>>(new Set()); // Vehicles with active delivery trips
+  
+  // Refs for dropdown positioning
+  const vehicleInputRef = useRef<HTMLDivElement>(null);
+  const storeInputRef = useRef<HTMLDivElement>(null);
+  const [vehicleDropdownPosition, setVehicleDropdownPosition] = useState<{ top: number; left: number; width: number } | null>(null);
+  const [storeDropdownPosition, setStoreDropdownPosition] = useState<{ top: number; left: number; width: number } | null>(null);
+
+  // Load trip data when editing
+  useEffect(() => {
+    if (trip && vehicles.length > 0) {
+      setFormData({
+        vehicle_id: trip.vehicle_id || '',
+        driver_id: trip.driver_id || '',
+        planned_date: trip.planned_date || new Date().toISOString().split('T')[0],
+        odometer_start: trip.odometer_start?.toString() || '',
+        notes: trip.notes || '',
+      });
+      
+      // Set vehicle search text
+      const selectedVehicle = vehicles.find(v => v.id === trip.vehicle_id);
+      if (selectedVehicle) {
+        const displayText = `${selectedVehicle.plate}${selectedVehicle.make && selectedVehicle.model ? ` (${selectedVehicle.make} ${selectedVehicle.model})` : ''}`;
+        setVehicleSearch(displayText);
+      }
+
+      // Only set selectedStores if we're in edit mode and haven't set it yet
+      if (trip.stores && isEdit && selectedStores.length === 0) {
+        const storesWithItems: StoreWithItems[] = trip.stores.map((store, index) => ({
+          store_id: store.store_id,
+          sequence_order: store.sequence_order,
+          items: (store.items || []).map(item => ({
+            product_id: item.product_id,
+            quantity: Number(item.quantity),
+            notes: item.notes || '',
+          })),
+        }));
+        setSelectedStores(storesWithItems);
+        
+        // Fetch store info and product info for all stores in the trip and cache them
+        // This prevents "loading" state when stores/products arrays are empty
+        const fetchStoreAndProductInfo = async () => {
+          const storeIds = storesWithItems.map(s => s.store_id);
+          const productIds = new Set<string>();
+          
+          // Collect all product IDs from all stores
+          storesWithItems.forEach(store => {
+            store.items.forEach(item => {
+              productIds.add(item.product_id);
+            });
+          });
+          
+          // Fetch stores in parallel
+          const storePromises = storeIds.map(storeId => 
+            storeService.getById(storeId).catch(err => {
+              console.error(`[DeliveryTripFormView] Error fetching store ${storeId}:`, err);
+              return null;
+            })
+          );
+          
+          // Fetch products in parallel
+          const productPromises = Array.from(productIds).map(productId =>
+            productService.getById(productId).catch(err => {
+              console.error(`[DeliveryTripFormView] Error fetching product ${productId}:`, err);
+              return null;
+            })
+          );
+          
+          // Wait for all fetches to complete
+          const [fetchedStores, fetchedProducts] = await Promise.all([
+            Promise.all(storePromises),
+            Promise.all(productPromises)
+          ]);
+          
+          // Cache all fetched stores
+          const validStores = fetchedStores.filter((s): s is Store => s !== null);
+          if (validStores.length > 0) {
+            setStoreCache(prev => {
+              const newCache = new Map(prev);
+              validStores.forEach(store => {
+                newCache.set(store.id, store);
+              });
+              return newCache;
+            });
+          }
+          
+          // Cache all fetched products
+          const validProducts = fetchedProducts.filter((p): p is Product => p !== null);
+          if (validProducts.length > 0) {
+            setProductCache(prev => {
+              const newCache = new Map(prev);
+              validProducts.forEach(product => {
+                newCache.set(product.id, product);
+              });
+              return newCache;
+            });
+          }
+        };
+        
+        fetchStoreAndProductInfo();
+      }
+    }
+  }, [trip, vehicles, isEdit]); // Remove selectedStores from dependencies to prevent reset
+
+  // Normalize text for better search (remove spaces, convert to lowercase)
+  // Normalize text for search - keep spaces and hyphens for flexible matching
+  const normalizeText = (text: string): string => {
+    if (!text) return '';
+    return text.toLowerCase().trim();
+  };
+
+  // Create searchable text from multiple fields
+  const createSearchableText = (...texts: (string | null | undefined)[]): string => {
+    return texts
+      .filter(t => t)
+      .map(t => normalizeText(t!))
+      .join(' ');
+  };
+
+  // Filter vehicles by search - improved search
+  const filteredVehicles = useMemo(() => {
+    if (!vehicleSearch) return vehicles;
+    const searchLower = normalizeText(vehicleSearch);
+    return vehicles.filter(vehicle => {
+      const plateLower = normalizeText(vehicle.plate || '');
+      const makeLower = normalizeText(vehicle.make || '');
+      const modelLower = normalizeText(vehicle.model || '');
+      const searchableText = createSearchableText(vehicle.plate, vehicle.make, vehicle.model);
+      
+      // Match in individual fields or combined
+      return plateLower.includes(searchLower) || 
+             makeLower.includes(searchLower) || 
+             modelLower.includes(searchLower) ||
+             searchableText.includes(searchLower);
+    });
+  }, [vehicles, vehicleSearch]);
+
+  // Filter stores - server-side search already done, just sort and limit
+  // This works for millions of records because filtering happens in database
+  const filteredStores = useMemo(() => {
+    // If no search, return empty (don't show all stores)
+    if (!storeSearchDebounced || !storeSearchDebounced.trim()) return [];
+    
+    // Server has already filtered, just sort by relevance
+    const searchLower = normalizeText(storeSearchDebounced);
+    const searchTrimmed = searchLower.trim();
+    
+    // Score stores for better sorting (exact matches first)
+    const scoredStores = stores.map(store => {
+      // Get raw values (before normalization) for exact matching
+      const rawCode = (store.customer_code || '').trim();
+      const rawName = (store.customer_name || '').trim();
+      
+      // Normalized values for case-insensitive matching
+      const codeLower = normalizeText(rawCode);
+      const nameLower = normalizeText(rawName);
+      
+      let score = 0;
+      let matches = false;
+      
+      // 1. Exact match (case-insensitive) in customer_code - highest priority
+      if (codeLower === searchTrimmed) {
+        score = 1000;
+        matches = true;
+      }
+      // 2. Starts with in customer_code - high priority
+      else if (codeLower.startsWith(searchTrimmed)) {
+        score = 500;
+        matches = true;
+      }
+      // 3. Direct match in customer_code (case-insensitive) - exact or partial
+      else if (codeLower.includes(searchTrimmed)) {
+        score = 300;
+        matches = true;
+      }
+      // 4. Exact match in customer_name
+      else if (nameLower === searchTrimmed) {
+        score = 200;
+        matches = true;
+      }
+      // 5. Starts with in customer_name
+      else if (nameLower.startsWith(searchTrimmed)) {
+        score = 150;
+        matches = true;
+      }
+      // 6. Direct match in customer_name (case-insensitive)
+      else if (nameLower.includes(searchTrimmed)) {
+        score = 100;
+        matches = true;
+      }
+      // 7. Match without special characters (hyphens, spaces, underscores) for flexible code matching
+      else {
+        const searchWithoutSpecial = searchTrimmed.replace(/[-\s_]/g, '');
+        const codeWithoutSpecial = codeLower.replace(/[-\s_]/g, '');
+        if (searchWithoutSpecial && codeWithoutSpecial.includes(searchWithoutSpecial)) {
+          score = 50;
+          matches = true;
+        }
+        // 8. Match code with special characters removed from search
+        else if (searchWithoutSpecial && codeLower.includes(searchWithoutSpecial)) {
+          score = 40;
+          matches = true;
+        }
+        // 9. Match raw code (preserving case) - in case there are encoding issues
+        else if (rawCode.toLowerCase().includes(searchTrimmed)) {
+          score = 30;
+          matches = true;
+        }
+        // 10. Match partial code segments
+        else {
+          const codeSegments = codeLower.split(/[-\s_]/).filter(s => s.length > 0);
+          const searchSegments = searchTrimmed.split(/[-\s_]/).filter(s => s.length > 0);
+          if (searchSegments.some(ss => codeSegments.some(cs => cs.startsWith(ss) || cs.includes(ss) || ss.includes(cs)))) {
+            score = 20;
+            matches = true;
+          }
+          // 11. Match individual words in customer_name
+          else {
+            const nameWords = nameLower.split(/\s+/).filter(w => w.length > 0);
+            const searchWords = searchTrimmed.split(/\s+/).filter(w => w.length > 0);
+            if (searchWords.some(sw => nameWords.some(nw => nw.startsWith(sw) || nw.includes(sw) || sw.includes(nw)))) {
+              score = 10;
+              matches = true;
+            }
+            // 12. Match in combined searchable text
+            else {
+              const searchableText = createSearchableText(
+                store.customer_code,
+                store.customer_name,
+                store.address,
+                store.contact_person
+              );
+              if (searchableText.includes(searchTrimmed)) {
+                score = 5;
+                matches = true;
+              }
+            }
+          }
+        }
+      }
+      
+      return { store, score, matches };
+    });
+    
+    // Filter only matching stores and sort by score (highest first)
+    const filtered = scoredStores
+      .filter(item => item.matches)
+      .sort((a, b) => b.score - a.score)
+      .map(item => item.store)
+      .slice(0, 100); // Limit to 100 results for performance
+    
+    return filtered;
+  }, [stores, storeSearchDebounced]);
+
+  // getFilteredProducts is now defined above using useMemo
+
+  // Auto-populate destinations when vehicle is selected
+  useEffect(() => {
+    if (formData.vehicle_id && selectedStores.length > 0) {
+      // Destinations will be shown based on selected stores
+      // This is handled in the UI display
+    }
+  }, [formData.vehicle_id, selectedStores]);
+
+  // Fetch active trips to determine which vehicles are in use
+  useEffect(() => {
+    const fetchActiveTrips = async () => {
+      try {
+        const activeTrips = await tripLogService.getActiveTripsByVehicle();
+        const activeIds = new Set(activeTrips.map(trip => trip.vehicle_id));
+        setActiveVehicleIds(activeIds);
+      } catch (err) {
+        console.error('[DeliveryTripFormView] Error fetching active trips:', err);
+        setActiveVehicleIds(new Set());
+      }
+    };
+
+    fetchActiveTrips();
+  }, []);
+
+  // Fetch vehicles with active maintenance tickets
+  useEffect(() => {
+    const fetchVehiclesWithActiveTickets = async () => {
+      try {
+        // Query all active tickets at once instead of checking each vehicle
+        const { supabase } = await import('../lib/supabase');
+        const activeStatuses = ['pending', 'approved_inspector', 'approved_manager', 'ready_for_repair', 'in_progress'];
+        
+        const { data: activeTickets, error } = await supabase
+          .from('tickets')
+          .select('vehicle_id')
+          .in('status', activeStatuses);
+        
+        if (error) {
+          console.error('[DeliveryTripFormView] Error fetching active tickets:', error);
+          setVehiclesWithActiveTickets(new Set());
+          return;
+        }
+        
+        const vehicleIdsWithTickets = new Set(
+          (activeTickets || []).map(ticket => ticket.vehicle_id).filter(Boolean)
+        );
+        
+        setVehiclesWithActiveTickets(vehicleIdsWithTickets);
+      } catch (err) {
+        console.error('[DeliveryTripFormView] Error fetching vehicles with active tickets:', err);
+        setVehiclesWithActiveTickets(new Set());
+      }
+    };
+
+    fetchVehiclesWithActiveTickets();
+  }, []); // Fetch once on mount, not dependent on vehicles
+
+  // Fetch vehicles with active delivery trips
+  useEffect(() => {
+    const fetchVehiclesWithActiveDeliveryTrips = async () => {
+      try {
+        // Get active delivery trips (planned or in_progress)
+        const activeDeliveryTrips = await deliveryTripService.getAll({
+          status: ['planned', 'in_progress']
+        });
+        const vehicleIds = new Set(activeDeliveryTrips.map(trip => trip.vehicle_id));
+        setVehiclesWithActiveDeliveryTrips(vehicleIds);
+      } catch (err) {
+        console.error('[DeliveryTripFormView] Error fetching vehicles with active delivery trips:', err);
+        setVehiclesWithActiveDeliveryTrips(new Set());
+      }
+    };
+
+    fetchVehiclesWithActiveDeliveryTrips();
+  }, []);
+
+  // Fetch drivers list (only drivers with role = 'driver')
+  useEffect(() => {
+    const fetchDrivers = async () => {
+      try {
+        setLoadingDrivers(true);
+        const profiles = await profileService.getAll();
+        // Filter only drivers (role = 'driver')
+        const driverProfiles = profiles.filter(p => p.role === 'driver');
+        setDrivers(driverProfiles.map(p => ({ id: p.id, full_name: p.full_name || '' })));
+      } catch (err) {
+        console.error('[DeliveryTripFormView] Error fetching drivers:', err);
+        setDrivers([]);
+      } finally {
+        setLoadingDrivers(false);
+      }
+    };
+
+    fetchDrivers();
+  }, []);
+
+  // Fetch latest odometer when vehicle is selected
+  useEffect(() => {
+    const fetchLatestOdometer = async () => {
+      if (!formData.vehicle_id) {
+        setLatestOdometer(null);
+        return;
+      }
+
+      try {
+        const lastOdometer = await tripLogService.getLastOdometer(formData.vehicle_id);
+        setLatestOdometer(lastOdometer);
+        
+        // Auto-fill if odometer_start is empty
+        if (!formData.odometer_start && lastOdometer) {
+          setFormData(prev => ({
+            ...prev,
+            odometer_start: lastOdometer.toString(),
+          }));
+        }
+      } catch (err) {
+        console.error('[DeliveryTripFormView] Error fetching latest odometer:', err);
+        setLatestOdometer(null);
+      }
+    };
+
+    fetchLatestOdometer();
+  }, [formData.vehicle_id]);
+
+  // Handle vehicle selection
+  const handleSelectVehicle = (vehicleId: string, e?: React.MouseEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    
+    const vehicle = vehicles.find(v => v.id === vehicleId);
+    if (!vehicle) {
+      console.error('[DeliveryTripFormView] Vehicle not found:', vehicleId);
+      return;
+    }
+    
+    const displayText = `${vehicle.plate}${vehicle.make && vehicle.model ? ` (${vehicle.make} ${vehicle.model})` : ''}`;
+    
+    // Close dropdown first
+    setShowVehicleDropdown(false);
+    setVehicleDropdownPosition(null);
+    
+    // Then update form data and search text
+    // Use setTimeout to ensure dropdown closes before updating
+    setTimeout(() => {
+      setFormData(prev => ({ ...prev, vehicle_id: vehicleId }));
+      setVehicleSearch(displayText);
+    }, 0);
+  };
+
+  // Add store to trip
+  const handleAddStore = React.useCallback((storeId: string) => {
+    // Find store in current stores array to cache it
+    const store = stores.find(s => s.id === storeId);
+    if (store) {
+      // Cache store info immediately
+      setStoreCache(prev => {
+        const newCache = new Map(prev);
+        newCache.set(storeId, store);
+        return newCache;
+      });
+    }
+    
+    // Use functional update to ensure we have the latest state
+    setSelectedStores(prevStores => {
+      // Check if store is already selected
+      if (prevStores.find(s => s.store_id === storeId)) {
+        console.warn('[DeliveryTripFormView] Store already selected:', storeId);
+        return prevStores;
+      }
+
+      const newStore: StoreWithItems = {
+        store_id: storeId,
+        sequence_order: prevStores.length + 1,
+        items: [],
+      };
+
+      const newStores = [...prevStores, newStore];
+      
+      // Clear search and close dropdown after state update
+      // Use setTimeout to ensure state update completes first
+      setTimeout(() => {
+        setStoreSearch('');
+        setShowStoreDropdown(false);
+        setExpandedStoreIndex(newStores.length - 1); // Expand the newly added store
+      }, 0);
+
+      return newStores;
+    });
+  }, [stores]); // Include stores to cache store info when adding
+
+  // Update dropdown positions
+  useEffect(() => {
+    const updateVehiclePosition = () => {
+      if (vehicleInputRef.current && showVehicleDropdown) {
+        const rect = vehicleInputRef.current.getBoundingClientRect();
+        setVehicleDropdownPosition({
+          top: rect.bottom + window.scrollY + 4,
+          left: rect.left + window.scrollX,
+          width: rect.width,
+        });
+      } else {
+        setVehicleDropdownPosition(null);
+      }
+    };
+
+    const updateStorePosition = () => {
+      if (storeInputRef.current && showStoreDropdown) {
+        const rect = storeInputRef.current.getBoundingClientRect();
+        setStoreDropdownPosition({
+          top: rect.bottom + window.scrollY + 4,
+          left: rect.left + window.scrollX,
+          width: rect.width,
+        });
+      } else {
+        setStoreDropdownPosition(null);
+      }
+    };
+
+    updateVehiclePosition();
+    updateStorePosition();
+
+    window.addEventListener('scroll', updateVehiclePosition, true);
+    window.addEventListener('resize', updateVehiclePosition);
+    window.addEventListener('scroll', updateStorePosition, true);
+    window.addEventListener('resize', updateStorePosition);
+
+    return () => {
+      window.removeEventListener('scroll', updateVehiclePosition, true);
+      window.removeEventListener('resize', updateVehiclePosition);
+      window.removeEventListener('scroll', updateStorePosition, true);
+      window.removeEventListener('resize', updateStorePosition);
+    };
+  }, [showVehicleDropdown, showStoreDropdown]);
+
+  // Close dropdowns when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      
+      // Check if click is on a portal dropdown (they have data-dropdown attribute)
+      const isOnVehicleDropdown = target.closest('[data-vehicle-dropdown-portal]');
+      const isOnStoreDropdown = target.closest('[data-store-dropdown-portal]');
+      
+      // Check if click is outside vehicle dropdown
+      if (!isOnVehicleDropdown && !target.closest('[data-vehicle-dropdown]') && !target.closest('[data-vehicle-input]')) {
+        setShowVehicleDropdown(false);
+        setVehicleDropdownPosition(null);
+      }
+      
+      // Check if click is outside store dropdown
+      if (!isOnStoreDropdown && !target.closest('[data-store-dropdown]') && !target.closest('[data-store-input]')) {
+        setShowStoreDropdown(false);
+        setStoreDropdownPosition(null);
+      }
+    };
+
+    // Use click instead of mousedown to allow scrolling
+    document.addEventListener('click', handleClickOutside);
+    return () => {
+      document.removeEventListener('click', handleClickOutside);
+    };
+  }, []);
+
+  // Remove store from trip
+  const handleRemoveStore = (index: number) => {
+    const newStores = selectedStores.filter((_, i) => i !== index);
+    // Reorder sequence
+    const reorderedStores = newStores.map((store, i) => ({
+      ...store,
+      sequence_order: i + 1,
+    }));
+    setSelectedStores(reorderedStores);
+    if (expandedStoreIndex === index) {
+      setExpandedStoreIndex(null);
+    } else if (expandedStoreIndex !== null && expandedStoreIndex > index) {
+      setExpandedStoreIndex(expandedStoreIndex - 1);
+    }
+  };
+
+  // Add product to store with quantity input
+  // Use useCallback to prevent unnecessary re-renders and ensure stable reference
+  const handleAddProduct = React.useCallback((storeIndex: number, productId: string, quantity: number = 1) => {
+    // Get product from current products array or cache
+    let product = getProductInfo(productId);
+    
+    // If not found, try to fetch it
+    if (!product) {
+      // Try to fetch product by ID
+      productService.getById(productId).then(fetchedProduct => {
+        if (fetchedProduct) {
+          cacheProduct(fetchedProduct);
+          // Retry adding product after caching
+          handleAddProduct(storeIndex, productId, quantity);
+        }
+      }).catch(err => {
+        console.warn('[DeliveryTripFormView] Product not found:', productId, err);
+      });
+      return;
+    }
+    
+    // Cache product to ensure it's available even if search changes
+    cacheProduct(product);
+
+    setSelectedStores(prevStores => {
+      // Create a deep copy to avoid mutation issues
+      const newStores = prevStores.map(store => ({
+        ...store,
+        items: [...store.items]
+      }));
+      
+      const store = newStores[storeIndex];
+      if (!store) {
+        console.warn('[DeliveryTripFormView] Store not found at index:', storeIndex);
+        return prevStores;
+      }
+      
+      // Check if product already exists
+      const existingIndex = store.items.findIndex(item => item.product_id === productId);
+      if (existingIndex >= 0) {
+        // Update quantity (create new object to avoid mutation)
+        store.items[existingIndex] = {
+          ...store.items[existingIndex],
+          quantity: quantity
+        };
+      } else {
+        // Add new product
+        store.items.push({
+          product_id: productId,
+          quantity: quantity,
+          notes: '',
+        });
+      }
+
+      return newStores;
+    });
+  }, [getProductInfo, cacheProduct]);
+
+  // Remove product from store
+  const handleRemoveProduct = (storeIndex: number, itemIndex: number) => {
+    const newStores = [...selectedStores];
+    newStores[storeIndex].items = newStores[storeIndex].items.filter((_, i) => i !== itemIndex);
+    setSelectedStores(newStores);
+  };
+
+  // Update product quantity
+  const handleUpdateQuantity = (storeIndex: number, itemIndex: number, quantity: number) => {
+    const newStores = [...selectedStores];
+    newStores[storeIndex].items[itemIndex].quantity = quantity;
+    setSelectedStores(newStores);
+  };
+
+  // Get aggregated products (all products across all stores)
+  const aggregatedProducts = useMemo(() => {
+    const productMap = new Map<string, {
+      product_id: string;
+      product_code: string;
+      product_name: string;
+      category: string;
+      unit: string;
+      total_quantity: number;
+      stores: Array<{ store_id: string; customer_name: string; quantity: number }>;
+    }>();
+
+    selectedStores.forEach((storeWithItems, storeIndex) => {
+      const store = getStoreInfo(storeWithItems.store_id);
+      if (!store) return;
+
+      storeWithItems.items.forEach(item => {
+        const product = getProductInfo(item.product_id);
+        if (!product) return;
+
+        const existing = productMap.get(item.product_id);
+        if (existing) {
+          existing.total_quantity += item.quantity;
+          existing.stores.push({
+            store_id: store.id,
+            customer_name: store.customer_name,
+            quantity: item.quantity,
+          });
+        } else {
+          productMap.set(item.product_id, {
+            product_id: product.id,
+            product_code: product.product_code,
+            product_name: product.product_name,
+            category: product.category,
+            unit: product.unit,
+            total_quantity: item.quantity,
+            stores: [{
+              store_id: store.id,
+              customer_name: store.customer_name,
+              quantity: item.quantity,
+            }],
+          });
+        }
+      });
+    });
+
+    return Array.from(productMap.values());
+  }, [selectedStores, getStoreInfo, getProductInfo]);
+
+  // Get destinations string (for auto-populate)
+  const destinations = useMemo(() => {
+    return selectedStores
+      .sort((a, b) => a.sequence_order - b.sequence_order)
+      .map(storeWithItems => {
+        const store = getStoreInfo(storeWithItems.store_id);
+        return store ? `${store.customer_code} - ${store.customer_name}` : '';
+      })
+      .filter(Boolean)
+      .join(', ');
+  }, [selectedStores, getStoreInfo]);
+
+  // Handle form submit
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setSuccess(false);
+
+    // Validation
+    if (!formData.vehicle_id) {
+      setError('กรุณาเลือกรถ');
+      return;
+    }
+
+    if (!formData.driver_id) {
+      setError('กรุณาเลือกคนขับ');
+      return;
+    }
+
+    if (!formData.planned_date) {
+      setError('กรุณาเลือกวันที่วางแผน');
+      return;
+    }
+
+    if (selectedStores.length === 0) {
+      setError('กรุณาเลือกร้านค้าอย่างน้อย 1 ร้าน');
+      return;
+    }
+
+    // Validate that each store has at least one product
+    for (const store of selectedStores) {
+      if (store.items.length === 0) {
+        const storeName = getStoreInfo(store.store_id)?.customer_name || 'ร้านค้า';
+        setError(`กรุณาเลือกสินค้าสำหรับ ${storeName}`);
+        return;
+      }
+    }
+
+    try {
+      setSaving(true);
+
+      const tripData: CreateDeliveryTripData = {
+        vehicle_id: formData.vehicle_id,
+        driver_id: formData.driver_id || undefined,
+        planned_date: formData.planned_date,
+        odometer_start: formData.odometer_start ? parseInt(formData.odometer_start) : undefined,
+        notes: formData.notes || undefined,
+        stores: selectedStores.map(store => ({
+          store_id: store.store_id,
+          sequence_order: store.sequence_order,
+          items: store.items.map(item => ({
+            product_id: item.product_id,
+            quantity: item.quantity,
+            notes: item.notes || undefined,
+          })),
+        })),
+      };
+
+      if (isEdit && tripId) {
+        await deliveryTripService.update(tripId, tripData);
+      } else {
+        await deliveryTripService.create(tripData);
+      }
+
+      setSuccess(true);
+      setTimeout(() => {
+        onSave?.();
+      }, 1500);
+    } catch (err: any) {
+      console.error('[DeliveryTripFormView] Error saving trip:', err);
+      setError(err.message || 'ไม่สามารถบันทึกทริปได้');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loadingTrip) {
+    return (
+      <PageLayout title={isEdit ? 'แก้ไขทริปส่งสินค้า' : 'สร้างทริปส่งสินค้า'} loading={true} />
+    );
+  }
+
+  return (
+    <PageLayout
+      title={isEdit ? 'แก้ไขทริปส่งสินค้า' : 'สร้างทริปส่งสินค้า'}
+      subtitle={isEdit ? 'แก้ไขข้อมูลทริปส่งสินค้า' : 'สร้างทริปส่งสินค้าใหม่'}
+    >
+      <form onSubmit={handleSubmit} className="space-y-6">
+        {/* Basic Info */}
+        <Card>
+          <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-4 flex items-center gap-2">
+            <Truck size={20} />
+            ข้อมูลพื้นฐาน
+          </h3>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="relative z-10">
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                รถ <span className="text-red-500">*</span>
+              </label>
+              <div className="relative" data-vehicle-dropdown ref={vehicleInputRef}>
+                <Input
+                  type="text"
+                  value={vehicleSearch}
+                  onChange={(e) => {
+                    setVehicleSearch(e.target.value);
+                    setShowVehicleDropdown(true);
+                  }}
+                  onFocus={() => {
+                    if (!formData.vehicle_id) {
+                      setVehicleSearch('');
+                    }
+                    setShowVehicleDropdown(true);
+                  }}
+                  placeholder="พิมพ์ค้นหาหรือเลือกรถ"
+                  icon={<Search size={18} />}
+                  data-vehicle-input
+                  required={!formData.vehicle_id}
+                />
+                {showVehicleDropdown && filteredVehicles.length > 0 && vehicleDropdownPosition && createPortal(
+                  <div 
+                    data-vehicle-dropdown-portal
+                    className="fixed bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg shadow-xl z-[9999] max-h-60 overflow-y-auto overscroll-contain"
+                    style={{
+                      top: `${vehicleDropdownPosition.top}px`,
+                      left: `${vehicleDropdownPosition.left}px`,
+                      width: `${vehicleDropdownPosition.width}px`,
+                    }}
+                    onMouseDown={(e) => {
+                      // Allow scrolling by not preventing default
+                      e.stopPropagation();
+                    }}
+                  >
+                    {filteredVehicles.map((vehicle) => {
+                      const isInUse = activeVehicleIds.has(vehicle.id); // In use (trip logs)
+                      const hasActiveTicket = vehiclesWithActiveTickets.has(vehicle.id); // Has active maintenance ticket
+                      const hasActiveDeliveryTrip = vehiclesWithActiveDeliveryTrips.has(vehicle.id); // Has active delivery trip
+                      
+                      // Collect all statuses
+                      const statuses: string[] = [];
+                      if (isInUse) {
+                        statuses.push('🚗 ใช้งานอยู่');
+                      }
+                      if (hasActiveTicket) {
+                        statuses.push('🔧 ซ่อมอยู่');
+                      }
+                      if (hasActiveDeliveryTrip) {
+                        statuses.push('📦 จัดส่งอยู่');
+                      }
+                      
+                      return (
+                        <button
+                          key={vehicle.id}
+                          type="button"
+                          onMouseDown={(e) => {
+                            e.preventDefault(); // Prevent input from losing focus
+                            handleSelectVehicle(vehicle.id, e);
+                          }}
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                          }}
+                          className="w-full text-left px-4 py-2 hover:bg-slate-100 dark:hover:bg-slate-700"
+                        >
+                          <div className="font-medium text-slate-900 dark:text-slate-100">
+                            {vehicle.plate} {vehicle.make && vehicle.model ? `(${vehicle.make} ${vehicle.model})` : ''}
+                          </div>
+                          {statuses.length > 0 && (
+                            <div className="text-xs mt-0.5 space-y-0.5">
+                              {statuses.map((status, idx) => (
+                                <div
+                                  key={idx}
+                                  className={
+                                    status.includes('ใช้งานอยู่')
+                                      ? 'text-amber-600 dark:text-amber-400'
+                                      : status.includes('ซ่อมอยู่')
+                                      ? 'text-red-600 dark:text-red-400'
+                                      : 'text-blue-600 dark:text-blue-400'
+                                  }
+                                >
+                                  {status}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>,
+                  document.body
+                )}
+                {formData.vehicle_id && (
+                  <div className="mt-1 space-y-1">
+                    {activeVehicleIds.has(formData.vehicle_id) && (
+                      <div className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                        <span>⚠️</span>
+                        <span>รถคันนี้กำลังใช้งานอยู่</span>
+                      </div>
+                    )}
+                    {vehiclesWithActiveTickets.has(formData.vehicle_id) && (
+                      <div className="text-xs text-red-600 dark:text-red-400 flex items-center gap-1">
+                        <span>⚠️</span>
+                        <span>รถคันนี้กำลังซ่อมอยู่</span>
+                      </div>
+                    )}
+                    {vehiclesWithActiveDeliveryTrips.has(formData.vehicle_id) && (
+                      <div className="text-xs text-blue-600 dark:text-blue-400 flex items-center gap-1">
+                        <span>⚠️</span>
+                        <span>รถคันนี้มีทริปจัดส่งอยู่</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                วันที่วางแผน <span className="text-red-500">*</span>
+              </label>
+              <Input
+                type="date"
+                value={formData.planned_date}
+                onChange={(e) => setFormData({ ...formData, planned_date: e.target.value })}
+                required
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                คนขับ <span className="text-red-500">*</span>
+              </label>
+              <select
+                value={formData.driver_id}
+                onChange={(e) => setFormData({ ...formData, driver_id: e.target.value })}
+                className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
+                required
+              >
+                <option value="">เลือกคนขับ</option>
+                {drivers.map((driver) => (
+                  <option key={driver.id} value={driver.id}>
+                    {driver.full_name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                ไมล์เริ่มต้น
+              </label>
+              <div className="relative">
+                <Input
+                  type="number"
+                  value={formData.odometer_start}
+                  onChange={(e) => setFormData({ ...formData, odometer_start: e.target.value })}
+                  placeholder="กรอกเลขไมล์ขาออก"
+                  min="0"
+                  step="1"
+                />
+                {latestOdometer !== null && (
+                  <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                    เลขไมล์ล่าสุด: <span className="font-medium">{latestOdometer.toLocaleString()}</span> กม.
+                    {formData.odometer_start && parseInt(formData.odometer_start) < latestOdometer && (
+                      <span className="ml-2 text-amber-600 dark:text-amber-400">
+                        ⚠️ น้อยกว่าเลขไมล์ล่าสุด
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                หมายเหตุ
+              </label>
+              <Input
+                value={formData.notes}
+                onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                placeholder="หมายเหตุเพิ่มเติม"
+              />
+            </div>
+          </div>
+
+          {/* Auto-populated destinations */}
+          {formData.vehicle_id && selectedStores.length > 0 && (
+            <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+              <div className="flex items-center gap-2 text-blue-800 dark:text-blue-200">
+                <MapPin size={16} />
+                <span className="font-medium">จุดหมายปลายทาง:</span>
+              </div>
+              <p className="mt-1 text-sm text-blue-700 dark:text-blue-300">
+                {destinations || 'ยังไม่ได้เลือกร้านค้า'}
+              </p>
+            </div>
+          )}
+        </Card>
+
+        {/* Stores and Products */}
+        <Card>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+              <Package size={20} />
+              ร้านค้าและสินค้า
+            </h3>
+            <div className="relative z-10" data-store-dropdown ref={storeInputRef}>
+              <div className="flex items-center gap-2">
+                <Input
+                  type="text"
+                  placeholder="ค้นหาร้านค้า..."
+                  value={storeSearch}
+                  onChange={(e) => {
+                    setStoreSearch(e.target.value);
+                    setShowStoreDropdown(true);
+                  }}
+                  onFocus={() => setShowStoreDropdown(true)}
+                  icon={<Search size={18} />}
+                  className="w-64"
+                  data-store-input
+                />
+                {showStoreDropdown && storeDropdownPosition && (
+                  createPortal(
+                    <div 
+                      data-store-dropdown-portal
+                      className="fixed bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg shadow-xl z-[9999] max-h-60 overflow-y-auto overscroll-contain"
+                      style={{
+                        top: `${storeDropdownPosition.top}px`,
+                        left: `${storeDropdownPosition.left}px`,
+                        width: `${storeDropdownPosition.width}px`,
+                      }}
+                      onMouseDown={(e) => {
+                        // Allow scrolling by not preventing default
+                        e.stopPropagation();
+                      }}
+                    >
+                      {(() => {
+                        const availableStores = filteredStores.filter(store => !selectedStores.find(s => s.store_id === store.id));
+                        const totalMatches = filteredStores.length;
+                        
+                        return availableStores.length > 0 ? (
+                          <>
+                            {totalMatches > 100 && (
+                              <div className="px-4 py-2 text-xs text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700">
+                                แสดง {availableStores.length} จาก {totalMatches} รายการที่พบ (แสดงสูงสุด 100 รายการ)
+                              </div>
+                            )}
+                            {availableStores.map((store) => (
+                              <button
+                                key={store.id}
+                                type="button"
+                                onMouseDown={(e) => {
+                                  // Use onMouseDown to prevent dropdown from closing before click
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  handleAddStore(store.id);
+                                }}
+                                className="w-full text-left px-4 py-2 hover:bg-slate-100 dark:hover:bg-slate-700"
+                              >
+                                <div className="font-medium text-slate-900 dark:text-slate-100">
+                                  {store.customer_code} - {store.customer_name}
+                                </div>
+                              </button>
+                            ))}
+                          </>
+                        ) : (
+                          <div className="px-4 py-3 text-sm text-slate-500 dark:text-slate-400 text-center">
+                            {storeSearch ? (totalMatches > 0 ? 'ร้านค้านี้ถูกเลือกไปแล้ว' : 'ไม่พบร้านค้าที่ค้นหา') : 'พิมพ์เพื่อค้นหาร้านค้า'}
+                          </div>
+                        );
+                      })()}
+                    </div>,
+                    document.body
+                  )
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Selected Stores */}
+          <div className="space-y-4">
+            {selectedStores.map((storeWithItems, storeIndex) => {
+              // Use getStoreInfo to get store from cache if stores array is empty
+              const store = getStoreInfo(storeWithItems.store_id);
+              if (!store) {
+                // Store not found - show placeholder or loading
+                return (
+                  <div
+                    key={storeWithItems.store_id}
+                    className="border border-slate-200 dark:border-slate-700 rounded-lg p-4"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <span className="flex items-center justify-center w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 font-semibold">
+                          {storeWithItems.sequence_order}
+                        </span>
+                        <div className="text-slate-500 dark:text-slate-400">
+                          กำลังโหลดข้อมูลร้านค้า... (ID: {storeWithItems.store_id.substring(0, 8)}...)
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              }
+
+              const isExpanded = expandedStoreIndex === storeIndex;
+              const filteredProducts = getFilteredProducts(storeIndex);
+
+              return (
+                <div
+                  key={store.id}
+                  className="border border-slate-200 dark:border-slate-700 rounded-lg p-4"
+                >
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-3">
+                      <span className="flex items-center justify-center w-8 h-8 rounded-full bg-enterprise-100 dark:bg-enterprise-900 text-enterprise-600 dark:text-enterprise-400 font-semibold">
+                        {storeWithItems.sequence_order}
+                      </span>
+                      <div>
+                        <div className="font-medium text-slate-900 dark:text-slate-100">
+                          {store.customer_code} - {store.customer_name}
+                        </div>
+                        <div className="text-sm text-slate-500 dark:text-slate-400">
+                          {storeWithItems.items.length > 0 ? (
+                            <span className="text-green-600 dark:text-green-400 font-medium">
+                              ✓ {storeWithItems.items.length} รายการสินค้า (เสร็จแล้ว)
+                            </span>
+                          ) : (
+                            <span className="text-amber-600 dark:text-amber-400">
+                              ⚠ ยังไม่มีสินค้า
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setExpandedStoreIndex(isExpanded ? null : storeIndex)}
+                        className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded"
+                      >
+                        {isExpanded ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveStore(storeIndex)}
+                        className="p-2 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded"
+                      >
+                        <Trash2 size={18} />
+                      </button>
+                    </div>
+                  </div>
+
+                  {isExpanded && (
+                    <div className="mt-4 space-y-4">
+                      {/* Product Search */}
+                      <div>
+                        <Input
+                          type="text"
+                          placeholder="ค้นหาสินค้า..."
+                          value={productSearch.get(storeIndex) || ''}
+                          onChange={(e) => {
+                            const newSearch = new Map(productSearch);
+                            newSearch.set(storeIndex, e.target.value);
+                            setProductSearch(newSearch);
+                          }}
+                          icon={<Search size={18} />}
+                        />
+                      </div>
+
+                      {/* Product Selector with Quantity Input */}
+                      {filteredProducts.length > 0 && (
+                        <div className="space-y-2 max-h-60 overflow-y-auto p-2 border border-slate-200 dark:border-slate-700 rounded">
+                          <div className="text-xs font-medium text-slate-600 dark:text-slate-400 mb-2">
+                            เลือกสินค้าและระบุจำนวน:
+                          </div>
+                          {filteredProducts.map((product) => {
+                            const inputKey = `${storeIndex}-${product.id}`;
+                            const existingItem = storeWithItems.items.find(item => item.product_id === product.id);
+                            const currentQuantity = productQuantityInput.get(inputKey) ?? (existingItem ? existingItem.quantity.toString() : '');
+                            
+                            const isAdded = !!existingItem;
+                            
+                            return (
+                              <div
+                                key={product.id}
+                                className={`flex items-center gap-2 p-2 rounded border ${
+                                  isAdded
+                                    ? 'bg-green-50 dark:bg-green-900/20 border-green-300 dark:border-green-700 hover:bg-green-100 dark:hover:bg-green-900/30'
+                                    : 'border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800'
+                                }`}
+                              >
+                                <div className="flex-1 min-w-0">
+                                  <div className={`font-medium text-sm ${
+                                    isAdded
+                                      ? 'text-green-900 dark:text-green-100'
+                                      : 'text-slate-900 dark:text-slate-100'
+                                  }`}>
+                                    {product.product_code}
+                                    {isAdded && (
+                                      <span className="ml-2 text-xs text-green-600 dark:text-green-400">
+                                        (เพิ่มแล้ว: {existingItem.quantity} {product.unit})
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className={`text-xs truncate ${
+                                    isAdded
+                                      ? 'text-green-700 dark:text-green-300'
+                                      : 'text-slate-500 dark:text-slate-400'
+                                  }`}>
+                                    {product.product_name} ({product.unit})
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <Input
+                                    type="number"
+                                    value={currentQuantity}
+                                    onChange={(e) => {
+                                      const value = e.target.value;
+                                      // Allow empty string
+                                      const newMap = new Map(productQuantityInput);
+                                      newMap.set(inputKey, value);
+                                      setProductQuantityInput(newMap);
+                                    }}
+                                    placeholder="จำนวน"
+                                    className="w-20"
+                                    min="0"
+                                    step="0.01"
+                                  />
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => {
+                                      const quantity = parseFloat(currentQuantity);
+                                      // Validate quantity before adding
+                                      if (!quantity || quantity <= 0) {
+                                        setError('กรุณาระบุจำนวนสินค้าที่มากกว่า 0');
+                                        return;
+                                      }
+                                      handleAddProduct(storeIndex, product.id, quantity);
+                                      // Clear input after adding
+                                      const newMap = new Map(productQuantityInput);
+                                      newMap.delete(inputKey);
+                                      setProductQuantityInput(newMap);
+                                    }}
+                                  >
+                                    <Plus size={16} />
+                                  </Button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      {/* Selected Products */}
+                      {storeWithItems.items.length > 0 && (
+                        <div className="space-y-2">
+                          <div className="text-sm font-medium text-slate-700 dark:text-slate-300 flex items-center justify-between">
+                            <span>สินค้าที่เลือก ({storeWithItems.items.length} รายการ):</span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                // Auto-collapse when store has products
+                                setExpandedStoreIndex(null);
+                              }}
+                              className="text-xs text-enterprise-600 dark:text-enterprise-400 hover:underline flex items-center gap-1"
+                            >
+                              <ChevronUp size={14} />
+                              ยุบร้านนี้
+                            </button>
+                          </div>
+                          {storeWithItems.items.map((item, itemIndex) => {
+                            const product = getProductInfo(item.product_id);
+                            if (!product) return null;
+
+                            return (
+                              <div
+                                key={item.product_id}
+                                className="flex items-center gap-3 p-2 bg-slate-50 dark:bg-slate-800 rounded"
+                              >
+                                <div className="flex-1">
+                                  <div className="font-medium text-slate-900 dark:text-slate-100">
+                                    {product.product_code} - {product.product_name}
+                                  </div>
+                                  <div className="text-xs text-slate-500 dark:text-slate-400">
+                                    {product.category} ({product.unit})
+                                  </div>
+                                </div>
+                                <Input
+                                  type="number"
+                                  value={item.quantity}
+                                  onChange={(e) =>
+                                    handleUpdateQuantity(
+                                      storeIndex,
+                                      itemIndex,
+                                      parseFloat(e.target.value) || 0
+                                    )
+                                  }
+                                  className="w-24"
+                                  min="0"
+                                  step="0.01"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveProduct(storeIndex, itemIndex)}
+                                  className="p-1 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded"
+                                >
+                                  <X size={16} />
+                                </button>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </Card>
+
+        {/* Aggregated Products Summary */}
+        {aggregatedProducts.length > 0 && (
+          <Card>
+            <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-4 flex items-center gap-2">
+              <Package size={20} />
+              สรุปสินค้าทั้งหมดในเที่ยว
+            </h3>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-slate-200 dark:border-slate-700">
+                    <th className="text-left py-2 px-3 text-sm font-medium text-slate-700 dark:text-slate-300">
+                      รหัสสินค้า
+                    </th>
+                    <th className="text-left py-2 px-3 text-sm font-medium text-slate-700 dark:text-slate-300">
+                      ชื่อสินค้า
+                    </th>
+                    <th className="text-left py-2 px-3 text-sm font-medium text-slate-700 dark:text-slate-300">
+                      หมวดหมู่
+                    </th>
+                    <th className="text-right py-2 px-3 text-sm font-medium text-slate-700 dark:text-slate-300">
+                      จำนวนรวม
+                    </th>
+                    <th className="text-left py-2 px-3 text-sm font-medium text-slate-700 dark:text-slate-300">
+                      ร้านค้า
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {aggregatedProducts.map((product) => (
+                    <tr
+                      key={product.product_id}
+                      className="border-b border-slate-100 dark:border-slate-800"
+                    >
+                      <td className="py-2 px-3 text-sm text-slate-900 dark:text-slate-100">
+                        {product.product_code}
+                      </td>
+                      <td className="py-2 px-3 text-sm text-slate-900 dark:text-slate-100">
+                        {product.product_name}
+                      </td>
+                      <td className="py-2 px-3 text-sm text-slate-500 dark:text-slate-400">
+                        {product.category}
+                      </td>
+                      <td className="py-2 px-3 text-sm text-right font-medium text-slate-900 dark:text-slate-100">
+                        {product.total_quantity.toLocaleString()} {product.unit}
+                      </td>
+                      <td className="py-2 px-3 text-sm text-slate-500 dark:text-slate-400">
+                        {product.stores.map(s => `${s.customer_name} (${s.quantity})`).join(', ')}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        )}
+
+        {/* Error & Success Messages */}
+        {error && (
+          <Card className="p-4 bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800">
+            <div className="flex items-center gap-2 text-red-800 dark:text-red-200">
+              <X size={20} />
+              <span>{error}</span>
+            </div>
+          </Card>
+        )}
+
+        {success && (
+          <Card className="p-4 bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800">
+            <div className="flex items-center gap-2 text-green-800 dark:text-green-200">
+              <Save size={20} />
+              <span>บันทึกทริปสำเร็จ</span>
+            </div>
+          </Card>
+        )}
+
+        {/* Actions */}
+        <div className="flex items-center justify-between">
+          <Button type="button" variant="outline" onClick={onCancel}>
+            <ArrowLeft size={18} className="mr-2" />
+            ยกเลิก
+          </Button>
+          <Button type="submit" isLoading={saving} disabled={saving}>
+            <Save size={18} className="mr-2" />
+            {isEdit ? 'บันทึกการแก้ไข' : 'สร้างทริป'}
+          </Button>
+        </div>
+      </form>
+    </PageLayout>
+  );
+};
+

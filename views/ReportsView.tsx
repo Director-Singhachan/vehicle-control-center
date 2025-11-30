@@ -11,6 +11,10 @@ import {
   Truck,
   User,
   FileText,
+  Package,
+  ChevronDown,
+  ChevronRight,
+  Eye,
 } from 'lucide-react';
 import { PageLayout } from '../components/layout/PageLayout';
 import { Card } from '../components/ui/Card';
@@ -29,6 +33,10 @@ import {
   useMonthlyCostTrend,
   useVehicleUsageRanking,
   useVehicleFuelConsumption,
+  useDeliverySummaryByVehicle,
+  useDeliverySummaryByStore,
+  useDeliverySummaryByProduct,
+  useMonthlyDeliveryReport,
 } from '../hooks/useReports';
 import { VehicleUsageRankingChart } from '../components/VehicleUsageRankingChart';
 import { VehicleFuelConsumptionChart } from '../components/VehicleFuelConsumptionChart';
@@ -61,13 +69,14 @@ ChartJS.register(
 
 interface ReportsViewProps {
   isDark?: boolean;
+  onNavigateToStoreDetail?: (storeId: string) => void;
 }
 
-type ReportTab = 'fuel' | 'trip' | 'maintenance' | 'cost' | 'usage' | 'fuel-consumption';
+type ReportTab = 'fuel' | 'trip' | 'maintenance' | 'cost' | 'usage' | 'fuel-consumption' | 'delivery';
 
 type FilterPeriod = 'current-month' | 'last-3-months' | 'last-6-months' | 'last-12-months' | 'this-year' | 'custom';
 
-export const ReportsView: React.FC<ReportsViewProps> = ({ isDark = false }) => {
+export const ReportsView: React.FC<ReportsViewProps> = ({ isDark = false, onNavigateToStoreDetail }) => {
   const [activeTab, setActiveTab] = useState<ReportTab>('fuel');
   const [months, setMonths] = useState(6);
   
@@ -337,6 +346,17 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ isDark = false }) => {
         >
           <Droplet className="inline-block w-4 h-4 mr-2" />
           การเติมน้ำมันแต่ละคัน
+        </button>
+        <button
+          onClick={() => setActiveTab('delivery')}
+          className={`px-4 py-2 font-medium transition-colors ${
+            activeTab === 'delivery'
+              ? 'border-b-2 border-enterprise-600 text-enterprise-600 dark:text-enterprise-400'
+              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+          }`}
+        >
+          <Package className="inline-block w-4 h-4 mr-2" />
+          รายงานการส่งสินค้า
         </button>
       </div>
 
@@ -1113,7 +1133,441 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ isDark = false }) => {
           )}
         </div>
       )}
+
+      {/* Delivery Reports Tab */}
+      {activeTab === 'delivery' && (
+        <DeliveryReportsTab
+          startDate={startDate}
+          endDate={endDate}
+          isDark={isDark}
+          onNavigateToStoreDetail={onNavigateToStoreDetail}
+        />
+      )}
     </PageLayout>
+  );
+};
+
+// Delivery Reports Tab Component
+const DeliveryReportsTab: React.FC<{
+  startDate: Date;
+  endDate: Date;
+  isDark: boolean;
+  onNavigateToStoreDetail?: (storeId: string) => void;
+}> = ({ startDate, endDate, isDark, onNavigateToStoreDetail }) => {
+  const [activeSubTab, setActiveSubTab] = useState<'vehicle' | 'store' | 'product' | 'monthly'>('vehicle');
+  const [expandedStores, setExpandedStores] = useState<Set<string>>(new Set());
+  
+  const { data: vehicleData, loading: vehicleLoading } = useDeliverySummaryByVehicle(startDate, endDate);
+  const { data: storeData, loading: storeLoading } = useDeliverySummaryByStore(startDate, endDate);
+  const { data: productData, loading: productLoading } = useDeliverySummaryByProduct(startDate, endDate);
+  const { data: monthlyData, loading: monthlyLoading } = useMonthlyDeliveryReport(6);
+
+  const formatNumber = (value: number, decimals: number = 0) => {
+    return value.toFixed(decimals).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  };
+
+  const exportVehicleReport = () => {
+    if (!vehicleData || vehicleData.length === 0) return;
+    excelExport.exportToExcel(
+      vehicleData,
+      [
+        { key: 'plate', label: 'ทะเบียนรถ', width: 15 },
+        { key: 'make', label: 'ยี่ห้อ', width: 15 },
+        { key: 'model', label: 'รุ่น', width: 15 },
+        { key: 'branch', label: 'สาขา', width: 15 },
+        { key: 'totalTrips', label: 'จำนวนเที่ยว', width: 12, format: excelExport.formatNumber },
+        { key: 'totalStores', label: 'จำนวนร้าน', width: 12, format: excelExport.formatNumber },
+        { key: 'totalItems', label: 'จำนวนรายการ', width: 15, format: excelExport.formatNumber },
+        { key: 'totalQuantity', label: 'จำนวนสินค้า', width: 15, format: excelExport.formatNumber },
+        { key: 'totalDistance', label: 'ระยะทาง (กม.)', width: 15, format: excelExport.formatNumber },
+        { key: 'averageItemsPerTrip', label: 'รายการ/เที่ยว', width: 15, format: (v: number) => v.toFixed(2) },
+        { key: 'averageQuantityPerTrip', label: 'สินค้า/เที่ยว', width: 15, format: (v: number) => v.toFixed(2) },
+        { key: 'averageStoresPerTrip', label: 'ร้าน/เที่ยว', width: 15, format: (v: number) => v.toFixed(2) },
+      ],
+      `รายงานการส่งสินค้าตามรถ_${new Date().toISOString().split('T')[0]}.xlsx`,
+      'รายงานการส่งสินค้าตามรถ'
+    );
+  };
+
+  const exportStoreReport = () => {
+    if (!storeData || storeData.length === 0) return;
+    excelExport.exportToExcel(
+      storeData.map(store => ({
+        customer_code: store.customer_code,
+        customer_name: store.customer_name,
+        address: store.address || '',
+        totalTrips: store.totalTrips,
+        totalItems: store.totalItems,
+        totalQuantity: store.totalQuantity,
+      })),
+      [
+        { key: 'customer_code', label: 'รหัสลูกค้า', width: 15 },
+        { key: 'customer_name', label: 'ชื่อร้าน', width: 25 },
+        { key: 'address', label: 'ที่อยู่', width: 30 },
+        { key: 'totalTrips', label: 'จำนวนเที่ยว', width: 12, format: excelExport.formatNumber },
+        { key: 'totalItems', label: 'จำนวนรายการ', width: 15, format: excelExport.formatNumber },
+        { key: 'totalQuantity', label: 'จำนวนสินค้า', width: 15, format: excelExport.formatNumber },
+      ],
+      `รายงานการส่งสินค้าตามร้าน_${new Date().toISOString().split('T')[0]}.xlsx`,
+      'รายงานการส่งสินค้าตามร้าน'
+    );
+  };
+
+  const exportProductReport = () => {
+    if (!productData || productData.length === 0) return;
+    excelExport.exportToExcel(
+      productData.map(product => ({
+        product_code: product.product_code,
+        product_name: product.product_name,
+        category: product.category,
+        unit: product.unit,
+        totalQuantity: product.totalQuantity,
+        totalDeliveries: product.totalDeliveries,
+        totalStores: product.totalStores,
+      })),
+      [
+        { key: 'product_code', label: 'รหัสสินค้า', width: 15 },
+        { key: 'product_name', label: 'ชื่อสินค้า', width: 25 },
+        { key: 'category', label: 'หมวดหมู่', width: 15 },
+        { key: 'unit', label: 'หน่วย', width: 10 },
+        { key: 'totalQuantity', label: 'จำนวนรวม', width: 15, format: excelExport.formatNumber },
+        { key: 'totalDeliveries', label: 'จำนวนครั้งที่ส่ง', width: 18, format: excelExport.formatNumber },
+        { key: 'totalStores', label: 'จำนวนร้าน', width: 12, format: excelExport.formatNumber },
+      ],
+      `รายงานการส่งสินค้าตามสินค้า_${new Date().toISOString().split('T')[0]}.xlsx`,
+      'รายงานการส่งสินค้าตามสินค้า'
+    );
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Sub Tabs */}
+      <div className="flex gap-2 border-b border-slate-200 dark:border-slate-700">
+        <button
+          onClick={() => setActiveSubTab('vehicle')}
+          className={`px-4 py-2 font-medium transition-colors ${
+            activeSubTab === 'vehicle'
+              ? 'border-b-2 border-enterprise-600 text-enterprise-600 dark:text-enterprise-400'
+              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+          }`}
+        >
+          <Truck className="inline-block w-4 h-4 mr-2" />
+          ตามรถ
+        </button>
+        <button
+          onClick={() => setActiveSubTab('store')}
+          className={`px-4 py-2 font-medium transition-colors ${
+            activeSubTab === 'store'
+              ? 'border-b-2 border-enterprise-600 text-enterprise-600 dark:text-enterprise-400'
+              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+          }`}
+        >
+          <FileText className="inline-block w-4 h-4 mr-2" />
+          ตามร้าน
+        </button>
+        <button
+          onClick={() => setActiveSubTab('product')}
+          className={`px-4 py-2 font-medium transition-colors ${
+            activeSubTab === 'product'
+              ? 'border-b-2 border-enterprise-600 text-enterprise-600 dark:text-enterprise-400'
+              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+          }`}
+        >
+          <Package className="inline-block w-4 h-4 mr-2" />
+          ตามสินค้า
+        </button>
+        <button
+          onClick={() => setActiveSubTab('monthly')}
+          className={`px-4 py-2 font-medium transition-colors ${
+            activeSubTab === 'monthly'
+              ? 'border-b-2 border-enterprise-600 text-enterprise-600 dark:text-enterprise-400'
+              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+          }`}
+        >
+          <Calendar className="inline-block w-4 h-4 mr-2" />
+          รายเดือน
+        </button>
+      </div>
+
+      {/* Vehicle Summary */}
+      {activeSubTab === 'vehicle' && (
+        <div className="space-y-6">
+          <Card>
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+                สรุปการส่งสินค้าตามรถ
+              </h3>
+              <Button onClick={exportVehicleReport} variant="outline" size="sm">
+                <Download className="w-4 h-4 mr-2" />
+                Export Excel
+              </Button>
+            </div>
+            {vehicleLoading ? (
+              <div className="text-center py-8 text-slate-400">กำลังโหลด...</div>
+            ) : vehicleData && vehicleData.length > 0 ? (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-slate-200 dark:border-slate-700">
+                      <th className="text-left py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">ทะเบียน</th>
+                      <th className="text-left py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">ยี่ห้อ/รุ่น</th>
+                      <th className="text-left py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">สาขา</th>
+                      <th className="text-right py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">เที่ยว</th>
+                      <th className="text-right py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">ร้าน</th>
+                      <th className="text-right py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">รายการ</th>
+                      <th className="text-right py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">สินค้า</th>
+                      <th className="text-right py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">ระยะทาง (กม.)</th>
+                      <th className="text-right py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">สินค้า/เที่ยว</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {vehicleData.map((vehicle) => (
+                      <tr key={vehicle.vehicle_id} className="border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                        <td className="py-3 px-4 font-medium text-slate-900 dark:text-slate-100">{vehicle.plate}</td>
+                        <td className="py-3 px-4 text-slate-600 dark:text-slate-400">
+                          {vehicle.make && vehicle.model ? `${vehicle.make} ${vehicle.model}` : '-'}
+                        </td>
+                        <td className="py-3 px-4 text-slate-600 dark:text-slate-400">{vehicle.branch || '-'}</td>
+                        <td className="py-3 px-4 text-right text-slate-900 dark:text-slate-100">{formatNumber(vehicle.totalTrips)}</td>
+                        <td className="py-3 px-4 text-right text-slate-900 dark:text-slate-100">{formatNumber(vehicle.totalStores)}</td>
+                        <td className="py-3 px-4 text-right text-slate-900 dark:text-slate-100">{formatNumber(vehicle.totalItems)}</td>
+                        <td className="py-3 px-4 text-right font-medium text-enterprise-600 dark:text-enterprise-400">{formatNumber(vehicle.totalQuantity)}</td>
+                        <td className="py-3 px-4 text-right text-slate-600 dark:text-slate-400">{formatNumber(vehicle.totalDistance, 1)}</td>
+                        <td className="py-3 px-4 text-right text-slate-600 dark:text-slate-400">{formatNumber(vehicle.averageQuantityPerTrip, 1)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="text-center py-8 text-slate-400">ไม่มีข้อมูล</div>
+            )}
+          </Card>
+        </div>
+      )}
+
+      {/* Store Summary */}
+      {activeSubTab === 'store' && (
+        <div className="space-y-6">
+          <Card>
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+                สรุปการส่งสินค้าตามร้าน
+              </h3>
+              <Button onClick={exportStoreReport} variant="outline" size="sm">
+                <Download className="w-4 h-4 mr-2" />
+                Export Excel
+              </Button>
+            </div>
+            {storeLoading ? (
+              <div className="text-center py-8 text-slate-400">กำลังโหลด...</div>
+            ) : storeData && storeData.length > 0 ? (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-slate-200 dark:border-slate-700">
+                      <th className="text-left py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">รหัสลูกค้า</th>
+                      <th className="text-left py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">ชื่อร้าน</th>
+                      <th className="text-left py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">ที่อยู่</th>
+                      <th className="text-right py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">เที่ยว</th>
+                      <th className="text-right py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">รายการ</th>
+                      <th className="text-right py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">สินค้า</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {storeData.map((store) => {
+                      const isExpanded = expandedStores.has(store.store_id);
+                      const sortedProducts = [...(store.products || [])].sort((a, b) => b.totalQuantity - a.totalQuantity);
+                      
+                      return (
+                        <React.Fragment key={store.store_id}>
+                          <tr className="border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer" onClick={() => {
+                            const newExpanded = new Set(expandedStores);
+                            if (isExpanded) {
+                              newExpanded.delete(store.store_id);
+                            } else {
+                              newExpanded.add(store.store_id);
+                            }
+                            setExpandedStores(newExpanded);
+                          }}>
+                            <td className="py-3 px-4">
+                              <div className="flex items-center gap-2">
+                                {isExpanded ? (
+                                  <ChevronDown className="w-4 h-4 text-slate-500" />
+                                ) : (
+                                  <ChevronRight className="w-4 h-4 text-slate-500" />
+                                )}
+                                <span className="font-medium text-slate-900 dark:text-slate-100">{store.customer_code}</span>
+                              </div>
+                            </td>
+                            <td className="py-3 px-4 text-slate-900 dark:text-slate-100">{store.customer_name}</td>
+                            <td className="py-3 px-4 text-slate-600 dark:text-slate-400">{store.address || '-'}</td>
+                            <td className="py-3 px-4 text-right text-slate-900 dark:text-slate-100">{formatNumber(store.totalTrips)}</td>
+                            <td className="py-3 px-4 text-right text-slate-900 dark:text-slate-100">{formatNumber(store.totalItems)}</td>
+                            <td className="py-3 px-4">
+                              <div className="flex items-center justify-end gap-2">
+                                <span className="font-medium text-enterprise-600 dark:text-enterprise-400">{formatNumber(store.totalQuantity)}</span>
+                                {onNavigateToStoreDetail && (
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      onNavigateToStoreDetail(store.store_id);
+                                    }}
+                                    className="p-1.5 text-slate-500 hover:text-enterprise-600 dark:hover:text-enterprise-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded transition-colors"
+                                    title="ดูรายละเอียด"
+                                  >
+                                    <Eye className="w-4 h-4" />
+                                  </button>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                          {isExpanded && sortedProducts.length > 0 && (
+                            <tr>
+                              <td colSpan={6} className="py-4 px-4 bg-slate-50 dark:bg-slate-900/50">
+                                <div className="ml-6">
+                                  <h4 className="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-3">
+                                    รายละเอียดสินค้าที่ส่ง (เรียงตามจำนวนที่ส่ง)
+                                  </h4>
+                                  <div className="overflow-x-auto">
+                                    <table className="w-full text-sm">
+                                      <thead>
+                                        <tr className="border-b border-slate-200 dark:border-slate-700">
+                                          <th className="text-left py-2 px-3 text-xs font-semibold text-slate-600 dark:text-slate-400">รหัสสินค้า</th>
+                                          <th className="text-left py-2 px-3 text-xs font-semibold text-slate-600 dark:text-slate-400">ชื่อสินค้า</th>
+                                          <th className="text-left py-2 px-3 text-xs font-semibold text-slate-600 dark:text-slate-400">หน่วย</th>
+                                          <th className="text-right py-2 px-3 text-xs font-semibold text-slate-600 dark:text-slate-400">จำนวนรวม</th>
+                                          <th className="text-right py-2 px-3 text-xs font-semibold text-slate-600 dark:text-slate-400">จำนวนครั้ง</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody>
+                                        {sortedProducts.map((product) => (
+                                          <tr key={product.product_id} className="border-b border-slate-100 dark:border-slate-800">
+                                            <td className="py-2 px-3 font-medium text-slate-900 dark:text-slate-100">{product.product_code}</td>
+                                            <td className="py-2 px-3 text-slate-700 dark:text-slate-300">{product.product_name}</td>
+                                            <td className="py-2 px-3 text-slate-600 dark:text-slate-400">{product.unit}</td>
+                                            <td className="py-2 px-3 text-right font-medium text-enterprise-600 dark:text-enterprise-400">{formatNumber(product.totalQuantity)}</td>
+                                            <td className="py-2 px-3 text-right text-slate-600 dark:text-slate-400">{formatNumber(product.deliveryCount)}</td>
+                                          </tr>
+                                        ))}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </React.Fragment>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="text-center py-8 text-slate-400">ไม่มีข้อมูล</div>
+            )}
+          </Card>
+        </div>
+      )}
+
+      {/* Product Summary */}
+      {activeSubTab === 'product' && (
+        <div className="space-y-6">
+          <Card>
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+                สรุปการส่งสินค้าตามสินค้า
+              </h3>
+              <Button onClick={exportProductReport} variant="outline" size="sm">
+                <Download className="w-4 h-4 mr-2" />
+                Export Excel
+              </Button>
+            </div>
+            {productLoading ? (
+              <div className="text-center py-8 text-slate-400">กำลังโหลด...</div>
+            ) : productData && productData.length > 0 ? (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-slate-200 dark:border-slate-700">
+                      <th className="text-left py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">รหัสสินค้า</th>
+                      <th className="text-left py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">ชื่อสินค้า</th>
+                      <th className="text-left py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">หมวดหมู่</th>
+                      <th className="text-left py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">หน่วย</th>
+                      <th className="text-right py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">จำนวนรวม</th>
+                      <th className="text-right py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">จำนวนครั้ง</th>
+                      <th className="text-right py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">จำนวนร้าน</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {productData.map((product) => (
+                      <tr key={product.product_id} className="border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                        <td className="py-3 px-4 font-medium text-slate-900 dark:text-slate-100">{product.product_code}</td>
+                        <td className="py-3 px-4 text-slate-900 dark:text-slate-100">{product.product_name}</td>
+                        <td className="py-3 px-4 text-slate-600 dark:text-slate-400">{product.category}</td>
+                        <td className="py-3 px-4 text-slate-600 dark:text-slate-400">{product.unit}</td>
+                        <td className="py-3 px-4 text-right font-medium text-enterprise-600 dark:text-enterprise-400">{formatNumber(product.totalQuantity)}</td>
+                        <td className="py-3 px-4 text-right text-slate-900 dark:text-slate-100">{formatNumber(product.totalDeliveries)}</td>
+                        <td className="py-3 px-4 text-right text-slate-900 dark:text-slate-100">{formatNumber(product.totalStores)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="text-center py-8 text-slate-400">ไม่มีข้อมูล</div>
+            )}
+          </Card>
+        </div>
+      )}
+
+      {/* Monthly Report */}
+      {activeSubTab === 'monthly' && (
+        <div className="space-y-6">
+          <Card>
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+                รายงานการส่งสินค้ารายเดือน
+              </h3>
+            </div>
+            {monthlyLoading ? (
+              <div className="text-center py-8 text-slate-400">กำลังโหลด...</div>
+            ) : monthlyData && monthlyData.length > 0 ? (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-slate-200 dark:border-slate-700">
+                      <th className="text-left py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">เดือน</th>
+                      <th className="text-right py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">เที่ยว</th>
+                      <th className="text-right py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">ร้าน</th>
+                      <th className="text-right py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">รายการ</th>
+                      <th className="text-right py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">สินค้า</th>
+                      <th className="text-right py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">ระยะทาง (กม.)</th>
+                      <th className="text-right py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">สินค้า/เที่ยว</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {monthlyData.map((month) => (
+                      <tr key={month.month} className="border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                        <td className="py-3 px-4 font-medium text-slate-900 dark:text-slate-100">{month.monthLabel}</td>
+                        <td className="py-3 px-4 text-right text-slate-900 dark:text-slate-100">{formatNumber(month.totalTrips)}</td>
+                        <td className="py-3 px-4 text-right text-slate-900 dark:text-slate-100">{formatNumber(month.totalStores)}</td>
+                        <td className="py-3 px-4 text-right text-slate-900 dark:text-slate-100">{formatNumber(month.totalItems)}</td>
+                        <td className="py-3 px-4 text-right font-medium text-enterprise-600 dark:text-enterprise-400">{formatNumber(month.totalQuantity)}</td>
+                        <td className="py-3 px-4 text-right text-slate-600 dark:text-slate-400">{formatNumber(month.totalDistance, 1)}</td>
+                        <td className="py-3 px-4 text-right text-slate-600 dark:text-slate-400">{formatNumber(month.averageQuantityPerTrip, 1)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="text-center py-8 text-slate-400">ไม่มีข้อมูล</div>
+            )}
+          </Card>
+        </div>
+      )}
+    </div>
   );
 };
 

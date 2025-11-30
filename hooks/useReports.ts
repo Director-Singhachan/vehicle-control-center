@@ -453,3 +453,257 @@ export const useVehicleFuelConsumption = (options?: {
   return { data, loading, error };
 };
 
+// Delivery Trip Reports Hooks
+export const useDeliverySummaryByVehicle = (
+  startDate?: Date,
+  endDate?: Date,
+  vehicleId?: string
+) => {
+  const [data, setData] = useState<Array<{
+    vehicle_id: string;
+    plate: string;
+    make: string | null;
+    model: string | null;
+    branch: string | null;
+    totalTrips: number;
+    totalStores: number;
+    totalItems: number;
+    totalQuantity: number;
+    totalDistance: number;
+    averageItemsPerTrip: number;
+    averageQuantityPerTrip: number;
+    averageStoresPerTrip: number;
+  }>>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<Error | null>(null);
+
+  const dependencyKey = useMemo(() => {
+    return JSON.stringify({
+      start: startDate?.getTime(),
+      end: endDate?.getTime(),
+      vehicle: vehicleId,
+    });
+  }, [startDate?.getTime(), endDate?.getTime(), vehicleId]);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        setLoading(true);
+        const result = await reportsService.getDeliverySummaryByVehicle(startDate, endDate, vehicleId);
+        setData(result);
+        setError(null);
+      } catch (err) {
+        setError(err as Error);
+        console.error('[useDeliverySummaryByVehicle] Error:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dependencyKey]);
+
+  return { data, loading, error };
+};
+
+export const useDeliverySummaryByStore = (
+  startDate?: Date,
+  endDate?: Date,
+  storeId?: string
+) => {
+  const [data, setData] = useState<Array<{
+    store_id: string;
+    customer_code: string;
+    customer_name: string;
+    address: string | null;
+    totalTrips: number;
+    totalItems: number;
+    totalQuantity: number;
+    products: Array<{
+      product_id: string;
+      product_code: string;
+      product_name: string;
+      unit: string;
+      totalQuantity: number;
+      deliveryCount: number;
+    }>;
+  }>>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<Error | null>(null);
+
+  const dependencyKey = useMemo(() => {
+    return JSON.stringify({
+      start: startDate?.getTime(),
+      end: endDate?.getTime(),
+      store: storeId,
+    });
+  }, [startDate?.getTime(), endDate?.getTime(), storeId]);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        setLoading(true);
+        const result = await reportsService.getDeliverySummaryByStore(startDate, endDate, storeId);
+        setData(result);
+        setError(null);
+      } catch (err) {
+        setError(err as Error);
+        console.error('[useDeliverySummaryByStore] Error:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dependencyKey]);
+
+  return { data, loading, error };
+};
+
+export const useDeliverySummaryByProduct = (
+  startDate?: Date,
+  endDate?: Date,
+  productId?: string
+) => {
+  const [data, setData] = useState<Array<{
+    product_id: string;
+    product_code: string;
+    product_name: string;
+    category: string;
+    unit: string;
+    totalQuantity: number;
+    totalDeliveries: number;
+    totalStores: number;
+    stores: Array<{
+      store_id: string;
+      customer_code: string;
+      customer_name: string;
+      quantity: number;
+      deliveryCount: number;
+    }>;
+  }>>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<Error | null>(null);
+
+  const dependencyKey = useMemo(() => {
+    return JSON.stringify({
+      start: startDate?.getTime(),
+      end: endDate?.getTime(),
+      product: productId,
+    });
+  }, [startDate?.getTime(), endDate?.getTime(), productId]);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        setLoading(true);
+        const result = await reportsService.getDeliverySummaryByProduct(startDate, endDate, productId);
+        setData(result);
+        setError(null);
+      } catch (err) {
+        setError(err as Error);
+        console.error('[useDeliverySummaryByProduct] Error:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dependencyKey]);
+
+  return { data, loading, error };
+};
+
+export const useMonthlyDeliveryReport = (months: number = 6) => {
+  const [data, setData] = useState<Array<{
+    month: string;
+    monthLabel: string;
+    totalTrips: number;
+    totalStores: number;
+    totalItems: number;
+    totalQuantity: number;
+    totalDistance: number;
+    averageItemsPerTrip: number;
+    averageQuantityPerTrip: number;
+  }>>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<Error | null>(null);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        setLoading(true);
+        const result = await reportsService.getMonthlyDeliveryReport(months);
+        setData(result);
+        setError(null);
+      } catch (err) {
+        setError(err as Error);
+        console.error('[useMonthlyDeliveryReport] Error:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+  }, [months]);
+
+  return { data, loading, error };
+};
+
+export const useProductDeliveryHistory = (
+  storeId: string,
+  productId: string,
+  startDate?: Date,
+  endDate?: Date
+) => {
+  const [data, setData] = useState<Array<{
+    delivery_date: string;
+    trip_number: string;
+    trip_id: string;
+    quantity: number;
+    vehicle_plate: string | null;
+    driver_name: string | null;
+  }>>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<Error | null>(null);
+
+  const dependencyKey = useMemo(() => {
+    return JSON.stringify({
+      store: storeId,
+      product: productId,
+      start: startDate?.getTime(),
+      end: endDate?.getTime(),
+    });
+  }, [storeId, productId, startDate?.getTime(), endDate?.getTime()]);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      if (!storeId || !productId) {
+        setData([]);
+        setLoading(false);
+        return;
+      }
+
+      try {
+        setLoading(true);
+        const result = await reportsService.getProductDeliveryHistory(storeId, productId, startDate, endDate);
+        setData(result);
+        setError(null);
+      } catch (err) {
+        setError(err as Error);
+        console.error('[useProductDeliveryHistory] Error:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dependencyKey]);
+
+  return { data, loading, error };
+};
+
