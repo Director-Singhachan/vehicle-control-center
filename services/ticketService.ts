@@ -47,6 +47,59 @@ export const ticketService = {
     return data || [];
   },
 
+  // Check if vehicle has active tickets (not completed or rejected)
+  hasActiveTicket: async (vehicleId: string, excludeTicketId?: number): Promise<boolean> => {
+    const activeStatuses = ['pending', 'approved_inspector', 'approved_manager', 'ready_for_repair', 'in_progress'];
+    
+    let query = supabase
+      .from('tickets')
+      .select('id')
+      .eq('vehicle_id', vehicleId)
+      .in('status', activeStatuses)
+      .limit(1);
+
+    // Exclude current ticket when editing
+    if (excludeTicketId) {
+      query = query.neq('id', excludeTicketId);
+    }
+
+    const { data, error } = await query;
+
+    if (error) {
+      console.error('[ticketService] Error checking active tickets:', error);
+      return false; // Return false on error to allow submission
+    }
+
+    return (data?.length || 0) > 0;
+  },
+
+  // Get active ticket for a vehicle
+  getActiveTicket: async (vehicleId: string, excludeTicketId?: number): Promise<TicketWithRelations | null> => {
+    const activeStatuses = ['pending', 'approved_inspector', 'approved_manager', 'ready_for_repair', 'in_progress'];
+    
+    let query = supabase
+      .from('tickets_with_relations')
+      .select('*')
+      .eq('vehicle_id', vehicleId)
+      .in('status', activeStatuses)
+      .order('created_at', { ascending: false })
+      .limit(1);
+
+    // Exclude current ticket when editing
+    if (excludeTicketId) {
+      query = query.neq('id', excludeTicketId);
+    }
+
+    const { data, error } = await query;
+
+    if (error) {
+      console.error('[ticketService] Error getting active ticket:', error);
+      return null;
+    }
+
+    return data && data.length > 0 ? data[0] : null;
+  },
+
   // Get tickets with relations (using view) with pagination
   getWithRelations: async (filters?: {
     status?: string[];

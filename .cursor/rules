@@ -1,0 +1,350 @@
+# Cursor Rules for Vehicle Control Center
+
+## Project Overview
+This is a React + TypeScript + Tailwind CSS + Supabase application for vehicle fleet management with approval workflows, notifications (Telegram/LINE), and reporting features.
+
+## Tech Stack
+- **Frontend**: React 19, TypeScript, Tailwind CSS 100%
+- **Backend**: Supabase (PostgreSQL, Edge Functions, Storage)
+- **State Management**: Zustand
+- **Charts**: Chart.js + react-chartjs-2
+- **Icons**: Lucide React
+- **Build Tool**: Vite
+
+## Code Style & Conventions
+
+### TypeScript
+- Use TypeScript for all files (`.ts`, `.tsx`)
+- Define explicit types for all props, functions, and variables
+- Use `Database` types from `types/database.ts` for Supabase types
+- Prefer `interface` over `type` for component props
+- Use `React.FC<Props>` for functional components
+
+### React Patterns
+- Use functional components with hooks only
+- Use `useState`, `useEffect`, `useMemo`, `useCallback` appropriately
+- Extract custom hooks to `hooks/` directory
+- Use `React.memo` for expensive components when needed
+- Always handle loading and error states
+
+### File Organization
+```
+components/
+  ui/          # Atomic components (Button, Input, Card, Avatar, etc.)
+  layout/      # Layout components (PageLayout, PageHeader)
+  [feature]/   # Feature-specific components
+
+views/          # Page-level components
+hooks/          # Custom React hooks
+services/       # Business logic and API calls
+stores/         # Zustand stores
+types/          # TypeScript type definitions
+utils/          # Utility functions
+theme/          # Design tokens
+```
+
+### Naming Conventions
+- **Components**: PascalCase (`StatusCard.tsx`, `VehicleStatusSection.tsx`)
+- **Hooks**: camelCase with `use` prefix (`useAuth.ts`, `useDashboard.ts`)
+- **Services**: camelCase (`ticketService.ts`, `vehicleService.ts`)
+- **Types/Interfaces**: PascalCase (`TicketWithRelations`, `VehicleStatus`)
+- **Files**: Match component/function name exactly
+
+### Import Order
+1. React and React-related imports
+2. Third-party libraries
+3. Internal components
+4. Hooks
+5. Services
+6. Types
+7. Utils
+8. Styles
+
+Example:
+```tsx
+import React, { useState, useEffect } from 'react';
+import { Truck, Wrench } from 'lucide-react';
+import { Button } from '../components/ui/Button';
+import { PageLayout } from '../components/layout/PageLayout';
+import { useVehicles } from '../hooks';
+import { vehicleService } from '../services';
+import type { Database } from '../types/database';
+```
+
+## Styling Guidelines
+
+### Tailwind CSS (100% Usage)
+- **ALWAYS** use Tailwind CSS classes via `className`
+- **NEVER** use inline styles (`style={{}}`) except for dynamic values
+- **NEVER** create separate CSS files (except `src/index.css` for global styles)
+- Use design tokens from `theme/designTokens.ts` as reference
+
+### Design System
+- **Colors**: Use custom colors from `tailwind.config.js`:
+  - `enterprise-{50|100|500|600|900}` for primary actions
+  - `charcoal-{800|900|950}` for dark mode backgrounds
+  - `neon-{blue|green|alert}` for accents
+  - `slate-{100-900}` for text and borders
+
+- **Spacing**: Use Tailwind spacing scale (`p-4`, `mt-6`, `gap-3`)
+- **Typography**: 
+  - Page Title: `text-2xl font-bold`
+  - Section Title: `text-lg font-semibold`
+  - Card Title: `text-base font-medium`
+  - Body: `text-sm` or `text-base`
+
+### Dark Mode
+- **ALWAYS** support dark mode using `dark:` prefix
+- Test both light and dark modes
+- Use `dark:bg-charcoal-900` for dark backgrounds
+- Use `dark:text-white` for dark text
+
+### Responsive Design
+- Use Tailwind responsive breakpoints: `sm:`, `md:`, `lg:`, `xl:`
+- Mobile-first approach
+- Test on multiple screen sizes
+
+### Component Styling
+```tsx
+// ✅ Good: Use Tailwind classes
+<div className="p-6 bg-white dark:bg-charcoal-900 rounded-xl border border-slate-200 dark:border-slate-700">
+  <h2 className="text-2xl font-bold text-slate-900 dark:text-white">Title</h2>
+</div>
+
+// ❌ Bad: Inline styles
+<div style={{ padding: '24px', backgroundColor: 'white' }}>
+```
+
+## Component Guidelines
+
+### Reusable Components
+- **ALWAYS** use components from `components/ui/` when available:
+  - `Button` (variants: primary, secondary, outline, danger)
+  - `Card`, `CardHeader`, `CardContent`
+  - `Input` (with label and error support)
+  - `Avatar`
+  - `Skeleton` (for loading states)
+  - `ConfirmDialog`
+
+- **ALWAYS** use `PageLayout` for all page-level components
+- **NEVER** create duplicate components that already exist
+
+### Component Structure
+```tsx
+// 1. Imports
+import React from 'react';
+import { Button } from '../components/ui/Button';
+
+// 2. Types/Interfaces
+interface MyComponentProps {
+  title: string;
+  onAction?: () => void;
+}
+
+// 3. Component
+export const MyComponent: React.FC<MyComponentProps> = ({
+  title,
+  onAction,
+}) => {
+  // 4. Hooks
+  const [state, setState] = useState();
+  
+  // 5. Handlers
+  const handleClick = () => {
+    // ...
+  };
+  
+  // 6. Render
+  return (
+    <div className="...">
+      {/* ... */}
+    </div>
+  );
+};
+```
+
+## Supabase Guidelines
+
+### Database Types
+- **ALWAYS** use types from `types/database.ts`
+- Use Supabase generated types: `Database['public']['Tables']['vehicles']['Row']`
+- Use view types: `Database['public']['Views']['vehicle_dashboard']['Row']`
+
+### RLS (Row Level Security)
+- **ALWAYS** respect RLS policies
+- Test with different user roles (admin, manager, inspector, driver)
+- Use service role key only in Edge Functions, never in frontend
+
+### Edge Functions
+- Located in `supabase/functions/`
+- Use TypeScript
+- Handle errors gracefully
+- Log important events for debugging
+
+### Storage
+- Use `storageService.ts` for file uploads
+- Organize files: `pending-pdfs/`, `signed-tickets/`, `vehicle-images/`
+- Always handle upload progress and errors
+
+## State Management
+
+### Zustand Stores
+- Use Zustand for global state (`stores/`)
+- Keep stores focused and small
+- Use `create` from Zustand
+
+### Local State
+- Use `useState` for component-local state
+- Use `useMemo` for expensive computations
+- Use `useCallback` for functions passed to child components
+
+### Server State
+- Use custom hooks (`useVehicles`, `useTickets`, etc.) for server state
+- Always handle loading and error states
+- Use caching when appropriate
+
+## Error Handling
+
+### API Calls
+- **ALWAYS** handle errors in try-catch blocks
+- Show user-friendly error messages
+- Log errors for debugging
+- Provide retry mechanisms when appropriate
+
+### Form Validation
+- Validate on submit
+- Show inline error messages
+- Use `Input` component's `error` prop
+
+### Loading States
+- Show loading indicators during async operations
+- Use `Skeleton` component for content loading
+- Never show blank screens during loading
+
+## Testing & Quality
+
+### Code Quality
+- Write clean, readable code
+- Add comments for complex logic
+- Remove console.logs before committing (except for debugging)
+- Use meaningful variable and function names
+
+### Performance
+- Use `React.memo` for expensive components
+- Use `useMemo` for expensive calculations
+- Use `useCallback` for event handlers passed to children
+- Lazy load heavy components when possible
+
+## Documentation
+
+### Comments
+- Add JSDoc comments for complex functions
+- Explain "why" not "what" in comments
+- Keep comments up-to-date with code changes
+
+### File Headers
+- Add descriptive file headers for complex files:
+```tsx
+// Ticket Detail View - Show detailed information about a ticket with approval workflow
+```
+
+## Git & Version Control
+
+### Branch Naming
+- `feature/` for new features
+- `fix/` for bug fixes
+- `refactor/` for refactoring
+- `docs/` for documentation
+
+### Commit Messages
+- Use clear, descriptive commit messages
+- Reference issue numbers when applicable
+- Use present tense ("Add feature" not "Added feature")
+
+## Common Patterns
+
+### Data Fetching
+```tsx
+const { data, loading, error, refetch } = useVehicles();
+
+if (loading) return <Skeleton />;
+if (error) return <ErrorState onRetry={refetch} />;
+if (!data || data.length === 0) return <EmptyState />;
+
+return <DataDisplay data={data} />;
+```
+
+### Form Handling
+```tsx
+const [formData, setFormData] = useState({ name: '', email: '' });
+const [errors, setErrors] = useState<Record<string, string>>({});
+
+const handleSubmit = async (e: React.FormEvent) => {
+  e.preventDefault();
+  // Validation
+  // Submit
+};
+```
+
+### Conditional Rendering
+```tsx
+// ✅ Good: Clear and readable
+{isLoading ? (
+  <Skeleton />
+) : hasError ? (
+  <ErrorState />
+) : (
+  <Content />
+)}
+
+// ❌ Bad: Nested ternaries
+{isLoading ? <Skeleton /> : hasError ? <ErrorState /> : <Content />}
+```
+
+## Thai Language Support
+
+### Text Content
+- All user-facing text should be in Thai
+- Use proper Thai typography
+- Keep technical terms in English when appropriate (e.g., "PDF", "API")
+
+### Date/Time Formatting
+- Use Thai locale: `toLocaleDateString('th-TH')`
+- Format: "วัน เดือน ปี" or "DD/MM/YYYY"
+
+## Security
+
+### Environment Variables
+- **NEVER** commit `.env.local` or `.env` files
+- Use `VITE_` prefix for Vite environment variables
+- Store sensitive keys in Supabase Edge Functions only
+
+### User Input
+- **ALWAYS** validate and sanitize user input
+- Use parameterized queries for database operations
+- Respect RLS policies
+
+## When Creating New Features
+
+1. **Check existing components** - Don't duplicate functionality
+2. **Follow file structure** - Put files in correct directories
+3. **Use design tokens** - Don't hardcode colors/spacing
+4. **Support dark mode** - Always add dark mode styles
+5. **Handle errors** - Always handle loading and error states
+6. **Test thoroughly** - Test with different user roles
+7. **Update documentation** - Update relevant docs if needed
+
+## Code Review Checklist
+
+Before submitting code:
+- [ ] TypeScript types are correct
+- [ ] No console.logs (except for debugging)
+- [ ] Dark mode is supported
+- [ ] Responsive design works
+- [ ] Error handling is implemented
+- [ ] Loading states are handled
+- [ ] Uses existing components when possible
+- [ ] Follows naming conventions
+- [ ] Imports are organized correctly
+- [ ] Code is readable and well-commented
+

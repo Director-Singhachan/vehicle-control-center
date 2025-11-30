@@ -70,6 +70,14 @@ export const TicketFormView: React.FC<TicketFormViewProps> = ({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  
+  // Active ticket check state
+  const [checkingActiveTicket, setCheckingActiveTicket] = useState(false);
+  const [activeTicket, setActiveTicket] = useState<{ ticketNumber: string; status: string } | null>(null);
+  
+  // Active tickets for all vehicles (for dropdown display)
+  const [vehicleActiveTickets, setVehicleActiveTickets] = useState<Map<string, { ticketNumber: string; status: string }>>(new Map());
+  const [checkingVehicleTickets, setCheckingVehicleTickets] = useState(false);
 
   // Load ticket data when editing
   useEffect(() => {
@@ -109,6 +117,109 @@ export const TicketFormView: React.FC<TicketFormViewProps> = ({
     );
     setFilteredVehicles(filtered);
   }, [vehicleSearch, vehicles]);
+
+  // Check active tickets for all filtered vehicles when dropdown opens (only for new tickets)
+  useEffect(() => {
+    const checkVehicleTickets = async () => {
+      if (isEdit || !showVehicleDropdown || filteredVehicles.length === 0) {
+        return;
+      }
+
+      setCheckingVehicleTickets(true);
+      try {
+        const statusLabels: Record<string, string> = {
+          pending: 'รออนุมัติ',
+          approved_inspector: 'อนุมัติโดยผู้ตรวจสอบ',
+          approved_manager: 'อนุมัติโดยผู้จัดการ',
+          ready_for_repair: 'พร้อมซ่อม',
+          in_progress: 'กำลังซ่อม',
+        };
+
+        // Check active tickets for all filtered vehicles in parallel
+        const ticketPromises = filteredVehicles.map(async (vehicle) => {
+          try {
+            const active = await ticketService.getActiveTicket(vehicle.id);
+            if (active) {
+              // tickets_with_relations view includes ticket_number from tickets table
+              const activeWithNumber = active as any;
+              return {
+                vehicleId: vehicle.id,
+                ticket: {
+                  ticketNumber: activeWithNumber.ticket_number || `#${active.id}`,
+                  status: statusLabels[active.status] || active.status,
+                },
+              };
+            }
+            return null;
+          } catch (err) {
+            console.error(`[TicketFormView] Error checking ticket for vehicle ${vehicle.id}:`, err);
+            return null;
+          }
+        });
+
+        const results = await Promise.all(ticketPromises);
+        const ticketsMap = new Map<string, { ticketNumber: string; status: string }>();
+        
+        results.forEach((result) => {
+          if (result) {
+            ticketsMap.set(result.vehicleId, result.ticket);
+          }
+        });
+
+        setVehicleActiveTickets(ticketsMap);
+      } catch (err) {
+        console.error('[TicketFormView] Error checking vehicle tickets:', err);
+      } finally {
+        setCheckingVehicleTickets(false);
+      }
+    };
+
+    // Debounce to avoid too many API calls
+    const timeoutId = setTimeout(checkVehicleTickets, 300);
+    return () => clearTimeout(timeoutId);
+  }, [showVehicleDropdown, filteredVehicles, isEdit]);
+
+  // Check for active ticket when vehicle is selected (only for new tickets)
+  useEffect(() => {
+    const checkActiveTicket = async () => {
+      if (!formData.vehicle_id || isEdit) {
+        setActiveTicket(null);
+        return;
+      }
+
+      setCheckingActiveTicket(true);
+      try {
+        const active = await ticketService.getActiveTicket(formData.vehicle_id);
+        if (active) {
+          const statusLabels: Record<string, string> = {
+            pending: 'รออนุมัติ',
+            approved_inspector: 'อนุมัติโดยผู้ตรวจสอบ',
+            approved_manager: 'อนุมัติโดยผู้จัดการ',
+            ready_for_repair: 'พร้อมซ่อม',
+            in_progress: 'กำลังซ่อม',
+          };
+          // tickets_with_relations view includes ticket_number from tickets table
+          const activeWithNumber = active as any;
+          setActiveTicket({
+            ticketNumber: activeWithNumber.ticket_number || `#${active.id}`,
+            status: statusLabels[active.status] || active.status,
+          });
+        } else {
+          setActiveTicket(null);
+        }
+      } catch (err) {
+        console.error('[TicketFormView] Error checking active ticket:', err);
+        setActiveTicket(null);
+      } finally {
+        setCheckingActiveTicket(false);
+      }
+    };
+
+    // Debounce check to avoid too many API calls
+    const timeoutId = setTimeout(checkActiveTicket, 500);
+    return () => clearTimeout(timeoutId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formData.vehicle_id, isEdit]);
 
   // Cleanup blob URLs when component unmounts
   useEffect(() => {
@@ -174,6 +285,13 @@ export const TicketFormView: React.FC<TicketFormViewProps> = ({
       setError('กรุณาเลือกยานพาหนะ');
       return false;
     }
+    
+    // Check for active ticket (only for new tickets)
+    if (!isEdit && activeTicket) {
+      setError(`ไม่สามารถแจ้งซ่อมได้ เนื่องจากรถคันนี้มีตั๋ว ${activeTicket.ticketNumber} ที่ยังไม่เสร็จสิ้น (สถานะ: ${activeTicket.status}) กรุณารอให้ตั๋วเดิมเสร็จสิ้นก่อน`);
+      return false;
+    }
+    
     if (!formData.repair_type?.trim()) {
       setError('กรุณากรอกประเภทการซ่อม');
       return false;
@@ -336,6 +454,34 @@ export const TicketFormView: React.FC<TicketFormViewProps> = ({
     >
       <Card className="p-6">
         <form onSubmit={handleSubmit} className="space-y-6">
+          {/* Active Ticket Warning */}
+          {!isEdit && activeTicket && (
+            <div className="p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg flex items-start gap-3">
+              <AlertCircle className="w-5 h-5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <p className="text-sm font-medium text-amber-800 dark:text-amber-200 mb-1">
+                  ⚠️ รถคันนี้มีตั๋วที่ยังไม่เสร็จสิ้น
+                </p>
+                <p className="text-sm text-amber-700 dark:text-amber-300">
+                  ตั๋ว <span className="font-semibold">{activeTicket.ticketNumber}</span> ยังอยู่ในสถานะ <span className="font-semibold">{activeTicket.status}</span>
+                </p>
+                <p className="text-xs text-amber-600 dark:text-amber-400 mt-2">
+                  กรุณารอให้ตั๋วเดิมเสร็จสิ้น (สถานะ: เสร็จสิ้น หรือ ปฏิเสธ) ก่อนแจ้งซ่อมใหม่
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Checking Active Ticket */}
+          {!isEdit && checkingActiveTicket && formData.vehicle_id && (
+            <div className="p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg flex items-center gap-3">
+              <div className="animate-spin rounded-full h-4 w-4 border-2 border-blue-600 border-t-transparent"></div>
+              <p className="text-sm text-blue-800 dark:text-blue-200">
+                กำลังตรวจสอบตั๋วที่ยังไม่เสร็จสิ้น...
+              </p>
+            </div>
+          )}
+
           {/* Error/Success Messages */}
           {error && (
             <div className="p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg flex items-start gap-3">
@@ -414,31 +560,47 @@ export const TicketFormView: React.FC<TicketFormViewProps> = ({
 
                   {showVehicleDropdown && !initialVehicleId && (
                     <div className="absolute z-10 w-full mt-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg max-h-60 overflow-auto">
+                      {checkingVehicleTickets && !isEdit && (
+                        <div className="px-4 py-2 text-xs text-slate-500 dark:text-slate-400 flex items-center gap-2 border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50">
+                          <div className="animate-spin rounded-full h-3 w-3 border-2 border-slate-400 border-t-transparent"></div>
+                          กำลังตรวจสอบสถานะตั๋ว...
+                        </div>
+                      )}
                       {filteredVehicles.length > 0 ? (
-                        filteredVehicles.map(vehicle => (
-                          <button
-                            key={vehicle.id}
-                            type="button"
-                            onClick={() => {
-                              handleChange('vehicle_id', vehicle.id);
-                              setVehicleSearch(`${vehicle.plate} ${vehicle.make ? `(${vehicle.make} ${vehicle.model})` : ''}`);
-                              setShowVehicleDropdown(false);
-                            }}
-                            className="w-full text-left px-4 py-2 hover:bg-slate-50 dark:hover:bg-slate-700/50 flex items-center justify-between group"
-                          >
-                            <div>
-                              <p className="text-sm font-medium text-slate-900 dark:text-white">
-                                {vehicle.plate}
-                              </p>
-                              <p className="text-xs text-slate-500 dark:text-slate-400">
-                                {vehicle.make} {vehicle.model}
-                              </p>
-                            </div>
-                            {formData.vehicle_id === vehicle.id && (
-                              <Check className="w-4 h-4 text-enterprise-600 dark:text-neon-blue" />
-                            )}
-                          </button>
-                        ))
+                        filteredVehicles.map(vehicle => {
+                          const activeTicketInfo = vehicleActiveTickets.get(vehicle.id);
+                          return (
+                            <button
+                              key={vehicle.id}
+                              type="button"
+                              onClick={() => {
+                                handleChange('vehicle_id', vehicle.id);
+                                setVehicleSearch(`${vehicle.plate} ${vehicle.make ? `(${vehicle.make} ${vehicle.model})` : ''}`);
+                                setShowVehicleDropdown(false);
+                              }}
+                              className={`w-full text-left px-4 py-2 hover:bg-slate-50 dark:hover:bg-slate-700/50 flex items-center justify-between group ${
+                                activeTicketInfo ? 'border-l-2 border-amber-400' : ''
+                              }`}
+                            >
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-medium text-slate-900 dark:text-white">
+                                  {vehicle.plate}
+                                </p>
+                                <p className="text-xs text-slate-500 dark:text-slate-400">
+                                  {vehicle.make} {vehicle.model}
+                                </p>
+                                {activeTicketInfo && (
+                                  <p className="text-xs text-amber-600 dark:text-amber-400 mt-1 font-medium">
+                                    ⚠️ มีตั๋ว {activeTicketInfo.ticketNumber} ({activeTicketInfo.status})
+                                  </p>
+                                )}
+                              </div>
+                              {formData.vehicle_id === vehicle.id && (
+                                <Check className="w-4 h-4 text-enterprise-600 dark:text-neon-blue flex-shrink-0 ml-2" />
+                              )}
+                            </button>
+                          );
+                        })
                       ) : (
                         <div className="px-4 py-3 text-sm text-slate-500 dark:text-slate-400 text-center">
                           ไม่พบยานพาหนะ
@@ -637,7 +799,7 @@ export const TicketFormView: React.FC<TicketFormViewProps> = ({
             </Button>
             <Button
               type="submit"
-              disabled={saving || uploading}
+              disabled={saving || uploading || (!isEdit && !!activeTicket) || checkingActiveTicket}
               isLoading={saving || uploading}
             >
               <Save className="w-4 h-4 mr-2" />

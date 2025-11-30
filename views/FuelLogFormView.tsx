@@ -64,7 +64,7 @@ export const FuelLogFormView: React.FC<FuelLogFormViewProps> = ({
     fuel_station_location: '',
     receipt_number: '',
     notes: '',
-    is_full_tank: true,
+    is_full_tank: false, // เริ่มต้นเป็น false, ระบบจะติ๊กให้เองเมื่อเติมเต็มถัง
   });
 
   const [receiptImage, setReceiptImage] = useState<File | null>(null);
@@ -87,6 +87,8 @@ export const FuelLogFormView: React.FC<FuelLogFormViewProps> = ({
     const pricePerLiter = parseFloat(formData.price_per_liter) || 0;
     setCalculatedTotal(liters * pricePerLiter);
   }, [formData.liters, formData.price_per_liter]);
+
+  // ไม่ต้องคำนวณอัตโนมัติ - ให้คนขับ/พนักงานกดติ๊กเองเมื่อเติมเต็มถัง
 
   // Auto-fill last odometer when vehicle is selected
   useEffect(() => {
@@ -282,7 +284,7 @@ export const FuelLogFormView: React.FC<FuelLogFormViewProps> = ({
           fuel_station_location: '',
           receipt_number: '',
           notes: '',
-          is_full_tank: true,
+          is_full_tank: false, // Reset เป็น false หลังจากบันทึกสำเร็จ
         });
         setReceiptImage(null);
         setReceiptPreview(null);

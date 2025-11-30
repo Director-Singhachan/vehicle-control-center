@@ -1,5 +1,5 @@
 // Reports Hooks
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { reportsService } from '../services/reportsService';
 import type {
   MonthlyFuelReport,
@@ -334,6 +334,121 @@ export const useMonthlyCostTrend = (months: number = 6) => {
 
     fetchData();
   }, [months]);
+
+  return { data, loading, error };
+};
+
+// Vehicle Usage Ranking Hook
+export const useVehicleUsageRanking = (options?: {
+  startDate?: Date;
+  endDate?: Date;
+  branch?: string | null;
+  limit?: number;
+}) => {
+  const [data, setData] = useState<Array<{
+    vehicle_id: string;
+    plate: string;
+    make: string | null;
+    model: string | null;
+    branch: string | null;
+    totalDistance: number;
+    totalTrips: number;
+    totalHours: number;
+    averageDistance: number;
+  }>>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<Error | null>(null);
+
+  // Create stable dependency string to prevent unnecessary re-fetches
+  const dependencyKey = useMemo(() => {
+    if (!options) return 'no-options';
+    return JSON.stringify({
+      startDate: options.startDate?.toISOString(),
+      endDate: options.endDate?.toISOString(),
+      branch: options.branch,
+      limit: options.limit,
+    });
+  }, [
+    options?.startDate?.getTime(),
+    options?.endDate?.getTime(),
+    options?.branch,
+    options?.limit,
+  ]);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        setLoading(true);
+        const result = await reportsService.getVehicleUsageRanking(options);
+        setData(result);
+        setError(null);
+      } catch (err) {
+        setError(err as Error);
+        console.error('[useVehicleUsageRanking] Error:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+  }, [dependencyKey]);
+
+  return { data, loading, error };
+};
+
+// Vehicle Fuel Consumption Hook
+export const useVehicleFuelConsumption = (options?: {
+  startDate?: Date;
+  endDate?: Date;
+  branch?: string | null;
+}) => {
+  const [data, setData] = useState<Array<{
+    vehicle_id: string;
+    plate: string;
+    make: string | null;
+    model: string | null;
+    branch: string | null;
+    totalLiters: number;
+    totalCost: number;
+    fillCount: number;
+    averageEfficiency: number | null;
+    averagePricePerLiter: number;
+  }>>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<Error | null>(null);
+
+  // Create stable dependency string to prevent unnecessary re-fetches
+  const dependencyKey = useMemo(() => {
+    if (!options) return 'no-options';
+    return JSON.stringify({
+      startDate: options.startDate?.toISOString(),
+      endDate: options.endDate?.toISOString(),
+      branch: options.branch,
+    });
+  }, [
+    options?.startDate?.getTime(),
+    options?.endDate?.getTime(),
+    options?.branch,
+  ]);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        setLoading(true);
+        const result = await reportsService.getVehicleFuelConsumption(options);
+        setData(result);
+        setError(null);
+      } catch (err) {
+        setError(err as Error);
+        console.error('[useVehicleFuelConsumption] Error:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dependencyKey]);
 
   return { data, loading, error };
 };

@@ -32,6 +32,18 @@ interface UsageChartProps {
 }
 
 export const UsageChart: React.FC<UsageChartProps> = ({ data, isDark }) => {
+  // Check if data is empty or invalid
+  if (!data || !data.labels || !data.data || data.labels.length === 0 || data.data.length === 0) {
+    return (
+      <div className="h-64 w-full flex items-center justify-center text-slate-500 dark:text-slate-400">
+        <div className="text-center">
+          <p className="text-sm">ไม่มีข้อมูลการใช้งาน</p>
+          <p className="text-xs mt-1">กรุณาเช็คอินการเดินทางเพื่อดูข้อมูล</p>
+        </div>
+      </div>
+    );
+  }
+
   const chartData = {
     labels: data.labels,
     datasets: [
