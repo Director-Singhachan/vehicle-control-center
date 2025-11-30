@@ -58,7 +58,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
             เข้าสู่ระบบ
           </h1>
           <p className="text-slate-600 dark:text-slate-400">
-            ศูนย์ควบคุมยานพาหนะ
+            ระบบจัดการยานพาหนะและการจัดส่ง
           </p>
         </div>
 
