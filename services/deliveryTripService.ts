@@ -337,9 +337,19 @@ export const deliveryTripService = {
       throw new Error('User not authenticated');
     }
 
-    // Update trip basic info
+    // Extract stores from data (it's a relation, not a column)
+    const stores = data.stores;
+    
+    // Update trip basic info (exclude stores - it's not a column)
+    // Create updateData without stores property to avoid PGRST204 error
     const updateData: DeliveryTripUpdate = {
-      ...data,
+      vehicle_id: data.vehicle_id,
+      driver_id: data.driver_id,
+      planned_date: data.planned_date,
+      odometer_start: data.odometer_start,
+      odometer_end: data.odometer_end,
+      status: data.status,
+      notes: data.notes,
       updated_by: user.id,
     };
 
@@ -349,6 +359,10 @@ export const deliveryTripService = {
         delete updateData[key as keyof DeliveryTripUpdate];
       }
     });
+
+    // Explicitly ensure stores is not in updateData (it's a relation, not a column)
+    // This prevents PGRST204 error
+    delete (updateData as any).stores;
 
     const { error: updateError } = await supabase
       .from('delivery_trips')
@@ -361,7 +375,7 @@ export const deliveryTripService = {
     }
 
     // If stores are provided, update them
-    if (data.stores) {
+    if (stores) {
       // Delete existing stores and items
       const { error: deleteStoresError } = await supabase
         .from('delivery_trip_stores')
@@ -374,7 +388,7 @@ export const deliveryTripService = {
       }
 
       // Recreate stores and items
-      for (const storeData of data.stores) {
+      for (const storeData of stores) {
         const { data: tripStore, error: storeError } = await supabase
           .from('delivery_trip_stores')
           .insert({

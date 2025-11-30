@@ -535,37 +535,26 @@ export const pdfService = {
             doc.text('ใบส่งสินค้า', 74, yPos, { align: 'center' });
             yPos += 8;
 
-            // Trip Number
-            doc.setFontSize(12);
-            doc.text(`รหัสทริป: ${trip.trip_number || 'N/A'}`, 10, yPos);
-            yPos += 6;
-
-            // Date
+            // First row: Date (left) and Trip Number (right)
+            doc.setFontSize(11);
             const plannedDate = new Date(trip.planned_date).toLocaleDateString('th-TH', {
                 year: 'numeric',
                 month: 'long',
                 day: 'numeric',
             });
             doc.text(`วันที่: ${plannedDate}`, 10, yPos);
+            doc.text(`รหัสทริป: ${trip.trip_number || 'N/A'}`, 138, yPos, { align: 'right' });
             yPos += 6;
 
-            // Vehicle
+            // Second row: Vehicle (left) and Driver (right)
             if (trip.vehicle) {
-                doc.text(`รถ: ${trip.vehicle.plate}${trip.vehicle.make && trip.vehicle.model ? ` (${trip.vehicle.make} ${trip.vehicle.model})` : ''}`, 10, yPos);
-                yPos += 6;
+                const vehicleText = `รถ: ${trip.vehicle.plate}${trip.vehicle.make && trip.vehicle.model ? ` (${trip.vehicle.make} ${trip.vehicle.model})` : ''}`;
+                doc.text(vehicleText, 10, yPos);
             }
-
-            // Driver
             if (trip.driver) {
-                doc.text(`คนขับ: ${trip.driver.full_name}`, 10, yPos);
-                yPos += 6;
+                doc.text(`คนขับ: ${trip.driver.full_name}`, 138, yPos, { align: 'right' });
             }
-
-            // Odometer
-            if (trip.odometer_start) {
-                doc.text(`ไมล์เริ่มต้น: ${trip.odometer_start.toLocaleString()} กม.`, 10, yPos);
-                yPos += 6;
-            }
+            yPos += 6;
 
             yPos += 3;
 

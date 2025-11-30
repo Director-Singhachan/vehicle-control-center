@@ -619,12 +619,6 @@ const AppContent = () => {
 
         {/* View Content */}
         <div className="p-6">
-          {(() => {
-            console.log('[AppContent] 🔍 Checking activeTab:', activeTab, 'vehicleView:', vehicleView, 'selectedVehicleId:', selectedVehicleId);
-            console.log('[AppContent] 🔍 activeTab === "vehicles":', activeTab === 'vehicles');
-            console.log('[AppContent] 🔍 activeTab === "dashboard":', activeTab === 'dashboard');
-            return null;
-          })()}
           {activeTab === 'dashboard' ? (
             <DashboardView
               isDark={isDark}

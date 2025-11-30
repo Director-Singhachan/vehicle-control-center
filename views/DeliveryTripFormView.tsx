@@ -23,6 +23,8 @@ import { PageLayout } from '../components/layout/PageLayout';
 import { useDeliveryTrip, useVehicles, useStores, useProducts } from '../hooks';
 import { deliveryTripService, type CreateDeliveryTripData } from '../services/deliveryTripService';
 import { tripLogService } from '../services/tripLogService';
+import { storeService, type Store } from '../services/storeService';
+import { productService, type Product } from '../services/productService';
 import { profileService } from '../services/profileService';
 import type { DeliveryTripWithRelations } from '../services/deliveryTripService';
 
@@ -50,8 +52,158 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
   const isEdit = !!tripId;
   const { trip, loading: loadingTrip } = useDeliveryTrip(tripId || null);
   const { vehicles, loading: loadingVehicles } = useVehicles();
-  const { stores, loading: loadingStores } = useStores({ is_active: true });
-  const { products, loading: loadingProducts } = useProducts({ is_active: true });
+  
+  // Store search with debounce - use backend search instead of frontend filtering
+  const [storeSearchDebounced, setStoreSearchDebounced] = useState('');
+  const { stores, loading: loadingStores } = useStores({ 
+    is_active: true,
+    search: storeSearchDebounced || undefined // Only search if there's a search term
+  });
+  
+  // Cache store info for selected stores to prevent disappearing when stores array is empty
+  const [storeCache, setStoreCache] = React.useState<Map<string, Store>>(new Map());
+  
+  // Update cache when stores are loaded
+  React.useEffect(() => {
+    if (stores.length > 0) {
+      setStoreCache(prev => {
+        const newCache = new Map(prev);
+        stores.forEach(store => {
+          newCache.set(store.id, store);
+        });
+        return newCache;
+      });
+    }
+  }, [stores]);
+  
+  // Get store info - use cache if stores array is empty
+  const getStoreInfo = React.useCallback((storeId: string): Store | null => {
+    // First try to find in current stores array
+    const store = stores.find(s => s.id === storeId);
+    if (store) return store;
+    
+    // If not found, try cache
+    return storeCache.get(storeId) || null;
+  }, [stores, storeCache]);
+  
+  // Product search with debounce - use server-side search (supports millions of records)
+  const [productSearch, setProductSearch] = useState<Map<number, string>>(new Map());
+  const [productSearchDebounced, setProductSearchDebounced] = useState<Map<number, string>>(new Map());
+  
+  // Debounce product search for each store (300ms delay)
+  useEffect(() => {
+    const timers: NodeJS.Timeout[] = [];
+    
+    productSearch.forEach((search, storeIndex) => {
+      const timer = setTimeout(() => {
+        setProductSearchDebounced(prev => {
+          const newMap = new Map(prev);
+          if (search && search.trim()) {
+            newMap.set(storeIndex, search.trim());
+          } else {
+            newMap.delete(storeIndex);
+          }
+          return newMap;
+        });
+      }, 300);
+      timers.push(timer);
+    });
+    
+    // Clean up searches that were removed
+    const currentKeys = new Set(productSearch.keys());
+    setProductSearchDebounced(prev => {
+      const newMap = new Map(prev);
+      prev.forEach((_, key) => {
+        if (!currentKeys.has(key)) {
+          newMap.delete(key);
+        }
+      });
+      return newMap;
+    });
+    
+    return () => {
+      timers.forEach(timer => clearTimeout(timer));
+    };
+  }, [productSearch]);
+  
+  // Get the most recent active search term (for single products fetch)
+  // In a production app, you might want to fetch products per store separately
+  const activeProductSearch = Array.from(productSearchDebounced.values())
+    .find((s): s is string => typeof s === 'string' && s.trim().length > 0) || '';
+  
+  // Fetch products with server-side search (supports millions of records)
+  // Note: This fetches products for the first active search. For multiple stores with different searches,
+  // you'd need a more complex solution (multiple hooks or a custom hook that handles multiple searches)
+  const { products, loading: loadingProducts } = useProducts({ 
+    is_active: true,
+    search: activeProductSearch || undefined 
+  });
+  
+  // Cache product info for selected products to prevent disappearing when products array changes
+  const [productCache, setProductCache] = React.useState<Map<string, Product>>(new Map());
+  
+  // Update cache when products are loaded
+  React.useEffect(() => {
+    if (products.length > 0) {
+      setProductCache(prev => {
+        const newCache = new Map(prev);
+        products.forEach(product => {
+          newCache.set(product.id, product);
+        });
+        return newCache;
+      });
+    }
+  }, [products]);
+  
+  // Get product info - use cache if products array is empty or doesn't contain the product
+  const getProductInfo = React.useCallback((productId: string): Product | null => {
+    // First try to find in current products array
+    const product = products.find(p => p.id === productId);
+    if (product) return product;
+    
+    // If not found, try cache
+    return productCache.get(productId) || null;
+  }, [products, productCache]);
+  
+  // Cache products when they are added to a store
+  const cacheProduct = React.useCallback((product: Product) => {
+    setProductCache(prev => {
+      const newCache = new Map(prev);
+      newCache.set(product.id, product);
+      return newCache;
+    });
+  }, []);
+  
+  // Filter products - server-side search already done for active search
+  // For stores with different search terms, fallback to client-side filtering from cache
+  const getFilteredProducts = useMemo(() => {
+    return (storeIndex: number) => {
+      const searchTerm = productSearchDebounced.get(storeIndex);
+      
+      // If no search for this store, return all cached products (or empty if cache is small)
+      if (!searchTerm) {
+        // Return cached products that are likely to be used
+        // For better UX, we could return recently used products or all cached products
+        return Array.from(productCache.values());
+      }
+      
+      // If this store's search matches the active search, products are already filtered by server
+      if (searchTerm === activeProductSearch) {
+        return products; // Already filtered by server
+      }
+      
+      // If this store has different search, filter client-side from cache (fallback)
+      // Note: For better performance with millions of products, consider fetching separately per store
+      const searchLower = searchTerm.toLowerCase();
+      return Array.from(productCache.values()).filter((product: Product) =>
+        (product.product_code || '').toLowerCase().includes(searchLower) ||
+        (product.product_name || '').toLowerCase().includes(searchLower) ||
+        (product.category || '').toLowerCase().includes(searchLower)
+      );
+    };
+  }, [products, productSearchDebounced, activeProductSearch, productCache]);
+  
+  // Removed debug logging to reduce console noise
   
   // Drivers list
   const [drivers, setDrivers] = React.useState<Array<{ id: string; full_name: string }>>([]);
@@ -68,6 +220,15 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
   const [selectedStores, setSelectedStores] = useState<StoreWithItems[]>([]);
   const [storeSearch, setStoreSearch] = useState('');
   const [showStoreDropdown, setShowStoreDropdown] = useState(false);
+  
+  // Debounce store search for server-side search (supports millions of records)
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setStoreSearchDebounced(storeSearch.trim());
+    }, 300); // 300ms delay - wait for user to finish typing
+    
+    return () => clearTimeout(timer);
+  }, [storeSearch]);
   const [expandedStoreIndex, setExpandedStoreIndex] = useState<number | null>(null);
   const [productQuantityInput, setProductQuantityInput] = useState<Map<string, string>>(new Map()); // key: `${storeIndex}-${productId}`
   
@@ -105,7 +266,8 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
         setVehicleSearch(displayText);
       }
 
-      if (trip.stores) {
+      // Only set selectedStores if we're in edit mode and haven't set it yet
+      if (trip.stores && isEdit && selectedStores.length === 0) {
         const storesWithItems: StoreWithItems[] = trip.stores.map((store, index) => ({
           store_id: store.store_id,
           sequence_order: store.sequence_order,
@@ -116,52 +278,223 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
           })),
         }));
         setSelectedStores(storesWithItems);
+        
+        // Fetch store info and product info for all stores in the trip and cache them
+        // This prevents "loading" state when stores/products arrays are empty
+        const fetchStoreAndProductInfo = async () => {
+          const storeIds = storesWithItems.map(s => s.store_id);
+          const productIds = new Set<string>();
+          
+          // Collect all product IDs from all stores
+          storesWithItems.forEach(store => {
+            store.items.forEach(item => {
+              productIds.add(item.product_id);
+            });
+          });
+          
+          // Fetch stores in parallel
+          const storePromises = storeIds.map(storeId => 
+            storeService.getById(storeId).catch(err => {
+              console.error(`[DeliveryTripFormView] Error fetching store ${storeId}:`, err);
+              return null;
+            })
+          );
+          
+          // Fetch products in parallel
+          const productPromises = Array.from(productIds).map(productId =>
+            productService.getById(productId).catch(err => {
+              console.error(`[DeliveryTripFormView] Error fetching product ${productId}:`, err);
+              return null;
+            })
+          );
+          
+          // Wait for all fetches to complete
+          const [fetchedStores, fetchedProducts] = await Promise.all([
+            Promise.all(storePromises),
+            Promise.all(productPromises)
+          ]);
+          
+          // Cache all fetched stores
+          const validStores = fetchedStores.filter((s): s is Store => s !== null);
+          if (validStores.length > 0) {
+            setStoreCache(prev => {
+              const newCache = new Map(prev);
+              validStores.forEach(store => {
+                newCache.set(store.id, store);
+              });
+              return newCache;
+            });
+          }
+          
+          // Cache all fetched products
+          const validProducts = fetchedProducts.filter((p): p is Product => p !== null);
+          if (validProducts.length > 0) {
+            setProductCache(prev => {
+              const newCache = new Map(prev);
+              validProducts.forEach(product => {
+                newCache.set(product.id, product);
+              });
+              return newCache;
+            });
+          }
+        };
+        
+        fetchStoreAndProductInfo();
       }
     }
-  }, [trip]);
+  }, [trip, vehicles, isEdit]); // Remove selectedStores from dependencies to prevent reset
 
   // Normalize text for better search (remove spaces, convert to lowercase)
+  // Normalize text for search - keep spaces and hyphens for flexible matching
   const normalizeText = (text: string): string => {
-    return text.toLowerCase().replace(/\s+/g, '').trim();
+    if (!text) return '';
+    return text.toLowerCase().trim();
+  };
+
+  // Create searchable text from multiple fields
+  const createSearchableText = (...texts: (string | null | undefined)[]): string => {
+    return texts
+      .filter(t => t)
+      .map(t => normalizeText(t!))
+      .join(' ');
   };
 
   // Filter vehicles by search - improved search
   const filteredVehicles = useMemo(() => {
     if (!vehicleSearch) return vehicles;
-    const searchNormalized = normalizeText(vehicleSearch);
+    const searchLower = normalizeText(vehicleSearch);
     return vehicles.filter(vehicle => {
-      const plateNormalized = normalizeText(vehicle.plate || '');
-      const makeNormalized = vehicle.make ? normalizeText(vehicle.make) : '';
-      const modelNormalized = vehicle.model ? normalizeText(vehicle.model) : '';
-      return plateNormalized.includes(searchNormalized) || 
-             makeNormalized.includes(searchNormalized) || 
-             modelNormalized.includes(searchNormalized);
+      const plateLower = normalizeText(vehicle.plate || '');
+      const makeLower = normalizeText(vehicle.make || '');
+      const modelLower = normalizeText(vehicle.model || '');
+      const searchableText = createSearchableText(vehicle.plate, vehicle.make, vehicle.model);
+      
+      // Match in individual fields or combined
+      return plateLower.includes(searchLower) || 
+             makeLower.includes(searchLower) || 
+             modelLower.includes(searchLower) ||
+             searchableText.includes(searchLower);
     });
   }, [vehicles, vehicleSearch]);
 
-  // Filter stores by search - improved search
+  // Filter stores - server-side search already done, just sort and limit
+  // This works for millions of records because filtering happens in database
   const filteredStores = useMemo(() => {
-    if (!storeSearch) return stores;
-    const searchNormalized = normalizeText(storeSearch);
-    return stores.filter(store => {
-      const codeNormalized = normalizeText(store.customer_code || '');
-      const nameNormalized = normalizeText(store.customer_name || '');
-      return codeNormalized.includes(searchNormalized) || nameNormalized.includes(searchNormalized);
+    // If no search, return empty (don't show all stores)
+    if (!storeSearchDebounced || !storeSearchDebounced.trim()) return [];
+    
+    // Server has already filtered, just sort by relevance
+    const searchLower = normalizeText(storeSearchDebounced);
+    const searchTrimmed = searchLower.trim();
+    
+    // Score stores for better sorting (exact matches first)
+    const scoredStores = stores.map(store => {
+      // Get raw values (before normalization) for exact matching
+      const rawCode = (store.customer_code || '').trim();
+      const rawName = (store.customer_name || '').trim();
+      
+      // Normalized values for case-insensitive matching
+      const codeLower = normalizeText(rawCode);
+      const nameLower = normalizeText(rawName);
+      
+      let score = 0;
+      let matches = false;
+      
+      // 1. Exact match (case-insensitive) in customer_code - highest priority
+      if (codeLower === searchTrimmed) {
+        score = 1000;
+        matches = true;
+      }
+      // 2. Starts with in customer_code - high priority
+      else if (codeLower.startsWith(searchTrimmed)) {
+        score = 500;
+        matches = true;
+      }
+      // 3. Direct match in customer_code (case-insensitive) - exact or partial
+      else if (codeLower.includes(searchTrimmed)) {
+        score = 300;
+        matches = true;
+      }
+      // 4. Exact match in customer_name
+      else if (nameLower === searchTrimmed) {
+        score = 200;
+        matches = true;
+      }
+      // 5. Starts with in customer_name
+      else if (nameLower.startsWith(searchTrimmed)) {
+        score = 150;
+        matches = true;
+      }
+      // 6. Direct match in customer_name (case-insensitive)
+      else if (nameLower.includes(searchTrimmed)) {
+        score = 100;
+        matches = true;
+      }
+      // 7. Match without special characters (hyphens, spaces, underscores) for flexible code matching
+      else {
+        const searchWithoutSpecial = searchTrimmed.replace(/[-\s_]/g, '');
+        const codeWithoutSpecial = codeLower.replace(/[-\s_]/g, '');
+        if (searchWithoutSpecial && codeWithoutSpecial.includes(searchWithoutSpecial)) {
+          score = 50;
+          matches = true;
+        }
+        // 8. Match code with special characters removed from search
+        else if (searchWithoutSpecial && codeLower.includes(searchWithoutSpecial)) {
+          score = 40;
+          matches = true;
+        }
+        // 9. Match raw code (preserving case) - in case there are encoding issues
+        else if (rawCode.toLowerCase().includes(searchTrimmed)) {
+          score = 30;
+          matches = true;
+        }
+        // 10. Match partial code segments
+        else {
+          const codeSegments = codeLower.split(/[-\s_]/).filter(s => s.length > 0);
+          const searchSegments = searchTrimmed.split(/[-\s_]/).filter(s => s.length > 0);
+          if (searchSegments.some(ss => codeSegments.some(cs => cs.startsWith(ss) || cs.includes(ss) || ss.includes(cs)))) {
+            score = 20;
+            matches = true;
+          }
+          // 11. Match individual words in customer_name
+          else {
+            const nameWords = nameLower.split(/\s+/).filter(w => w.length > 0);
+            const searchWords = searchTrimmed.split(/\s+/).filter(w => w.length > 0);
+            if (searchWords.some(sw => nameWords.some(nw => nw.startsWith(sw) || nw.includes(sw) || sw.includes(nw)))) {
+              score = 10;
+              matches = true;
+            }
+            // 12. Match in combined searchable text
+            else {
+              const searchableText = createSearchableText(
+                store.customer_code,
+                store.customer_name,
+                store.address,
+                store.contact_person
+              );
+              if (searchableText.includes(searchTrimmed)) {
+                score = 5;
+                matches = true;
+              }
+            }
+          }
+        }
+      }
+      
+      return { store, score, matches };
     });
-  }, [stores, storeSearch]);
+    
+    // Filter only matching stores and sort by score (highest first)
+    const filtered = scoredStores
+      .filter(item => item.matches)
+      .sort((a, b) => b.score - a.score)
+      .map(item => item.store)
+      .slice(0, 100); // Limit to 100 results for performance
+    
+    return filtered;
+  }, [stores, storeSearchDebounced]);
 
-  // Filter products by search
-  const [productSearch, setProductSearch] = useState<Map<number, string>>(new Map());
-  const getFilteredProducts = (storeIndex: number) => {
-    const search = productSearch.get(storeIndex) || '';
-    if (!search) return products;
-    const searchLower = search.toLowerCase();
-    return products.filter(product =>
-      product.product_code.toLowerCase().includes(searchLower) ||
-      product.product_name.toLowerCase().includes(searchLower) ||
-      product.category.toLowerCase().includes(searchLower)
-    );
-  };
+  // getFilteredProducts is now defined above using useMemo
 
   // Auto-populate destinations when vehicle is selected
   useEffect(() => {
@@ -263,21 +596,45 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
   };
 
   // Add store to trip
-  const handleAddStore = (storeId: string) => {
+  const handleAddStore = React.useCallback((storeId: string) => {
+    // Find store in current stores array to cache it
     const store = stores.find(s => s.id === storeId);
-    if (!store) return;
+    if (store) {
+      // Cache store info immediately
+      setStoreCache(prev => {
+        const newCache = new Map(prev);
+        newCache.set(storeId, store);
+        return newCache;
+      });
+    }
+    
+    // Use functional update to ensure we have the latest state
+    setSelectedStores(prevStores => {
+      // Check if store is already selected
+      if (prevStores.find(s => s.store_id === storeId)) {
+        console.warn('[DeliveryTripFormView] Store already selected:', storeId);
+        return prevStores;
+      }
 
-    const newStore: StoreWithItems = {
-      store_id: storeId,
-      sequence_order: selectedStores.length + 1,
-      items: [],
-    };
+      const newStore: StoreWithItems = {
+        store_id: storeId,
+        sequence_order: prevStores.length + 1,
+        items: [],
+      };
 
-    setSelectedStores([...selectedStores, newStore]);
-    setStoreSearch('');
-    setShowStoreDropdown(false);
-    setExpandedStoreIndex(selectedStores.length); // Expand the newly added store
-  };
+      const newStores = [...prevStores, newStore];
+      
+      // Clear search and close dropdown after state update
+      // Use setTimeout to ensure state update completes first
+      setTimeout(() => {
+        setStoreSearch('');
+        setShowStoreDropdown(false);
+        setExpandedStoreIndex(newStores.length - 1); // Expand the newly added store
+      }, 0);
+
+      return newStores;
+    });
+  }, [stores]); // Include stores to cache store info when adding
 
   // Update dropdown positions
   useEffect(() => {
@@ -369,32 +726,62 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
   };
 
   // Add product to store with quantity input
-  const handleAddProduct = (storeIndex: number, productId: string, quantity: number = 1) => {
-    const product = products.find(p => p.id === productId);
-    if (!product) return;
-
-    const newStores = [...selectedStores];
-    const store = newStores[storeIndex];
+  // Use useCallback to prevent unnecessary re-renders and ensure stable reference
+  const handleAddProduct = React.useCallback((storeIndex: number, productId: string, quantity: number = 1) => {
+    // Get product from current products array or cache
+    let product = getProductInfo(productId);
     
-    // Check if product already exists
-    const existingIndex = store.items.findIndex(item => item.product_id === productId);
-    if (existingIndex >= 0) {
-      // Update quantity
-      store.items[existingIndex].quantity = quantity;
-    } else {
-      // Add new product
-      store.items.push({
-        product_id: productId,
-        quantity: quantity,
-        notes: '',
+    // If not found, try to fetch it
+    if (!product) {
+      // Try to fetch product by ID
+      productService.getById(productId).then(fetchedProduct => {
+        if (fetchedProduct) {
+          cacheProduct(fetchedProduct);
+          // Retry adding product after caching
+          handleAddProduct(storeIndex, productId, quantity);
+        }
+      }).catch(err => {
+        console.warn('[DeliveryTripFormView] Product not found:', productId, err);
       });
+      return;
     }
-
-    setSelectedStores(newStores);
     
-    // Auto-collapse store after adding product (optional - can be removed if user wants to keep it open)
-    // setExpandedStoreIndex(null);
-  };
+    // Cache product to ensure it's available even if search changes
+    cacheProduct(product);
+
+    setSelectedStores(prevStores => {
+      // Create a deep copy to avoid mutation issues
+      const newStores = prevStores.map(store => ({
+        ...store,
+        items: [...store.items]
+      }));
+      
+      const store = newStores[storeIndex];
+      if (!store) {
+        console.warn('[DeliveryTripFormView] Store not found at index:', storeIndex);
+        return prevStores;
+      }
+      
+      // Check if product already exists
+      const existingIndex = store.items.findIndex(item => item.product_id === productId);
+      if (existingIndex >= 0) {
+        // Update quantity (create new object to avoid mutation)
+        store.items[existingIndex] = {
+          ...store.items[existingIndex],
+          quantity: quantity
+        };
+      } else {
+        // Add new product
+        store.items.push({
+          product_id: productId,
+          quantity: quantity,
+          notes: '',
+        });
+      }
+
+      return newStores;
+    });
+  }, [getProductInfo, cacheProduct]);
 
   // Remove product from store
   const handleRemoveProduct = (storeIndex: number, itemIndex: number) => {
@@ -423,11 +810,11 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
     }>();
 
     selectedStores.forEach((storeWithItems, storeIndex) => {
-      const store = stores.find(s => s.id === storeWithItems.store_id);
+      const store = getStoreInfo(storeWithItems.store_id);
       if (!store) return;
 
       storeWithItems.items.forEach(item => {
-        const product = products.find(p => p.id === item.product_id);
+        const product = getProductInfo(item.product_id);
         if (!product) return;
 
         const existing = productMap.get(item.product_id);
@@ -457,19 +844,19 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
     });
 
     return Array.from(productMap.values());
-  }, [selectedStores, stores, products]);
+  }, [selectedStores, getStoreInfo, getProductInfo]);
 
   // Get destinations string (for auto-populate)
   const destinations = useMemo(() => {
     return selectedStores
       .sort((a, b) => a.sequence_order - b.sequence_order)
       .map(storeWithItems => {
-        const store = stores.find(s => s.id === storeWithItems.store_id);
+        const store = getStoreInfo(storeWithItems.store_id);
         return store ? `${store.customer_code} - ${store.customer_name}` : '';
       })
       .filter(Boolean)
       .join(', ');
-  }, [selectedStores, stores]);
+  }, [selectedStores, getStoreInfo]);
 
   // Handle form submit
   const handleSubmit = async (e: React.FormEvent) => {
@@ -501,7 +888,7 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
     // Validate that each store has at least one product
     for (const store of selectedStores) {
       if (store.items.length === 0) {
-        const storeName = stores.find(s => s.id === store.store_id)?.customer_name || 'ร้านค้า';
+        const storeName = getStoreInfo(store.store_id)?.customer_name || 'ร้านค้า';
         setError(`กรุณาเลือกสินค้าสำหรับ ${storeName}`);
         return;
       }
@@ -746,40 +1133,59 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
                   className="w-64"
                   data-store-input
                 />
-                {showStoreDropdown && filteredStores.length > 0 && storeDropdownPosition && createPortal(
-                  <div 
-                    data-store-dropdown-portal
-                    className="fixed bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg shadow-xl z-[9999] max-h-60 overflow-y-auto overscroll-contain"
-                    style={{
-                      top: `${storeDropdownPosition.top}px`,
-                      left: `${storeDropdownPosition.left}px`,
-                      width: `${storeDropdownPosition.width}px`,
-                    }}
-                    onMouseDown={(e) => {
-                      // Allow scrolling by not preventing default
-                      e.stopPropagation();
-                    }}
-                  >
-                    {filteredStores
-                      .filter(store => !selectedStores.find(s => s.store_id === store.id))
-                      .map((store) => (
-                        <button
-                          key={store.id}
-                          type="button"
-                          onClick={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            handleAddStore(store.id);
-                          }}
-                          className="w-full text-left px-4 py-2 hover:bg-slate-100 dark:hover:bg-slate-700"
-                        >
-                          <div className="font-medium text-slate-900 dark:text-slate-100">
-                            {store.customer_code} - {store.customer_name}
+                {showStoreDropdown && storeDropdownPosition && (
+                  createPortal(
+                    <div 
+                      data-store-dropdown-portal
+                      className="fixed bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg shadow-xl z-[9999] max-h-60 overflow-y-auto overscroll-contain"
+                      style={{
+                        top: `${storeDropdownPosition.top}px`,
+                        left: `${storeDropdownPosition.left}px`,
+                        width: `${storeDropdownPosition.width}px`,
+                      }}
+                      onMouseDown={(e) => {
+                        // Allow scrolling by not preventing default
+                        e.stopPropagation();
+                      }}
+                    >
+                      {(() => {
+                        const availableStores = filteredStores.filter(store => !selectedStores.find(s => s.store_id === store.id));
+                        const totalMatches = filteredStores.length;
+                        
+                        return availableStores.length > 0 ? (
+                          <>
+                            {totalMatches > 100 && (
+                              <div className="px-4 py-2 text-xs text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700">
+                                แสดง {availableStores.length} จาก {totalMatches} รายการที่พบ (แสดงสูงสุด 100 รายการ)
+                              </div>
+                            )}
+                            {availableStores.map((store) => (
+                              <button
+                                key={store.id}
+                                type="button"
+                                onMouseDown={(e) => {
+                                  // Use onMouseDown to prevent dropdown from closing before click
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  handleAddStore(store.id);
+                                }}
+                                className="w-full text-left px-4 py-2 hover:bg-slate-100 dark:hover:bg-slate-700"
+                              >
+                                <div className="font-medium text-slate-900 dark:text-slate-100">
+                                  {store.customer_code} - {store.customer_name}
+                                </div>
+                              </button>
+                            ))}
+                          </>
+                        ) : (
+                          <div className="px-4 py-3 text-sm text-slate-500 dark:text-slate-400 text-center">
+                            {storeSearch ? (totalMatches > 0 ? 'ร้านค้านี้ถูกเลือกไปแล้ว' : 'ไม่พบร้านค้าที่ค้นหา') : 'พิมพ์เพื่อค้นหาร้านค้า'}
                           </div>
-                        </button>
-                      ))}
-                  </div>,
-                  document.body
+                        );
+                      })()}
+                    </div>,
+                    document.body
+                  )
                 )}
               </div>
             </div>
@@ -788,8 +1194,28 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
           {/* Selected Stores */}
           <div className="space-y-4">
             {selectedStores.map((storeWithItems, storeIndex) => {
-              const store = stores.find(s => s.id === storeWithItems.store_id);
-              if (!store) return null;
+              // Use getStoreInfo to get store from cache if stores array is empty
+              const store = getStoreInfo(storeWithItems.store_id);
+              if (!store) {
+                // Store not found - show placeholder or loading
+                return (
+                  <div
+                    key={storeWithItems.store_id}
+                    className="border border-slate-200 dark:border-slate-700 rounded-lg p-4"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <span className="flex items-center justify-center w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 font-semibold">
+                          {storeWithItems.sequence_order}
+                        </span>
+                        <div className="text-slate-500 dark:text-slate-400">
+                          กำลังโหลดข้อมูลร้านค้า... (ID: {storeWithItems.store_id.substring(0, 8)}...)
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              }
 
               const isExpanded = expandedStoreIndex === storeIndex;
               const filteredProducts = getFilteredProducts(storeIndex);
@@ -960,7 +1386,7 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
                             </button>
                           </div>
                           {storeWithItems.items.map((item, itemIndex) => {
-                            const product = products.find(p => p.id === item.product_id);
+                            const product = getProductInfo(item.product_id);
                             if (!product) return null;
 
                             return (
