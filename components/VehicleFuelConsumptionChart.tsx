@@ -9,8 +9,10 @@ import {
   Title,
   Tooltip,
   Legend,
+  BarController,
+  LineController,
 } from 'chart.js';
-import { Bar } from 'react-chartjs-2';
+import { Chart } from 'react-chartjs-2';
 
 ChartJS.register(
   CategoryScale,
@@ -20,7 +22,9 @@ ChartJS.register(
   PointElement,
   Title,
   Tooltip,
-  Legend
+  Legend,
+  BarController,
+  LineController
 );
 
 interface VehicleFuelConsumptionData {
@@ -165,7 +169,7 @@ export const VehicleFuelConsumptionChart: React.FC<VehicleFuelConsumptionChartPr
 
   return (
     <div className="h-96 w-full">
-      <Bar data={chartData} options={options} />
+      <Chart type="bar" data={chartData as any} options={options} />
     </div>
   );
 };
