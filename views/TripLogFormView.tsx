@@ -159,13 +159,14 @@ export const TripLogFormView: React.FC<TripLogFormViewProps> = ({
           setSuccess(false);
           setSuccessMode(null);
           // Clear form data when switching back to checkout mode
-          // Note: destination will be auto-filled if there's an active delivery trip
-          setFormData({
+          // Note: destination will be auto-filled by useEffect if activeDeliveryTrip exists
+          // We don't clear destination here to prevent it from disappearing during re-render
+          setFormData(prev => ({
             odometer: '',
-            destination: '', // Will be auto-filled by useEffect if activeDeliveryTrip exists
+            destination: prev.destination, // Preserve destination - will be auto-filled if needed
             route: '',
             notes: '',
-          });
+          }));
         }
       };
 
@@ -274,17 +275,21 @@ export const TripLogFormView: React.FC<TripLogFormViewProps> = ({
     fetchActiveDeliveryTrip();
   }, [selectedVehicleId, mode]);
 
+  // Track if we've auto-filled destination to prevent clearing it
+  const autoFilledDestinationRef = useRef<string | null>(null);
+  const lastActiveDeliveryTripIdRef = useRef<string | null>(null);
+  const shouldPreserveDestinationRef = useRef(false); // Track if we should preserve destination
+
   // Auto-fill destination from active delivery trip
   useEffect(() => {
-    console.log('[TripLogFormView] Auto-fill effect triggered:', {
-      mode,
-      hasActiveDeliveryTrip: !!activeDeliveryTrip,
-      storesCount: activeDeliveryTrip?.stores?.length || 0,
-      loadingDeliveryTrip,
-      currentDestination: formData.destination,
-    });
+    if (mode !== 'checkout') {
+      return; // Only auto-fill in checkout mode
+    }
 
-    if (mode === 'checkout' && activeDeliveryTrip && activeDeliveryTrip.stores && activeDeliveryTrip.stores.length > 0) {
+    const currentTripId = activeDeliveryTrip?.id || null;
+    const hasActiveTrip = activeDeliveryTrip && activeDeliveryTrip.stores && activeDeliveryTrip.stores.length > 0;
+
+    if (hasActiveTrip) {
       const destinations = activeDeliveryTrip.stores
         .sort((a, b) => ((a as any).sequence_order || 0) - ((b as any).sequence_order || 0))
         .map(store => {
@@ -294,46 +299,47 @@ export const TripLogFormView: React.FC<TripLogFormViewProps> = ({
         .filter(Boolean)
         .join(', ');
 
-      console.log('[TripLogFormView] Generated destinations string:', destinations);
-
       if (destinations) {
-        console.log('[TripLogFormView] Auto-filling destination:', destinations);
-        // Auto-fill immediately - use functional update to ensure we get latest state
+        // Always auto-fill when we have an active delivery trip
+        // This ensures destination is always filled, even after re-renders
         setFormData(prev => {
-          // Always auto-fill destination from delivery trip (user can still edit it)
-          // Only update if destination is different to avoid unnecessary re-renders
-          if (prev.destination !== destinations) {
-            console.log('[TripLogFormView] Updating destination from', prev.destination, 'to', destinations);
+          // Check if this is user's manual input (different from our auto-fill)
+          const isUserInput = prev.destination && 
+                             prev.destination !== autoFilledDestinationRef.current &&
+                             autoFilledDestinationRef.current !== null &&
+                             prev.destination.trim() !== '';
+          
+          if (!isUserInput) {
+            // Update destination - either it's empty or matches our auto-fill
+            autoFilledDestinationRef.current = destinations;
+            lastActiveDeliveryTripIdRef.current = currentTripId;
+            shouldPreserveDestinationRef.current = true;
+            
+            // Always set destination, even if it's the same (prevents it from disappearing)
             return {
               ...prev,
               destination: destinations,
             };
-          } else {
-            console.log('[TripLogFormView] Destination already matches, skipping update');
           }
+          // Keep user's manual input - don't overwrite
           return prev;
         });
-      } else {
-        console.warn('[TripLogFormView] Destinations string is empty after processing stores');
       }
-    } else if (mode === 'checkout' && !activeDeliveryTrip && !loadingDeliveryTrip) {
-      console.log('[TripLogFormView] No active delivery trip, checking if should clear destination');
-      // Only clear destination if there's no active delivery trip and we're done loading
-      // This prevents clearing while still loading
-      setFormData(prev => {
-        // Only clear if destination was auto-filled (contains comma-separated store codes)
-        // Don't clear if user has manually entered something
-        if (prev.destination && prev.destination.includes(' - ')) {
-          console.log('[TripLogFormView] Clearing auto-filled destination');
-          return {
-            ...prev,
-            destination: '',
-          };
-        }
-        return prev;
-      });
     }
+    // Note: We don't clear destination here even if there's no active trip
+    // because it might be temporarily null during refetch, and we don't want to lose the value
+    // Only clear when explicitly needed (e.g., when vehicle changes)
   }, [activeDeliveryTrip, mode, loadingDeliveryTrip]); // Depend on activeDeliveryTrip, mode, and loading state
+
+  // Clear destination only when vehicle changes (not when activeDeliveryTrip becomes null temporarily)
+  useEffect(() => {
+    if (mode === 'checkout' && !selectedVehicleId) {
+      // Vehicle was cleared, reset refs
+      autoFilledDestinationRef.current = null;
+      lastActiveDeliveryTripIdRef.current = null;
+      shouldPreserveDestinationRef.current = false;
+    }
+  }, [selectedVehicleId, mode]);
 
   // Auto-fill last odometer when vehicle is selected (checkout mode only)
   // Only auto-fill if odometer field is empty
