@@ -4,7 +4,6 @@ import {
   Activity,
   Wrench,
   DollarSign,
-  MoreHorizontal,
   RefreshCw,
   FileText,
   Calendar
@@ -12,7 +11,6 @@ import {
 import { StatusCard } from '../components/StatusCard';
 import { UsageChart } from '../components/UsageChart';
 import { MaintenanceTrendChart } from '../components/MaintenanceTrendChart';
-import { VehicleStatusSection } from '../components/VehicleStatusSection';
 import { ActivityFeed } from '../components/ActivityFeed';
 import { ActiveTripsWidget } from '../components/ActiveTripsWidget';
 import { PageLayout } from '../components/layout/PageLayout';
@@ -168,36 +166,19 @@ export const DashboardView: React.FC<DashboardProps> = ({
         />
       </div>
 
-      {/* Vehicle Status Section */}
-      {vehicleDashboard && vehicleDashboard.length > 0 && (
-        <div className="mt-6">
-          <VehicleStatusSection vehicles={vehicleDashboard} isDark={isDark} />
-        </div>
-      )}
-
       {/* Charts Section */}
       {usageData && maintenanceTrends ? (
         <>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
             {/* Usage Chart */}
             <div className="bg-white/80 dark:bg-charcoal-900/50 backdrop-blur-md p-6 rounded-xl border border-slate-200 dark:border-slate-700/50 shadow-sm hover:shadow-glow transition-all duration-300">
-              <div className="flex justify-between items-center mb-6">
-                <h3 className="font-semibold text-slate-900 dark:text-white">อัตราการใช้งานยานพาหนะ</h3>
-                <button className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300">
-                  <MoreHorizontal size={20} />
-                </button>
-              </div>
+              <h3 className="font-semibold text-slate-900 dark:text-white mb-6">อัตราการใช้งานยานพาหนะ</h3>
               <UsageChart data={usageData} isDark={isDark} />
             </div>
 
             {/* Maintenance Chart */}
             <div className="bg-white/80 dark:bg-charcoal-900/50 backdrop-blur-md p-6 rounded-xl border border-slate-200 dark:border-slate-700/50 shadow-sm hover:shadow-glow transition-all duration-300">
-              <div className="flex justify-between items-center mb-6">
-                <h3 className="font-semibold text-slate-900 dark:text-white">ค่าใช้จ่ายการซ่อมบำรุง</h3>
-                <button className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300">
-                  <MoreHorizontal size={20} />
-                </button>
-              </div>
+              <h3 className="font-semibold text-slate-900 dark:text-white mb-6">ค่าใช้จ่ายการซ่อมบำรุง</h3>
               <MaintenanceTrendChart data={maintenanceTrends} isDark={isDark} />
             </div>
           </div>

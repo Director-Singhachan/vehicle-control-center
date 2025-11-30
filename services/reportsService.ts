@@ -1,5 +1,5 @@
 // Reports Service - Analytics and reporting
-import { supabase } from '../lib/supabase';
+import { supabase, getSupabaseConfigError } from '../lib/supabase';
 
 export interface Financials {
   todayCost: number;
@@ -138,6 +138,7 @@ export interface MonthlyCostTrend {
 export const reportsService = {
 
   // Get financials (costs only - no revenue)
+  // Includes both maintenance costs (ticket_costs) and fuel costs (fuel_records)
   getFinancials: async (): Promise<Financials> => {
     try {
       console.log('[reportsService] Fetching financials...');
@@ -153,55 +154,100 @@ export const reportsService = {
       const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
 
       // Use Promise.all for parallel execution
-      const [todayResult, yesterdayResult, monthlyResult] = await Promise.all([
-        // Today's costs
+      // Fetch both maintenance costs and fuel costs
+      const [
+        todayMaintenanceResult,
+        yesterdayMaintenanceResult,
+        monthlyMaintenanceResult,
+        todayFuelResult,
+        yesterdayFuelResult,
+        monthlyFuelResult,
+      ] = await Promise.all([
+        // Today's maintenance costs
         supabase
           .from('ticket_costs')
           .select('cost')
           .gte('created_at', today.toISOString()),
 
-        // Yesterday's costs
+        // Yesterday's maintenance costs
         supabase
           .from('ticket_costs')
           .select('cost')
           .gte('created_at', yesterday.toISOString())
           .lte('created_at', yesterdayEnd.toISOString()),
 
-        // This month's costs
+        // This month's maintenance costs
         supabase
           .from('ticket_costs')
           .select('cost')
-          .gte('created_at', firstDayOfMonth.toISOString())
+          .gte('created_at', firstDayOfMonth.toISOString()),
+
+        // Today's fuel costs
+        supabase
+          .from('fuel_records')
+          .select('total_cost')
+          .gte('filled_at', today.toISOString()),
+
+        // Yesterday's fuel costs
+        supabase
+          .from('fuel_records')
+          .select('total_cost')
+          .gte('filled_at', yesterday.toISOString())
+          .lte('filled_at', yesterdayEnd.toISOString()),
+
+        // This month's fuel costs
+        supabase
+          .from('fuel_records')
+          .select('total_cost')
+          .gte('filled_at', firstDayOfMonth.toISOString()),
       ]);
 
-      if (todayResult.error) {
-        console.error('[reportsService] Error fetching today costs:', todayResult.error);
-        throw todayResult.error;
+      // Check for errors
+      if (todayMaintenanceResult.error) {
+        console.error('[reportsService] Error fetching today maintenance costs:', todayMaintenanceResult.error);
+        throw todayMaintenanceResult.error;
+      }
+      if (yesterdayMaintenanceResult.error) {
+        console.error('[reportsService] Error fetching yesterday maintenance costs:', yesterdayMaintenanceResult.error);
+        throw yesterdayMaintenanceResult.error;
+      }
+      if (monthlyMaintenanceResult.error) {
+        console.error('[reportsService] Error fetching monthly maintenance costs:', monthlyMaintenanceResult.error);
+        throw monthlyMaintenanceResult.error;
+      }
+      if (todayFuelResult.error) {
+        console.error('[reportsService] Error fetching today fuel costs:', todayFuelResult.error);
+        throw todayFuelResult.error;
+      }
+      if (yesterdayFuelResult.error) {
+        console.error('[reportsService] Error fetching yesterday fuel costs:', yesterdayFuelResult.error);
+        throw yesterdayFuelResult.error;
+      }
+      if (monthlyFuelResult.error) {
+        console.error('[reportsService] Error fetching monthly fuel costs:', monthlyFuelResult.error);
+        throw monthlyFuelResult.error;
       }
 
-      if (yesterdayResult.error) {
-        console.error('[reportsService] Error fetching yesterday costs:', yesterdayResult.error);
-        throw yesterdayResult.error;
-      }
+      // Calculate maintenance costs
+      const todayMaintenanceCost = todayMaintenanceResult.data?.reduce((sum, item) => sum + (item.cost || 0), 0) || 0;
+      const yesterdayMaintenanceCost = yesterdayMaintenanceResult.data?.reduce((sum, item) => sum + (item.cost || 0), 0) || 0;
+      const monthlyMaintenanceCost = monthlyMaintenanceResult.data?.reduce((sum, item) => sum + (item.cost || 0), 0) || 0;
 
-      if (monthlyResult.error) {
-        console.error('[reportsService] Error fetching monthly costs:', monthlyResult.error);
-        throw monthlyResult.error;
-      }
+      // Calculate fuel costs
+      const todayFuelCost = todayFuelResult.data?.reduce((sum, item) => sum + (item.total_cost || 0), 0) || 0;
+      const yesterdayFuelCost = yesterdayFuelResult.data?.reduce((sum, item) => sum + (item.total_cost || 0), 0) || 0;
+      const monthlyFuelCost = monthlyFuelResult.data?.reduce((sum, item) => sum + (item.total_cost || 0), 0) || 0;
 
-      const todayCosts = todayResult.data;
-      const yesterdayCosts = yesterdayResult.data;
-      const monthlyCosts = monthlyResult.data;
+      // Combine maintenance and fuel costs
+      const todayCost = todayMaintenanceCost + todayFuelCost;
+      const yesterdayCost = yesterdayMaintenanceCost + yesterdayFuelCost;
+      const monthlyCost = monthlyMaintenanceCost + monthlyFuelCost;
 
-      console.log('[reportsService] Costs count:', { 
-        today: todayCosts?.length, 
-        yesterday: yesterdayCosts?.length,
-        monthly: monthlyCosts?.length 
+      console.log('[reportsService] Costs:', { 
+        today: { maintenance: todayMaintenanceCost, fuel: todayFuelCost, total: todayCost },
+        yesterday: { maintenance: yesterdayMaintenanceCost, fuel: yesterdayFuelCost, total: yesterdayCost },
+        monthly: { maintenance: monthlyMaintenanceCost, fuel: monthlyFuelCost, total: monthlyCost },
       });
-
-      const todayCost = todayCosts?.reduce((sum, item) => sum + (item.cost || 0), 0) || 0;
-      const yesterdayCost = yesterdayCosts?.reduce((sum, item) => sum + (item.cost || 0), 0) || 0;
-      const monthlyCost = monthlyCosts?.reduce((sum, item) => sum + (item.cost || 0), 0) || 0;
 
       // Calculate trend
       const costTrend = yesterdayCost > 0
@@ -1000,6 +1046,407 @@ export const reportsService = {
         totalCost: data.fuelCost + data.maintenanceCost,
       };
     });
+  },
+
+  // ========== Vehicle Usage Ranking ==========
+
+  // Get vehicle usage ranking (รถที่วิ่งเยอะที่สุด)
+  // รองรับกรองเดือน/ปี/สาขา
+  getVehicleUsageRanking: async (options?: {
+    startDate?: Date;
+    endDate?: Date;
+    branch?: string | null;
+    limit?: number;
+  }): Promise<Array<{
+    vehicle_id: string;
+    plate: string;
+    make: string | null;
+    model: string | null;
+    branch: string | null;
+    totalDistance: number;
+    totalTrips: number;
+    totalHours: number;
+    averageDistance: number;
+  }>> => {
+    try {
+      // Check if Supabase is properly configured
+      const configError = getSupabaseConfigError();
+      if (configError) {
+        throw new Error(`Supabase configuration error: ${configError}`);
+      }
+
+      if (!supabase) {
+        throw new Error('Supabase client is not initialized');
+      }
+
+      let startDate: Date;
+      let endDate: Date;
+
+      if (options?.startDate && options?.endDate) {
+        startDate = options.startDate;
+        endDate = options.endDate;
+      } else {
+        // Default: 3 เดือนล่าสุด (เพื่อให้มีข้อมูลแสดง)
+        const now = new Date();
+        startDate = new Date(now.getFullYear(), now.getMonth() - 2, 1);
+        endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+      }
+
+      console.log('[reportsService] getVehicleUsageRanking - Querying trip_logs from', startDate.toISOString(), 'to', endDate.toISOString());
+
+      // Query trip logs first (simpler query without join)
+      const tripLogsQuery = supabase
+        .from('trip_logs')
+        .select('vehicle_id, distance_km, duration_hours, checkout_time')
+        .eq('status', 'checked_in')
+        .gte('checkout_time', startDate.toISOString())
+        .lte('checkout_time', endDate.toISOString());
+
+      const { data: tripLogs, error: tripLogsError } = await tripLogsQuery;
+
+      if (tripLogsError) {
+        console.error('[reportsService] getVehicleUsageRanking trip_logs query error:', tripLogsError);
+        // Check if it's a network error
+        if (tripLogsError.message?.includes('fetch') || tripLogsError.message?.includes('Failed to fetch')) {
+          throw new Error(`Network error: ไม่สามารถเชื่อมต่อกับฐานข้อมูลได้ กรุณาตรวจสอบการเชื่อมต่ออินเทอร์เน็ตหรือ VPN. Original error: ${tripLogsError.message}`);
+        }
+        throw tripLogsError;
+      }
+
+      if (!tripLogs || tripLogs.length === 0) {
+        return [];
+      }
+
+      // Get unique vehicle IDs
+      const vehicleIds = [...new Set(tripLogs.map(t => t.vehicle_id).filter(Boolean))];
+
+      if (vehicleIds.length === 0) {
+        return [];
+      }
+
+      console.log('[reportsService] getVehicleUsageRanking - Found', vehicleIds.length, 'unique vehicles');
+
+      // Query vehicles separately
+      const vehiclesQuery = supabase
+        .from('vehicles')
+        .select('id, plate, make, model, branch')
+        .in('id', vehicleIds);
+
+      const { data: vehicles, error: vehiclesError } = await vehiclesQuery;
+
+      if (vehiclesError) {
+        console.error('[reportsService] getVehicleUsageRanking vehicles query error:', vehiclesError);
+        // Check if it's a network error
+        if (vehiclesError.message?.includes('fetch') || vehiclesError.message?.includes('Failed to fetch')) {
+          throw new Error(`Network error: ไม่สามารถเชื่อมต่อกับฐานข้อมูลได้ กรุณาตรวจสอบการเชื่อมต่ออินเทอร์เน็ตหรือ VPN. Original error: ${vehiclesError.message}`);
+        }
+        throw vehiclesError;
+      }
+
+      if (!vehicles || vehicles.length === 0) {
+        console.warn('[reportsService] getVehicleUsageRanking: No vehicles found for vehicle IDs:', vehicleIds);
+        return [];
+      }
+
+      if (vehiclesError) {
+        console.error('[reportsService] getVehicleUsageRanking vehicles query error:', vehiclesError);
+        throw vehiclesError;
+      }
+
+      // Create vehicle lookup map
+      const vehicleMap = new Map<string, {
+        plate: string;
+        make: string | null;
+        model: string | null;
+        branch: string | null;
+      }>();
+
+      vehicles?.forEach(v => {
+        vehicleMap.set(v.id, {
+          plate: v.plate,
+          make: v.make,
+          model: v.model,
+          branch: v.branch,
+        });
+      });
+
+      // Group trip logs by vehicle
+      const usageMap = new Map<string, {
+        plate: string;
+        make: string | null;
+        model: string | null;
+        branch: string | null;
+        totalDistance: number;
+        totalTrips: number;
+        totalHours: number;
+      }>();
+
+      tripLogs.forEach(trip => {
+        if (!trip.vehicle_id) return;
+
+        const vehicle = vehicleMap.get(trip.vehicle_id);
+        if (!vehicle) return;
+
+        // Filter by branch if provided
+        if (options?.branch && vehicle.branch !== options.branch) {
+          return;
+        }
+
+        if (!usageMap.has(trip.vehicle_id)) {
+          usageMap.set(trip.vehicle_id, {
+            plate: vehicle.plate,
+            make: vehicle.make,
+            model: vehicle.model,
+            branch: vehicle.branch,
+            totalDistance: 0,
+            totalTrips: 0,
+            totalHours: 0,
+          });
+        }
+
+        const entry = usageMap.get(trip.vehicle_id)!;
+        entry.totalDistance += trip.distance_km || 0;
+        entry.totalTrips += 1;
+        entry.totalHours += trip.duration_hours || 0;
+      });
+
+      // Convert to array and sort by totalDistance
+      const result = Array.from(usageMap.entries()).map(([vehicle_id, data]) => ({
+        vehicle_id,
+        plate: data.plate,
+        make: data.make,
+        model: data.model,
+        branch: data.branch,
+        totalDistance: data.totalDistance,
+        totalTrips: data.totalTrips,
+        totalHours: data.totalHours,
+        averageDistance: data.totalTrips > 0 ? data.totalDistance / data.totalTrips : 0,
+      })).sort((a, b) => b.totalDistance - a.totalDistance);
+
+      // Apply limit if provided
+      const finalResult = options?.limit ? result.slice(0, options.limit) : result;
+      console.log('[reportsService] getVehicleUsageRanking - Returning', finalResult.length, 'vehicles');
+      return finalResult;
+    } catch (error) {
+      console.error('[reportsService] getVehicleUsageRanking error:', error);
+      // Re-throw with better error message if it's a network error
+      if (error instanceof Error && (error.message.includes('fetch') || error.message.includes('Failed to fetch'))) {
+        throw new Error(`Network error: ไม่สามารถเชื่อมต่อกับฐานข้อมูลได้ กรุณาตรวจสอบการเชื่อมต่ออินเทอร์เน็ตหรือ VPN. Original error: ${error.message}`);
+      }
+      throw error;
+    }
+  },
+
+  // Get vehicle fuel consumption chart data (กราฟการเติมน้ำมันของแต่ละคัน)
+  // รองรับกรองเดือน/ปี/สาขา
+  getVehicleFuelConsumption: async (options?: {
+    startDate?: Date;
+    endDate?: Date;
+    branch?: string | null;
+  }): Promise<Array<{
+    vehicle_id: string;
+    plate: string;
+    make: string | null;
+    model: string | null;
+    branch: string | null;
+    totalLiters: number;
+    totalCost: number;
+    fillCount: number;
+    averageEfficiency: number | null;
+    averagePricePerLiter: number;
+  }>> => {
+    try {
+      let startDate: Date;
+      let endDate: Date;
+
+      if (options?.startDate && options?.endDate) {
+        startDate = options.startDate;
+        endDate = options.endDate;
+      } else {
+        // Default: 3 เดือนล่าสุด (เพื่อให้มีข้อมูลแสดง)
+        const now = new Date();
+        startDate = new Date(now.getFullYear(), now.getMonth() - 2, 1);
+        endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+      }
+
+      // Query fuel_records directly instead of using fuel_efficiency_summary view
+      // This allows us to show data even if it's not a full month yet
+      console.log('[reportsService] getVehicleFuelConsumption - Querying from', startDate.toISOString(), 'to', endDate.toISOString());
+
+      // Query fuel_records with vehicle info
+      // Need odometer and distance_since_last_fill to calculate accurate efficiency
+      let query = supabase
+        .from('fuel_records')
+        .select(`
+          vehicle_id,
+          liters,
+          total_cost,
+          fuel_efficiency,
+          odometer,
+          distance_since_last_fill,
+          filled_at,
+          vehicle:vehicles!fuel_records_vehicle_id_fkey(
+            id,
+            plate,
+            make,
+            model,
+            branch
+          )
+        `)
+        .gte('filled_at', startDate.toISOString())
+        .lte('filled_at', endDate.toISOString())
+        .order('filled_at', { ascending: true });
+
+      const { data: fuelRecords, error } = await query;
+
+      if (error) {
+        console.error('[reportsService] getVehicleFuelConsumption query error:', error);
+        // Check if it's a network error
+        if (error.message?.includes('fetch') || error.message?.includes('Failed to fetch')) {
+          throw new Error(`Network error: ไม่สามารถเชื่อมต่อกับฐานข้อมูลได้ กรุณาตรวจสอบการเชื่อมต่ออินเทอร์เน็ตหรือ VPN. Original error: ${error.message}`);
+        }
+        throw error;
+      }
+
+      console.log('[reportsService] getVehicleFuelConsumption - Found', fuelRecords?.length || 0, 'fuel records');
+
+      if (!fuelRecords || fuelRecords.length === 0) {
+        return [];
+      }
+
+      // Group by vehicle and calculate accurate efficiency
+      const vehicleMap = new Map<string, {
+        plate: string;
+        make: string | null;
+        model: string | null;
+        branch: string | null;
+        totalLiters: number;
+        totalCost: number;
+        fillCount: number;
+        totalDistance: number; // Total distance traveled (sum of distance_since_last_fill)
+        firstOdometer: number | null; // First odometer reading in the period
+        lastOdometer: number | null; // Last odometer reading in the period
+      }>();
+
+      fuelRecords.forEach(record => {
+        const vehicle = record.vehicle as { 
+          id: string;
+          plate: string; 
+          make: string | null; 
+          model: string | null; 
+          branch: string | null;
+        } | null;
+        
+        if (!vehicle || !record.vehicle_id) return;
+
+        // Filter by branch if provided
+        if (options?.branch && vehicle.branch !== options.branch) {
+          return;
+        }
+
+        if (!vehicleMap.has(record.vehicle_id)) {
+          vehicleMap.set(record.vehicle_id, {
+            plate: vehicle.plate,
+            make: vehicle.make,
+            model: vehicle.model,
+            branch: vehicle.branch,
+            totalLiters: 0,
+            totalCost: 0,
+            fillCount: 0,
+            totalDistance: 0,
+            firstOdometer: record.odometer || null,
+            lastOdometer: record.odometer || null,
+          });
+        }
+
+        const entry = vehicleMap.get(record.vehicle_id)!;
+        entry.totalLiters += record.liters || 0;
+        entry.totalCost += record.total_cost || 0;
+        entry.fillCount += 1;
+        
+        // Add distance if available
+        // ใช้ distance_since_last_fill เท่านั้น (ไม่ใช้ odometer range)
+        // เพราะ distance_since_last_fill คำนวณจาก odometer ระหว่างการเติมน้ำมัน 2 ครั้ง
+        // ซึ่งแม่นยำกว่าการใช้ odometer range ที่อาจไม่ครอบคลุมทุกครั้ง
+        if (record.distance_since_last_fill && record.distance_since_last_fill > 0) {
+          entry.totalDistance += record.distance_since_last_fill;
+        }
+        
+        // Update odometer range
+        if (record.odometer) {
+          if (entry.firstOdometer === null || record.odometer < entry.firstOdometer) {
+            entry.firstOdometer = record.odometer;
+          }
+          if (entry.lastOdometer === null || record.odometer > entry.lastOdometer) {
+            entry.lastOdometer = record.odometer;
+          }
+        }
+      });
+
+      // Convert to array and calculate accurate efficiency using the most precise formula
+      const result = Array.from(vehicleMap.entries()).map(([vehicle_id, data]) => {
+        /**
+         * สูตรคณิตศาสตร์ที่แม่นยำที่สุดสำหรับการคำนวณประสิทธิภาพน้ำมัน:
+         * 
+         * วิธีที่ 1: Total Distance / Total Liters (วิธีที่แม่นยำที่สุด) ✅
+         * สูตร: efficiency = Σ(distance_since_last_fill) / Σ(liters)
+         * 
+         * ข้อดี:
+         * - คำนวณจากระยะทางรวมและปริมาณน้ำมันรวม
+         * - ครอบคลุมทุกครั้งที่เติมน้ำมัน
+         * - ไม่ถูกบิดเบือนโดยการเติมน้ำมันบางครั้งที่น้อยหรือมาก
+         * - เหมือนกับการคำนวณประสิทธิภาพจริงของรถ
+         * 
+         * วิธีที่ 2: Weighted Average (เท่ากับวิธีที่ 1)
+         * สูตร: efficiency = Σ(efficiency_i × liters_i) / Σ(liters_i)
+         * ซึ่งเท่ากับ: Σ(distance_i) / Σ(liters_i) = วิธีที่ 1
+         * 
+         * วิธีที่ 3: Simple Average (ไม่แม่นยำ - ไม่ใช้)
+         * สูตร: efficiency = Σ(efficiency_i) / n
+         * ข้อเสีย: ไม่คำนึงถึงปริมาณน้ำมันในแต่ละครั้ง
+         */
+        
+        let calculatedEfficiency: number | null = null;
+        
+        // วิธีที่แม่นยำที่สุด: ใช้ totalDistance (sum of distance_since_last_fill)
+        if (data.totalDistance > 0 && data.totalLiters > 0) {
+          // สูตร: efficiency = totalDistance / totalLiters
+          calculatedEfficiency = data.totalDistance / data.totalLiters;
+        } 
+        // Fallback: ใช้ odometer range (ถ้าไม่มี distance_since_last_fill)
+        // หมายเหตุ: วิธีนี้จะแม่นยำน้อยกว่าเพราะอาจไม่ครอบคลุมทุกครั้งที่เติมน้ำมัน
+        else if (data.firstOdometer !== null && data.lastOdometer !== null && data.totalLiters > 0) {
+          const odometerRange = data.lastOdometer - data.firstOdometer;
+          if (odometerRange > 0) {
+            // สูตร: efficiency = (lastOdometer - firstOdometer) / totalLiters
+            calculatedEfficiency = odometerRange / data.totalLiters;
+          }
+        }
+
+        return {
+          vehicle_id,
+          plate: data.plate,
+          make: data.make,
+          model: data.model,
+          branch: data.branch,
+          totalLiters: data.totalLiters,
+          totalCost: data.totalCost,
+          fillCount: data.fillCount,
+          averageEfficiency: calculatedEfficiency,
+          averagePricePerLiter: data.fillCount > 0 ? data.totalCost / (data.totalLiters || 1) : 0,
+        };
+      }).sort((a, b) => b.totalCost - a.totalCost);
+      
+      console.log('[reportsService] getVehicleFuelConsumption - Returning', result.length, 'vehicles');
+      return result;
+    } catch (error) {
+      console.error('[reportsService] getVehicleFuelConsumption error:', error);
+      // Re-throw with better error message if it's a network error
+      if (error instanceof Error && (error.message.includes('fetch') || error.message.includes('Failed to fetch'))) {
+        throw new Error(`Network error: ไม่สามารถเชื่อมต่อกับฐานข้อมูลได้ กรุณาตรวจสอบการเชื่อมต่ออินเทอร์เน็ตหรือ VPN. Original error: ${error.message}`);
+      }
+      throw error;
+    }
   },
 };
 

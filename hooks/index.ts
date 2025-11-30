@@ -1,5 +1,6 @@
 // Export all hooks
 export * from './useVehicles';
+export * from './useReports';
 export * from './useTickets';
 export * from './useDashboard';
 export * from './useAuth';

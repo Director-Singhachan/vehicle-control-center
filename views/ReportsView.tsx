@@ -27,7 +27,12 @@ import {
   useVehicleMaintenanceComparison,
   useCostPerKm,
   useMonthlyCostTrend,
+  useVehicleUsageRanking,
+  useVehicleFuelConsumption,
 } from '../hooks/useReports';
+import { VehicleUsageRankingChart } from '../components/VehicleUsageRankingChart';
+import { VehicleFuelConsumptionChart } from '../components/VehicleFuelConsumptionChart';
+import { useVehicles } from '../hooks';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -58,11 +63,90 @@ interface ReportsViewProps {
   isDark?: boolean;
 }
 
-type ReportTab = 'fuel' | 'trip' | 'maintenance' | 'cost';
+type ReportTab = 'fuel' | 'trip' | 'maintenance' | 'cost' | 'usage' | 'fuel-consumption';
+
+type FilterPeriod = 'current-month' | 'last-3-months' | 'last-6-months' | 'last-12-months' | 'this-year' | 'custom';
 
 export const ReportsView: React.FC<ReportsViewProps> = ({ isDark = false }) => {
   const [activeTab, setActiveTab] = useState<ReportTab>('fuel');
   const [months, setMonths] = useState(6);
+  
+  // New filters for usage and fuel consumption charts
+  // Default to last-3-months to show more data
+  const [filterPeriod, setFilterPeriod] = useState<FilterPeriod>('last-3-months');
+  const [selectedBranch, setSelectedBranch] = useState<string | null>(null);
+  const [customStartDate, setCustomStartDate] = useState<string>('');
+  const [customEndDate, setCustomEndDate] = useState<string>('');
+  
+  const { vehicles } = useVehicles();
+  
+  // Get unique branches
+  const branches = React.useMemo(() => {
+    const branchSet = new Set<string>();
+    vehicles?.forEach(v => {
+      if (v.branch) branchSet.add(v.branch);
+    });
+    return Array.from(branchSet).sort();
+  }, [vehicles]);
+  
+  // Calculate date range based on filter period - memoized to prevent unnecessary re-renders
+  const { startDate, endDate } = React.useMemo(() => {
+    const now = new Date();
+    let startDate: Date;
+    let endDate: Date = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+    
+    switch (filterPeriod) {
+      case 'current-month':
+        startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+        break;
+      case 'last-3-months':
+        startDate = new Date(now.getFullYear(), now.getMonth() - 2, 1);
+        break;
+      case 'last-6-months':
+        startDate = new Date(now.getFullYear(), now.getMonth() - 5, 1);
+        break;
+      case 'last-12-months':
+        startDate = new Date(now.getFullYear(), now.getMonth() - 11, 1);
+        break;
+      case 'this-year':
+        startDate = new Date(now.getFullYear(), 0, 1);
+        endDate = new Date(now.getFullYear(), 11, 31, 23, 59, 59, 999);
+        break;
+      case 'custom':
+        if (customStartDate && customEndDate) {
+          startDate = new Date(customStartDate);
+          endDate = new Date(customEndDate);
+          endDate.setHours(23, 59, 59, 999);
+        } else {
+          startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+        }
+        break;
+      default:
+        startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+    }
+    
+    return { startDate, endDate };
+  }, [filterPeriod, customStartDate, customEndDate]);
+  
+  // Memoize options objects to prevent unnecessary re-renders
+  const usageRankingOptions = React.useMemo(() => ({
+    startDate,
+    endDate,
+    branch: selectedBranch || undefined,
+    limit: 20,
+  }), [startDate, endDate, selectedBranch]);
+  
+  const fuelConsumptionOptions = React.useMemo(() => ({
+    startDate,
+    endDate,
+    branch: selectedBranch || undefined,
+  }), [startDate, endDate, selectedBranch]);
+  
+  // Vehicle Usage Ranking
+  const { data: vehicleUsageRanking, loading: usageRankingLoading } = useVehicleUsageRanking(usageRankingOptions);
+  
+  // Vehicle Fuel Consumption
+  const { data: vehicleFuelConsumption, loading: fuelConsumptionLoading } = useVehicleFuelConsumption(fuelConsumptionOptions);
 
   // Fuel Reports
   const { data: monthlyFuelReport, loading: fuelLoading } = useMonthlyFuelReport(months);
@@ -231,6 +315,28 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ isDark = false }) => {
         >
           <DollarSign className="inline-block w-4 h-4 mr-2" />
           วิเคราะห์ค่าใช้จ่าย
+        </button>
+        <button
+          onClick={() => setActiveTab('usage')}
+          className={`px-4 py-2 font-medium transition-colors ${
+            activeTab === 'usage'
+              ? 'border-b-2 border-enterprise-600 text-enterprise-600 dark:text-enterprise-400'
+              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+          }`}
+        >
+          <Truck className="inline-block w-4 h-4 mr-2" />
+          รถที่ใช้งานเยอะที่สุด
+        </button>
+        <button
+          onClick={() => setActiveTab('fuel-consumption')}
+          className={`px-4 py-2 font-medium transition-colors ${
+            activeTab === 'fuel-consumption'
+              ? 'border-b-2 border-enterprise-600 text-enterprise-600 dark:text-enterprise-400'
+              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+          }`}
+        >
+          <Droplet className="inline-block w-4 h-4 mr-2" />
+          การเติมน้ำมันแต่ละคัน
         </button>
       </div>
 
@@ -716,6 +822,295 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ isDark = false }) => {
               <div className="text-center py-8 text-slate-400">ไม่มีข้อมูล</div>
             )}
           </Card>
+        </div>
+      )}
+
+      {/* Vehicle Usage Ranking Tab */}
+      {activeTab === 'usage' && (
+        <div className="space-y-6">
+          {/* Filters */}
+          <Card>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                  ช่วงเวลา
+                </label>
+                <select
+                  value={filterPeriod}
+                  onChange={(e) => setFilterPeriod(e.target.value as FilterPeriod)}
+                  className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+                >
+                  <option value="current-month">เดือนปัจจุบัน</option>
+                  <option value="last-3-months">3 เดือนล่าสุด</option>
+                  <option value="last-6-months">6 เดือนล่าสุด</option>
+                  <option value="last-12-months">12 เดือนล่าสุด</option>
+                  <option value="this-year">ปีนี้</option>
+                  <option value="custom">กำหนดเอง</option>
+                </select>
+              </div>
+              {filterPeriod === 'custom' && (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                      วันที่เริ่มต้น
+                    </label>
+                    <input
+                      type="date"
+                      value={customStartDate}
+                      onChange={(e) => setCustomStartDate(e.target.value)}
+                      className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                      วันที่สิ้นสุด
+                    </label>
+                    <input
+                      type="date"
+                      value={customEndDate}
+                      onChange={(e) => setCustomEndDate(e.target.value)}
+                      className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+                    />
+                  </div>
+                </>
+              )}
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                  สาขา
+                </label>
+                <select
+                  value={selectedBranch || ''}
+                  onChange={(e) => setSelectedBranch(e.target.value || null)}
+                  className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+                >
+                  <option value="">ทุกสาขา</option>
+                  {branches.map(branch => (
+                    <option key={branch} value={branch}>{branch}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </Card>
+
+          {/* Vehicle Usage Ranking Chart */}
+          <Card>
+            <div className="flex justify-between items-center mb-4">
+              <div>
+                <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+                  กราฟรถที่วิ่งเยอะที่สุด
+                </h3>
+                <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+                  เรียงตามระยะทางรวม (km) - แสดง 20 อันดับแรก
+                </p>
+              </div>
+            </div>
+            {usageRankingLoading ? (
+              <div className="h-96 flex items-center justify-center text-slate-400">กำลังโหลด...</div>
+            ) : (
+              <VehicleUsageRankingChart 
+                data={vehicleUsageRanking || []} 
+                isDark={isDark}
+                limit={20}
+              />
+            )}
+          </Card>
+
+          {/* Vehicle Usage Ranking Table */}
+          {vehicleUsageRanking && vehicleUsageRanking.length > 0 && (
+            <Card>
+              <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-4">
+                ตารางสรุปการใช้งาน
+              </h3>
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-slate-200 dark:border-slate-700">
+                      <th className="text-left py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">อันดับ</th>
+                      <th className="text-left py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">ทะเบียน</th>
+                      <th className="text-left py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">ยี่ห้อ/รุ่น</th>
+                      <th className="text-left py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">สาขา</th>
+                      <th className="text-right py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">ระยะทางรวม (km)</th>
+                      <th className="text-right py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">จำนวนเที่ยว</th>
+                      <th className="text-right py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">เวลารวม (ชม.)</th>
+                      <th className="text-right py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">ระยะทางเฉลี่ย (km)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {vehicleUsageRanking.map((vehicle, index) => (
+                      <tr key={vehicle.vehicle_id} className="border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                        <td className="py-3 px-4 text-slate-900 dark:text-slate-100 font-medium">
+                          {index === 0 && '🥇'}
+                          {index === 1 && '🥈'}
+                          {index === 2 && '🥉'}
+                          {index > 2 && `${index + 1}.`}
+                        </td>
+                        <td className="py-3 px-4 text-slate-900 dark:text-slate-100 font-medium">{vehicle.plate}</td>
+                        <td className="py-3 px-4 text-slate-600 dark:text-slate-400">
+                          {vehicle.make} {vehicle.model}
+                        </td>
+                        <td className="py-3 px-4 text-slate-600 dark:text-slate-400">
+                          {vehicle.branch || '-'}
+                        </td>
+                        <td className="py-3 px-4 text-right text-slate-900 dark:text-slate-100 font-semibold">
+                          {formatNumber(vehicle.totalDistance, 0)}
+                        </td>
+                        <td className="py-3 px-4 text-right text-slate-900 dark:text-slate-100">{vehicle.totalTrips}</td>
+                        <td className="py-3 px-4 text-right text-slate-900 dark:text-slate-100">{formatNumber(vehicle.totalHours, 1)}</td>
+                        <td className="py-3 px-4 text-right text-slate-900 dark:text-slate-100">{formatNumber(vehicle.averageDistance, 1)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
+          )}
+        </div>
+      )}
+
+      {/* Vehicle Fuel Consumption Tab */}
+      {activeTab === 'fuel-consumption' && (
+        <div className="space-y-6">
+          {/* Filters */}
+          <Card>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                  ช่วงเวลา
+                </label>
+                <select
+                  value={filterPeriod}
+                  onChange={(e) => setFilterPeriod(e.target.value as FilterPeriod)}
+                  className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+                >
+                  <option value="current-month">เดือนปัจจุบัน</option>
+                  <option value="last-3-months">3 เดือนล่าสุด</option>
+                  <option value="last-6-months">6 เดือนล่าสุด</option>
+                  <option value="last-12-months">12 เดือนล่าสุด</option>
+                  <option value="this-year">ปีนี้</option>
+                  <option value="custom">กำหนดเอง</option>
+                </select>
+              </div>
+              {filterPeriod === 'custom' && (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                      วันที่เริ่มต้น
+                    </label>
+                    <input
+                      type="date"
+                      value={customStartDate}
+                      onChange={(e) => setCustomStartDate(e.target.value)}
+                      className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                      วันที่สิ้นสุด
+                    </label>
+                    <input
+                      type="date"
+                      value={customEndDate}
+                      onChange={(e) => setCustomEndDate(e.target.value)}
+                      className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+                    />
+                  </div>
+                </>
+              )}
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                  สาขา
+                </label>
+                <select
+                  value={selectedBranch || ''}
+                  onChange={(e) => setSelectedBranch(e.target.value || null)}
+                  className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+                >
+                  <option value="">ทุกสาขา</option>
+                  {branches.map(branch => (
+                    <option key={branch} value={branch}>{branch}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </Card>
+
+          {/* Vehicle Fuel Consumption Chart */}
+          <Card>
+            <div className="flex justify-between items-center mb-4">
+              <div>
+                <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+                  กราฟการเติมน้ำมันของแต่ละคัน
+                </h3>
+                <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+                  แสดงค่าใช้จ่ายและอัตราการบริโภคน้ำมัน (km/L)
+                </p>
+              </div>
+            </div>
+            {fuelConsumptionLoading ? (
+              <div className="h-96 flex items-center justify-center text-slate-400">กำลังโหลด...</div>
+            ) : (
+              <VehicleFuelConsumptionChart 
+                data={vehicleFuelConsumption || []} 
+                isDark={isDark}
+                showEfficiency={true}
+                limit={20}
+              />
+            )}
+          </Card>
+
+          {/* Vehicle Fuel Consumption Table */}
+          {vehicleFuelConsumption && vehicleFuelConsumption.length > 0 && (
+            <Card>
+              <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-4">
+                ตารางสรุปการเติมน้ำมัน
+              </h3>
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-slate-200 dark:border-slate-700">
+                      <th className="text-left py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">อันดับ</th>
+                      <th className="text-left py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">ทะเบียน</th>
+                      <th className="text-left py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">ยี่ห้อ/รุ่น</th>
+                      <th className="text-left py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">สาขา</th>
+                      <th className="text-right py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">รวมลิตร</th>
+                      <th className="text-right py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">ค่าใช้จ่าย (฿)</th>
+                      <th className="text-right py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">จำนวนครั้ง</th>
+                      <th className="text-right py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">ประสิทธิภาพ (km/L)</th>
+                      <th className="text-right py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">ราคาเฉลี่ย (฿/L)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {vehicleFuelConsumption
+                      .sort((a, b) => b.totalCost - a.totalCost)
+                      .map((vehicle, index) => (
+                        <tr key={vehicle.vehicle_id} className="border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                          <td className="py-3 px-4 text-slate-900 dark:text-slate-100 font-medium">
+                            {index === 0 && '🥇'}
+                            {index === 1 && '🥈'}
+                            {index === 2 && '🥉'}
+                            {index > 2 && `${index + 1}.`}
+                          </td>
+                          <td className="py-3 px-4 text-slate-900 dark:text-slate-100 font-medium">{vehicle.plate}</td>
+                          <td className="py-3 px-4 text-slate-600 dark:text-slate-400">
+                            {vehicle.make} {vehicle.model}
+                          </td>
+                          <td className="py-3 px-4 text-slate-600 dark:text-slate-400">
+                            {vehicle.branch || '-'}
+                          </td>
+                          <td className="py-3 px-4 text-right text-slate-900 dark:text-slate-100">{formatNumber(vehicle.totalLiters, 2)}</td>
+                          <td className="py-3 px-4 text-right text-slate-900 dark:text-slate-100 font-semibold">{formatCurrency(vehicle.totalCost)}</td>
+                          <td className="py-3 px-4 text-right text-slate-600 dark:text-slate-400">{vehicle.fillCount}</td>
+                          <td className="py-3 px-4 text-right text-slate-900 dark:text-slate-100">
+                            {vehicle.averageEfficiency ? formatNumber(vehicle.averageEfficiency, 2) : '-'}
+                          </td>
+                          <td className="py-3 px-4 text-right text-slate-600 dark:text-slate-400">{formatNumber(vehicle.averagePricePerLiter, 2)}</td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
+          )}
         </div>
       )}
     </PageLayout>
