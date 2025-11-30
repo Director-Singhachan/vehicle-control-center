@@ -1,5 +1,5 @@
 // Hooks for Delivery Trips
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { deliveryTripService, type DeliveryTripWithRelations } from '../services/deliveryTripService';
 
 export interface UseDeliveryTripsOptions {
@@ -16,7 +16,13 @@ export const useDeliveryTrips = (options: UseDeliveryTripsOptions = { autoFetch:
   const [loading, setLoading] = useState(options.autoFetch !== false);
   const [error, setError] = useState<Error | null>(null);
 
-  const fetchTrips = async () => {
+  // Memoize status string to avoid recreating on every render
+  const statusKey = useMemo(() => {
+    return options.status?.sort().join(',') || '';
+  }, [options.status]);
+
+  // Use useCallback to memoize fetchTrips function
+  const fetchTrips = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
@@ -34,20 +40,20 @@ export const useDeliveryTrips = (options: UseDeliveryTripsOptions = { autoFetch:
     } finally {
       setLoading(false);
     }
-  };
+  }, [
+    statusKey,
+    options.vehicle_id,
+    options.driver_id,
+    options.planned_date_from,
+    options.planned_date_to,
+  ]);
 
   useEffect(() => {
     if (options.autoFetch !== false) {
       fetchTrips();
     }
-  }, [
-    options.status?.join(','),
-    options.vehicle_id,
-    options.driver_id,
-    options.planned_date_from,
-    options.planned_date_to,
-    options.autoFetch,
-  ]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [statusKey, options.vehicle_id, options.driver_id, options.planned_date_from, options.planned_date_to, options.autoFetch]);
 
   return {
     trips,

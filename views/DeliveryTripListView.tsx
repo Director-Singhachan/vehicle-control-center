@@ -1,5 +1,5 @@
 // Delivery Trip List View - Display all delivery trips
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Package,
   Plus,
@@ -52,6 +52,32 @@ export const DeliveryTripListView: React.FC<DeliveryTripListViewProps> = ({
     autoFetch: true,
   });
 
+  // Auto-refetch when component becomes visible (e.g., after check-in)
+  // Use useRef to store refetch function to avoid infinite loop
+  const refetchRef = useRef(refetch);
+  refetchRef.current = refetch;
+
+  useEffect(() => {
+    // Refetch immediately when component mounts (in case status was updated)
+    refetchRef.current();
+
+    // Refetch periodically to catch status updates
+    const intervalId = setInterval(() => {
+      refetchRef.current();
+    }, 30000); // Refetch every 30 seconds (less frequent to avoid performance issues)
+
+    // Also refetch on window focus (user comes back to tab)
+    const handleFocus = () => {
+      refetchRef.current();
+    };
+    window.addEventListener('focus', handleFocus);
+
+    return () => {
+      clearInterval(intervalId);
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, []); // Empty dependency array - only run once on mount
+
   // Filter trips by search term (client-side for now)
   const filteredTrips = trips.filter(trip => {
     if (!searchTerm) return true;
@@ -76,17 +102,17 @@ export const DeliveryTripListView: React.FC<DeliveryTripListViewProps> = ({
   const getStatusBadge = (status: string) => {
     const badges = {
       planned: {
-        label: 'วางแผน',
+        label: 'รอจัดส่ง',
         className: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200',
         icon: Calendar,
       },
       in_progress: {
-        label: 'กำลังดำเนินการ',
+        label: 'กำลังจัดส่ง',
         className: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200',
         icon: Clock,
       },
       completed: {
-        label: 'เสร็จสิ้น',
+        label: 'จัดส่งเสร็จแล้ว',
         className: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
         icon: CheckCircle,
       },
@@ -160,9 +186,9 @@ export const DeliveryTripListView: React.FC<DeliveryTripListViewProps> = ({
                 className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
               >
                 <option value="all">ทั้งหมด</option>
-                <option value="planned">วางแผน</option>
-                <option value="in_progress">กำลังดำเนินการ</option>
-                <option value="completed">เสร็จสิ้น</option>
+                <option value="planned">รอจัดส่ง</option>
+                <option value="in_progress">กำลังจัดส่ง</option>
+                <option value="completed">จัดส่งเสร็จแล้ว</option>
                 <option value="cancelled">ยกเลิก</option>
               </select>
             </div>

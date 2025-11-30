@@ -19,6 +19,11 @@ export interface TripLogWithRelations extends TripLog {
     email?: string;
     avatar_url?: string | null;
   };
+  delivery_trip?: {
+    id: string;
+    trip_number: string;
+    status: string;
+  };
 }
 
 export interface CheckoutData {
@@ -49,6 +54,26 @@ export const tripLogService = {
     // Use provided checkout_time or default to now()
     const checkoutTime = data.checkout_time || new Date().toISOString();
 
+    // Find delivery trip first to get delivery_trip_id
+    let deliveryTripId: string | null = null;
+    try {
+      const { data: deliveryTrips } = await supabase
+        .from('delivery_trips')
+        .select('id')
+        .eq('vehicle_id', data.vehicle_id)
+        .in('status', ['planned', 'in_progress'])
+        .order('planned_date', { ascending: false })
+        .order('created_at', { ascending: false })
+        .limit(1);
+
+      if (deliveryTrips && deliveryTrips.length > 0) {
+        deliveryTripId = deliveryTrips[0].id;
+      }
+    } catch (err) {
+      console.error('[tripLogService] Error finding delivery trip:', err);
+      // Continue without delivery_trip_id
+    }
+
     const tripLog: TripLogInsert = {
       vehicle_id: data.vehicle_id,
       driver_id: user.id,
@@ -58,6 +83,7 @@ export const tripLogService = {
       route: data.route,
       notes: data.notes,
       status: 'checked_out',
+      delivery_trip_id: deliveryTripId || undefined,
     };
 
     const { data: result, error } = await supabase
@@ -71,6 +97,31 @@ export const tripLogService = {
       throw error;
     }
 
+    // Update delivery trip status if exists (deliveryTripId already found above)
+    if (deliveryTripId) {
+      try {
+        // Update delivery trip to in_progress and set odometer_start
+        const { error: updateError } = await supabase
+          .from('delivery_trips')
+          .update({
+            status: 'in_progress',
+            odometer_start: data.odometer_start,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', deliveryTripId);
+
+        if (updateError) {
+          console.error('[tripLogService] Error updating delivery trip status:', updateError);
+          // Don't throw - continue with notification
+        } else {
+          console.log('[tripLogService] Updated delivery trip to in_progress:', deliveryTripId);
+        }
+      } catch (deliveryTripError) {
+        console.error('[tripLogService] Error updating delivery trip:', deliveryTripError);
+        // Don't throw - continue with notification
+      }
+    }
+
     // Create notification event for trip started (vehicle checkout)
     try {
       // Enrich with vehicle & driver info for nicer notification message
@@ -79,7 +130,8 @@ export const tripLogService = {
         .select(`
           *,
           vehicle:vehicles(plate, make, model),
-          driver:profiles(full_name)
+          driver:profiles(full_name),
+          delivery_trip:delivery_trips(id, trip_number, status)
         `)
         .eq('id', result.id)
         .maybeSingle();
@@ -225,6 +277,85 @@ export const tripLogService = {
       throw error;
     }
 
+    // Update delivery trip status if exists
+    try {
+      console.log('[tripLogService] Checking for delivery trip to update:', {
+        vehicle_id: trip.vehicle_id,
+        odometer_end: data.odometer_end,
+      });
+
+      // Find active delivery trip for this vehicle
+      // Look for trips that are planned or in_progress (not yet completed)
+      const { data: deliveryTrips, error: findError } = await supabase
+        .from('delivery_trips')
+        .select('id, status, odometer_start, odometer_end, trip_number')
+        .eq('vehicle_id', trip.vehicle_id)
+        .in('status', ['planned', 'in_progress'])
+        .order('planned_date', { ascending: false })
+        .order('created_at', { ascending: false })
+        .limit(1);
+
+      if (findError) {
+        console.error('[tripLogService] Error finding delivery trip:', findError);
+      } else {
+        console.log('[tripLogService] Found delivery trips:', deliveryTrips);
+
+        if (deliveryTrips && deliveryTrips.length > 0) {
+          const deliveryTrip = deliveryTrips[0];
+          console.log('[tripLogService] Updating delivery trip:', {
+            id: deliveryTrip.id,
+            trip_number: deliveryTrip.trip_number,
+            current_status: deliveryTrip.status,
+            new_status: 'completed',
+            odometer_end: data.odometer_end,
+          });
+          
+          // Update delivery trip to completed and set odometer_end
+          const { error: updateError } = await supabase
+            .from('delivery_trips')
+            .update({
+              status: 'completed',
+              odometer_end: data.odometer_end,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', deliveryTrip.id);
+
+          if (updateError) {
+            console.error('[tripLogService] Error updating delivery trip status:', updateError);
+            // Don't throw - continue with notification
+          } else {
+            console.log('[tripLogService] Successfully updated delivery trip to completed:', {
+              id: deliveryTrip.id,
+              trip_number: deliveryTrip.trip_number,
+            });
+          }
+
+          // Update trip log with delivery_trip_id if not already set
+          if (result && !result.delivery_trip_id) {
+            try {
+              const { error: linkError } = await supabase
+                .from('trip_logs')
+                .update({ delivery_trip_id: deliveryTrip.id })
+                .eq('id', result.id);
+
+              if (linkError) {
+                console.error('[tripLogService] Error linking delivery trip to trip log:', linkError);
+              } else {
+                console.log('[tripLogService] Linked delivery trip to trip log:', deliveryTrip.id);
+              }
+            } catch (linkError) {
+              console.error('[tripLogService] Error linking delivery trip:', linkError);
+            }
+          }
+        } else {
+          console.log('[tripLogService] No active delivery trip found for vehicle:', trip.vehicle_id);
+        }
+      }
+    } catch (deliveryTripError) {
+      console.error('[tripLogService] Error updating delivery trip:', deliveryTripError);
+      // Don't throw - continue with notification
+    }
+
     // Create notification event for trip finished (vehicle checkin)
     try {
       // Enrich with vehicle & driver info for nicer notification message
@@ -233,7 +364,8 @@ export const tripLogService = {
         .select(`
           *,
           vehicle:vehicles(plate, make, model),
-          driver:profiles(full_name)
+          driver:profiles(full_name),
+          delivery_trip:delivery_trips(id, trip_number, status)
         `)
         .eq('id', result.id)
         .maybeSingle();
@@ -357,7 +489,8 @@ export const tripLogService = {
       .select(`
         *,
         vehicle:vehicles(plate, make, model, image_url),
-        driver:profiles(full_name, email, avatar_url)
+        driver:profiles(full_name, email, avatar_url),
+        delivery_trip:delivery_trips(id, trip_number, status)
       `)
       .eq('status', 'checked_out')
       .order('checkout_time', { ascending: false });
@@ -390,7 +523,8 @@ export const tripLogService = {
       .select(`
         *,
         vehicle:vehicles(plate, make, model, image_url),
-        driver:profiles(full_name, email, avatar_url)
+        driver:profiles(full_name, email, avatar_url),
+        delivery_trip:delivery_trips(id, trip_number, status)
       `, { count: 'exact' })
       .order('checkout_time', { ascending: false })
       .range(offset, offset + limit - 1);
@@ -468,7 +602,8 @@ export const tripLogService = {
       .select(`
         *,
         vehicle:vehicles(plate, make, model, image_url),
-        driver:profiles(full_name, email, avatar_url)
+        driver:profiles(full_name, email, avatar_url),
+        delivery_trip:delivery_trips(id, trip_number, status)
       `)
       .eq('id', tripId)
       .single();
@@ -614,7 +749,8 @@ export const tripLogService = {
       .select(`
         *,
         vehicle:vehicles(plate, make, model, image_url),
-        driver:profiles(full_name, email, avatar_url)
+        driver:profiles(full_name, email, avatar_url),
+        delivery_trip:delivery_trips(id, trip_number, status)
       `)
       .eq('status', 'checked_out')
       .lt('checkout_time', twelveHoursAgo.toISOString())

@@ -16,7 +16,8 @@ import {
   ChevronLeft,
   ChevronRight,
   X,
-  ZoomIn
+  ZoomIn,
+  Package
 } from 'lucide-react';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
@@ -372,6 +373,14 @@ export const TripLogListView: React.FC<TripLogListViewProps> = ({
                             {trip.driver?.full_name || 'N/A'}
                           </p>
                         </div>
+                        {trip.delivery_trip?.trip_number && (
+                          <div className="flex items-center gap-2 mt-2">
+                            <Package size={14} className="text-enterprise-600 dark:text-enterprise-400" />
+                            <span className="text-xs font-medium text-enterprise-600 dark:text-enterprise-400 bg-enterprise-50 dark:bg-enterprise-900/30 px-2 py-0.5 rounded">
+                              {trip.delivery_trip.trip_number}
+                            </span>
+                          </div>
+                        )}
                       </div>
                       <div className="ml-auto">
                         <span

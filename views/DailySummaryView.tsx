@@ -12,6 +12,7 @@ import {
   Gauge,
   Users,
   Clock,
+  Package,
 } from 'lucide-react';
 import { PageLayout } from '../components/layout/PageLayout';
 import { Card } from '../components/ui/Card';
@@ -495,6 +496,9 @@ export const DailySummaryView: React.FC<DailySummaryViewProps> = ({ isDark = fal
                     <thead>
                       <tr className="border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60">
                         <th className="text-left py-2 px-3 text-slate-700 dark:text-slate-300 font-medium">
+                          รหัสทริป
+                        </th>
+                        <th className="text-left py-2 px-3 text-slate-700 dark:text-slate-300 font-medium">
                           เวลาออก
                         </th>
                         <th className="text-left py-2 px-3 text-slate-700 dark:text-slate-300 font-medium">
@@ -533,6 +537,16 @@ export const DailySummaryView: React.FC<DailySummaryViewProps> = ({ isDark = fal
                             key={trip.id}
                             className="border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/60"
                           >
+                            <td className="py-2 px-3 text-slate-800 dark:text-slate-100 whitespace-nowrap">
+                              {trip.delivery_trip?.trip_number ? (
+                                <span className="inline-flex items-center gap-1 text-xs font-medium text-enterprise-600 dark:text-enterprise-400 bg-enterprise-50 dark:bg-enterprise-900/30 px-2 py-0.5 rounded">
+                                  <Package size={12} />
+                                  {trip.delivery_trip.trip_number}
+                                </span>
+                              ) : (
+                                <span className="text-slate-400 dark:text-slate-600 text-xs">-</span>
+                              )}
+                            </td>
                             <td className="py-2 px-3 text-slate-800 dark:text-slate-100 whitespace-nowrap">
                               {checkoutDate
                                 ? checkoutDate.toLocaleTimeString('th-TH', {
