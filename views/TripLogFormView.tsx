@@ -15,7 +15,8 @@ import {
   Search,
   ChevronDown,
   X,
-  User
+  User,
+  Package
 } from 'lucide-react';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
@@ -24,6 +25,7 @@ import { PageLayout } from '../components/layout/PageLayout';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { useVehicles, useActiveTrips, useTripCheckout, useTripCheckin, useVehicleStatus, useAuth } from '../hooks';
 import { tripLogService } from '../services/tripLogService';
+import { deliveryTripService, type DeliveryTripWithRelations } from '../services/deliveryTripService';
 import { useDataCacheStore, createCacheKey } from '../stores/dataCacheStore';
 
 interface TripLogFormViewProps {
@@ -96,6 +98,8 @@ export const TripLogFormView: React.FC<TripLogFormViewProps> = ({
   const [successMode, setSuccessMode] = useState<'checkout' | 'checkin' | null>(null); // Track which mode succeeded
   const [tripData, setTripData] = useState<any>(null); // Store full trip data for check-in
   const [userMismatch, setUserMismatch] = useState(false);
+  const [activeDeliveryTrip, setActiveDeliveryTrip] = useState<DeliveryTripWithRelations | null>(null);
+  const [loadingDeliveryTrip, setLoadingDeliveryTrip] = useState(false);
 
   // Distance confirmation dialog state
   const [showDistanceConfirm, setShowDistanceConfirm] = useState(false);
@@ -155,9 +159,10 @@ export const TripLogFormView: React.FC<TripLogFormViewProps> = ({
           setSuccess(false);
           setSuccessMode(null);
           // Clear form data when switching back to checkout mode
+          // Note: destination will be auto-filled if there's an active delivery trip
           setFormData({
             odometer: '',
-            destination: '',
+            destination: '', // Will be auto-filled by useEffect if activeDeliveryTrip exists
             route: '',
             notes: '',
           });
@@ -234,6 +239,101 @@ export const TripLogFormView: React.FC<TripLogFormViewProps> = ({
       }
     }
   }, [mode, selectedTripId, selectedVehicleId, vehicleActiveTrip, activeTrips, loadingVehicleStatus, user]);
+
+  // Fetch active delivery trip for selected vehicle
+  useEffect(() => {
+    const fetchActiveDeliveryTrip = async () => {
+      if (!selectedVehicleId || mode !== 'checkout') {
+        setActiveDeliveryTrip(null);
+        return;
+      }
+
+      try {
+        setLoadingDeliveryTrip(true);
+        // Get active delivery trips (planned or in_progress) for this vehicle
+        const deliveryTrips = await deliveryTripService.getAll({
+          vehicle_id: selectedVehicleId,
+          status: ['planned', 'in_progress']
+        });
+
+        // Get the most recent active delivery trip
+        const activeTrip = deliveryTrips.length > 0 ? deliveryTrips[0] : null;
+        console.log('[TripLogFormView] Fetched active delivery trip:', activeTrip);
+        console.log('[TripLogFormView] Active trip stores:', activeTrip?.stores);
+        setActiveDeliveryTrip(activeTrip);
+
+        // Note: Auto-fill destination will be handled in separate useEffect
+      } catch (err) {
+        console.error('[TripLogFormView] Error fetching active delivery trip:', err);
+        setActiveDeliveryTrip(null);
+      } finally {
+        setLoadingDeliveryTrip(false);
+      }
+    };
+
+    fetchActiveDeliveryTrip();
+  }, [selectedVehicleId, mode]);
+
+  // Auto-fill destination from active delivery trip
+  useEffect(() => {
+    console.log('[TripLogFormView] Auto-fill effect triggered:', {
+      mode,
+      hasActiveDeliveryTrip: !!activeDeliveryTrip,
+      storesCount: activeDeliveryTrip?.stores?.length || 0,
+      loadingDeliveryTrip,
+      currentDestination: formData.destination,
+    });
+
+    if (mode === 'checkout' && activeDeliveryTrip && activeDeliveryTrip.stores && activeDeliveryTrip.stores.length > 0) {
+      const destinations = activeDeliveryTrip.stores
+        .sort((a, b) => ((a as any).sequence_order || 0) - ((b as any).sequence_order || 0))
+        .map(store => {
+          const storeInfo = store.store;
+          return storeInfo ? `${storeInfo.customer_code} - ${storeInfo.customer_name}` : '';
+        })
+        .filter(Boolean)
+        .join(', ');
+
+      console.log('[TripLogFormView] Generated destinations string:', destinations);
+
+      if (destinations) {
+        console.log('[TripLogFormView] Auto-filling destination:', destinations);
+        // Auto-fill immediately - use functional update to ensure we get latest state
+        setFormData(prev => {
+          // Always auto-fill destination from delivery trip (user can still edit it)
+          // Only update if destination is different to avoid unnecessary re-renders
+          if (prev.destination !== destinations) {
+            console.log('[TripLogFormView] Updating destination from', prev.destination, 'to', destinations);
+            return {
+              ...prev,
+              destination: destinations,
+            };
+          } else {
+            console.log('[TripLogFormView] Destination already matches, skipping update');
+          }
+          return prev;
+        });
+      } else {
+        console.warn('[TripLogFormView] Destinations string is empty after processing stores');
+      }
+    } else if (mode === 'checkout' && !activeDeliveryTrip && !loadingDeliveryTrip) {
+      console.log('[TripLogFormView] No active delivery trip, checking if should clear destination');
+      // Only clear destination if there's no active delivery trip and we're done loading
+      // This prevents clearing while still loading
+      setFormData(prev => {
+        // Only clear if destination was auto-filled (contains comma-separated store codes)
+        // Don't clear if user has manually entered something
+        if (prev.destination && prev.destination.includes(' - ')) {
+          console.log('[TripLogFormView] Clearing auto-filled destination');
+          return {
+            ...prev,
+            destination: '',
+          };
+        }
+        return prev;
+      });
+    }
+  }, [activeDeliveryTrip, mode, loadingDeliveryTrip]); // Depend on activeDeliveryTrip, mode, and loading state
 
   // Auto-fill last odometer when vehicle is selected (checkout mode only)
   // Only auto-fill if odometer field is empty
@@ -729,6 +829,26 @@ export const TripLogFormView: React.FC<TripLogFormViewProps> = ({
                               <X size={18} />
                             </button>
                           </div>
+                          {/* Show delivery trip status if exists */}
+                          {activeDeliveryTrip && mode === 'checkout' && (
+                            <div className="mt-2 pt-2 border-t border-blue-200 dark:border-blue-700">
+                              <div className="flex items-center gap-2 text-blue-700 dark:text-blue-300 mb-1">
+                                <Package size={14} />
+                                <span className="text-xs font-medium">มีทริปจัดส่งสินค้า</span>
+                                {activeDeliveryTrip.trip_number && (
+                                  <span className="text-xs text-blue-600 dark:text-blue-400">
+                                    ({activeDeliveryTrip.trip_number})
+                                  </span>
+                                )}
+                              </div>
+                              {activeDeliveryTrip.stores && activeDeliveryTrip.stores.length > 0 && (
+                                <div className="text-xs text-blue-600 dark:text-blue-400">
+                                  {activeDeliveryTrip.stores.length} ร้านค้า
+                                </div>
+                              )}
+                            </div>
+                          )}
+
                           {/* Show active trip info if exists */}
                           {activeTripForVehicle && (
                             <div className="mt-2 pt-2 border-t border-slate-200 dark:border-slate-700">
@@ -1090,6 +1210,75 @@ export const TripLogFormView: React.FC<TripLogFormViewProps> = ({
           </div>
         </Card>
 
+        {/* Delivery Trip Info - Show if vehicle has active delivery trip */}
+        {mode === 'checkout' && selectedVehicleId && activeDeliveryTrip && (
+          <Card className="p-6 bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800">
+            <div className="space-y-4">
+              <div className="flex items-center gap-2 text-blue-800 dark:text-blue-200 mb-3">
+                <Package size={20} />
+                <h3 className="text-lg font-semibold">ทริปจัดส่งสินค้า</h3>
+                {activeDeliveryTrip.trip_number && (
+                  <span className="text-sm text-blue-600 dark:text-blue-400">
+                    ({activeDeliveryTrip.trip_number})
+                  </span>
+                )}
+              </div>
+
+              {/* Stores List */}
+              {activeDeliveryTrip.stores && activeDeliveryTrip.stores.length > 0 && (
+                <div className="space-y-2">
+                  <div className="text-sm font-medium text-blue-900 dark:text-blue-100 mb-2">
+                    รายการร้านค้าที่ต้องไป ({activeDeliveryTrip.stores.length} ร้าน):
+                  </div>
+                  <div className="space-y-2">
+                    {activeDeliveryTrip.stores
+                      .sort((a, b) => ((a as any).sequence_order || 0) - ((b as any).sequence_order || 0))
+                      .map((storeWithDetails, index) => {
+                        const store = storeWithDetails.store;
+                        if (!store) return null;
+                        const sequenceOrder = (storeWithDetails as any).sequence_order || index + 1;
+
+                        return (
+                          <div
+                            key={(storeWithDetails as any).id || index}
+                            className="p-3 bg-white dark:bg-slate-800 rounded-lg border border-blue-200 dark:border-blue-700"
+                          >
+                            <div className="flex items-start gap-3">
+                              <span className="flex items-center justify-center w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-400 font-semibold text-sm flex-shrink-0">
+                                {sequenceOrder}
+                              </span>
+                              <div className="flex-1 min-w-0">
+                                <div className="font-medium text-slate-900 dark:text-slate-100">
+                                  {store.customer_code} - {store.customer_name}
+                                </div>
+                                {store.address && (
+                                  <div className="text-xs text-slate-600 dark:text-slate-400 mt-1">
+                                    {store.address}
+                                  </div>
+                                )}
+                                {storeWithDetails.items && storeWithDetails.items.length > 0 && (
+                                  <div className="text-xs text-slate-500 dark:text-slate-500 mt-1">
+                                    สินค้า: {storeWithDetails.items.length} รายการ
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                  </div>
+                </div>
+              )}
+
+              {loadingDeliveryTrip && (
+                <div className="text-sm text-blue-600 dark:text-blue-400">
+                  กำลังโหลดข้อมูลทริปจัดส่ง...
+                </div>
+              )}
+            </div>
+          </Card>
+        )}
+
         {/* Optional Fields - Only show for checkout, hide for check-in */}
         {mode === 'checkout' && (
           <Card className="p-6">
@@ -1099,6 +1288,11 @@ export const TripLogFormView: React.FC<TripLogFormViewProps> = ({
                   <span className="flex items-center gap-2">
                     <MapPin size={18} />
                     ปลายทาง
+                    {activeDeliveryTrip && (
+                      <span className="text-xs text-green-600 dark:text-green-400 font-normal">
+                        (กรอกอัตโนมัติจากทริปจัดส่ง)
+                      </span>
+                    )}
                   </span>
                 }
                 value={formData.destination}

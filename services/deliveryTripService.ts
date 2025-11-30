@@ -141,12 +141,47 @@ export const deliveryTripService = {
     const vehicleMap = new Map((vehicles || []).map(v => [v.id, v]));
     const driverMap = new Map((drivers || []).map(d => [d.id, d]));
 
+    // Fetch stores for all trips
+    const tripIds = trips.map(t => t.id);
+    const { data: tripStores } = tripIds.length > 0 ? await supabase
+      .from('delivery_trip_stores')
+      .select('*')
+      .in('delivery_trip_id', tripIds)
+      .order('sequence_order', { ascending: true }) : { data: [] };
+
+    // Fetch stores separately
+    const storeIds = [...new Set((tripStores || []).map(ts => ts.store_id).filter(Boolean))];
+    const { data: stores } = storeIds.length > 0 ? await supabase
+      .from('stores')
+      .select('id, customer_code, customer_name, address, phone')
+      .in('id', storeIds) : { data: [] };
+
+    const storeMap = new Map((stores || []).map(s => [s.id, s]));
+
+    // Group trip stores by trip_id
+    const tripStoresMap = new Map<string, typeof tripStores>();
+    (tripStores || []).forEach(ts => {
+      if (!tripStoresMap.has(ts.delivery_trip_id)) {
+        tripStoresMap.set(ts.delivery_trip_id, []);
+      }
+      tripStoresMap.get(ts.delivery_trip_id)!.push(ts);
+    });
+
     // Combine data
-    return trips.map(trip => ({
-      ...trip,
-      vehicle: vehicleMap.get(trip.vehicle_id),
-      driver: driverMap.get(trip.driver_id),
-    })) as DeliveryTripWithRelations[];
+    return trips.map(trip => {
+      const tripStoresForTrip = tripStoresMap.get(trip.id) || [];
+      const storesWithDetails: DeliveryTripStoreWithDetails[] = tripStoresForTrip.map(ts => ({
+        ...ts,
+        store: storeMap.get(ts.store_id),
+      }));
+
+      return {
+        ...trip,
+        vehicle: vehicleMap.get(trip.vehicle_id),
+        driver: driverMap.get(trip.driver_id),
+        stores: storesWithDetails,
+      };
+    }) as DeliveryTripWithRelations[];
   },
 
   // Get delivery trip by ID with full relations
