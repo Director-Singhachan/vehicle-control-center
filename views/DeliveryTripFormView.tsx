@@ -23,6 +23,7 @@ import { PageLayout } from '../components/layout/PageLayout';
 import { useDeliveryTrip, useVehicles, useStores, useProducts } from '../hooks';
 import { deliveryTripService, type CreateDeliveryTripData } from '../services/deliveryTripService';
 import { tripLogService } from '../services/tripLogService';
+import { ticketService } from '../services/ticketService';
 import { storeService, type Store } from '../services/storeService';
 import { productService, type Product } from '../services/productService';
 import { profileService } from '../services/profileService';
@@ -240,7 +241,9 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [latestOdometer, setLatestOdometer] = useState<number | null>(null);
-  const [activeVehicleIds, setActiveVehicleIds] = useState<Set<string>>(new Set());
+  const [activeVehicleIds, setActiveVehicleIds] = useState<Set<string>>(new Set()); // Vehicles in use (trip logs)
+  const [vehiclesWithActiveTickets, setVehiclesWithActiveTickets] = useState<Set<string>>(new Set()); // Vehicles with active maintenance tickets
+  const [vehiclesWithActiveDeliveryTrips, setVehiclesWithActiveDeliveryTrips] = useState<Set<string>>(new Set()); // Vehicles with active delivery trips
   
   // Refs for dropdown positioning
   const vehicleInputRef = useRef<HTMLDivElement>(null);
@@ -518,6 +521,58 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
     };
 
     fetchActiveTrips();
+  }, []);
+
+  // Fetch vehicles with active maintenance tickets
+  useEffect(() => {
+    const fetchVehiclesWithActiveTickets = async () => {
+      try {
+        // Query all active tickets at once instead of checking each vehicle
+        const { supabase } = await import('../lib/supabase');
+        const activeStatuses = ['pending', 'approved_inspector', 'approved_manager', 'ready_for_repair', 'in_progress'];
+        
+        const { data: activeTickets, error } = await supabase
+          .from('tickets')
+          .select('vehicle_id')
+          .in('status', activeStatuses);
+        
+        if (error) {
+          console.error('[DeliveryTripFormView] Error fetching active tickets:', error);
+          setVehiclesWithActiveTickets(new Set());
+          return;
+        }
+        
+        const vehicleIdsWithTickets = new Set(
+          (activeTickets || []).map(ticket => ticket.vehicle_id).filter(Boolean)
+        );
+        
+        setVehiclesWithActiveTickets(vehicleIdsWithTickets);
+      } catch (err) {
+        console.error('[DeliveryTripFormView] Error fetching vehicles with active tickets:', err);
+        setVehiclesWithActiveTickets(new Set());
+      }
+    };
+
+    fetchVehiclesWithActiveTickets();
+  }, []); // Fetch once on mount, not dependent on vehicles
+
+  // Fetch vehicles with active delivery trips
+  useEffect(() => {
+    const fetchVehiclesWithActiveDeliveryTrips = async () => {
+      try {
+        // Get active delivery trips (planned or in_progress)
+        const activeDeliveryTrips = await deliveryTripService.getAll({
+          status: ['planned', 'in_progress']
+        });
+        const vehicleIds = new Set(activeDeliveryTrips.map(trip => trip.vehicle_id));
+        setVehiclesWithActiveDeliveryTrips(vehicleIds);
+      } catch (err) {
+        console.error('[DeliveryTripFormView] Error fetching vehicles with active delivery trips:', err);
+        setVehiclesWithActiveDeliveryTrips(new Set());
+      }
+    };
+
+    fetchVehiclesWithActiveDeliveryTrips();
   }, []);
 
   // Fetch drivers list (only drivers with role = 'driver')
@@ -990,7 +1045,22 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
                     }}
                   >
                     {filteredVehicles.map((vehicle) => {
-                      const isActive = activeVehicleIds.has(vehicle.id);
+                      const isInUse = activeVehicleIds.has(vehicle.id); // In use (trip logs)
+                      const hasActiveTicket = vehiclesWithActiveTickets.has(vehicle.id); // Has active maintenance ticket
+                      const hasActiveDeliveryTrip = vehiclesWithActiveDeliveryTrips.has(vehicle.id); // Has active delivery trip
+                      
+                      // Collect all statuses
+                      const statuses: string[] = [];
+                      if (isInUse) {
+                        statuses.push('🚗 ใช้งานอยู่');
+                      }
+                      if (hasActiveTicket) {
+                        statuses.push('🔧 ซ่อมอยู่');
+                      }
+                      if (hasActiveDeliveryTrip) {
+                        statuses.push('📦 จัดส่งอยู่');
+                      }
+                      
                       return (
                         <button
                           key={vehicle.id}
@@ -1008,9 +1078,22 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
                           <div className="font-medium text-slate-900 dark:text-slate-100">
                             {vehicle.plate} {vehicle.make && vehicle.model ? `(${vehicle.make} ${vehicle.model})` : ''}
                           </div>
-                          {isActive && (
-                            <div className="text-xs text-amber-600 dark:text-amber-400 mt-0.5">
-                              🚗 ใช้งานอยู่
+                          {statuses.length > 0 && (
+                            <div className="text-xs mt-0.5 space-y-0.5">
+                              {statuses.map((status, idx) => (
+                                <div
+                                  key={idx}
+                                  className={
+                                    status.includes('ใช้งานอยู่')
+                                      ? 'text-amber-600 dark:text-amber-400'
+                                      : status.includes('ซ่อมอยู่')
+                                      ? 'text-red-600 dark:text-red-400'
+                                      : 'text-blue-600 dark:text-blue-400'
+                                  }
+                                >
+                                  {status}
+                                </div>
+                              ))}
                             </div>
                           )}
                         </button>
@@ -1019,10 +1102,26 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
                   </div>,
                   document.body
                 )}
-                {formData.vehicle_id && activeVehicleIds.has(formData.vehicle_id) && (
-                  <div className="mt-1 text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1">
-                    <span>⚠️</span>
-                    <span>รถคันนี้กำลังใช้งานอยู่</span>
+                {formData.vehicle_id && (
+                  <div className="mt-1 space-y-1">
+                    {activeVehicleIds.has(formData.vehicle_id) && (
+                      <div className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                        <span>⚠️</span>
+                        <span>รถคันนี้กำลังใช้งานอยู่</span>
+                      </div>
+                    )}
+                    {vehiclesWithActiveTickets.has(formData.vehicle_id) && (
+                      <div className="text-xs text-red-600 dark:text-red-400 flex items-center gap-1">
+                        <span>⚠️</span>
+                        <span>รถคันนี้กำลังซ่อมอยู่</span>
+                      </div>
+                    )}
+                    {vehiclesWithActiveDeliveryTrips.has(formData.vehicle_id) && (
+                      <div className="text-xs text-blue-600 dark:text-blue-400 flex items-center gap-1">
+                        <span>⚠️</span>
+                        <span>รถคันนี้มีทริปจัดส่งอยู่</span>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
