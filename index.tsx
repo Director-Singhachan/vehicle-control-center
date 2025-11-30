@@ -20,7 +20,6 @@ import {
   Droplet,
   Calendar,
   Package,
-  FileSpreadsheet
 } from 'lucide-react';
 import { DashboardView } from './views/DashboardView';
 import { ProfileView } from './views/ProfileView';
@@ -43,7 +42,6 @@ import { DeliveryTripListView } from './views/DeliveryTripListView';
 import { DeliveryTripFormView } from './views/DeliveryTripFormView';
 import { DeliveryTripDetailView } from './views/DeliveryTripDetailView';
 import { StoreDeliveryDetailView } from './views/StoreDeliveryDetailView';
-import { ImportDataView } from './views/ImportDataView';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { useAuth, usePendingTickets } from './hooks';
 import { ticketService, type TicketWithRelations } from './services/ticketService';
@@ -439,15 +437,6 @@ const AppContent = () => {
           <SidebarItem icon={User} label={isSidebarOpen ? "โปรไฟล์" : ""} active={activeTab === 'profile'} onClick={() => setActiveTab('profile')} isCollapsed={!isSidebarOpen} />
           {(isAdmin || isManager) && (
             <SidebarItem icon={Shield} label={isSidebarOpen ? "ทดสอบ RLS" : ""} active={activeTab === 'rls-test'} onClick={() => setActiveTab('rls-test')} isCollapsed={!isSidebarOpen} />
-          )}
-          {!isDriver && (
-            <SidebarItem
-              icon={FileSpreadsheet}
-              label={isSidebarOpen ? "Import ข้อมูล" : ""}
-              active={activeTab === 'import-data'}
-              onClick={() => setActiveTab('import-data')}
-              isCollapsed={!isSidebarOpen}
-            />
           )}
           {/* ซ่อนเมนูตั้งค่าสำหรับพนักงานขับรถ เพื่อไม่ให้ไปตั้งค่า Telegram/LINE เอง */}
           {(!isDriver || isAdmin || isManager || isInspector || isExecutive) && (
@@ -966,8 +955,6 @@ const AppContent = () => {
             )
           ) : activeTab === 'settings' ? (
             <SettingsView />
-          ) : activeTab === 'import-data' ? (
-            <ImportDataView />
           ) : activeTab === 'delivery-trips' ? (
             (() => {
               if (deliveryTripView === 'detail' && selectedDeliveryTripId) {
