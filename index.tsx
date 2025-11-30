@@ -42,6 +42,7 @@ import { useAuth, usePendingTickets } from './hooks';
 import { ticketService, type TicketWithRelations } from './services/ticketService';
 import { prefetchService } from './services/prefetchService';
 import { Avatar } from './components/ui/Avatar';
+import { ConfirmDialog } from './components/ui/ConfirmDialog';
 
 const SidebarItem = ({ icon: Icon, label, active, onClick, onMouseEnter, isCollapsed }: any) => (
   <button
@@ -126,6 +127,7 @@ const AppContent = () => {
   const [showNotifications, setShowNotifications] = useState(false);
   const [notificationItems, setNotificationItems] = useState<TicketWithRelations[]>([]);
   const [loadingNotifications, setLoadingNotifications] = useState(false);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
   // Redirect drivers to trip log form page when they login (like maintenance form)
   // Drivers can access: triplogs, fuellogs, maintenance, profile, settings
@@ -207,6 +209,33 @@ const AppContent = () => {
 
     loadNotifications();
   }, [showNotifications, profile]);
+
+  // Close notification dropdown when clicking outside
+  useEffect(() => {
+    if (!showNotifications) return;
+
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      // Check if click is outside notification dropdown and bell button
+      if (
+        target &&
+        !target.closest('[data-notification-dropdown]') &&
+        !target.closest('[data-notification-bell]')
+      ) {
+        setShowNotifications(false);
+      }
+    };
+
+    // Add event listener with a small delay to avoid immediate close when opening
+    const timeoutId = setTimeout(() => {
+      document.addEventListener('click', handleClickOutside);
+    }, 100);
+
+    return () => {
+      clearTimeout(timeoutId);
+      document.removeEventListener('click', handleClickOutside);
+    };
+  }, [showNotifications]);
 
   // Debug logging
   React.useEffect(() => {
@@ -397,12 +426,8 @@ const AppContent = () => {
               isCollapsed={!isSidebarOpen}
             />
           )}
-          <SidebarItem icon={LogOut} label={isSidebarOpen ? "ออกจากระบบ" : ""} onClick={async () => {
-            try {
-              await signOut();
-            } catch (error) {
-              console.error('Error signing out:', error);
-            }
+          <SidebarItem icon={LogOut} label={isSidebarOpen ? "ออกจากระบบ" : ""} onClick={() => {
+            setShowLogoutConfirm(true);
           }} />
         </div>
       </aside>
@@ -439,6 +464,7 @@ const AppContent = () => {
             </button>
             <div className="relative">
               <button
+                data-notification-bell
                 onClick={() => setShowNotifications((prev) => !prev)}
                 className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400 relative"
                 title={pendingCount > 0 ? `${pendingCount} ตั๋วรออนุมัติ` : 'การแจ้งเตือน'}
@@ -452,7 +478,10 @@ const AppContent = () => {
               </button>
 
               {showNotifications && (
-                <div className="absolute right-0 mt-2 w-80 sm:w-96 bg-white dark:bg-charcoal-900 border border-slate-200 dark:border-slate-700 rounded-xl shadow-xl z-20 overflow-hidden">
+                <div 
+                  data-notification-dropdown
+                  className="absolute right-0 mt-2 w-80 sm:w-96 bg-white dark:bg-charcoal-900 border border-slate-200 dark:border-slate-700 rounded-xl shadow-xl z-20 overflow-hidden"
+                >
                   <div className="px-4 py-3 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
                     <span className="text-sm font-semibold text-slate-900 dark:text-white">
                       การแจ้งเตือน
@@ -903,6 +932,26 @@ const AppContent = () => {
         </div>
 
       </main>
+
+      {/* Logout Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={showLogoutConfirm}
+        title="ยืนยันการออกจากระบบ"
+        message="คุณต้องการออกจากระบบหรือไม่? หลังจากออกจากระบบ คุณจะต้องเข้าสู่ระบบใหม่เพื่อใช้งานระบบ"
+        confirmText="ออกจากระบบ"
+        cancelText="ยกเลิก"
+        variant="warning"
+        onConfirm={async () => {
+          try {
+            await signOut();
+            setShowLogoutConfirm(false);
+          } catch (error) {
+            console.error('Error signing out:', error);
+            setShowLogoutConfirm(false);
+          }
+        }}
+        onCancel={() => setShowLogoutConfirm(false)}
+      />
     </div>
   );
 };

@@ -71,8 +71,14 @@ Deno.serve(async (req) => {
         if (event.channel === 'telegram' && !isApprovalPdf) {
           console.log(`[notification-worker] Processing Telegram operational event: ${event.event_type}, event ID: ${event.id}`);
           
-          // เช็คว่าต้องการเช็ค user settings หรือไม่ (สำหรับ ticket_created, ticket_closed)
-          const needsUserSettingCheck = event.event_type === 'ticket_created' || event.event_type === 'ticket_closed';
+          // เช็คว่าต้องการเช็ค user settings หรือไม่
+          // สำหรับ ticket_created, ticket_closed, fuel_refill, trip_started, trip_finished
+          const needsUserSettingCheck = 
+            event.event_type === 'ticket_created' || 
+            event.event_type === 'ticket_closed' ||
+            event.event_type === 'fuel_refill' ||
+            event.event_type === 'trip_started' ||
+            event.event_type === 'trip_finished';
           
           if (needsUserSettingCheck) {
             // Determine target user (use target_user_id if available, otherwise use user_id)
@@ -82,14 +88,29 @@ Deno.serve(async (req) => {
               // Get notification settings for target user
               const { data: userSettings } = await supabase
                 .from('notification_settings')
-                .select('notify_ticket_created, notify_ticket_closed')
+                .select('notify_ticket_created, notify_ticket_closed, notify_fuel_refill, notify_trip_started, notify_trip_finished')
                 .eq('user_id', targetUserId)
                 .maybeSingle();
 
               // เช็คว่า user เปิดการแจ้งเตือนหรือไม่
-              const shouldNotify = 
-                (event.event_type === 'ticket_created' && userSettings?.notify_ticket_created !== false) ||
-                (event.event_type === 'ticket_closed' && userSettings?.notify_ticket_closed !== false);
+              let shouldNotify = true;
+              switch (event.event_type) {
+                case 'ticket_created':
+                  shouldNotify = userSettings?.notify_ticket_created !== false;
+                  break;
+                case 'ticket_closed':
+                  shouldNotify = userSettings?.notify_ticket_closed !== false;
+                  break;
+                case 'fuel_refill':
+                  shouldNotify = userSettings?.notify_fuel_refill !== false;
+                  break;
+                case 'trip_started':
+                  shouldNotify = userSettings?.notify_trip_started !== false;
+                  break;
+                case 'trip_finished':
+                  shouldNotify = userSettings?.notify_trip_finished !== false;
+                  break;
+              }
 
               // ถ้า user ปิดการแจ้งเตือน ให้ข้าม (แต่ยังส่งไปกลุ่มกลาง)
               // หรือถ้าต้องการให้ส่งเฉพาะเมื่อ user เปิด ให้ uncomment บรรทัดนี้:
@@ -150,7 +171,7 @@ Deno.serve(async (req) => {
           // หาผู้ใช้ทั้งหมดที่มีการตั้งค่า LINE
           const { data: allSettings, error: settingsError } = await supabase
             .from('notification_settings')
-            .select('line_user_id, user_id, enable_line, notify_ticket_created, notify_ticket_closed')
+            .select('line_user_id, user_id, enable_line, notify_ticket_created, notify_ticket_closed, notify_fuel_refill, notify_trip_started, notify_trip_finished')
             .eq('enable_line', true)
             .not('line_user_id', 'is', null);
 
@@ -193,8 +214,14 @@ Deno.serve(async (req) => {
             continue;
           }
 
-          // เช็คว่าต้องการเช็ค user settings หรือไม่ (สำหรับ ticket_created, ticket_closed)
-          const needsUserSettingCheck = event.event_type === 'ticket_created' || event.event_type === 'ticket_closed';
+          // เช็คว่าต้องการเช็ค user settings หรือไม่
+          // สำหรับ ticket_created, ticket_closed, fuel_refill, trip_started, trip_finished
+          const needsUserSettingCheck = 
+            event.event_type === 'ticket_created' || 
+            event.event_type === 'ticket_closed' ||
+            event.event_type === 'fuel_refill' ||
+            event.event_type === 'trip_started' ||
+            event.event_type === 'trip_finished';
 
           // ส่งไปยังผู้ใช้แต่ละคน
           let sentCount = 0;
@@ -207,14 +234,29 @@ Deno.serve(async (req) => {
 
             // เช็คว่า user เปิดการแจ้งเตือนหรือไม่
             if (needsUserSettingCheck) {
-              const shouldNotify = 
-                (event.event_type === 'ticket_created' && userSetting.notify_ticket_created !== false) ||
-                (event.event_type === 'ticket_closed' && userSetting.notify_ticket_closed !== false);
+              let shouldNotify = true;
+              switch (event.event_type) {
+                case 'ticket_created':
+                  shouldNotify = userSetting.notify_ticket_created !== false;
+                  break;
+                case 'ticket_closed':
+                  shouldNotify = userSetting.notify_ticket_closed !== false;
+                  break;
+                case 'fuel_refill':
+                  shouldNotify = userSetting.notify_fuel_refill !== false;
+                  break;
+                case 'trip_started':
+                  shouldNotify = userSetting.notify_trip_started !== false;
+                  break;
+                case 'trip_finished':
+                  shouldNotify = userSetting.notify_trip_finished !== false;
+                  break;
+              }
 
               if (!shouldNotify) {
-                console.log(`[notification-worker] Skipping user ${userSetting.user_id} - notification disabled for ${event.event_type}`);
+                console.log(`[notification-worker] Skipping LINE notification for user ${userSetting.user_id} - ${event.event_type} disabled`);
                 skippedCount++;
-                continue; // ข้าม user นี้
+                continue;
               }
             }
 
@@ -267,6 +309,37 @@ Deno.serve(async (req) => {
           await markEventFailed(supabase, event.id, 'Failed to fetch settings');
           failed++;
           continue;
+        }
+
+        // เช็คว่า user เปิดการแจ้งเตือนสำหรับ event type นี้หรือไม่
+        if (settings) {
+          let shouldNotify = true;
+          switch (event.event_type) {
+            case 'ticket_pdf_for_approval':
+              shouldNotify = settings.notify_ticket_approval !== false;
+              break;
+            case 'ticket_created':
+              shouldNotify = settings.notify_ticket_created !== false;
+              break;
+            case 'ticket_closed':
+              shouldNotify = settings.notify_ticket_closed !== false;
+              break;
+            case 'fuel_refill':
+              shouldNotify = settings.notify_fuel_refill !== false;
+              break;
+            case 'trip_started':
+              shouldNotify = settings.notify_trip_started !== false;
+              break;
+            case 'trip_finished':
+              shouldNotify = settings.notify_trip_finished !== false;
+              break;
+          }
+
+          if (!shouldNotify) {
+            console.log(`[notification-worker] Skipping notification for user ${targetUserId} - ${event.event_type} disabled`);
+            await markEventSent(supabase, event.id); // Mark as sent to avoid retry
+            continue;
+          }
         }
 
         if (!settings) {
