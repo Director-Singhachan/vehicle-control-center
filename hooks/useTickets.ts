@@ -66,13 +66,16 @@ export const useTickets = (options: UseTicketsOptions = { autoFetch: true }) => 
 };
 
 export const useTicket = (id: number | null) => {
+  console.log('[useTicket] Hook called with id:', id, 'type:', typeof id);
   const cache = useDataCacheStore();
   const [ticket, setTicket] = useState<TicketWithRelations | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
 
   useEffect(() => {
+    console.log('[useTicket] useEffect triggered with id:', id);
     if (!id) {
+      console.log('[useTicket] No id provided, clearing ticket');
       setTicket(null);
       return;
     }
@@ -81,19 +84,23 @@ export const useTicket = (id: number | null) => {
     const cached = cache.get<TicketWithRelations>(cacheKey);
 
     if (cached) {
+      console.log('[useTicket] Using cached ticket');
       setTicket(cached);
       setLoading(false);
     }
 
     const fetchTicket = async () => {
+      console.log('[useTicket] Fetching ticket with id:', id);
       setLoading(true);
       setError(null);
       try {
         const data = await ticketService.getByIdWithRelations(id);
+        console.log('[useTicket] Fetch success:', { hasData: !!data, ticketId: data?.id });
         setTicket(data);
         // Cache for 1 minute
         cache.set(cacheKey, data, 60 * 1000);
       } catch (err) {
+        console.error('[useTicket] Fetch error:', err);
         setError(err instanceof Error ? err : new Error('Failed to fetch ticket'));
       } finally {
         setLoading(false);
@@ -143,9 +150,11 @@ export const useTicketsWithRelations = (filters?: {
   const [error, setError] = useState<Error | null>(null);
 
   const fetchTickets = async (useCache = true, forceLoading = false) => {
+    console.log('[useTicketsWithRelations] fetchTickets called:', { useCache, forceLoading, filters });
     if (useCache) {
       const cached = cache.get<{ data: TicketWithRelations[]; count: number }>(cacheKey);
       if (cached !== null && cached !== undefined) {
+        console.log('[useTicketsWithRelations] Using cached data:', { count: cached.count, dataLength: cached.data.length });
         setTickets(cached.data);
         setTotalCount(cached.count);
         setLoading(false);
@@ -162,12 +171,15 @@ export const useTicketsWithRelations = (filters?: {
     }
     setError(null);
     try {
+      console.log('[useTicketsWithRelations] Fetching tickets from service...');
       const result = await ticketService.getWithRelations(filters);
+      console.log('[useTicketsWithRelations] Fetch success:', { dataCount: result.data.length, count: result.count });
       setTickets(result.data);
       setTotalCount(result.count);
       // Cache for 2 minutes
       cache.set(cacheKey, result, 2 * 60 * 1000);
     } catch (err) {
+      console.error('[useTicketsWithRelations] Fetch error:', err);
       const errorMessage = err instanceof Error ? err.message : 'Failed to fetch tickets';
       // Check if it's a connection error
       if (errorMessage.includes('fetch') || errorMessage.includes('network') || errorMessage.includes('Connection')) {

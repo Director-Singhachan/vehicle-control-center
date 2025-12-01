@@ -112,6 +112,7 @@ export const ticketService = {
     search?: string; // For text search (database-level)
   }): Promise<{ data: TicketWithRelations[]; count: number }> => {
     try {
+      console.log('[ticketService] getWithRelations called with filters:', filters);
       const limit = filters?.limit || 100;
       const offset = filters?.offset || 0;
 
@@ -157,13 +158,28 @@ export const ticketService = {
       const { data, error, count } = await query;
 
       if (error) {
+        console.error('[ticketService] getWithRelations error:', error);
+        console.error('[ticketService] Error details:', {
+          message: error.message,
+          code: error.code,
+          details: error.details,
+          hint: error.hint
+        });
+        
+        // Check for RLS policy errors
+        if (error.message.includes('permission denied') || error.message.includes('policy') || error.code === '42501') {
+          throw new Error('Permission denied. Please run migration: sql/20260104000000_fix_tickets_with_relations_rls.sql');
+        }
+        
         // Check for connection errors
         if (error.message.includes('fetch') || error.message.includes('network') || error.message.includes('Failed to fetch')) {
           throw new Error('Connection failed. If the problem persists, please check your internet connection or VPN');
         }
+        
         throw error;
       }
 
+      console.log('[ticketService] getWithRelations success:', { dataCount: data?.length || 0, count: count || 0 });
       return {
         data: data || [],
         count: count || 0,
@@ -191,14 +207,16 @@ export const ticketService = {
 
   // Get ticket by ID with relations (reporter, vehicle info)
   getByIdWithRelations: async (id: number): Promise<TicketWithRelations | null> => {
+    // Note: Cannot use .single() on views without primary key in Supabase REST API
+    // Use .limit(1) and get first element instead
     const { data, error } = await supabase
       .from('tickets_with_relations')
       .select('*')
       .eq('id', id)
-      .single();
+      .limit(1);
 
     if (error) throw error;
-    return data;
+    return data && data.length > 0 ? data[0] : null;
   },
 
   // Get urgent tickets count
