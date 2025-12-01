@@ -1484,6 +1484,16 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
                               ยุบร้านนี้
                             </button>
                           </div>
+
+                          {/* Header row */}
+                          <div className="hidden sm:grid sm:grid-cols-[2fr_2fr_1.5fr_1fr_auto] gap-2 px-2 text-xs font-medium text-slate-500 dark:text-slate-400">
+                            <div>รหัสสินค้า</div>
+                            <div>ชื่อสินค้า</div>
+                            <div>หมวดหมู่</div>
+                            <div className="text-right">จำนวน / หน่วย</div>
+                            <div className="text-center">ลบ</div>
+                          </div>
+
                           {storeWithItems.items.map((item, itemIndex) => {
                             const product = getProductInfo(item.product_id);
                             if (!product) return null;
@@ -1491,37 +1501,74 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
                             return (
                               <div
                                 key={item.product_id}
-                                className="flex items-center gap-3 p-2 bg-slate-50 dark:bg-slate-800 rounded"
+                                className="flex flex-col sm:grid sm:grid-cols-[2fr_2fr_1.5fr_1fr_auto] gap-2 p-2 bg-slate-50 dark:bg-slate-800 rounded"
                               >
-                                <div className="flex-1">
-                                  <div className="font-medium text-slate-900 dark:text-slate-100">
-                                    {product.product_code} - {product.product_name}
+                                {/* Code */}
+                                <div className="min-w-0">
+                                  <div className="sm:hidden text-[11px] text-slate-500 dark:text-slate-400 mb-0.5">
+                                    รหัสสินค้า
                                   </div>
-                                  <div className="text-xs text-slate-500 dark:text-slate-400">
-                                    {product.category} ({product.unit})
+                                  <div className="font-medium text-slate-900 dark:text-slate-100 break-words text-sm">
+                                    {product.product_code}
                                   </div>
                                 </div>
-                                <Input
-                                  type="number"
-                                  value={item.quantity}
-                                  onChange={(e) =>
-                                    handleUpdateQuantity(
-                                      storeIndex,
-                                      itemIndex,
-                                      parseFloat(e.target.value) || 0
-                                    )
-                                  }
-                                  className="w-24"
-                                  min="0"
-                                  step="0.01"
-                                />
-                                <button
-                                  type="button"
-                                  onClick={() => handleRemoveProduct(storeIndex, itemIndex)}
-                                  className="p-1 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded"
-                                >
-                                  <X size={16} />
-                                </button>
+
+                                {/* Name */}
+                                <div className="min-w-0">
+                                  <div className="sm:hidden text-[11px] text-slate-500 dark:text-slate-400 mb-0.5">
+                                    ชื่อสินค้า
+                                  </div>
+                                  <div className="text-sm text-slate-900 dark:text-slate-100 break-words">
+                                    {product.product_name}
+                                  </div>
+                                </div>
+
+                                {/* Category */}
+                                <div className="min-w-0">
+                                  <div className="sm:hidden text-[11px] text-slate-500 dark:text-slate-400 mb-0.5">
+                                    หมวดหมู่
+                                  </div>
+                                  <div className="text-xs text-slate-500 dark:text-slate-400">
+                                    {product.category}
+                                  </div>
+                                </div>
+
+                                {/* Quantity + unit */}
+                                <div className="flex items-center gap-1 sm:justify-end">
+                                  <div className="flex-1 sm:flex-none">
+                                    <div className="sm:hidden text-[11px] text-slate-500 dark:text-slate-400 mb-0.5">
+                                      จำนวน
+                                    </div>
+                                    <Input
+                                      type="number"
+                                      value={item.quantity}
+                                      onChange={(e) =>
+                                        handleUpdateQuantity(
+                                          storeIndex,
+                                          itemIndex,
+                                          parseFloat(e.target.value) || 0
+                                        )
+                                      }
+                                      className="w-full text-right"
+                                      min="0"
+                                      step="0.01"
+                                    />
+                                  </div>
+                                  <div className="text-xs text-slate-500 dark:text-slate-400 whitespace-nowrap pl-1">
+                                    {product.unit}
+                                  </div>
+                                </div>
+
+                                {/* Remove button */}
+                                <div className="flex items-center justify-end">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRemoveProduct(storeIndex, itemIndex)}
+                                    className="p-1 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded"
+                                  >
+                                    <X size={16} />
+                                  </button>
+                                </div>
                               </div>
                             );
                           })}
@@ -1626,4 +1673,5 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
     </PageLayout>
   );
 };
+
 

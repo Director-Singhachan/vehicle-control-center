@@ -9,6 +9,7 @@ export interface UseDeliveryTripsOptions {
   planned_date_from?: string;
   planned_date_to?: string;
   autoFetch?: boolean;
+  has_item_changes?: boolean;
   page?: number;
   pageSize?: number;
 }
@@ -38,6 +39,7 @@ export const useDeliveryTrips = (options: UseDeliveryTripsOptions = { autoFetch:
         driver_id: options.driver_id,
         planned_date_from: options.planned_date_from,
         planned_date_to: options.planned_date_to,
+        has_item_changes: options.has_item_changes,
         page,
         pageSize,
       });

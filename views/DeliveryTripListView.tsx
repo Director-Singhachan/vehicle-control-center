@@ -42,6 +42,7 @@ export const DeliveryTripListView: React.FC<DeliveryTripListViewProps> = ({
   const [dateFrom, setDateFrom] = useState<string>('');
   const [dateTo, setDateTo] = useState<string>('');
   const [showFilters, setShowFilters] = useState(false);
+  const [onlyChanged, setOnlyChanged] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 20;
 
@@ -50,6 +51,7 @@ export const DeliveryTripListView: React.FC<DeliveryTripListViewProps> = ({
     vehicle_id: vehicleFilter || undefined,
     planned_date_from: dateFrom || undefined,
     planned_date_to: dateTo || undefined,
+    has_item_changes: onlyChanged ? true : undefined,
     autoFetch: true,
     page: currentPage,
     pageSize: itemsPerPage,
@@ -64,19 +66,13 @@ export const DeliveryTripListView: React.FC<DeliveryTripListViewProps> = ({
     // Refetch immediately when component mounts (in case status was updated)
     refetchRef.current();
 
-    // Refetch periodically to catch status updates
-    const intervalId = setInterval(() => {
-      refetchRef.current();
-    }, 30000); // Refetch every 30 seconds (less frequent to avoid performance issues)
-
-    // Also refetch on window focus (user comes back to tab)
+    // Refetch on window focus (user comes back to tab)
     const handleFocus = () => {
       refetchRef.current();
     };
     window.addEventListener('focus', handleFocus);
 
     return () => {
-      clearInterval(intervalId);
       window.removeEventListener('focus', handleFocus);
     };
   }, []); // Empty dependency array - only run once on mount
@@ -98,7 +94,7 @@ export const DeliveryTripListView: React.FC<DeliveryTripListViewProps> = ({
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [statusFilter, vehicleFilter, dateFrom, dateTo]);
+  }, [statusFilter, vehicleFilter, dateFrom, dateTo, onlyChanged]);
 
   const getStatusBadge = (status: string) => {
     const badges = {
@@ -173,7 +169,7 @@ export const DeliveryTripListView: React.FC<DeliveryTripListViewProps> = ({
         </div>
 
         {showFilters && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-4">
             <div>
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                 สถานะ
@@ -232,6 +228,18 @@ export const DeliveryTripListView: React.FC<DeliveryTripListViewProps> = ({
                 value={dateTo}
                 onChange={(e) => setDateTo(e.target.value)}
               />
+            </div>
+
+            <div className="flex items-end">
+              <label className="inline-flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-300">
+                <input
+                  type="checkbox"
+                  className="rounded border-slate-300 dark:border-slate-600 text-enterprise-600 focus:ring-enterprise-500"
+                  checked={onlyChanged}
+                  onChange={(e) => setOnlyChanged(e.target.checked)}
+                />
+                แสดงเฉพาะทริปที่มีการแก้ไขสินค้า
+              </label>
             </div>
           </div>
         )}
@@ -357,7 +365,7 @@ export const DeliveryTripListView: React.FC<DeliveryTripListViewProps> = ({
           {totalPages > 1 && (
             <div className="flex items-center justify-between">
               <div className="text-sm text-slate-600 dark:text-slate-400">
-                แสดง {startIndex + 1}-{Math.min(startIndex + itemsPerPage, filteredTrips.length)} จาก {filteredTrips.length} รายการ
+                หน้า {currentPage} จาก {totalPages}
               </div>
               <div className="flex items-center gap-2">
                 <Button
