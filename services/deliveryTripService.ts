@@ -123,6 +123,7 @@ export const deliveryTripService = {
     driver_id?: string;
     planned_date_from?: string;
     planned_date_to?: string;
+    has_item_changes?: boolean;
     page?: number;
     pageSize?: number;
   }): Promise<{ trips: DeliveryTripWithRelations[]; total: number }> => {
@@ -153,6 +154,9 @@ export const deliveryTripService = {
     }
     if (filters?.planned_date_to) {
       query = query.lte('planned_date', filters.planned_date_to);
+    }
+    if (typeof filters?.has_item_changes === 'boolean') {
+      query = query.eq('has_item_changes', filters.has_item_changes);
     }
 
     const { data: trips, error, count } = await query;
