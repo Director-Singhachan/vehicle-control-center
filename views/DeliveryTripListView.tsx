@@ -17,6 +17,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Download,
+  History,
 } from 'lucide-react';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
@@ -44,12 +45,14 @@ export const DeliveryTripListView: React.FC<DeliveryTripListViewProps> = ({
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 20;
 
-  const { trips, loading, error, refetch } = useDeliveryTrips({
+  const { trips, total, loading, error, refetch } = useDeliveryTrips({
     status: statusFilter !== 'all' && Array.isArray(statusFilter) ? statusFilter : undefined,
     vehicle_id: vehicleFilter || undefined,
     planned_date_from: dateFrom || undefined,
     planned_date_to: dateTo || undefined,
     autoFetch: true,
+    page: currentPage,
+    pageSize: itemsPerPage,
   });
 
   // Auto-refetch when component becomes visible (e.g., after check-in)
@@ -78,7 +81,7 @@ export const DeliveryTripListView: React.FC<DeliveryTripListViewProps> = ({
     };
   }, []); // Empty dependency array - only run once on mount
 
-  // Filter trips by search term (client-side for now)
+  // Filter trips by search term (client-side, within current page)
   const filteredTrips = trips.filter(trip => {
     if (!searchTerm) return true;
     const search = searchTerm.toLowerCase();
@@ -90,14 +93,12 @@ export const DeliveryTripListView: React.FC<DeliveryTripListViewProps> = ({
     );
   });
 
-  // Pagination
-  const totalPages = Math.ceil(filteredTrips.length / itemsPerPage);
-  const startIndex = (currentPage - 1) * itemsPerPage;
-  const paginatedTrips = filteredTrips.slice(startIndex, startIndex + itemsPerPage);
+  // Pagination (server-side for total, client-side search mayลดจำนวนในหน้านั้น)
+  const totalPages = Math.ceil((total || 0) / itemsPerPage) || 1;
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, statusFilter, vehicleFilter, dateFrom, dateTo]);
+  }, [statusFilter, vehicleFilter, dateFrom, dateTo]);
 
   const getStatusBadge = (status: string) => {
     const badges = {
@@ -265,7 +266,7 @@ export const DeliveryTripListView: React.FC<DeliveryTripListViewProps> = ({
       )}
 
       {/* Trips List */}
-      {!loading && paginatedTrips.length === 0 && (
+      {!loading && filteredTrips.length === 0 && (
         <Card className="p-12 text-center">
           <Package className="mx-auto mb-4 text-slate-400" size={48} />
           <p className="text-slate-600 dark:text-slate-400">
@@ -277,10 +278,10 @@ export const DeliveryTripListView: React.FC<DeliveryTripListViewProps> = ({
       )}
 
       {/* Trips Grid */}
-      {!loading && paginatedTrips.length > 0 && (
+      {!loading && filteredTrips.length > 0 && (
         <>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
-            {paginatedTrips.map((trip) => (
+            {filteredTrips.map((trip) => (
               <Card
                 key={trip.id}
                 className="hover:shadow-lg transition-shadow cursor-pointer"
@@ -288,8 +289,14 @@ export const DeliveryTripListView: React.FC<DeliveryTripListViewProps> = ({
               >
                 <div className="flex items-start justify-between mb-3">
                   <div>
-                    <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
-                      {trip.trip_number || 'N/A'}
+                    <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                      <span>{trip.trip_number || 'N/A'}</span>
+                      {trip.has_item_changes && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200">
+                          <History size={12} />
+                          มีการแก้ไขสินค้า
+                        </span>
+                      )}
                     </h3>
                     <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
                       {formatDate(trip.planned_date)}
