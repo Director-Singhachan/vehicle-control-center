@@ -40,6 +40,7 @@ export interface CheckinData {
   destination?: string;
   route?: string;
   notes?: string;
+  checkin_time?: string; // ISO string - optional, defaults to now()
 }
 
 export const tripLogService = {
@@ -256,9 +257,12 @@ export const tripLogService = {
     // Note: Distance validation (e.g., > 500km) should be handled at UI level with user confirmation
     // We don't block saving here to allow legitimate long-distance trips
 
+    // Use provided checkin_time or default to now()
+    const checkinTime = data.checkin_time || new Date().toISOString();
+
     const updateData: TripLogUpdate = {
       odometer_end: data.odometer_end,
-      checkin_time: new Date().toISOString(),
+      checkin_time: checkinTime,
       status: 'checked_in',
       destination: data.destination ?? trip.destination,
       route: data.route ?? trip.route,
