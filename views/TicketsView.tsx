@@ -39,6 +39,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
   onViewDetail,
   onCreate,
 }) => {
+  console.log('[TicketsView] Component mounted/rendered');
   const { user } = useAuth();
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<TicketStatus[] | 'all'>('all');
@@ -64,6 +65,11 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
     offset: offset,
     search: searchQuery || undefined,
   });
+
+  // Debug logging
+  useEffect(() => {
+    console.log('[TicketsView] State:', { ticketsCount: tickets.length, totalCount, loading, error: error?.message });
+  }, [tickets.length, totalCount, loading, error]);
 
   // All filtering is now done server-side, so we can use tickets directly
   const paginatedTickets = tickets;

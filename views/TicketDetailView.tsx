@@ -52,8 +52,34 @@ export const TicketDetailView: React.FC<TicketDetailViewProps> = ({
   onEdit,
   onBack,
 }) => {
+  console.log('[TicketDetailView] Component mounted/rendered with ticketId:', ticketId, 'type:', typeof ticketId);
+  
+  // Validate ticketId
+  if (!ticketId || (typeof ticketId === 'number' && isNaN(ticketId))) {
+    console.error('[TicketDetailView] Invalid ticketId:', ticketId);
+    return (
+      <PageLayout title="ข้อผิดพลาด" subtitle="ไม่พบข้อมูลตั๋ว">
+        <Card className="p-6">
+          <p className="text-red-600">ไม่พบข้อมูลตั๋ว (ID: {ticketId})</p>
+          {onBack && (
+            <Button onClick={onBack} className="mt-4">
+              กลับไปรายการ
+            </Button>
+          )}
+        </Card>
+      </PageLayout>
+    );
+  }
+  
   const { user, profile, isInspector, isManager, isExecutive, isAdmin } = useAuth();
   const { ticket, loading, error, refetch } = useTicket(ticketId);
+  
+  console.log('[TicketDetailView] useTicket result:', { 
+    hasTicket: !!ticket, 
+    loading, 
+    error: error?.message,
+    ticketId 
+  });
   const { costs, loading: loadingCosts, refetch: refetchCosts } = useTicketCosts(ticketId);
   const { approvals, loading: loadingApprovals, refetch: refetchApprovals } = useApprovalHistory(ticketId);
   const cache = useDataCacheStore();

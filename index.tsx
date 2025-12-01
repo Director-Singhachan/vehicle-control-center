@@ -89,6 +89,28 @@ const AppContent = () => {
     // We'll check this in useEffect after profile loads
     return 'dashboard';
   });
+  
+  // Reset ticketView to 'list' when switching to maintenance tab
+  // This ensures we always start with the list view when opening maintenance tab
+  useEffect(() => {
+    if (activeTab === 'maintenance') {
+      // Always reset to list view when switching to maintenance tab
+      // This fixes the issue where state persists from previous sessions
+      if (ticketView !== 'list') {
+        console.log('[AppContent] Resetting ticketView to list (switched to maintenance tab)');
+        setTicketView('list');
+        setSelectedTicketId(null);
+      }
+    } else {
+      // Reset when switching away from maintenance
+      if (ticketView !== 'list') {
+        console.log('[AppContent] Resetting ticketView to list (switched away from maintenance)');
+        setTicketView('list');
+        setSelectedTicketId(null);
+      }
+    }
+  }, [activeTab]); // Only depend on activeTab to reset when tab changes
+  
   // Track viewport width to tailor driver experience on mobile
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -708,61 +730,118 @@ const AppContent = () => {
               return null;
             })()
           ) : activeTab === 'maintenance' ? (
-            // For drivers, show the form by default if they are in list view
-            isDriver && ticketView === 'list' ? (
-              <TicketFormView
-                onSave={() => {
-                  // After save, maybe show success or reset?
-                  // For now, let's keep them on the form but clear it (handled by component)
-                  // Or we could show a "History" list if we wanted.
-                  // But user said "only form". 
-                  // Let's reload the page or reset the view to ensure fresh state
-                  window.location.reload();
-                }}
-                onCancel={() => {
-                  // Do nothing or reset form
-                }}
-              />
-            ) : ticketView === 'list' ? (
-              <TicketsView
-                onViewDetail={(id) => {
-                  setSelectedTicketId(id);
-                  setTicketView('detail');
-                }}
-                onCreate={() => {
-                  setSelectedTicketId(null);
-                  setTicketView('form');
-                }}
-              />
-            ) : ticketView === 'detail' && selectedTicketId ? (
-              <TicketDetailView
-                ticketId={selectedTicketId}
-                onBack={() => {
-                  setTicketView('list');
-                  setSelectedTicketId(null);
-                }}
-                onEdit={(id) => {
-                  setSelectedTicketId(id);
-                  setTicketView('form');
-                }}
-              />
-            ) : ticketView === 'form' ? (
-              <TicketFormView
-                ticketId={selectedTicketId || undefined}
-                onSave={() => {
-                  setTicketView('list');
-                  setSelectedTicketId(null);
-                }}
-                onCancel={() => {
-                  if (selectedTicketId) {
-                    setTicketView('detail');
-                  } else {
+            (() => {
+              console.log('[AppContent] Maintenance tab - rendering:', { 
+                isDriver, 
+                ticketView, 
+                selectedTicketId,
+                willRenderTicketsView: !isDriver && ticketView === 'list'
+              });
+              
+              // For drivers, show the form by default if they are in list view
+              if (isDriver && ticketView === 'list') {
+                return (
+                  <TicketFormView
+                    onSave={() => {
+                      window.location.reload();
+                    }}
+                    onCancel={() => {
+                      // Do nothing or reset form
+                    }}
+                  />
+                );
+              } else if (ticketView === 'list') {
+                console.log('[AppContent] Rendering TicketsView');
+                return (
+                  <TicketsView
+                    onViewDetail={(id) => {
+                      setSelectedTicketId(id);
+                      setTicketView('detail');
+                    }}
+                    onCreate={() => {
+                      setSelectedTicketId(null);
+                      setTicketView('form');
+                    }}
+                  />
+                );
+              } else if (ticketView === 'detail' && selectedTicketId) {
+                console.log('[AppContent] Rendering TicketDetailView with ticketId:', selectedTicketId);
+                // Convert string to number if needed
+                const ticketIdNum = typeof selectedTicketId === 'string' ? parseInt(selectedTicketId, 10) : selectedTicketId;
+                if (isNaN(ticketIdNum) || ticketIdNum <= 0) {
+                  console.error('[AppContent] Invalid ticketId, resetting to list');
+                  // Reset state immediately
+                  setTimeout(() => {
                     setTicketView('list');
                     setSelectedTicketId(null);
-                  }
-                }}
-              />
-            ) : null
+                  }, 0);
+                  // Show TicketsView as fallback
+                  return (
+                    <TicketsView
+                      onViewDetail={(id) => {
+                        setSelectedTicketId(id);
+                        setTicketView('detail');
+                      }}
+                      onCreate={() => {
+                        setSelectedTicketId(null);
+                        setTicketView('form');
+                      }}
+                    />
+                  );
+                }
+                return (
+                  <TicketDetailView
+                    ticketId={ticketIdNum}
+                    onBack={() => {
+                      setTicketView('list');
+                      setSelectedTicketId(null);
+                    }}
+                    onEdit={(id) => {
+                      setSelectedTicketId(id);
+                      setTicketView('form');
+                    }}
+                  />
+                );
+              } else if (ticketView === 'form') {
+                return (
+                  <TicketFormView
+                    ticketId={selectedTicketId || undefined}
+                    onSave={() => {
+                      setTicketView('list');
+                      setSelectedTicketId(null);
+                    }}
+                    onCancel={() => {
+                      if (selectedTicketId) {
+                        setTicketView('detail');
+                      } else {
+                        setTicketView('list');
+                        setSelectedTicketId(null);
+                      }
+                    }}
+                  />
+                );
+              }
+              
+              // Fallback: Show TicketsView if state is invalid
+              console.warn('[AppContent] Invalid state, resetting and showing TicketsView');
+              // Reset state immediately using setTimeout to avoid state update during render
+              setTimeout(() => {
+                setTicketView('list');
+                setSelectedTicketId(null);
+              }, 0);
+              return (
+                <TicketsView
+                  onViewDetail={(id) => {
+                    setSelectedTicketId(id);
+                    setTicketView('detail');
+                  }}
+                  onCreate={() => {
+                    setSelectedTicketId(null);
+                    setTicketView('form');
+                  }}
+                />
+              );
+            })()
           ) : activeTab === 'triplogs' ? (
             // For drivers, always show form, never list
             isDriver ? (
