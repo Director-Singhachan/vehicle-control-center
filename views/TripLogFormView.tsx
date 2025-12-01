@@ -80,6 +80,7 @@ export const TripLogFormView: React.FC<TripLogFormViewProps> = ({
   const [formData, setFormData] = useState({
     odometer: '',
     checkout_time: '', // For backfill - ISO string format
+    checkin_time: '', // For backfill check-in - ISO string format
     destination: '',
     route: '',
     notes: '',
@@ -489,13 +490,14 @@ export const TripLogFormView: React.FC<TripLogFormViewProps> = ({
 
         // Clear form data after successful checkout
         setTimeout(() => {
-          setFormData({
+          setFormData(prev => ({
             odometer: '',
             checkout_time: '',
+            checkin_time: '',
             destination: '',
             route: '',
             notes: '',
-          });
+          }));
           setSelectedVehicleId('');
           setVehicleSearchQuery('');
           setOdometerValidation(null);
@@ -570,10 +572,10 @@ export const TripLogFormView: React.FC<TripLogFormViewProps> = ({
           return;
         }
 
-        // For check-in, only send odometer_end (other fields are read-only)
+        // For check-in, send odometer_end (and optional backfill checkin_time)
         await checkin(selectedTripId, {
           odometer_end: odometerValue,
-          // Don't update destination, route, notes - keep original values
+          checkin_time: isBackfillMode && formData.checkin_time ? formData.checkin_time : undefined,
         });
 
         setSuccessMode('checkin');
@@ -588,6 +590,7 @@ export const TripLogFormView: React.FC<TripLogFormViewProps> = ({
           setFormData({
             odometer: '',
             checkout_time: '',
+            checkin_time: '',
             destination: '',
             route: '',
             notes: '',
@@ -1085,13 +1088,15 @@ export const TripLogFormView: React.FC<TripLogFormViewProps> = ({
         {/* Odometer Input */}
         <Card className="p-6">
           <div className="space-y-4">
-            {/* Backfill Mode Toggle - Only for checkout */}
-            {mode === 'checkout' && (
+            {/* Backfill Mode Toggle - For checkout & checkin */}
+            {(mode === 'checkout' || mode === 'checkin') && (
               <div className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-800/50 rounded-lg border border-slate-200 dark:border-slate-700">
                 <div className="flex items-center gap-2">
                   <Clock size={18} className="text-slate-600 dark:text-slate-400" />
                   <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
-                    ลงย้อนหลัง (ลืมลงเลขไมล์ตอนออก)
+                    {mode === 'checkout'
+                      ? 'ลงย้อนหลัง (ลืมลงเลขไมล์ตอนออก)'
+                      : 'ลงย้อนหลัง (ลืมลงเลขไมล์ตอนกลับ)'}
                   </span>
                 </div>
                 <button
@@ -1102,11 +1107,20 @@ export const TripLogFormView: React.FC<TripLogFormViewProps> = ({
                       // Set default to current time when enabling backfill
                       setFormData(prev => ({
                         ...prev,
-                        checkout_time: prev.checkout_time || new Date().toISOString(),
+                        checkout_time: mode === 'checkout'
+                          ? (prev.checkout_time || new Date().toISOString())
+                          : prev.checkout_time,
+                        checkin_time: mode === 'checkin'
+                          ? (prev.checkin_time || new Date().toISOString())
+                          : prev.checkin_time,
                       }));
                     } else {
-                      // Clear checkout_time when disabling backfill
-                      setFormData(prev => ({ ...prev, checkout_time: '' }));
+                      // Clear backfill times when disabling backfill
+                      setFormData(prev => ({
+                        ...prev,
+                        checkout_time: mode === 'checkout' ? '' : prev.checkout_time,
+                        checkin_time: mode === 'checkin' ? '' : prev.checkin_time,
+                      }));
                     }
                   }}
                   className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${isBackfillMode ? 'bg-enterprise-600' : 'bg-slate-300 dark:bg-slate-600'
@@ -1120,44 +1134,79 @@ export const TripLogFormView: React.FC<TripLogFormViewProps> = ({
               </div>
             )}
 
-            {/* Checkout Time Input - Only show when backfill mode is enabled */}
-            {mode === 'checkout' && isBackfillMode && (
-              <div>
-                <Input
-                  label={
-                    <span className="flex items-center gap-2">
-                      <Clock size={18} />
-                      เวลาที่ออกเดินทาง
-                    </span>
-                  }
-                  type="datetime-local"
-                  value={formData.checkout_time ? (() => {
-                    // Convert ISO string to datetime-local format (YYYY-MM-DDTHH:mm)
-                    try {
-                      const date = new Date(formData.checkout_time);
-                      const year = date.getFullYear();
-                      const month = String(date.getMonth() + 1).padStart(2, '0');
-                      const day = String(date.getDate()).padStart(2, '0');
-                      const hours = String(date.getHours()).padStart(2, '0');
-                      const minutes = String(date.getMinutes()).padStart(2, '0');
-                      return `${year}-${month}-${day}T${hours}:${minutes}`;
-                    } catch {
-                      return formData.checkout_time;
+            {/* Backfill Time Input - show when backfill mode is enabled */}
+            {isBackfillMode && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {mode === 'checkout' && (
+                  <Input
+                    label={
+                      <span className="flex items-center gap-2">
+                        <Clock size={18} />
+                        เวลาที่ออกเดินทางจริง
+                      </span>
                     }
-                  })() : ''}
-                  onChange={(e) => {
-                    // Convert datetime-local to ISO string format
-                    const localDateTime = e.target.value;
-                    if (localDateTime) {
-                      // datetime-local format is in local timezone, convert to ISO
-                      const date = new Date(localDateTime);
-                      setFormData({ ...formData, checkout_time: date.toISOString() });
-                    } else {
-                      setFormData({ ...formData, checkout_time: '' });
+                    type="datetime-local"
+                    value={formData.checkout_time ? (() => {
+                      // Convert ISO string to datetime-local format (YYYY-MM-DDTHH:mm)
+                      try {
+                        const date = new Date(formData.checkout_time);
+                        const year = date.getFullYear();
+                        const month = String(date.getMonth() + 1).padStart(2, '0');
+                        const day = String(date.getDate()).padStart(2, '0');
+                        const hours = String(date.getHours()).padStart(2, '0');
+                        const minutes = String(date.getMinutes()).padStart(2, '0');
+                        return `${year}-${month}-${day}T${hours}:${minutes}`;
+                      } catch {
+                        return formData.checkout_time;
+                      }
+                    })() : ''}
+                    onChange={(e) => {
+                      const localDateTime = e.target.value;
+                      if (localDateTime) {
+                        const date = new Date(localDateTime);
+                        setFormData(prev => ({ ...prev, checkout_time: date.toISOString() }));
+                      } else {
+                        setFormData(prev => ({ ...prev, checkout_time: '' }));
+                      }
+                    }}
+                    helperText="ระบุเวลาที่ออกเดินทางจริง (สำหรับกรณีลืมลงเลขไมล์ตอนออก)"
+                  />
+                )}
+
+                {mode === 'checkin' && (
+                  <Input
+                    label={
+                      <span className="flex items-center gap-2">
+                        <Clock size={18} />
+                        เวลาที่กลับถึงจริง
+                      </span>
                     }
-                  }}
-                  helperText="ระบุเวลาที่ออกเดินทางจริง (สำหรับกรณีลืมลงเลขไมล์ตอนออก)"
-                />
+                    type="datetime-local"
+                    value={formData.checkin_time ? (() => {
+                      try {
+                        const date = new Date(formData.checkin_time);
+                        const year = date.getFullYear();
+                        const month = String(date.getMonth() + 1).padStart(2, '0');
+                        const day = String(date.getDate()).padStart(2, '0');
+                        const hours = String(date.getHours()).padStart(2, '0');
+                        const minutes = String(date.getMinutes()).padStart(2, '0');
+                        return `${year}-${month}-${day}T${hours}:${minutes}`;
+                      } catch {
+                        return formData.checkin_time;
+                      }
+                    })() : ''}
+                    onChange={(e) => {
+                      const localDateTime = e.target.value;
+                      if (localDateTime) {
+                        const date = new Date(localDateTime);
+                        setFormData(prev => ({ ...prev, checkin_time: date.toISOString() }));
+                      } else {
+                        setFormData(prev => ({ ...prev, checkin_time: '' }));
+                      }
+                    }}
+                    helperText="ระบุเวลาที่กลับถึงจริง (สำหรับกรณีลืมลงเลขไมล์ตอนกลับ)"
+                  />
+                )}
               </div>
             )}
 
