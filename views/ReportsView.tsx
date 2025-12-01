@@ -15,10 +15,14 @@ import {
   ChevronDown,
   ChevronRight,
   Eye,
+  Filter,
+  X,
+  Search,
 } from 'lucide-react';
 import { PageLayout } from '../components/layout/PageLayout';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
+import { Input } from '../components/ui/Input';
 import { excelExport } from '../utils/excelExport';
 import {
   useMonthlyFuelReport,
@@ -40,7 +44,7 @@ import {
 } from '../hooks/useReports';
 import { VehicleUsageRankingChart } from '../components/VehicleUsageRankingChart';
 import { VehicleFuelConsumptionChart } from '../components/VehicleFuelConsumptionChart';
-import { useVehicles } from '../hooks';
+import { useVehicles, useStores, useProducts, useProductCategories } from '../hooks';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -1157,19 +1161,319 @@ const DeliveryReportsTab: React.FC<{
   const [activeSubTab, setActiveSubTab] = useState<'vehicle' | 'store' | 'product' | 'monthly'>('vehicle');
   const [expandedStores, setExpandedStores] = useState<Set<string>>(new Set());
   
-  const { data: vehicleData, loading: vehicleLoading } = useDeliverySummaryByVehicle(startDate, endDate);
-  const { data: storeData, loading: storeLoading } = useDeliverySummaryByStore(startDate, endDate);
-  const { data: productData, loading: productLoading } = useDeliverySummaryByProduct(startDate, endDate);
-  const { data: monthlyData, loading: monthlyLoading } = useMonthlyDeliveryReport(6);
+  // Filter states
+  const [showFilters, setShowFilters] = useState(false);
+  const [filterStartDate, setFilterStartDate] = useState<string>('');
+  const [filterEndDate, setFilterEndDate] = useState<string>('');
+  const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(null);
+  const [selectedStoreId, setSelectedStoreId] = useState<string | null>(null);
+  const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
+  const [selectedBranch, setSelectedBranch] = useState<string | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [monthlyMonths, setMonthlyMonths] = useState<number>(6);
+  
+  // Search states for searchable inputs
+  const [vehicleSearch, setVehicleSearch] = useState<string>('');
+  const [storeSearch, setStoreSearch] = useState<string>('');
+  const [productSearch, setProductSearch] = useState<string>('');
+  const [showVehicleDropdown, setShowVehicleDropdown] = useState(false);
+  const [showStoreDropdown, setShowStoreDropdown] = useState(false);
+  const [showProductDropdown, setShowProductDropdown] = useState(false);
+  
+  // Store search with debounce - use backend search instead of frontend filtering
+  const [storeSearchDebounced, setStoreSearchDebounced] = useState<string>('');
+  
+  // Debounce store search for server-side search (supports millions of records)
+  React.useEffect(() => {
+    const timer = setTimeout(() => {
+      setStoreSearchDebounced(storeSearch.trim());
+    }, 300); // 300ms delay - wait for user to finish typing
+    
+    return () => clearTimeout(timer);
+  }, [storeSearch]);
+  
+  // Get data for filters
+  const { vehicles } = useVehicles();
+  const { stores } = useStores({ 
+    is_active: true,
+    search: storeSearchDebounced || undefined // Only search if there's a search term
+  });
+  const { products } = useProducts({ is_active: true });
+  const { categories } = useProductCategories();
+  
+  // Get unique branches
+  const branches = React.useMemo(() => {
+    const branchSet = new Set<string>();
+    vehicles?.forEach(v => {
+      if (v.branch) branchSet.add(v.branch);
+    });
+    return Array.from(branchSet).sort();
+  }, [vehicles]);
+  
+  // Filtered lists for searchable inputs
+  const filteredVehicles = React.useMemo(() => {
+    if (!vehicles) return [];
+    if (!vehicleSearch.trim()) return vehicles;
+    const searchLower = vehicleSearch.toLowerCase();
+    return vehicles.filter(v => 
+      v.plate?.toLowerCase().includes(searchLower) ||
+      v.make?.toLowerCase().includes(searchLower) ||
+      v.model?.toLowerCase().includes(searchLower)
+    );
+  }, [vehicles, vehicleSearch]);
+  
+  // Normalize text for search - keep spaces and hyphens for flexible matching
+  const normalizeText = React.useCallback((text: string): string => {
+    if (!text) return '';
+    return text.toLowerCase().trim();
+  }, []);
+  
+  // Create searchable text from multiple fields
+  const createSearchableText = React.useCallback((...texts: (string | null | undefined)[]): string => {
+    return texts
+      .filter(t => t)
+      .map(t => normalizeText(t!))
+      .join(' ');
+  }, [normalizeText]);
+  
+  // Filter stores - server-side search already done, just sort and limit
+  // This works for millions of records because filtering happens in database
+  const filteredStores = React.useMemo(() => {
+    // If no search, return empty (don't show all stores)
+    if (!storeSearchDebounced || !storeSearchDebounced.trim()) return [];
+    
+    // Server has already filtered, just sort by relevance
+    const searchLower = normalizeText(storeSearchDebounced);
+    const searchTrimmed = searchLower.trim();
+    
+    // Score stores for better sorting (exact matches first)
+    const scoredStores = stores.map(store => {
+      // Get raw values (before normalization) for exact matching
+      const rawCode = (store.customer_code || '').trim();
+      const rawName = (store.customer_name || '').trim();
+      
+      // Normalized values for case-insensitive matching
+      const codeLower = normalizeText(rawCode);
+      const nameLower = normalizeText(rawName);
+      
+      let score = 0;
+      let matches = false;
+      
+      // 1. Exact match (case-insensitive) in customer_code - highest priority
+      if (codeLower === searchTrimmed) {
+        score = 1000;
+        matches = true;
+      }
+      // 2. Starts with in customer_code - high priority
+      else if (codeLower.startsWith(searchTrimmed)) {
+        score = 500;
+        matches = true;
+      }
+      // 3. Direct match in customer_code (case-insensitive) - exact or partial
+      else if (codeLower.includes(searchTrimmed)) {
+        score = 300;
+        matches = true;
+      }
+      // 4. Exact match in customer_name
+      else if (nameLower === searchTrimmed) {
+        score = 200;
+        matches = true;
+      }
+      // 5. Starts with in customer_name
+      else if (nameLower.startsWith(searchTrimmed)) {
+        score = 150;
+        matches = true;
+      }
+      // 6. Direct match in customer_name (case-insensitive)
+      else if (nameLower.includes(searchTrimmed)) {
+        score = 100;
+        matches = true;
+      }
+      // 7. Match without special characters (hyphens, spaces, underscores) for flexible code matching
+      else {
+        const searchWithoutSpecial = searchTrimmed.replace(/[-\s_]/g, '');
+        const codeWithoutSpecial = codeLower.replace(/[-\s_]/g, '');
+        if (searchWithoutSpecial && codeWithoutSpecial.includes(searchWithoutSpecial)) {
+          score = 50;
+          matches = true;
+        }
+        // 8. Match code with special characters removed from search
+        else if (searchWithoutSpecial && codeLower.includes(searchWithoutSpecial)) {
+          score = 40;
+          matches = true;
+        }
+        // 9. Match raw code (preserving case) - in case there are encoding issues
+        else if (rawCode.toLowerCase().includes(searchTrimmed)) {
+          score = 30;
+          matches = true;
+        }
+        // 10. Match partial code segments
+        else {
+          const codeSegments = codeLower.split(/[-\s_]/).filter(s => s.length > 0);
+          const searchSegments = searchTrimmed.split(/[-\s_]/).filter(s => s.length > 0);
+          if (searchSegments.some(ss => codeSegments.some(cs => cs.startsWith(ss) || cs.includes(ss) || ss.includes(cs)))) {
+            score = 20;
+            matches = true;
+          }
+          // 11. Match individual words in customer_name
+          else {
+            const nameWords = nameLower.split(/\s+/).filter(w => w.length > 0);
+            const searchWords = searchTrimmed.split(/\s+/).filter(w => w.length > 0);
+            if (searchWords.some(sw => nameWords.some(nw => nw.startsWith(sw) || nw.includes(sw) || sw.includes(nw)))) {
+              score = 10;
+              matches = true;
+            }
+            // 12. Match in combined searchable text
+            else {
+              const searchableText = createSearchableText(
+                store.customer_code,
+                store.customer_name,
+                store.address,
+                store.contact_person
+              );
+              if (searchableText.includes(searchTrimmed)) {
+                score = 5;
+                matches = true;
+              }
+            }
+          }
+        }
+      }
+      
+      return { store, score, matches };
+    });
+    
+    // Filter only matching stores and sort by score (highest first)
+    const filtered = scoredStores
+      .filter(item => item.matches)
+      .sort((a, b) => b.score - a.score)
+      .map(item => item.store)
+      .slice(0, 100); // Limit to 100 results for performance
+    
+    return filtered;
+  }, [stores, storeSearchDebounced, normalizeText, createSearchableText]);
+  
+  const filteredProducts = React.useMemo(() => {
+    if (!products) return [];
+    if (!productSearch.trim()) return products;
+    const searchLower = productSearch.toLowerCase();
+    return products.filter(p => 
+      p.product_code?.toLowerCase().includes(searchLower) ||
+      p.product_name?.toLowerCase().includes(searchLower) ||
+      p.category?.toLowerCase().includes(searchLower)
+    );
+  }, [products, productSearch]);
+  
+  // Get selected item display names
+  const selectedVehicleName = React.useMemo(() => {
+    if (!selectedVehicleId) return '';
+    const vehicle = vehicles?.find(v => v.id === selectedVehicleId);
+    if (!vehicle) return '';
+    return `${vehicle.plate}${vehicle.make && vehicle.model ? ` (${vehicle.make} ${vehicle.model})` : ''}`;
+  }, [selectedVehicleId, vehicles]);
+  
+  const selectedStoreName = React.useMemo(() => {
+    if (!selectedStoreId) return '';
+    const store = stores?.find(s => s.id === selectedStoreId);
+    if (!store) return '';
+    return `${store.customer_code} - ${store.customer_name}`;
+  }, [selectedStoreId, stores]);
+  
+  const selectedProductName = React.useMemo(() => {
+    if (!selectedProductId) return '';
+    const product = products?.find(p => p.id === selectedProductId);
+    if (!product) return '';
+    return `${product.product_code} - ${product.product_name}`;
+  }, [selectedProductId, products]);
+  
+  // Calculate effective date range
+  const effectiveStartDate = React.useMemo(() => {
+    if (filterStartDate) {
+      return new Date(filterStartDate);
+    }
+    return startDate;
+  }, [filterStartDate, startDate]);
+  
+  const effectiveEndDate = React.useMemo(() => {
+    if (filterEndDate) {
+      const date = new Date(filterEndDate);
+      date.setHours(23, 59, 59, 999);
+      return date;
+    }
+    return endDate;
+  }, [filterEndDate, endDate]);
+  
+  // Reset filters when switching tabs
+  React.useEffect(() => {
+    setFilterStartDate('');
+    setFilterEndDate('');
+    setSelectedVehicleId(null);
+    setSelectedStoreId(null);
+    setSelectedProductId(null);
+    setSelectedBranch(null);
+    setSelectedCategory(null);
+    setVehicleSearch('');
+    setStoreSearch('');
+    setProductSearch('');
+    setShowVehicleDropdown(false);
+    setShowStoreDropdown(false);
+    setShowProductDropdown(false);
+  }, [activeSubTab]);
+  
+  // Close dropdowns when clicking outside
+  React.useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      if (!target.closest('.searchable-dropdown-container')) {
+        setShowVehicleDropdown(false);
+        setShowStoreDropdown(false);
+        setShowProductDropdown(false);
+      }
+    };
+    
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+  
+  const { data: vehicleData, loading: vehicleLoading } = useDeliverySummaryByVehicle(
+    effectiveStartDate,
+    effectiveEndDate,
+    selectedVehicleId || undefined
+  );
+  const { data: storeData, loading: storeLoading } = useDeliverySummaryByStore(
+    effectiveStartDate,
+    effectiveEndDate,
+    selectedStoreId || undefined
+  );
+  const { data: productData, loading: productLoading } = useDeliverySummaryByProduct(
+    effectiveStartDate,
+    effectiveEndDate,
+    selectedProductId || undefined
+  );
+  const { data: monthlyData, loading: monthlyLoading } = useMonthlyDeliveryReport(monthlyMonths);
+  
+  // Filter vehicle data by branch if selected
+  const filteredVehicleData = React.useMemo(() => {
+    if (!selectedBranch || !vehicleData) return vehicleData;
+    return vehicleData.filter(v => v.branch === selectedBranch);
+  }, [vehicleData, selectedBranch]);
+  
+  // Filter product data by category if selected
+  const filteredProductData = React.useMemo(() => {
+    if (!selectedCategory || !productData) return productData;
+    return productData.filter(p => p.category === selectedCategory);
+  }, [productData, selectedCategory]);
 
   const formatNumber = (value: number, decimals: number = 0) => {
     return value.toFixed(decimals).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
   };
 
   const exportVehicleReport = () => {
-    if (!vehicleData || vehicleData.length === 0) return;
+    if (!filteredVehicleData || filteredVehicleData.length === 0) return;
     excelExport.exportToExcel(
-      vehicleData,
+      filteredVehicleData,
       [
         { key: 'plate', label: 'ทะเบียนรถ', width: 15 },
         { key: 'make', label: 'ยี่ห้อ', width: 15 },
@@ -1214,9 +1518,9 @@ const DeliveryReportsTab: React.FC<{
   };
 
   const exportProductReport = () => {
-    if (!productData || productData.length === 0) return;
+    if (!filteredProductData || filteredProductData.length === 0) return;
     excelExport.exportToExcel(
-      productData.map(product => ({
+      filteredProductData.map(product => ({
         product_code: product.product_code,
         product_name: product.product_name,
         category: product.category,
@@ -1292,6 +1596,138 @@ const DeliveryReportsTab: React.FC<{
       {/* Vehicle Summary */}
       {activeSubTab === 'vehicle' && (
         <div className="space-y-6">
+          {/* Filters */}
+          <Card className="p-4 relative z-[20]">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <Filter className="w-5 h-5 text-slate-600 dark:text-slate-400" />
+                <h4 className="font-medium text-slate-900 dark:text-slate-100">ตัวกรอง</h4>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowFilters(!showFilters)}
+                className="flex items-center gap-2"
+              >
+                <Filter className="w-4 h-4" />
+                <span>{showFilters ? 'ซ่อนตัวกรอง' : 'แสดงตัวกรอง'}</span>
+              </Button>
+            </div>
+            {showFilters && (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 pt-4 border-t border-slate-200 dark:border-slate-700">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                    วันที่เริ่มต้น
+                  </label>
+                  <Input
+                    type="date"
+                    value={filterStartDate}
+                    onChange={(e) => setFilterStartDate(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                    วันที่สิ้นสุด
+                  </label>
+                  <Input
+                    type="date"
+                    value={filterEndDate}
+                    onChange={(e) => setFilterEndDate(e.target.value)}
+                  />
+                </div>
+                <div className="relative">
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                    รถ
+                  </label>
+                  <div className="relative searchable-dropdown-container">
+                    <Input
+                      type="text"
+                      placeholder="พิมพ์ค้นหาทะเบียน, ยี่ห้อ, รุ่น..."
+                      value={selectedVehicleId ? selectedVehicleName : vehicleSearch}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        setVehicleSearch(value);
+                        setShowVehicleDropdown(true);
+                        if (!value) {
+                          setSelectedVehicleId(null);
+                        }
+                      }}
+                      onFocus={() => setShowVehicleDropdown(true)}
+                      icon={<Search className="w-4 h-4" />}
+                    />
+                    {selectedVehicleId && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedVehicleId(null);
+                          setVehicleSearch('');
+                        }}
+                        className="absolute right-10 top-1/2 transform -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    )}
+                    {showVehicleDropdown && filteredVehicles.length > 0 && (
+                      <div className="absolute z-[9999] w-full mt-1 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg shadow-lg max-h-60 overflow-auto">
+                        {filteredVehicles.map(vehicle => (
+                          <button
+                            key={vehicle.id}
+                            type="button"
+                            onClick={() => {
+                              setSelectedVehicleId(vehicle.id);
+                              setVehicleSearch('');
+                              setShowVehicleDropdown(false);
+                            }}
+                            className="w-full text-left px-4 py-2 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-900 dark:text-slate-100"
+                          >
+                            <div className="font-medium">{vehicle.plate}</div>
+                            {vehicle.make && vehicle.model && (
+                              <div className="text-xs text-slate-500 dark:text-slate-400">
+                                {vehicle.make} {vehicle.model}
+                              </div>
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                    สาขา
+                  </label>
+                  <select
+                    value={selectedBranch || ''}
+                    onChange={(e) => setSelectedBranch(e.target.value || null)}
+                    className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
+                  >
+                    <option value="">ทั้งหมด</option>
+                    {branches.map(branch => (
+                      <option key={branch} value={branch}>{branch}</option>
+                    ))}
+                  </select>
+                </div>
+                {(filterStartDate || filterEndDate || selectedVehicleId || selectedBranch) && (
+                  <div className="md:col-span-2 lg:col-span-4 flex justify-end">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setFilterStartDate('');
+                        setFilterEndDate('');
+                        setSelectedVehicleId(null);
+                        setSelectedBranch(null);
+                      }}
+                    >
+                      <X className="w-4 h-4 mr-2" />
+                      ล้างตัวกรอง
+                    </Button>
+                  </div>
+                )}
+              </div>
+            )}
+          </Card>
+          
           <Card>
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
@@ -1304,7 +1740,7 @@ const DeliveryReportsTab: React.FC<{
             </div>
             {vehicleLoading ? (
               <div className="text-center py-8 text-slate-400">กำลังโหลด...</div>
-            ) : vehicleData && vehicleData.length > 0 ? (
+            ) : filteredVehicleData && filteredVehicleData.length > 0 ? (
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead>
@@ -1321,7 +1757,7 @@ const DeliveryReportsTab: React.FC<{
                     </tr>
                   </thead>
                   <tbody>
-                    {vehicleData.map((vehicle) => (
+                    {filteredVehicleData.map((vehicle) => (
                       <tr key={vehicle.vehicle_id} className="border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50">
                         <td className="py-3 px-4 font-medium text-slate-900 dark:text-slate-100">{vehicle.plate}</td>
                         <td className="py-3 px-4 text-slate-600 dark:text-slate-400">
@@ -1349,6 +1785,134 @@ const DeliveryReportsTab: React.FC<{
       {/* Store Summary */}
       {activeSubTab === 'store' && (
         <div className="space-y-6">
+          {/* Filters */}
+          <Card className="p-4 relative z-[20]">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <Filter className="w-5 h-5 text-slate-600 dark:text-slate-400" />
+                <h4 className="font-medium text-slate-900 dark:text-slate-100">ตัวกรอง</h4>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowFilters(!showFilters)}
+                className="flex items-center gap-2"
+              >
+                <Filter className="w-4 h-4" />
+                <span>{showFilters ? 'ซ่อนตัวกรอง' : 'แสดงตัวกรอง'}</span>
+              </Button>
+            </div>
+            {showFilters && (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pt-4 border-t border-slate-200 dark:border-slate-700">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                    วันที่เริ่มต้น
+                  </label>
+                  <Input
+                    type="date"
+                    value={filterStartDate}
+                    onChange={(e) => setFilterStartDate(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                    วันที่สิ้นสุด
+                  </label>
+                  <Input
+                    type="date"
+                    value={filterEndDate}
+                    onChange={(e) => setFilterEndDate(e.target.value)}
+                  />
+                </div>
+                <div className="relative">
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                    ร้าน
+                  </label>
+                  <div className="relative searchable-dropdown-container">
+                    <Input
+                      type="text"
+                      placeholder="พิมพ์ค้นหารหัสลูกค้า, ชื่อร้าน..."
+                      value={selectedStoreId ? selectedStoreName : storeSearch}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        setStoreSearch(value);
+                        setShowStoreDropdown(true);
+                        if (!value) {
+                          setSelectedStoreId(null);
+                        }
+                      }}
+                      onFocus={() => setShowStoreDropdown(true)}
+                      icon={<Search className="w-4 h-4" />}
+                    />
+                    {selectedStoreId && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedStoreId(null);
+                          setStoreSearch('');
+                        }}
+                        className="absolute right-10 top-1/2 transform -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    )}
+                    {showStoreDropdown && (() => {
+                      const totalMatches = filteredStores.length;
+                      
+                      return totalMatches > 0 ? (
+                        <div className="absolute z-[9999] w-full mt-1 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg shadow-lg max-h-60 overflow-auto">
+                          {totalMatches > 100 && (
+                            <div className="px-4 py-2 text-xs text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700">
+                              แสดง {totalMatches} จาก {totalMatches} รายการที่พบ (แสดงสูงสุด 100 รายการ)
+                            </div>
+                          )}
+                          {filteredStores.map(store => (
+                            <button
+                              key={store.id}
+                              type="button"
+                              onClick={() => {
+                                setSelectedStoreId(store.id);
+                                setStoreSearch('');
+                                setShowStoreDropdown(false);
+                              }}
+                              className="w-full text-left px-4 py-2 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-900 dark:text-slate-100"
+                            >
+                              <div className="font-medium">{store.customer_code} - {store.customer_name}</div>
+                            </button>
+                          ))}
+                        </div>
+                      ) : storeSearch ? (
+                        <div className="absolute z-[9999] w-full mt-1 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg shadow-lg">
+                          <div className="px-4 py-3 text-sm text-slate-500 dark:text-slate-400 text-center">
+                            ไม่พบร้านค้าที่ค้นหา
+                          </div>
+                        </div>
+                      ) : null;
+                    })()}
+                  </div>
+                </div>
+                {(filterStartDate || filterEndDate || selectedStoreId) && (
+                  <div className="md:col-span-2 lg:col-span-3 flex justify-end">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setFilterStartDate('');
+                        setFilterEndDate('');
+                        setSelectedStoreId(null);
+                        setStoreSearch('');
+                        setShowStoreDropdown(false);
+                      }}
+                    >
+                      <X className="w-4 h-4 mr-2" />
+                      ล้างตัวกรอง
+                    </Button>
+                  </div>
+                )}
+              </div>
+            )}
+          </Card>
+          
           <Card>
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
@@ -1473,6 +2037,136 @@ const DeliveryReportsTab: React.FC<{
       {/* Product Summary */}
       {activeSubTab === 'product' && (
         <div className="space-y-6">
+          {/* Filters */}
+          <Card className="p-4 relative z-[20]">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <Filter className="w-5 h-5 text-slate-600 dark:text-slate-400" />
+                <h4 className="font-medium text-slate-900 dark:text-slate-100">ตัวกรอง</h4>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowFilters(!showFilters)}
+                className="flex items-center gap-2"
+              >
+                <Filter className="w-4 h-4" />
+                <span>{showFilters ? 'ซ่อนตัวกรอง' : 'แสดงตัวกรอง'}</span>
+              </Button>
+            </div>
+            {showFilters && (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 pt-4 border-t border-slate-200 dark:border-slate-700">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                    วันที่เริ่มต้น
+                  </label>
+                  <Input
+                    type="date"
+                    value={filterStartDate}
+                    onChange={(e) => setFilterStartDate(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                    วันที่สิ้นสุด
+                  </label>
+                  <Input
+                    type="date"
+                    value={filterEndDate}
+                    onChange={(e) => setFilterEndDate(e.target.value)}
+                  />
+                </div>
+                <div className="relative">
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                    สินค้า
+                  </label>
+                  <div className="relative searchable-dropdown-container">
+                    <Input
+                      type="text"
+                      placeholder="พิมพ์ค้นหารหัสสินค้า, ชื่อสินค้า..."
+                      value={selectedProductId ? selectedProductName : productSearch}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        setProductSearch(value);
+                        setShowProductDropdown(true);
+                        if (!value) {
+                          setSelectedProductId(null);
+                        }
+                      }}
+                      onFocus={() => setShowProductDropdown(true)}
+                      icon={<Search className="w-4 h-4" />}
+                    />
+                    {selectedProductId && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedProductId(null);
+                          setProductSearch('');
+                        }}
+                        className="absolute right-10 top-1/2 transform -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    )}
+                    {showProductDropdown && filteredProducts.length > 0 && (
+                      <div className="absolute z-[9999] w-full mt-1 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg shadow-lg max-h-60 overflow-auto">
+                        {filteredProducts.map(product => (
+                          <button
+                            key={product.id}
+                            type="button"
+                            onClick={() => {
+                              setSelectedProductId(product.id);
+                              setProductSearch('');
+                              setShowProductDropdown(false);
+                            }}
+                            className="w-full text-left px-4 py-2 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-900 dark:text-slate-100"
+                          >
+                            <div className="font-medium">{product.product_name}</div>
+                            <div className="text-xs text-slate-500 dark:text-slate-400">
+                              {product.product_code} {product.category && `• ${product.category}`}
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                    หมวดหมู่
+                  </label>
+                  <select
+                    value={selectedCategory || ''}
+                    onChange={(e) => setSelectedCategory(e.target.value || null)}
+                    className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
+                  >
+                    <option value="">ทั้งหมด</option>
+                    {categories?.map(category => (
+                      <option key={category} value={category}>{category}</option>
+                    ))}
+                  </select>
+                </div>
+                {(filterStartDate || filterEndDate || selectedProductId || selectedCategory) && (
+                  <div className="md:col-span-2 lg:col-span-4 flex justify-end">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setFilterStartDate('');
+                        setFilterEndDate('');
+                        setSelectedProductId(null);
+                        setSelectedCategory(null);
+                      }}
+                    >
+                      <X className="w-4 h-4 mr-2" />
+                      ล้างตัวกรอง
+                    </Button>
+                  </div>
+                )}
+              </div>
+            )}
+          </Card>
+          
           <Card>
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
@@ -1485,7 +2179,7 @@ const DeliveryReportsTab: React.FC<{
             </div>
             {productLoading ? (
               <div className="text-center py-8 text-slate-400">กำลังโหลด...</div>
-            ) : productData && productData.length > 0 ? (
+            ) : filteredProductData && filteredProductData.length > 0 ? (
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead>
@@ -1500,7 +2194,7 @@ const DeliveryReportsTab: React.FC<{
                     </tr>
                   </thead>
                   <tbody>
-                    {productData.map((product) => (
+                    {filteredProductData.map((product) => (
                       <tr key={product.product_id} className="border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50">
                         <td className="py-3 px-4 font-medium text-slate-900 dark:text-slate-100">{product.product_code}</td>
                         <td className="py-3 px-4 text-slate-900 dark:text-slate-100">{product.product_name}</td>
@@ -1524,6 +2218,33 @@ const DeliveryReportsTab: React.FC<{
       {/* Monthly Report */}
       {activeSubTab === 'monthly' && (
         <div className="space-y-6">
+          {/* Filters */}
+          <Card className="p-4">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <Filter className="w-5 h-5 text-slate-600 dark:text-slate-400" />
+                <h4 className="font-medium text-slate-900 dark:text-slate-100">ตัวกรอง</h4>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t border-slate-200 dark:border-slate-700">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                  จำนวนเดือน
+                </label>
+                <select
+                  value={monthlyMonths}
+                  onChange={(e) => setMonthlyMonths(Number(e.target.value))}
+                  className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
+                >
+                  <option value={3}>3 เดือนล่าสุด</option>
+                  <option value={6}>6 เดือนล่าสุด</option>
+                  <option value={12}>12 เดือนล่าสุด</option>
+                  <option value={24}>24 เดือนล่าสุด</option>
+                </select>
+              </div>
+            </div>
+          </Card>
+          
           <Card>
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
