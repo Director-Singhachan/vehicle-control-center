@@ -130,12 +130,15 @@ export const TripLogFormView: React.FC<TripLogFormViewProps> = ({
           setMode('checkin');
           setSelectedTripId(activeTrip.id);
           setTripData(activeTrip);
-          setFormData({
-            odometer: '',
-            destination: activeTrip.destination || '',
-            route: activeTrip.route || '',
-            notes: activeTrip.notes || '',
-          });
+          // อย่ารีเซ็ตเลขไมล์/เวลา ถ้าผู้ใช้เริ่มกรอกแล้ว
+          setFormData(prev => ({
+            odometer: prev.odometer || '',
+            checkout_time: prev.checkout_time,
+            checkin_time: prev.checkin_time,
+            destination: activeTrip.destination || prev.destination || '',
+            route: activeTrip.route || prev.route || '',
+            notes: activeTrip.notes || prev.notes || '',
+          }));
 
           // Reset success state when switching modes
           setSuccess(false);
@@ -163,10 +166,12 @@ export const TripLogFormView: React.FC<TripLogFormViewProps> = ({
           // Note: destination will be auto-filled by useEffect if activeDeliveryTrip exists
           // We don't clear destination here to prevent it from disappearing during re-render
           setFormData(prev => ({
-            odometer: '',
+            odometer: prev.odometer, // คงเลขไมล์ที่กรอกไว้
+            checkout_time: prev.checkout_time,
+            checkin_time: prev.checkin_time,
             destination: prev.destination, // Preserve destination - will be auto-filled if needed
-            route: '',
-            notes: '',
+            route: prev.route || '',
+            notes: prev.notes || '',
           }));
         }
       };
@@ -195,12 +200,15 @@ export const TripLogFormView: React.FC<TripLogFormViewProps> = ({
         }
 
         setTripData(trip);
-        setFormData({
-          odometer: '',
-          destination: trip.destination || '',
-          route: trip.route || '',
-          notes: trip.notes || '',
-        });
+        // ใช้ข้อมูล trip เติมค่าเริ่มต้น แต่ไม่ลบเลขไมล์/เวลา ที่ผู้ใช้กำลังกรอก
+        setFormData(prev => ({
+          odometer: prev.odometer || '',
+          checkout_time: prev.checkout_time,
+          checkin_time: prev.checkin_time,
+          destination: trip.destination || prev.destination || '',
+          route: trip.route || prev.route || '',
+          notes: trip.notes || prev.notes || '',
+        }));
         setSelectedVehicleId(trip.vehicle_id);
       };
 
