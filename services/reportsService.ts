@@ -1678,27 +1678,56 @@ export const reportsService = {
       }
 
       // Filter stores by date range in memory
+      console.log('[getDeliverySummaryByStore] Filtering stores by date range:', {
+        startDate: startDate.toISOString(),
+        endDate: endDate.toISOString(),
+        totalStores: tripStores.length,
+      });
+
       const filteredStores = tripStores.filter((store: any) => {
         // Determine effective date
+        // Priority: delivered_at > planned_date > updated_at
+        // Use planned_date as primary because it represents the actual delivery day
+        // delivered_at is more accurate if available (exact delivery time)
         let effectiveDateStr = store.delivered_at;
         
         if (!effectiveDateStr) {
-          // Fallback to trip updated_at
-          effectiveDateStr = store.delivery_trip?.updated_at;
+          // Use planned_date as it represents the delivery day
+          effectiveDateStr = store.delivery_trip?.planned_date;
         }
         
         if (!effectiveDateStr) {
-          // Fallback to trip planned_date
-          effectiveDateStr = store.delivery_trip?.planned_date;
+          // Last resort: use updated_at
+          effectiveDateStr = store.delivery_trip?.updated_at;
         }
         
         if (!effectiveDateStr) return false;
         
         const effectiveDate = new Date(effectiveDateStr);
-        return effectiveDate >= startDate && effectiveDate <= endDate;
+        const matches = effectiveDate >= startDate && effectiveDate <= endDate;
+        
+        // Debug first few stores
+        if (tripStores.indexOf(store) < 3) {
+          console.log('[getDeliverySummaryByStore] Store filter check:', {
+            storeId: store.store_id,
+            delivered_at: store.delivered_at,
+            trip_planned_date: store.delivery_trip?.planned_date,
+            trip_updated_at: store.delivery_trip?.updated_at,
+            effectiveDate: effectiveDate.toISOString(),
+            matches,
+          });
+        }
+        
+        return matches;
+      });
+
+      console.log('[getDeliverySummaryByStore] Filtered stores:', {
+        filteredCount: filteredStores.length,
+        totalCount: tripStores.length,
       });
 
       if (filteredStores.length === 0) {
+        console.log('[getDeliverySummaryByStore] No stores found in date range');
         return [];
       }
 
@@ -1887,18 +1916,25 @@ export const reportsService = {
       }
 
       // Filter stores by date range in memory
+      console.log('[getDeliverySummaryByProduct] Filtering stores by date range:', {
+        startDate: startDate.toISOString(),
+        endDate: endDate.toISOString(),
+        totalStores: tripStores.length,
+      });
+
       const filteredStores = tripStores.filter((store: any) => {
         // Determine effective date
+        // Priority: delivered_at > planned_date > updated_at
         let effectiveDateStr = store.delivered_at;
         
         if (!effectiveDateStr) {
-          // Fallback to trip updated_at
-          effectiveDateStr = store.delivery_trip?.updated_at;
+          // Use planned_date as it represents the delivery day
+          effectiveDateStr = store.delivery_trip?.planned_date;
         }
         
         if (!effectiveDateStr) {
-          // Fallback to trip planned_date
-          effectiveDateStr = store.delivery_trip?.planned_date;
+          // Last resort: use updated_at
+          effectiveDateStr = store.delivery_trip?.updated_at;
         }
         
         if (!effectiveDateStr) return false;
@@ -1907,7 +1943,13 @@ export const reportsService = {
         return effectiveDate >= startDate && effectiveDate <= endDate;
       });
 
+      console.log('[getDeliverySummaryByProduct] Filtered stores:', {
+        filteredCount: filteredStores.length,
+        totalCount: tripStores.length,
+      });
+
       if (filteredStores.length === 0) {
+        console.log('[getDeliverySummaryByProduct] No stores found in date range');
         return [];
       }
 
@@ -2111,7 +2153,7 @@ export const reportsService = {
         
         if (!effectiveDateStr) {
           // Fallback 1: Use checkin_time from trip_logs (most accurate for old data)
-          const tripLog = tripLogMap.get(store.delivery_trip_id);
+          const tripLog = tripLogMap.get(store.delivery_trip_id) as any;
           if (tripLog?.checkin_time) {
             effectiveDateStr = tripLog.checkin_time;
           }
@@ -2184,7 +2226,7 @@ export const reportsService = {
             let effectiveDateStr = storeForTrip.delivered_at;
             
             if (!effectiveDateStr) {
-              const tripLog = tripLogMap.get(storeForTrip.delivery_trip_id);
+              const tripLog = tripLogMap.get(storeForTrip.delivery_trip_id) as any;
               if (tripLog?.checkin_time) {
                 effectiveDateStr = tripLog.checkin_time;
               }

@@ -32,11 +32,13 @@ import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 interface TripLogListViewProps {
   onCreateCheckout?: () => void;
   onCreateCheckin?: (tripId: string) => void;
+  onViewDeliveryTrip?: (deliveryTripId: string) => void;
 }
 
 export const TripLogListView: React.FC<TripLogListViewProps> = ({
   onCreateCheckout,
   onCreateCheckin,
+  onViewDeliveryTrip,
 }) => {
   const { vehicles } = useVehicles();
 
@@ -380,12 +382,24 @@ export const TripLogListView: React.FC<TripLogListViewProps> = ({
                           </p>
                         </div>
                         {trip.delivery_trip?.trip_number && (
-                          <div className="flex items-center gap-2 mt-2">
-                            <Package size={14} className="text-enterprise-600 dark:text-enterprise-400" />
-                            <span className="text-xs font-medium text-enterprise-600 dark:text-enterprise-400 bg-enterprise-50 dark:bg-enterprise-900/30 px-2 py-0.5 rounded">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (trip.delivery_trip?.id && onViewDeliveryTrip) {
+                                onViewDeliveryTrip(trip.delivery_trip.id);
+                              }
+                            }}
+                            className="flex items-center gap-2 mt-2 group focus:outline-none"
+                            title="ดูรายละเอียดทริปส่งสินค้า"
+                          >
+                            <Package
+                              size={14}
+                              className="text-enterprise-600 dark:text-enterprise-400 group-hover:text-enterprise-700 dark:group-hover:text-enterprise-300 transition-colors"
+                            />
+                            <span className="text-xs font-medium text-enterprise-600 dark:text-enterprise-400 bg-enterprise-50 dark:bg-enterprise-900/30 px-2 py-0.5 rounded group-hover:bg-enterprise-100 dark:group-hover:bg-enterprise-900/60 underline-offset-2 group-hover:underline">
                               {trip.delivery_trip.trip_number}
                             </span>
-                          </div>
+                          </button>
                         )}
                       </div>
                       <div className="ml-auto">
