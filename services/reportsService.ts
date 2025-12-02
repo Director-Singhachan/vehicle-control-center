@@ -1632,41 +1632,78 @@ export const reportsService = {
       }
 
       // Query completed delivery trips
+      // Use updated_at for completed trips to capture when they were actually completed
+      // This ensures trips completed recently are included even if planned_date is old
       let tripsQuery = supabase
         .from('delivery_trips')
-        .select('id')
-        .eq('status', 'completed')
-        .gte('planned_date', startDate.toISOString().split('T')[0])
-        .lte('planned_date', endDate.toISOString().split('T')[0]);
+        .select('id, updated_at, planned_date')
+        .eq('status', 'completed');
 
-      const { data: trips, error: tripsError } = await tripsQuery;
+      // Query all completed trips
+      const { data: allCompletedTrips, error: tripsError } = await tripsQuery;
 
       if (tripsError) {
         console.error('[reportsService] Error fetching trips:', tripsError);
         throw tripsError;
       }
 
-      if (!trips || trips.length === 0) {
+      if (!allCompletedTrips || allCompletedTrips.length === 0) {
         return [];
       }
 
-      const tripIds = trips.map(t => t.id);
+      const allTripIds = allCompletedTrips.map(t => t.id);
 
-      // Get trip stores
-      let storesQuery = supabase
+      // Get trip stores filtered by date range
+      // Logic:
+      // 1. If delivered_at exists, use it (accurate delivery time)
+      // 2. If not, fallback to updated_at of the trip (trip completion time)
+      // 3. If updated_at not available, fallback to planned_date
+      // To implement this in Supabase query, we'll fetch stores for these trips first, 
+      // then filter in memory to handle the complex fallback logic
+      
+      const { data: tripStores } = await supabase
         .from('delivery_trip_stores')
-        .select('id, delivery_trip_id, store_id')
-        .in('delivery_trip_id', tripIds);
-
-      if (storeId) {
-        storesQuery = storesQuery.eq('store_id', storeId);
-      }
-
-      const { data: tripStores } = await storesQuery;
+        .select(`
+          id, 
+          delivery_trip_id, 
+          store_id, 
+          delivery_status, 
+          delivered_at,
+          delivery_trip:delivery_trips!inner(id, updated_at, planned_date)
+        `)
+        .in('delivery_trip_id', allTripIds);
 
       if (!tripStores || tripStores.length === 0) {
         return [];
       }
+
+      // Filter stores by date range in memory
+      const filteredStores = tripStores.filter((store: any) => {
+        // Determine effective date
+        let effectiveDateStr = store.delivered_at;
+        
+        if (!effectiveDateStr) {
+          // Fallback to trip updated_at
+          effectiveDateStr = store.delivery_trip?.updated_at;
+        }
+        
+        if (!effectiveDateStr) {
+          // Fallback to trip planned_date
+          effectiveDateStr = store.delivery_trip?.planned_date;
+        }
+        
+        if (!effectiveDateStr) return false;
+        
+        const effectiveDate = new Date(effectiveDateStr);
+        return effectiveDate >= startDate && effectiveDate <= endDate;
+      });
+
+      if (filteredStores.length === 0) {
+        return [];
+      }
+
+      // Get unique trip IDs from filtered stores
+      const tripIds = [...new Set(filteredStores.map((ts: any) => ts.delivery_trip_id))];
 
       // Get stores info
       const storeIds = [...new Set(tripStores.map(ts => ts.store_id).filter(Boolean))];
@@ -1698,7 +1735,7 @@ export const reportsService = {
         items: typeof tripItems;
       }>();
 
-      tripStores.forEach(ts => {
+      filteredStores.forEach(ts => {
         const store = storeMap.get(ts.store_id) as any;
         if (!store) return;
 
@@ -1814,24 +1851,68 @@ export const reportsService = {
       }
 
       // Query completed delivery trips
-      const { data: trips } = await supabase
+      // We need to filter by actual delivery date, not planned_date or updated_at
+      // Strategy: Get all completed trips, then filter by store delivery dates
+      const { data: allCompletedTrips, error: tripsError } = await supabase
         .from('delivery_trips')
         .select('id')
-        .eq('status', 'completed')
-        .gte('planned_date', startDate.toISOString().split('T')[0])
-        .lte('planned_date', endDate.toISOString().split('T')[0]);
+        .eq('status', 'completed');
 
-      if (!trips || trips.length === 0) {
+      if (tripsError) {
+        console.error('[reportsService] Error fetching trips:', tripsError);
+        throw tripsError;
+      }
+
+      if (!allCompletedTrips || allCompletedTrips.length === 0) {
         return [];
       }
 
-      const tripIds = trips.map(t => t.id);
+      const allTripIds = allCompletedTrips.map(t => t.id);
 
-      // Get trip stores
+      // Get trip stores - we'll filter by date in memory with fallbacks
       const { data: tripStores } = await supabase
         .from('delivery_trip_stores')
-        .select('id, delivery_trip_id, store_id')
-        .in('delivery_trip_id', tripIds);
+        .select(`
+          id, 
+          delivery_trip_id, 
+          store_id, 
+          delivery_status, 
+          delivered_at,
+          delivery_trip:delivery_trips!inner(id, updated_at, planned_date)
+        `)
+        .in('delivery_trip_id', allTripIds);
+
+      if (!tripStores || tripStores.length === 0) {
+        return [];
+      }
+
+      // Filter stores by date range in memory
+      const filteredStores = tripStores.filter((store: any) => {
+        // Determine effective date
+        let effectiveDateStr = store.delivered_at;
+        
+        if (!effectiveDateStr) {
+          // Fallback to trip updated_at
+          effectiveDateStr = store.delivery_trip?.updated_at;
+        }
+        
+        if (!effectiveDateStr) {
+          // Fallback to trip planned_date
+          effectiveDateStr = store.delivery_trip?.planned_date;
+        }
+        
+        if (!effectiveDateStr) return false;
+        
+        const effectiveDate = new Date(effectiveDateStr);
+        return effectiveDate >= startDate && effectiveDate <= endDate;
+      });
+
+      if (filteredStores.length === 0) {
+        return [];
+      }
+
+      // Get unique trip IDs from filtered stores
+      const tripIds = [...new Set(filteredStores.map((ts: any) => ts.delivery_trip_id))];
 
       const tripStoreIds = (tripStores || []).map(ts => ts.id);
 
@@ -1979,24 +2060,85 @@ export const reportsService = {
       const startDate = new Date(now.getFullYear(), now.getMonth() - months + 1, 1);
 
       // Query completed delivery trips
-      const { data: trips } = await supabase
+      // We need to filter by actual delivery date, not planned_date or updated_at
+      // Strategy: Get all completed trips, then filter by store delivery dates
+      const { data: allCompletedTrips, error: tripsError } = await supabase
         .from('delivery_trips')
-        .select('id, planned_date')
-        .eq('status', 'completed')
-        .gte('planned_date', startDate.toISOString().split('T')[0])
-        .lte('planned_date', endDate.toISOString().split('T')[0]);
+        .select('id')
+        .eq('status', 'completed');
 
-      if (!trips || trips.length === 0) {
+      if (tripsError) {
+        console.error('[reportsService] Error fetching trips:', tripsError);
+        throw tripsError;
+      }
+
+      if (!allCompletedTrips || allCompletedTrips.length === 0) {
         return [];
       }
 
-      const tripIds = trips.map(t => t.id);
+      const allTripIds = allCompletedTrips.map(t => t.id);
 
-      // Get trip stores
+      // Get trip stores - we'll filter by date in memory with fallbacks
       const { data: tripStores } = await supabase
         .from('delivery_trip_stores')
-        .select('id, delivery_trip_id')
-        .in('delivery_trip_id', tripIds);
+        .select(`
+          id, 
+          delivery_trip_id, 
+          delivery_status, 
+          delivered_at,
+          delivery_trip:delivery_trips!inner(id, updated_at, planned_date)
+        `)
+        .in('delivery_trip_id', allTripIds);
+
+      if (!tripStores || tripStores.length === 0) {
+        return [];
+      }
+
+      // Get trip_logs to find checkin_time for trips without delivered_at
+      const { data: tripLogs } = await supabase
+        .from('trip_logs')
+        .select('id, delivery_trip_id, checkin_time')
+        .in('delivery_trip_id', allTripIds)
+        .not('checkin_time', 'is', null);
+
+      const tripLogMap = new Map((tripLogs || []).map(tl => [tl.delivery_trip_id, tl]));
+
+      // Filter stores by date range in memory
+      // Priority: delivered_at > checkin_time > updated_at > planned_date
+      const filteredStores = tripStores.filter((store: any) => {
+        // Determine effective date - use multiple fallbacks
+        let effectiveDateStr = store.delivered_at;
+        
+        if (!effectiveDateStr) {
+          // Fallback 1: Use checkin_time from trip_logs (most accurate for old data)
+          const tripLog = tripLogMap.get(store.delivery_trip_id);
+          if (tripLog?.checkin_time) {
+            effectiveDateStr = tripLog.checkin_time;
+          }
+        }
+        
+        if (!effectiveDateStr) {
+          // Fallback 2: Use trip updated_at
+          effectiveDateStr = store.delivery_trip?.updated_at;
+        }
+        
+        if (!effectiveDateStr) {
+          // Fallback 3: Use trip planned_date (last resort)
+          effectiveDateStr = store.delivery_trip?.planned_date;
+        }
+        
+        if (!effectiveDateStr) return false; // Skip stores without any date
+        
+        const effectiveDate = new Date(effectiveDateStr);
+        return effectiveDate >= startDate && effectiveDate <= endDate;
+      });
+
+      if (filteredStores.length === 0) {
+        return [];
+      }
+
+      // Get unique trip IDs from filtered stores
+      const tripIds = [...new Set(filteredStores.map((ts: any) => ts.delivery_trip_id))];
 
       const tripStoreIds = (tripStores || []).map(ts => ts.id);
 
@@ -2006,8 +2148,8 @@ export const reportsService = {
         .select('delivery_trip_store_id, quantity')
         .in('delivery_trip_store_id', tripStoreIds);
 
-      // Get trip logs for distance
-      const { data: tripLogs } = await supabase
+      // Get trip logs for distance (use different variable name to avoid conflict)
+      const { data: tripLogsForDistance } = await supabase
         .from('trip_logs')
         .select('delivery_trip_id, distance')
         .in('delivery_trip_id', tripIds)
@@ -2015,11 +2157,11 @@ export const reportsService = {
 
       // Group by month
       const monthMap = new Map<string, {
-        trips: typeof trips;
+        trips: any[];
         tripLogs: typeof tripLogs;
       }>();
 
-      trips.forEach(trip => {
+      allCompletedTrips.forEach(trip => {
         const date = new Date(trip.planned_date);
         const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
         
@@ -2032,16 +2174,37 @@ export const reportsService = {
         monthMap.get(monthKey)!.trips.push(trip);
       });
 
-      // Add trip logs
-      (tripLogs || []).forEach(log => {
+      // Add trip logs for distance calculation
+      (tripLogsForDistance || []).forEach(log => {
         if (log.delivery_trip_id) {
-          const trip = trips.find(t => t.id === log.delivery_trip_id);
-          if (trip) {
-            const date = new Date(trip.planned_date);
-            const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-            const monthData = monthMap.get(monthKey);
-            if (monthData) {
-              monthData.tripLogs.push(log);
+          // Find which month this trip belongs to based on filtered stores
+          const storeForTrip = filteredStores.find((s: any) => s.delivery_trip_id === log.delivery_trip_id);
+          if (storeForTrip) {
+            // Determine effective date for grouping
+            let effectiveDateStr = storeForTrip.delivered_at;
+            
+            if (!effectiveDateStr) {
+              const tripLog = tripLogMap.get(storeForTrip.delivery_trip_id);
+              if (tripLog?.checkin_time) {
+                effectiveDateStr = tripLog.checkin_time;
+              }
+            }
+            
+            if (!effectiveDateStr) {
+              effectiveDateStr = storeForTrip.delivery_trip?.updated_at;
+            }
+            
+            if (!effectiveDateStr) {
+              effectiveDateStr = storeForTrip.delivery_trip?.planned_date;
+            }
+            
+            if (effectiveDateStr) {
+              const date = new Date(effectiveDateStr);
+              const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+              const monthData = monthMap.get(monthKey);
+              if (monthData) {
+                monthData.tripLogs.push(log);
+              }
             }
           }
         }
@@ -2052,8 +2215,8 @@ export const reportsService = {
         const date = new Date(monthKey + '-01');
         const monthLabel = date.toLocaleDateString('th-TH', { month: 'short', year: 'numeric' });
 
-        const tripIdsForMonth = monthData.trips.map(t => t.id);
-        const storesForMonth = (tripStores || []).filter(ts => tripIdsForMonth.includes(ts.delivery_trip_id));
+        const tripIdsForMonth = Array.from(monthData.trips);
+        const storesForMonth = filteredStores.filter((ts: any) => tripIdsForMonth.includes(ts.delivery_trip_id));
         const itemsForMonth = (tripItems || []).filter(item => {
           const store = tripStores?.find(ts => ts.id === item.delivery_trip_store_id);
           return store && tripIdsForMonth.includes(store.delivery_trip_id);
@@ -2065,7 +2228,7 @@ export const reportsService = {
         return {
           month: monthKey,
           monthLabel,
-          totalTrips: monthData.trips.length,
+          totalTrips: tripIdsForMonth.length,
           totalStores: storesForMonth.length,
           totalItems: itemsForMonth.length,
           totalQuantity,

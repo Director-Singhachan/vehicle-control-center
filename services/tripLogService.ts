@@ -346,6 +346,7 @@ export const tripLogService = {
             });
 
             // Update all stores' delivery_status to 'delivered' when trip is completed
+            // Update all stores regardless of current status (pending, failed, etc.)
             try {
               const { error: storesUpdateError } = await supabase
                 .from('delivery_trip_stores')
@@ -353,8 +354,8 @@ export const tripLogService = {
                   delivery_status: 'delivered',
                   delivered_at: new Date().toISOString(),
                 })
-                .eq('delivery_trip_id', deliveryTrip.id)
-                .in('delivery_status', ['pending']); // Only update pending stores
+                .eq('delivery_trip_id', deliveryTrip.id);
+              // Removed .in('delivery_status', ['pending']) to update ALL stores in the trip
 
               if (storesUpdateError) {
                 console.error('[tripLogService] Error updating store delivery status:', storesUpdateError);
