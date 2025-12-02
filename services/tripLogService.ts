@@ -58,19 +58,25 @@ export const tripLogService = {
     const checkoutTime = data.checkout_time || new Date().toISOString();
 
     // Find delivery trip first to get delivery_trip_id
+    // Use sequence_order to get the correct trip in order
     let deliveryTripId: string | null = null;
     try {
       const { data: deliveryTrips } = await supabase
         .from('delivery_trips')
-        .select('id')
+        .select('id, sequence_order, trip_number')
         .eq('vehicle_id', data.vehicle_id)
         .in('status', ['planned', 'in_progress'])
-        .order('planned_date', { ascending: false })
-        .order('created_at', { ascending: false })
+        .order('planned_date', { ascending: true }) // Earliest date first
+        .order('sequence_order', { ascending: true }) // Then by sequence
         .limit(1);
 
       if (deliveryTrips && deliveryTrips.length > 0) {
         deliveryTripId = deliveryTrips[0].id;
+        console.log('[tripLogService] Selected delivery trip for checkout:', {
+          id: deliveryTrips[0].id,
+          trip_number: deliveryTrips[0].trip_number,
+          sequence_order: deliveryTrips[0].sequence_order,
+        });
       }
     } catch (err) {
       console.error('[tripLogService] Error finding delivery trip:', err);
@@ -293,14 +299,16 @@ export const tripLogService = {
       });
 
       // Find active delivery trip for this vehicle
-      // Look for trips that are planned or in_progress (not yet completed)
+      // Look for trips that are in_progress first (already started), then planned
+      // Use sequence_order to ensure we complete trips in the correct order
       const { data: deliveryTrips, error: findError } = await supabase
         .from('delivery_trips')
-        .select('id, status, odometer_start, odometer_end, trip_number')
+        .select('id, status, odometer_start, odometer_end, trip_number, sequence_order, planned_date')
         .eq('vehicle_id', trip.vehicle_id)
         .in('status', ['planned', 'in_progress'])
-        .order('planned_date', { ascending: false })
-        .order('created_at', { ascending: false })
+        .order('status', { ascending: false }) // 'in_progress' before 'planned' (alphabetically)
+        .order('planned_date', { ascending: true }) // Earliest date first
+        .order('sequence_order', { ascending: true }) // Then by sequence
         .limit(1);
 
       if (findError) {
