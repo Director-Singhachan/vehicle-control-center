@@ -127,10 +127,22 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ isDark = false, onNavi
         break;
       case 'custom':
         if (customStartDate && customEndDate) {
+          // กำหนดช่วงวันที่เต็ม (เริ่ม–สิ้นสุด)
           startDate = new Date(customStartDate);
           endDate = new Date(customEndDate);
           endDate.setHours(23, 59, 59, 999);
+        } else if (customStartDate && !customEndDate) {
+          // ถ้าเลือกเฉพาะวันที่เริ่มต้น ให้ถือว่าเป็นการดู "วันเดียว"
+          startDate = new Date(customStartDate);
+          endDate = new Date(customStartDate);
+          endDate.setHours(23, 59, 59, 999);
+        } else if (!customStartDate && customEndDate) {
+          // ถ้าเลือกเฉพาะวันที่สิ้นสุด ให้ถือว่าเป็นการดู "วันเดียว" ของวันนั้น
+          startDate = new Date(customEndDate);
+          endDate = new Date(customEndDate);
+          endDate.setHours(23, 59, 59, 999);
         } else {
+          // ถ้าไม่ได้เลือกอะไรเลยให้กลับไปเดือนปัจจุบัน
           startDate = new Date(now.getFullYear(), now.getMonth(), 1);
         }
         break;
@@ -1389,19 +1401,36 @@ const DeliveryReportsTab: React.FC<{
   // Calculate effective date range
   const effectiveStartDate = React.useMemo(() => {
     if (filterStartDate) {
-      return new Date(filterStartDate);
+      // ถ้าเลือกวันที่เริ่มต้นอย่างเดียว ให้ถือว่าเป็นการดู "วันเดียว"
+      const date = new Date(filterStartDate + 'T00:00:00');
+      console.log('[DeliveryReportsTab] effectiveStartDate from filter:', filterStartDate, '→', date);
+      return date;
     }
+    if (!filterStartDate && filterEndDate) {
+      // ถ้าเลือกแค่วันที่สิ้นสุด ให้ใช้วันนั้นเป็นทั้งเริ่มต้นและสิ้นสุด
+      const date = new Date(filterEndDate + 'T00:00:00');
+      console.log('[DeliveryReportsTab] effectiveStartDate from filterEndDate:', filterEndDate, '→', date);
+      return date;
+    }
+    console.log('[DeliveryReportsTab] effectiveStartDate from parent startDate:', startDate);
     return startDate;
-  }, [filterStartDate, startDate]);
+  }, [filterStartDate, filterEndDate, startDate]);
   
   const effectiveEndDate = React.useMemo(() => {
     if (filterEndDate) {
-      const date = new Date(filterEndDate);
-      date.setHours(23, 59, 59, 999);
+      const date = new Date(filterEndDate + 'T23:59:59.999');
+      console.log('[DeliveryReportsTab] effectiveEndDate from filter:', filterEndDate, '→', date);
       return date;
     }
+    if (!filterEndDate && filterStartDate) {
+      // ถ้าเลือกแค่วันที่เริ่มต้น ให้ถือว่าเป็นการดู "วันเดียว" ของวันนั้น
+      const date = new Date(filterStartDate + 'T23:59:59.999');
+      console.log('[DeliveryReportsTab] effectiveEndDate from filterStartDate (single day):', filterStartDate, '→', date);
+      return date;
+    }
+    console.log('[DeliveryReportsTab] effectiveEndDate from parent endDate:', endDate);
     return endDate;
-  }, [filterEndDate, endDate]);
+  }, [filterEndDate, filterStartDate, endDate]);
   
   // Reset filters when switching tabs
   React.useEffect(() => {

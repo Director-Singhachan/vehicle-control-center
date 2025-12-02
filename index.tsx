@@ -153,6 +153,7 @@ const AppContent = () => {
   const [selectedTripId, setSelectedTripId] = useState<string | null>(null);
   const [deliveryTripView, setDeliveryTripView] = useState<'list' | 'form' | 'detail'>('list');
   const [selectedDeliveryTripId, setSelectedDeliveryTripId] = useState<string | null>(null);
+  const [deliveryTripReturnContext, setDeliveryTripReturnContext] = useState<'delivery-list' | 'triplogs' | 'daily-summary'>('delivery-list');
   const [storeDetailView, setStoreDetailView] = useState<'list' | 'detail'>('list');
   const [selectedStoreId, setSelectedStoreId] = useState<string | null>(null);
   const [showNotifications, setShowNotifications] = useState(false);
@@ -875,6 +876,12 @@ const AppContent = () => {
                   setSelectedTripId(tripId);
                   setTripLogView('form');
                 }}
+                onViewDeliveryTrip={(deliveryTripId) => {
+                  setSelectedDeliveryTripId(deliveryTripId);
+                  setDeliveryTripView('detail');
+                  setDeliveryTripReturnContext('triplogs');
+                  setActiveTab('delivery-trips');
+                }}
               />
             ) : tripLogView === 'form' ? (
               <TripLogFormView
@@ -1012,7 +1019,15 @@ const AppContent = () => {
           ) : activeTab === 'rls-test' ? (
             <RLSTestView />
           ) : activeTab === 'daily-summary' ? (
-            <DailySummaryView isDark={isDark} />
+            <DailySummaryView
+              isDark={isDark}
+              onViewDeliveryTrip={(deliveryTripId) => {
+                setSelectedDeliveryTripId(deliveryTripId);
+                setDeliveryTripView('detail');
+                setDeliveryTripReturnContext('daily-summary');
+                setActiveTab('delivery-trips');
+              }}
+            />
           ) : activeTab === 'reports' ? (
             storeDetailView === 'detail' && selectedStoreId ? (
               <StoreDeliveryDetailView
@@ -1045,7 +1060,16 @@ const AppContent = () => {
                       setDeliveryTripView('form');
                     }}
                     onBack={() => {
-                      setDeliveryTripView('list');
+                      // กลับไปหน้าที่เข้ามาล่าสุด
+                      if (deliveryTripReturnContext === 'triplogs') {
+                        setActiveTab('triplogs');
+                      } else if (deliveryTripReturnContext === 'daily-summary') {
+                        setActiveTab('daily-summary');
+                      } else {
+                        // ค่าเริ่มต้น: กลับไปหน้ารายการทริปส่งสินค้า
+                        setActiveTab('delivery-trips');
+                        setDeliveryTripView('list');
+                      }
                       setSelectedDeliveryTripId(null);
                     }}
                   />
@@ -1074,6 +1098,7 @@ const AppContent = () => {
                     onViewDetail={(tripId) => {
                       setSelectedDeliveryTripId(tripId);
                       setDeliveryTripView('detail');
+                      setDeliveryTripReturnContext('delivery-list');
                     }}
                     onCreate={() => {
                       setSelectedDeliveryTripId(null);

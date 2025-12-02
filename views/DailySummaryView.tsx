@@ -22,9 +22,10 @@ import { tripLogService, type TripLogWithRelations } from '../services/tripLogSe
 
 interface DailySummaryViewProps {
   isDark?: boolean;
+  onViewDeliveryTrip?: (deliveryTripId: string) => void;
 }
 
-export const DailySummaryView: React.FC<DailySummaryViewProps> = ({ isDark = false }) => {
+export const DailySummaryView: React.FC<DailySummaryViewProps> = ({ isDark = false, onViewDeliveryTrip }) => {
   const [summary, setSummary] = useState<DailySummary | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -539,10 +540,24 @@ export const DailySummaryView: React.FC<DailySummaryViewProps> = ({ isDark = fal
                           >
                             <td className="py-2 px-3 text-slate-800 dark:text-slate-100 whitespace-nowrap">
                               {trip.delivery_trip?.trip_number ? (
-                                <span className="inline-flex items-center gap-1 text-xs font-medium text-enterprise-600 dark:text-enterprise-400 bg-enterprise-50 dark:bg-enterprise-900/30 px-2 py-0.5 rounded">
-                                  <Package size={12} />
-                                  {trip.delivery_trip.trip_number}
-                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (trip.delivery_trip?.id && onViewDeliveryTrip) {
+                                      onViewDeliveryTrip(trip.delivery_trip.id);
+                                    }
+                                  }}
+                                  className="inline-flex items-center gap-1 text-xs font-medium text-enterprise-600 dark:text-enterprise-400 bg-enterprise-50 dark:bg-enterprise-900/30 px-2 py-0.5 rounded group hover:bg-enterprise-100 dark:hover:bg-enterprise-900/60 focus:outline-none"
+                                  title="ดูรายละเอียดทริปส่งสินค้า"
+                                >
+                                  <Package
+                                    size={12}
+                                    className="group-hover:text-enterprise-700 dark:group-hover:text-enterprise-300 transition-colors"
+                                  />
+                                  <span className="underline-offset-2 group-hover:underline">
+                                    {trip.delivery_trip.trip_number}
+                                  </span>
+                                </button>
                               ) : (
                                 <span className="text-slate-400 dark:text-slate-600 text-xs">-</span>
                               )}

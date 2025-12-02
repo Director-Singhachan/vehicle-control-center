@@ -1486,108 +1486,122 @@ export const reportsService = {
         startDate = new Date(now.getFullYear(), now.getMonth() - 2, 1);
       }
 
-      // Query completed delivery trips
-      let tripsQuery = supabase
-        .from('delivery_trips')
+      // ใช้วันที่ local เพื่อหลีกเลี่ยงปัญหา timezone (เหมือนใน getProductDeliveryHistory)
+      const formatDateForQuery = (date: Date): string => {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+      };
+
+      const startDateStr = formatDateForQuery(startDate);
+      const endDateStr = formatDateForQuery(endDate);
+
+      // Query from pre-aggregated daily stats table for high performance
+      let statsQuery = supabase
+        .from('delivery_stats_by_day_vehicle')
         .select(`
-          id,
+          stat_date,
           vehicle_id,
-          odometer_start,
-          odometer_end,
-          vehicle:vehicles!delivery_trips_vehicle_id_fkey(plate, make, model, branch)
+          total_trips,
+          total_stores,
+          total_items,
+          total_quantity,
+          total_distance_km
         `)
-        .eq('status', 'completed')
-        .gte('planned_date', startDate.toISOString().split('T')[0])
-        .lte('planned_date', endDate.toISOString().split('T')[0]);
+        .gte('stat_date', startDateStr)
+        .lte('stat_date', endDateStr);
 
       if (vehicleId) {
-        tripsQuery = tripsQuery.eq('vehicle_id', vehicleId);
+        statsQuery = statsQuery.eq('vehicle_id', vehicleId);
       }
 
-      const { data: trips, error: tripsError } = await tripsQuery;
+      const { data: stats, error: statsError } = await statsQuery;
 
-      if (tripsError) {
-        console.error('[reportsService] Error fetching trips:', tripsError);
-        throw tripsError;
+      if (statsError) {
+        console.error('[reportsService] Error fetching vehicle stats:', statsError);
+        throw statsError;
       }
 
-      if (!trips || trips.length === 0) {
+      if (!stats || stats.length === 0) {
         return [];
       }
 
-      // Get trip stores and items
-      const tripIds = trips.map(t => t.id);
-      const { data: tripStores } = await supabase
-        .from('delivery_trip_stores')
-        .select('id, delivery_trip_id, store_id')
-        .in('delivery_trip_id', tripIds);
+      // Get vehicle info separately to avoid dependency on relationship names
+      const vehicleIds = Array.from(new Set(stats.map((s: any) => s.vehicle_id))).filter(Boolean);
 
-      const tripStoreIds = (tripStores || []).map(ts => ts.id).filter(Boolean);
-      const { data: tripItems } = tripStoreIds.length > 0 ? await supabase
-        .from('delivery_trip_items')
-        .select('delivery_trip_store_id, quantity')
-        .in('delivery_trip_store_id', tripStoreIds) : { data: [] };
+      const { data: vehicles, error: vehiclesError } = await supabase
+        .from('vehicles')
+        .select('id, plate, make, model, branch')
+        .in('id', vehicleIds);
 
-      // Group by vehicle
-      const vehicleMap = new Map<string, {
+      if (vehiclesError) {
+        console.error('[reportsService] Error fetching vehicles for stats:', vehiclesError);
+        throw vehiclesError;
+      }
+
+      const vehicleMap = new Map(
+        (vehicles || []).map((v: any) => [v.id, v])
+      );
+
+      // Aggregate stats by vehicle across multiple days
+      const aggregatedByVehicle = new Map<string, {
         vehicle_id: string;
         plate: string;
         make: string | null;
         model: string | null;
         branch: string | null;
-        trips: typeof trips;
+        totalTrips: number;
+        totalStores: number;
+        totalItems: number;
+        totalQuantity: number;
+        totalDistance: number;
       }>();
 
-      trips.forEach(trip => {
-        const vid = trip.vehicle_id;
-        const vehicle = trip.vehicle as any;
-        if (!vehicleMap.has(vid)) {
-          vehicleMap.set(vid, {
+      (stats as any[]).forEach(stat => {
+        const vid = stat.vehicle_id;
+        if (!vid) return;
+
+        const vehicle = vehicleMap.get(vid) as any;
+
+        if (!aggregatedByVehicle.has(vid)) {
+          aggregatedByVehicle.set(vid, {
             vehicle_id: vid,
             plate: vehicle?.plate || 'N/A',
             make: vehicle?.make || null,
             model: vehicle?.model || null,
             branch: vehicle?.branch || null,
-            trips: [],
+            totalTrips: 0,
+            totalStores: 0,
+            totalItems: 0,
+            totalQuantity: 0,
+            totalDistance: 0,
           });
         }
-        vehicleMap.get(vid)!.trips.push(trip);
+
+        const agg = aggregatedByVehicle.get(vid)!;
+        agg.totalTrips += Number(stat.total_trips || 0);
+        agg.totalStores += Number(stat.total_stores || 0);
+        agg.totalItems += Number(stat.total_items || 0);
+        agg.totalQuantity += Number(stat.total_quantity || 0);
+        agg.totalDistance += Number(stat.total_distance_km || 0);
       });
 
-      // Calculate metrics
-      const result = Array.from(vehicleMap.values()).map(vehicleData => {
-        const tripIdsForVehicle = vehicleData.trips.map(t => t.id);
-        const storesForVehicle = (tripStores || []).filter(ts => tripIdsForVehicle.includes(ts.delivery_trip_id));
-        const uniqueStoreIds = new Set(storesForVehicle.map(ts => ts.store_id).filter(Boolean));
-        const itemsForVehicle = (tripItems || []).filter(item => {
-          const store = tripStores?.find(ts => ts.id === item.delivery_trip_store_id);
-          return store && tripIdsForVehicle.includes(store.delivery_trip_id);
-        });
-
-        const totalQuantity = itemsForVehicle.reduce((sum, item) => sum + Number(item.quantity || 0), 0);
-        const totalDistance = vehicleData.trips.reduce((sum, trip) => {
-          const distance = (trip.odometer_end && trip.odometer_start) 
-            ? trip.odometer_end - trip.odometer_start 
-            : 0;
-          return sum + distance;
-        }, 0);
-
-        return {
-          vehicle_id: vehicleData.vehicle_id,
-          plate: vehicleData.plate,
-          make: vehicleData.make,
-          model: vehicleData.model,
-          branch: vehicleData.branch,
-          totalTrips: vehicleData.trips.length,
-          totalStores: uniqueStoreIds.size,
-          totalItems: itemsForVehicle.length,
-          totalQuantity,
-          totalDistance,
-          averageItemsPerTrip: vehicleData.trips.length > 0 ? itemsForVehicle.length / vehicleData.trips.length : 0,
-          averageQuantityPerTrip: vehicleData.trips.length > 0 ? totalQuantity / vehicleData.trips.length : 0,
-          averageStoresPerTrip: vehicleData.trips.length > 0 ? uniqueStoreIds.size / vehicleData.trips.length : 0,
-        };
-      }).sort((a, b) => b.totalTrips - a.totalTrips);
+      const result = Array.from(aggregatedByVehicle.values()).map(vehicleData => ({
+        vehicle_id: vehicleData.vehicle_id,
+        plate: vehicleData.plate,
+        make: vehicleData.make,
+        model: vehicleData.model,
+        branch: vehicleData.branch,
+        totalTrips: vehicleData.totalTrips,
+        totalStores: vehicleData.totalStores,
+        totalItems: vehicleData.totalItems,
+        totalQuantity: vehicleData.totalQuantity,
+        totalDistance: vehicleData.totalDistance,
+        averageItemsPerTrip: vehicleData.totalTrips > 0 ? vehicleData.totalItems / vehicleData.totalTrips : 0,
+        averageQuantityPerTrip: vehicleData.totalTrips > 0 ? vehicleData.totalQuantity / vehicleData.totalTrips : 0,
+        averageStoresPerTrip: vehicleData.totalTrips > 0 ? vehicleData.totalStores / vehicleData.totalTrips : 0,
+      })).sort((a, b) => b.totalTrips - a.totalTrips);
 
       return result;
     } catch (error) {
@@ -1631,184 +1645,203 @@ export const reportsService = {
         startDate = new Date(now.getFullYear(), now.getMonth() - 2, 1);
       }
 
-      // Query completed delivery trips
-      // Use updated_at for completed trips to capture when they were actually completed
-      // This ensures trips completed recently are included even if planned_date is old
-      let tripsQuery = supabase
-        .from('delivery_trips')
-        .select('id, updated_at, planned_date')
-        .eq('status', 'completed');
+      // ใช้วันที่ local เพื่อเลี่ยง timezone
+      const formatDateForQuery = (date: Date): string => {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+      };
 
-      // Query all completed trips
-      const { data: allCompletedTrips, error: tripsError } = await tripsQuery;
+      const startDateStr = formatDateForQuery(startDate);
+      const endDateStr = formatDateForQuery(endDate);
 
-      if (tripsError) {
-        console.error('[reportsService] Error fetching trips:', tripsError);
-        throw tripsError;
+      console.log('[getDeliverySummaryByStore] Using date range:', { startDateStr, endDateStr });
+
+      // 1) ดึง summary ตามร้านจากตาราง daily stats (เร็วมาก)
+      let storeStatsQuery = supabase
+        .from('delivery_stats_by_day_store')
+        .select('stat_date, store_id, total_trips, total_items, total_quantity')
+        .gte('stat_date', startDateStr)
+        .lte('stat_date', endDateStr);
+
+      if (storeId) {
+        storeStatsQuery = storeStatsQuery.eq('store_id', storeId);
       }
 
-      if (!allCompletedTrips || allCompletedTrips.length === 0) {
+      const { data: storeStats, error: storeStatsError } = await storeStatsQuery;
+
+      if (storeStatsError) {
+        console.error('[reportsService] Error fetching store stats:', storeStatsError);
+        throw storeStatsError;
+      }
+
+      if (!storeStats || storeStats.length === 0) {
         return [];
       }
 
-      const allTripIds = allCompletedTrips.map(t => t.id);
+      // Aggregate summary per store acrossหลายวัน
+      const aggregatedStoreStats = new Map<string, {
+        store_id: string;
+        totalTrips: number;
+        totalItems: number;
+        totalQuantity: number;
+      }>();
 
-      // Get trip stores filtered by date range
-      // Logic:
-      // 1. If delivered_at exists, use it (accurate delivery time)
-      // 2. If not, fallback to updated_at of the trip (trip completion time)
-      // 3. If updated_at not available, fallback to planned_date
-      // To implement this in Supabase query, we'll fetch stores for these trips first, 
-      // then filter in memory to handle the complex fallback logic
-      
-      const { data: tripStores } = await supabase
-        .from('delivery_trip_stores')
-        .select(`
-          id, 
-          delivery_trip_id, 
-          store_id, 
-          delivery_status, 
-          delivered_at,
-          delivery_trip:delivery_trips!inner(id, updated_at, planned_date)
-        `)
-        .in('delivery_trip_id', allTripIds);
+      (storeStats as any[]).forEach(stat => {
+        const sid = stat.store_id;
+        if (!sid) return;
 
-      if (!tripStores || tripStores.length === 0) {
-        return [];
-      }
-
-      // Filter stores by date range in memory
-      const filteredStores = tripStores.filter((store: any) => {
-        // Determine effective date
-        let effectiveDateStr = store.delivered_at;
-        
-        if (!effectiveDateStr) {
-          // Fallback to trip updated_at
-          effectiveDateStr = store.delivery_trip?.updated_at;
+        if (!aggregatedStoreStats.has(sid)) {
+          aggregatedStoreStats.set(sid, {
+            store_id: sid,
+            totalTrips: 0,
+            totalItems: 0,
+            totalQuantity: 0,
+          });
         }
-        
-        if (!effectiveDateStr) {
-          // Fallback to trip planned_date
-          effectiveDateStr = store.delivery_trip?.planned_date;
-        }
-        
-        if (!effectiveDateStr) return false;
-        
-        const effectiveDate = new Date(effectiveDateStr);
-        return effectiveDate >= startDate && effectiveDate <= endDate;
+
+        const agg = aggregatedStoreStats.get(sid)!;
+        agg.totalTrips += Number(stat.total_trips || 0);
+        agg.totalItems += Number(stat.total_items || 0);
+        agg.totalQuantity += Number(stat.total_quantity || 0);
       });
 
-      if (filteredStores.length === 0) {
-        return [];
-      }
+      const storeIds = Array.from(aggregatedStoreStats.keys());
 
-      // Get unique trip IDs from filtered stores
-      const tripIds = [...new Set(filteredStores.map((ts: any) => ts.delivery_trip_id))];
-
-      // Get stores info
-      const storeIds = [...new Set(tripStores.map(ts => ts.store_id).filter(Boolean))];
-      const { data: stores } = await supabase
+      // 2) ดึงรายละเอียดร้าน
+      const { data: stores, error: storesError } = await supabase
         .from('stores')
         .select('id, customer_code, customer_name, address')
         .in('id', storeIds);
 
-      const storeMap = new Map((stores || []).map((s: any) => [s.id, s]));
+      if (storesError) {
+        console.error('[reportsService] Error fetching stores for stats:', storesError);
+        throw storesError;
+      }
 
-      // Get trip items
-      const tripStoreIds = tripStores.map(ts => ts.id);
-      const { data: tripItems } = await supabase
-        .from('delivery_trip_items')
-        .select(`
-          delivery_trip_store_id,
-          quantity,
-          product:products!delivery_trip_items_product_id_fkey(id, product_code, product_name, unit)
-        `)
-        .in('delivery_trip_store_id', tripStoreIds);
+      const storeMap = new Map(
+        (stores || []).map((s: any) => [s.id, s])
+      );
 
-      // Group by store
-      const storeSummaryMap = new Map<string, {
+      // 3) ดึง summary ระดับ ร้าน+สินค้า
+      let storeProductStatsQuery = supabase
+        .from('delivery_stats_by_day_store_product')
+        .select('stat_date, store_id, product_id, total_deliveries, total_quantity')
+        .gte('stat_date', startDateStr)
+        .lte('stat_date', endDateStr)
+        .in('store_id', storeIds);
+
+      const { data: storeProductStats, error: storeProductError } = await storeProductStatsQuery;
+
+      if (storeProductError) {
+        console.error('[reportsService] Error fetching store+product stats:', storeProductError);
+        throw storeProductError;
+      }
+
+      const productIds = Array.from(
+        new Set(
+          (storeProductStats || []).map((s: any) => s.product_id).filter(Boolean)
+        )
+      );
+
+      // 4) ดึงข้อมูลสินค้า
+      let productsMap = new Map<string, any>();
+      if (productIds.length > 0) {
+        const { data: products, error: productsError } = await supabase
+          .from('products')
+          .select('id, product_code, product_name, unit')
+          .in('id', productIds);
+
+        if (productsError) {
+          console.error('[reportsService] Error fetching products for stats:', productsError);
+          throw productsError;
+        }
+
+        productsMap = new Map(
+          (products || []).map((p: any) => [p.id, p])
+        );
+      }
+
+      // 5) รวม summary ระดับร้าน + รายการสินค้า
+      const storeProductAgg = new Map<string, Map<string, {
+        product_id: string;
+        totalQuantity: number;
+        deliveryCount: number;
+      }>>();
+
+      (storeProductStats || []).forEach((stat: any) => {
+        const sid = stat.store_id;
+        const pid = stat.product_id;
+        if (!sid || !pid) return;
+
+        if (!storeProductAgg.has(sid)) {
+          storeProductAgg.set(sid, new Map());
+        }
+        const productMapForStore = storeProductAgg.get(sid)!;
+
+        if (!productMapForStore.has(pid)) {
+          productMapForStore.set(pid, {
+            product_id: pid,
+            totalQuantity: 0,
+            deliveryCount: 0,
+          });
+        }
+
+        const agg = productMapForStore.get(pid)!;
+        agg.totalQuantity += Number(stat.total_quantity || 0);
+        agg.deliveryCount += Number(stat.total_deliveries || 0);
+      });
+
+      // 6) ประกอบผลลัพธ์สุดท้าย
+      const result = Array.from(aggregatedStoreStats.values()).map(storeStat => {
+        const store = storeMap.get(storeStat.store_id) as any;
+        if (!store) return null;
+
+        const productMapForStore = storeProductAgg.get(storeStat.store_id) || new Map();
+
+        const products = Array.from(productMapForStore.values()).map(p => {
+          const product = productsMap.get(p.product_id) as any;
+          return {
+            product_id: p.product_id,
+            product_code: product?.product_code || '',
+            product_name: product?.product_name || '',
+            unit: product?.unit || '',
+            totalQuantity: p.totalQuantity,
+            deliveryCount: p.deliveryCount,
+          };
+        }).sort((a, b) => b.totalQuantity - a.totalQuantity);
+
+        return {
+          store_id: storeStat.store_id,
+          customer_code: store.customer_code,
+          customer_name: store.customer_name,
+          address: store.address,
+          totalTrips: storeStat.totalTrips,
+          totalItems: storeStat.totalItems,
+          totalQuantity: storeStat.totalQuantity,
+          products,
+        };
+      }).filter(Boolean) as Array<{
         store_id: string;
         customer_code: string;
         customer_name: string;
         address: string | null;
-        tripIds: Set<string>;
-        items: typeof tripItems;
-      }>();
-
-      filteredStores.forEach(ts => {
-        const store = storeMap.get(ts.store_id) as any;
-        if (!store) return;
-
-        if (!storeSummaryMap.has(ts.store_id)) {
-          storeSummaryMap.set(ts.store_id, {
-            store_id: ts.store_id,
-            customer_code: store.customer_code,
-            customer_name: store.customer_name,
-            address: store.address,
-            tripIds: new Set(),
-            items: [],
-          });
-        }
-
-        const summary = storeSummaryMap.get(ts.store_id)!;
-        summary.tripIds.add(ts.delivery_trip_id);
-        
-        const itemsForStore = (tripItems || []).filter(item => item.delivery_trip_store_id === ts.id);
-        summary.items.push(...itemsForStore);
-      });
-
-      // Calculate metrics
-      const result = Array.from(storeSummaryMap.values()).map(summary => {
-        // Group products
-        const productMap = new Map<string, {
+        totalTrips: number;
+        totalItems: number;
+        totalQuantity: number;
+        products: Array<{
           product_id: string;
           product_code: string;
           product_name: string;
           unit: string;
-          quantities: number[];
-        }>();
+          totalQuantity: number;
+          deliveryCount: number;
+        }>;
+      }>;
 
-        summary.items.forEach(item => {
-          const product = (item.product as any);
-          if (!product) return;
-
-          const pid = product.id;
-          if (!productMap.has(pid)) {
-            productMap.set(pid, {
-              product_id: pid,
-              product_code: product.product_code,
-              product_name: product.product_name,
-              unit: product.unit,
-              quantities: [],
-            });
-          }
-          productMap.get(pid)!.quantities.push(Number(item.quantity || 0));
-        });
-
-        const products = Array.from(productMap.values()).map(p => ({
-          product_id: p.product_id,
-          product_code: p.product_code,
-          product_name: p.product_name,
-          unit: p.unit,
-          totalQuantity: p.quantities.reduce((sum, q) => sum + q, 0),
-          deliveryCount: p.quantities.length,
-        }));
-
-        const totalQuantity = summary.items.reduce((sum, item) => sum + Number(item.quantity || 0), 0);
-
-        return {
-          store_id: summary.store_id,
-          customer_code: summary.customer_code,
-          customer_name: summary.customer_name,
-          address: summary.address,
-          totalTrips: summary.tripIds.size,
-          totalItems: summary.items.length,
-          totalQuantity,
-          products: products.sort((a, b) => b.totalQuantity - a.totalQuantity),
-        };
-      }).sort((a, b) => b.totalTrips - a.totalTrips);
-
-      return result;
+      // เรียงตามจำนวนทริปมาก→น้อย
+      return result.sort((a, b) => b.totalTrips - a.totalTrips);
     } catch (error) {
       console.error('[reportsService] getDeliverySummaryByStore error:', error);
       throw error;
@@ -1850,185 +1883,171 @@ export const reportsService = {
         startDate = new Date(now.getFullYear(), now.getMonth() - 2, 1);
       }
 
-      // Query completed delivery trips
-      // We need to filter by actual delivery date, not planned_date or updated_at
-      // Strategy: Get all completed trips, then filter by store delivery dates
-      const { data: allCompletedTrips, error: tripsError } = await supabase
-        .from('delivery_trips')
-        .select('id')
-        .eq('status', 'completed');
+      // ใช้วันที่ local เพื่อเลี่ยง timezone
+      const formatDateForQuery = (date: Date): string => {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+      };
 
-      if (tripsError) {
-        console.error('[reportsService] Error fetching trips:', tripsError);
-        throw tripsError;
-      }
+      const startDateStr = formatDateForQuery(startDate);
+      const endDateStr = formatDateForQuery(endDate);
 
-      if (!allCompletedTrips || allCompletedTrips.length === 0) {
-        return [];
-      }
-
-      const allTripIds = allCompletedTrips.map(t => t.id);
-
-      // Get trip stores - we'll filter by date in memory with fallbacks
-      const { data: tripStores } = await supabase
-        .from('delivery_trip_stores')
-        .select(`
-          id, 
-          delivery_trip_id, 
-          store_id, 
-          delivery_status, 
-          delivered_at,
-          delivery_trip:delivery_trips!inner(id, updated_at, planned_date)
-        `)
-        .in('delivery_trip_id', allTripIds);
-
-      if (!tripStores || tripStores.length === 0) {
-        return [];
-      }
-
-      // Filter stores by date range in memory
-      const filteredStores = tripStores.filter((store: any) => {
-        // Determine effective date
-        let effectiveDateStr = store.delivered_at;
-        
-        if (!effectiveDateStr) {
-          // Fallback to trip updated_at
-          effectiveDateStr = store.delivery_trip?.updated_at;
-        }
-        
-        if (!effectiveDateStr) {
-          // Fallback to trip planned_date
-          effectiveDateStr = store.delivery_trip?.planned_date;
-        }
-        
-        if (!effectiveDateStr) return false;
-        
-        const effectiveDate = new Date(effectiveDateStr);
-        return effectiveDate >= startDate && effectiveDate <= endDate;
-      });
-
-      if (filteredStores.length === 0) {
-        return [];
-      }
-
-      // Get unique trip IDs from filtered stores
-      const tripIds = [...new Set(filteredStores.map((ts: any) => ts.delivery_trip_id))];
-
-      const tripStoreIds = (tripStores || []).map(ts => ts.id);
-
-      // Get trip items
-      let itemsQuery = supabase
-        .from('delivery_trip_items')
-        .select(`
-          delivery_trip_store_id,
-          quantity,
-          product:products!delivery_trip_items_product_id_fkey(id, product_code, product_name, category, unit)
-        `)
-        .in('delivery_trip_store_id', tripStoreIds);
+      // 1) ดึง summary ระดับร้าน+สินค้า จาก daily stats table
+      let statsQuery = supabase
+        .from('delivery_stats_by_day_store_product')
+        .select('stat_date, store_id, product_id, total_deliveries, total_quantity')
+        .gte('stat_date', startDateStr)
+        .lte('stat_date', endDateStr);
 
       if (productId) {
-        itemsQuery = itemsQuery.eq('product_id', productId);
+        statsQuery = statsQuery.eq('product_id', productId);
       }
 
-      const { data: tripItems } = await itemsQuery;
+      const { data: stats, error: statsError } = await statsQuery;
 
-      if (!tripItems || tripItems.length === 0) {
+      if (statsError) {
+        console.error('[reportsService] Error fetching product stats:', statsError);
+        throw statsError;
+      }
+
+      console.log('[getDeliverySummaryByProduct] Using date range:', { startDateStr, endDateStr });
+
+      if (!stats || stats.length === 0) {
         return [];
       }
 
-      // Get stores info
-      const storeIds = [...new Set((tripStores || []).map(ts => ts.store_id).filter(Boolean))];
-      const { data: stores } = await supabase
-        .from('stores')
-        .select('id, customer_code, customer_name')
-        .in('id', storeIds);
+      const productIds = Array.from(
+        new Set((stats as any[]).map(s => s.product_id).filter(Boolean))
+      );
+      const storeIds = Array.from(
+        new Set((stats as any[]).map(s => s.store_id).filter(Boolean))
+      );
 
-      const storeMap = new Map((stores || []).map((s: any) => [s.id, s]));
+      // 2) ดึงข้อมูลสินค้า
+      const { data: products, error: productsError } = await supabase
+        .from('products')
+        .select('id, product_code, product_name, category, unit')
+        .in('id', productIds);
 
-      // Group by product
-      const productMap = new Map<string, {
+      if (productsError) {
+        console.error('[reportsService] Error fetching products for stats:', productsError);
+        throw productsError;
+      }
+
+      const productMap = new Map(
+        (products || []).map((p: any) => [p.id, p])
+      );
+
+      // 3) ดึงข้อมูลร้าน (สำหรับ stores array)
+      let storesMap = new Map<string, any>();
+      if (storeIds.length > 0) {
+        const { data: stores, error: storesError } = await supabase
+          .from('stores')
+          .select('id, customer_code, customer_name')
+          .in('id', storeIds);
+
+        if (storesError) {
+          console.error('[reportsService] Error fetching stores for product stats:', storesError);
+          throw storesError;
+        }
+
+        storesMap = new Map(
+          (stores || []).map((s: any) => [s.id, s])
+        );
+      }
+
+      // 4) รวม summary ตามสินค้า
+      const productAgg = new Map<string, {
+        product_id: string;
+        totalQuantity: number;
+        totalDeliveries: number;
+        storeStats: Map<string, {
+          store_id: string;
+          totalQuantity: number;
+          deliveryCount: number;
+        }>;
+      }>();
+
+      (stats as any[]).forEach(stat => {
+        const pid = stat.product_id;
+        const sid = stat.store_id;
+        if (!pid || !sid) return;
+
+        if (!productAgg.has(pid)) {
+          productAgg.set(pid, {
+            product_id: pid,
+            totalQuantity: 0,
+            totalDeliveries: 0,
+            storeStats: new Map(),
+          });
+        }
+
+        const agg = productAgg.get(pid)!;
+        agg.totalQuantity += Number(stat.total_quantity || 0);
+        agg.totalDeliveries += Number(stat.total_deliveries || 0);
+
+        if (!agg.storeStats.has(sid)) {
+          agg.storeStats.set(sid, {
+            store_id: sid,
+            totalQuantity: 0,
+            deliveryCount: 0,
+          });
+        }
+
+        const storeAgg = agg.storeStats.get(sid)!;
+        storeAgg.totalQuantity += Number(stat.total_quantity || 0);
+        storeAgg.deliveryCount += Number(stat.total_deliveries || 0);
+      });
+
+      // 5) ประกอบผลลัพธ์สุดท้าย
+      const result = Array.from(productAgg.values()).map(productStat => {
+        const product = productMap.get(productStat.product_id) as any;
+        if (!product) return null;
+
+        const stores = Array.from(productStat.storeStats.values()).map(s => {
+          const store = storesMap.get(s.store_id) as any;
+          return {
+            store_id: s.store_id,
+            customer_code: store?.customer_code || '',
+            customer_name: store?.customer_name || '',
+            quantity: s.totalQuantity,
+            deliveryCount: s.deliveryCount,
+          };
+        }).sort((a, b) => b.quantity - a.quantity);
+
+        return {
+          product_id: product.id,
+          product_code: product.product_code,
+          product_name: product.product_name,
+          category: product.category,
+          unit: product.unit,
+          totalQuantity: productStat.totalQuantity,
+          totalDeliveries: productStat.totalDeliveries,
+          totalStores: productStat.storeStats.size,
+          stores,
+        };
+      }).filter(Boolean) as Array<{
         product_id: string;
         product_code: string;
         product_name: string;
         category: string;
         unit: string;
-        items: typeof tripItems;
-      }>();
-
-      tripItems.forEach(item => {
-        const product = (item.product as any);
-        if (!product) return;
-
-        const pid = product.id;
-        if (!productMap.has(pid)) {
-          productMap.set(pid, {
-            product_id: pid,
-            product_code: product.product_code,
-            product_name: product.product_name,
-            category: product.category,
-            unit: product.unit,
-            items: [],
-          });
-        }
-        productMap.get(pid)!.items.push(item);
-      });
-
-      // Calculate metrics
-      const result = Array.from(productMap.values()).map(productData => {
-        // Group by store
-        const storeMapForProduct = new Map<string, {
+        totalQuantity: number;
+        totalDeliveries: number;
+        totalStores: number;
+        stores: Array<{
           store_id: string;
           customer_code: string;
           customer_name: string;
-          quantities: number[];
-        }>();
+          quantity: number;
+          deliveryCount: number;
+        }>;
+      }>;
 
-        productData.items.forEach(item => {
-          const tripStore = tripStores?.find(ts => ts.id === item.delivery_trip_store_id);
-          if (!tripStore) return;
-
-          const store = storeMap.get(tripStore.store_id) as any;
-          if (!store) return;
-
-          if (!storeMapForProduct.has(tripStore.store_id)) {
-            storeMapForProduct.set(tripStore.store_id, {
-              store_id: tripStore.store_id,
-              customer_code: store.customer_code,
-              customer_name: store.customer_name,
-              quantities: [],
-            });
-          }
-          storeMapForProduct.get(tripStore.store_id)!.quantities.push(Number(item.quantity || 0));
-        });
-
-        const stores = Array.from(storeMapForProduct.values()).map(storeData => ({
-          store_id: storeData.store_id,
-          customer_code: storeData.customer_code,
-          customer_name: storeData.customer_name,
-          quantity: storeData.quantities.reduce((sum, q) => sum + q, 0),
-          deliveryCount: storeData.quantities.length,
-        }));
-
-        const totalQuantity = productData.items.reduce((sum, item) => sum + Number(item.quantity || 0), 0);
-        const uniqueStores = new Set(productData.items.map(item => {
-          const tripStore = tripStores?.find(ts => ts.id === item.delivery_trip_store_id);
-          return tripStore?.store_id;
-        }).filter(Boolean));
-
-        return {
-          product_id: productData.product_id,
-          product_code: productData.product_code,
-          product_name: productData.product_name,
-          category: productData.category,
-          unit: productData.unit,
-          totalQuantity,
-          totalDeliveries: productData.items.length,
-          totalStores: uniqueStores.size,
-          stores: stores.sort((a, b) => b.quantity - a.quantity),
-        };
-      }).sort((a, b) => b.totalQuantity - a.totalQuantity);
-
-      return result;
+      // เรียงสินค้าที่มีจำนวนรวมมาก→น้อย
+      return result.sort((a, b) => b.totalQuantity - a.totalQuantity);
     } catch (error) {
       console.error('[reportsService] getDeliverySummaryByProduct error:', error);
       throw error;
@@ -2111,7 +2130,7 @@ export const reportsService = {
         
         if (!effectiveDateStr) {
           // Fallback 1: Use checkin_time from trip_logs (most accurate for old data)
-          const tripLog = tripLogMap.get(store.delivery_trip_id);
+          const tripLog = tripLogMap.get(store.delivery_trip_id) as any;
           if (tripLog?.checkin_time) {
             effectiveDateStr = tripLog.checkin_time;
           }
@@ -2184,7 +2203,7 @@ export const reportsService = {
             let effectiveDateStr = storeForTrip.delivered_at;
             
             if (!effectiveDateStr) {
-              const tripLog = tripLogMap.get(storeForTrip.delivery_trip_id);
+              const tripLog = tripLogMap.get(storeForTrip.delivery_trip_id) as any;
               if (tripLog?.checkin_time) {
                 effectiveDateStr = tripLog.checkin_time;
               }
