@@ -17,7 +17,8 @@ import {
   ChevronRight,
   X,
   ZoomIn,
-  Package
+  Package,
+  XCircle
 } from 'lucide-react';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
@@ -25,7 +26,8 @@ import { Card } from '../components/ui/Card';
 import { PageLayout } from '../components/layout/PageLayout';
 import { Avatar } from '../components/ui/Avatar';
 import { useTripLogs, useVehicles } from '../hooks';
-import type { TripLogWithRelations } from '../services/tripLogService';
+import { tripLogService, type TripLogWithRelations } from '../services/tripLogService';
+import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 
 interface TripLogListViewProps {
   onCreateCheckout?: () => void;
@@ -42,7 +44,7 @@ export const TripLogListView: React.FC<TripLogListViewProps> = ({
     vehicle_id?: string;
     start_date?: string;
     end_date?: string;
-    status?: 'checked_out' | 'checked_in';
+    status?: 'checked_out' | 'checked_in' | 'cancelled';
     branch?: string;
   }>({});
 
@@ -51,6 +53,9 @@ export const TripLogListView: React.FC<TripLogListViewProps> = ({
   const [pageInput, setPageInput] = useState('');
   const itemsPerPage = 20;
   const [expandedImage, setExpandedImage] = useState<{ src: string; alt: string } | null>(null);
+  const [cancelTripId, setCancelTripId] = useState<string | null>(null);
+  const [cancelReason, setCancelReason] = useState('');
+  const [isCancelling, setIsCancelling] = useState(false);
 
   // Calculate pagination
   const offset = (currentPage - 1) * itemsPerPage;
@@ -247,6 +252,7 @@ export const TripLogListView: React.FC<TripLogListViewProps> = ({
                 <option value="">ทั้งหมด</option>
                 <option value="checked_out">ออกไปแล้ว</option>
                 <option value="checked_in">กลับแล้ว</option>
+                <option value="cancelled">ยกเลิกแล้ว</option>
               </select>
             </div>
           </div>
@@ -503,8 +509,40 @@ export const TripLogListView: React.FC<TripLogListViewProps> = ({
                             กลับ: {formatDate(trip.checkin_time)}
                           </div>
                         )}
+                        {trip.status === 'cancelled' && (
+                          <div className="flex items-center gap-1 text-red-600 dark:text-red-400">
+                            <XCircle size={12} />
+                            ยกเลิกแล้ว
+                          </div>
+                        )}
                       </div>
                     </div>
+
+                    {/* Actions */}
+                    {trip.status === 'checked_out' && (
+                      <div className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-700 flex items-center gap-2">
+                        {onCreateCheckin && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => onCreateCheckin(trip.id)}
+                            className="flex items-center gap-1"
+                          >
+                            <CheckCircle size={16} />
+                            บันทึกการกลับ
+                          </Button>
+                        )}
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setCancelTripId(trip.id)}
+                          className="flex items-center gap-1 text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
+                        >
+                          <XCircle size={16} />
+                          ยกเลิกทริป
+                        </Button>
+                      </div>
+                    )}
                   </div>
                 </div>
               </Card>
@@ -654,6 +692,52 @@ export const TripLogListView: React.FC<TripLogListViewProps> = ({
       )}
 
       {/* Image Expansion Modal */}
+      {/* Cancel Trip Dialog */}
+      <ConfirmDialog
+        isOpen={cancelTripId !== null}
+        onCancel={() => {
+          setCancelTripId(null);
+          setCancelReason('');
+        }}
+        onConfirm={async () => {
+          if (!cancelTripId) return;
+          setIsCancelling(true);
+          try {
+            await tripLogService.cancelTrip(cancelTripId, cancelReason || undefined);
+            setCancelTripId(null);
+            setCancelReason('');
+            refetch();
+          } catch (err: any) {
+            alert(err.message || 'เกิดข้อผิดพลาดในการยกเลิกทริป');
+          } finally {
+            setIsCancelling(false);
+          }
+        }}
+        title="ยกเลิกทริป"
+        message={
+          <div className="space-y-4" onClick={(e) => e.stopPropagation()}>
+            <p>คุณต้องการยกเลิกทริปนี้หรือไม่?</p>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                เหตุผล (ไม่บังคับ)
+              </label>
+              <textarea
+                value={cancelReason}
+                onChange={(e) => setCancelReason(e.target.value)}
+                onClick={(e) => e.stopPropagation()}
+                onMouseDown={(e) => e.stopPropagation()}
+                placeholder="ระบุเหตุผลในการยกเลิกทริป..."
+                className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
+                rows={3}
+              />
+            </div>
+          </div>
+        }
+        confirmText="ยืนยันยกเลิกทริป"
+        cancelText="ยกเลิก"
+        variant="danger"
+      />
+
       {expandedImage && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4"

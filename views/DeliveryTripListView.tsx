@@ -18,13 +18,15 @@ import {
   ChevronRight,
   Download,
   History,
+  XCircle,
 } from 'lucide-react';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Card } from '../components/ui/Card';
 import { PageLayout } from '../components/layout/PageLayout';
 import { useDeliveryTrips, useVehicles } from '../hooks';
-import type { DeliveryTripWithRelations } from '../services/deliveryTripService';
+import { deliveryTripService, type DeliveryTripWithRelations } from '../services/deliveryTripService';
+import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 
 interface DeliveryTripListViewProps {
   onViewDetail?: (tripId: string) => void;
@@ -45,6 +47,9 @@ export const DeliveryTripListView: React.FC<DeliveryTripListViewProps> = ({
   const [onlyChanged, setOnlyChanged] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 20;
+  const [cancelTripId, setCancelTripId] = useState<string | null>(null);
+  const [cancelReason, setCancelReason] = useState('');
+  const [isCancelling, setIsCancelling] = useState(false);
 
   const { trips, total, loading, error, refetch } = useDeliveryTrips({
     status: statusFilter !== 'all' && Array.isArray(statusFilter) ? statusFilter : undefined,
@@ -344,18 +349,32 @@ export const DeliveryTripListView: React.FC<DeliveryTripListViewProps> = ({
                   )}
                 </div>
 
-                <div className="flex items-center justify-between pt-3 border-t border-slate-200 dark:border-slate-700">
+                <div 
+                  className="flex items-center justify-between pt-3 border-t border-slate-200 dark:border-slate-700 gap-2"
+                  onClick={(e) => e.stopPropagation()}
+                >
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onViewDetail?.(trip.id);
-                    }}
+                    onClick={() => onViewDetail?.(trip.id)}
                   >
                     <Eye size={16} className="mr-1" />
                     ดูรายละเอียด
                   </Button>
+                  {(trip.status === 'planned' || trip.status === 'in_progress') && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        console.log('[DeliveryTripListView] Cancel button clicked for trip:', trip.id);
+                        setCancelTripId(trip.id);
+                      }}
+                      className="text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
+                    >
+                      <XCircle size={16} className="mr-1" />
+                      ยกเลิก
+                    </Button>
+                  )}
                 </div>
               </Card>
             ))}
@@ -392,6 +411,60 @@ export const DeliveryTripListView: React.FC<DeliveryTripListViewProps> = ({
           )}
         </>
       )}
+
+      {/* Cancel Trip Dialog */}
+      <ConfirmDialog
+        isOpen={cancelTripId !== null}
+        onCancel={() => {
+          setCancelTripId(null);
+          setCancelReason('');
+        }}
+        onConfirm={async () => {
+          if (!cancelTripId) return;
+          console.log('[DeliveryTripListView] Confirming cancel for trip:', cancelTripId);
+          setIsCancelling(true);
+          try {
+            await deliveryTripService.cancel(cancelTripId, cancelReason || undefined);
+            console.log('[DeliveryTripListView] Trip cancelled successfully');
+            setCancelTripId(null);
+            setCancelReason('');
+            // Wait a bit before refetching to ensure database is updated
+            setTimeout(async () => {
+              await refetch();
+            }, 500);
+          } catch (err: any) {
+            console.error('[DeliveryTripListView] Error cancelling trip:', err);
+            const errorMessage = err.message || 'เกิดข้อผิดพลาดในการยกเลิกทริป';
+            alert(errorMessage);
+            // Don't close dialog on error so user can see the error message
+          } finally {
+            setIsCancelling(false);
+          }
+        }}
+        title="ยกเลิกทริปส่งสินค้า"
+        message={
+          <div className="space-y-4" onClick={(e) => e.stopPropagation()}>
+            <p>คุณต้องการยกเลิกทริปส่งสินค้านี้หรือไม่?</p>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                เหตุผล (ไม่บังคับ)
+              </label>
+              <textarea
+                value={cancelReason}
+                onChange={(e) => setCancelReason(e.target.value)}
+                onClick={(e) => e.stopPropagation()}
+                onMouseDown={(e) => e.stopPropagation()}
+                placeholder="ระบุเหตุผลในการยกเลิกทริป..."
+                className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
+                rows={3}
+              />
+            </div>
+          </div>
+        }
+        confirmText="ยืนยันยกเลิกทริป"
+        cancelText="ยกเลิก"
+        variant="danger"
+      />
     </PageLayout>
   );
 };
