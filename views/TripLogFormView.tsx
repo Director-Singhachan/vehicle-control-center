@@ -491,6 +491,7 @@ export const TripLogFormView: React.FC<TripLogFormViewProps> = ({
           destination: formData.destination || undefined,
           route: formData.route || undefined,
           notes: formData.notes || undefined,
+          is_backfill: isBackfillMode,
         });
 
         setSuccessMode('checkout');
@@ -546,6 +547,9 @@ export const TripLogFormView: React.FC<TripLogFormViewProps> = ({
             // Proceed with check-in
             await checkin(selectedTripId, {
               odometer_end: odometerValue,
+              checkin_time: isBackfillMode && formData.checkin_time ? formData.checkin_time : undefined,
+              notes: formData.notes || undefined,
+              is_backfill: isBackfillMode,
             });
 
             setSuccessMode('checkin');
@@ -584,6 +588,8 @@ export const TripLogFormView: React.FC<TripLogFormViewProps> = ({
         await checkin(selectedTripId, {
           odometer_end: odometerValue,
           checkin_time: isBackfillMode && formData.checkin_time ? formData.checkin_time : undefined,
+          notes: formData.notes || undefined,
+          is_backfill: isBackfillMode,
         });
 
         setSuccessMode('checkin');

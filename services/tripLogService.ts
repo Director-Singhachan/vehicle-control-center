@@ -33,6 +33,7 @@ export interface CheckoutData {
   destination?: string;
   route?: string;
   notes?: string;
+  is_backfill?: boolean; // Flag to indicate if this is a backfill entry
 }
 
 export interface CheckinData {
@@ -41,6 +42,7 @@ export interface CheckinData {
   route?: string;
   notes?: string;
   checkin_time?: string; // ISO string - optional, defaults to now()
+  is_backfill?: boolean; // Flag to indicate if this is a backfill entry
 }
 
 export const tripLogService = {
@@ -164,15 +166,17 @@ export const tripLogService = {
 
       const destination = result.destination || (data.destination || 'ไม่ระบุ');
       const route = result.route || data.route;
+      const notes = result.notes || data.notes;
 
       const messageLines = [
-        `🟢 [ออกเดินทาง]`,
+        `🟢 [ออกเดินทาง]${data.is_backfill ? ' ⏪ (ลงย้อนหลัง)' : ''}`,
         `🚗 รถ: ${vehicleLabel}`,
         `🧑‍✈️ คนขับ: ${driverName}`,
         `📍 ปลายทาง: ${destination}`,
         route ? `🗺️ เส้นทาง: ${route}` : undefined,
         `⏰ เวลาออก: ${checkoutAt}`,
         `📏 เลขไมล์เริ่มต้น: ${result.odometer_start?.toLocaleString() ?? data.odometer_start.toLocaleString()} km`,
+        notes ? `📝 หมายเหตุ: ${notes}` : undefined,
       ].filter(Boolean);
 
       const message = messageLines.join('\n');
@@ -447,8 +451,10 @@ export const tripLogService = {
           ? `${hours} ชม. ${minutes} นาที`
           : `${minutes} นาที`;
 
+      const notes = result.notes || trip.notes || data.notes;
+
       const messageLines = [
-        `✅ [รถกลับจากการใช้งาน]`,
+        `✅ [รถกลับจากการใช้งาน]${data.is_backfill ? ' ⏪ (ลงย้อนหลัง)' : ''}`,
         `🚗 รถ: ${vehicleLabel}`,
         `🧑‍✈️ คนขับ: ${driverName}`,
         `📍 ปลายทาง: ${destination}`,
@@ -459,6 +465,7 @@ export const tripLogService = {
         `📏 เลขไมล์กลับ: ${odometerEnd.toLocaleString()} km`,
         `🚘 ระยะทางรวม: ${distance.toLocaleString()} km`,
         `⏳ ระยะเวลาเดินทาง: ${durationLabel}`,
+        notes ? `📝 หมายเหตุ: ${notes}` : undefined,
       ].filter(Boolean);
 
       const message = messageLines.join('\n');
