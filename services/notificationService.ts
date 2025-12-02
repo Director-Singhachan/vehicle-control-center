@@ -9,6 +9,7 @@ export type NotificationEventType =
   | 'ticket_closed'
   | 'trip_started'
   | 'trip_finished'
+  | 'trip_cancelled'
   | 'daily_usage_summary'
   | 'ticket_pdf_for_approval'
   | 'fuel_refill';
