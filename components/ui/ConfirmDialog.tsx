@@ -7,7 +7,7 @@ import { Card } from './Card';
 interface ConfirmDialogProps {
     isOpen: boolean;
     title: string;
-    message: string;
+    message: string | React.ReactNode;
     confirmText?: string;
     cancelText?: string;
     onConfirm: () => void;

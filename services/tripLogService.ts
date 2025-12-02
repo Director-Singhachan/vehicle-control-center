@@ -788,5 +788,161 @@ export const tripLogService = {
 
     return (data || []) as TripLogWithRelations[];
   },
+
+  // Cancel a trip (set status to 'cancelled')
+  cancelTrip: async (tripId: string, reason?: string): Promise<TripLog> => {
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (!user) {
+      throw new Error('User not authenticated');
+    }
+
+    // Get the trip to validate
+    const { data: trip, error: fetchError } = await supabase
+      .from('trip_logs')
+      .select('*')
+      .eq('id', tripId)
+      .single();
+
+    if (fetchError) {
+      throw fetchError;
+    }
+
+    if (!trip) {
+      throw new Error('Trip not found');
+    }
+
+    // Only allow cancelling checked_out trips
+    if (trip.status !== 'checked_out') {
+      throw new Error(`Cannot cancel trip with status: ${trip.status}. Only 'checked_out' trips can be cancelled.`);
+    }
+
+    // Update trip status to cancelled
+    const updateData: TripLogUpdate = {
+      status: 'cancelled',
+      notes: reason ? `${trip.notes || ''}\n[ยกเลิก] ${reason}`.trim() : trip.notes,
+    };
+
+    const { data: result, error } = await supabase
+      .from('trip_logs')
+      .update(updateData)
+      .eq('id', tripId)
+      .select()
+      .single();
+
+    if (error) {
+      console.error('[tripLogService] Error cancelling trip:', error);
+      throw error;
+    }
+
+    // If trip was linked to a delivery trip, update delivery trip status
+    if (trip.delivery_trip_id) {
+      try {
+        const { error: deliveryTripError } = await supabase
+          .from('delivery_trips')
+          .update({
+            status: 'planned', // Reset to planned so it can be used again
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', trip.delivery_trip_id);
+
+        if (deliveryTripError) {
+          console.error('[tripLogService] Error updating delivery trip status:', deliveryTripError);
+          // Don't throw - continue with notification
+        } else {
+          console.log('[tripLogService] Updated delivery trip to planned:', trip.delivery_trip_id);
+        }
+      } catch (deliveryTripError) {
+        console.error('[tripLogService] Error updating delivery trip:', deliveryTripError);
+        // Don't throw - continue with notification
+      }
+    }
+
+    // Create notification event for trip cancelled
+    try {
+      const { data: tripWithRelations } = await supabase
+        .from('trip_logs')
+        .select(`
+          *,
+          vehicle:vehicles(plate, make, model),
+          driver:profiles(full_name),
+          delivery_trip:delivery_trips(id, trip_number, status)
+        `)
+        .eq('id', result.id)
+        .maybeSingle();
+
+      const vehicle = (tripWithRelations as any)?.vehicle as {
+        plate?: string;
+        make?: string | null;
+        model?: string | null;
+      } | null;
+      const driver = (tripWithRelations as any)?.driver as {
+        full_name?: string;
+      } | null;
+
+      const plate = vehicle?.plate || result.vehicle_id;
+      const vehicleLabel = vehicle?.make && vehicle?.model
+        ? `${plate} (${vehicle.make} ${vehicle.model})`
+        : plate;
+
+      const driverName = driver?.full_name || 'ไม่ทราบชื่อผู้ขับ';
+
+      const checkoutDate = new Date(trip.checkout_time);
+      const checkoutAt = checkoutDate.toLocaleString('th-TH', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+
+      const messageLines = [
+        `❌ [ยกเลิกการเดินทาง]`,
+        `🚗 รถ: ${vehicleLabel}`,
+        `🧑‍✈️ คนขับ: ${driverName}`,
+        `⏰ เวลาออก: ${checkoutAt}`,
+        `📏 เลขไมล์เริ่มต้น: ${trip.odometer_start?.toLocaleString() ?? 'N/A'} km`,
+        reason ? `📝 เหตุผล: ${reason}` : undefined,
+      ].filter(Boolean);
+
+      const message = messageLines.join('\n');
+
+      const baseEvent = {
+        event_type: 'trip_cancelled' as const,
+        title: 'ยกเลิกการเดินทาง',
+        message,
+        payload: {
+          trip_id: result.id,
+          vehicle_id: result.vehicle_id,
+          odometer_start: trip.odometer_start,
+          checkout_time: trip.checkout_time,
+          reason: reason || null,
+        },
+      };
+
+      // Telegram (กลุ่มกลาง)
+      await notificationService.createEvent(
+        {
+          channel: 'telegram',
+          ...baseEvent,
+        },
+        user.id,
+      );
+
+      // LINE (กลุ่มกลาง)
+      await notificationService.createEvent(
+        {
+          channel: 'line',
+          ...baseEvent,
+        },
+        user.id,
+      );
+    } catch (notifyError) {
+      console.error('[tripLogService] Failed to create notification event for trip_cancelled:', notifyError);
+      // ไม่ throw ต่อ เพื่อไม่ให้กระทบการยกเลิกทริป
+    }
+
+    return result;
+  },
 };
 

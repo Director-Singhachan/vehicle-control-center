@@ -67,6 +67,7 @@ export interface CreateDeliveryTripData {
   planned_date: string; // ISO date string
   odometer_start?: number;
   notes?: string;
+  sequence_order?: number; // Optional: if not provided, will be auto-calculated
   stores: Array<{
     store_id: string;
     sequence_order: number;
@@ -86,6 +87,7 @@ export interface UpdateDeliveryTripData {
   odometer_end?: number;
   status?: 'planned' | 'in_progress' | 'completed' | 'cancelled';
   notes?: string;
+  sequence_order?: number; // Update sequence order if needed
   stores?: Array<{
     store_id: string;
     sequence_order: number;
@@ -133,9 +135,11 @@ export const deliveryTripService = {
     const to = from + pageSize - 1;
 
     // Build base query
+    // Order by sequence_order first (for trips with same vehicle), then planned_date, then created_at
     let query = supabase
       .from('delivery_trips')
       .select('*', { count: 'exact' })
+      .order('sequence_order', { ascending: true })
       .order('planned_date', { ascending: false })
       .order('created_at', { ascending: false })
       .range(from, to);
@@ -347,6 +351,24 @@ export const deliveryTripService = {
       throw new Error('User not authenticated');
     }
 
+    // Calculate sequence_order if not provided
+    // Get the max sequence_order for this vehicle on the same planned_date
+    let sequenceOrder = data.sequence_order;
+    if (sequenceOrder === undefined) {
+      const { data: existingTrips } = await supabase
+        .from('delivery_trips')
+        .select('sequence_order')
+        .eq('vehicle_id', data.vehicle_id)
+        .eq('planned_date', data.planned_date)
+        .order('sequence_order', { ascending: false })
+        .limit(1);
+
+      const maxSequence = existingTrips && existingTrips.length > 0
+        ? (existingTrips[0].sequence_order || 0)
+        : 0;
+      sequenceOrder = maxSequence + 1;
+    }
+
     // Start transaction-like operation
     // 1. Create delivery trip
     const tripData: DeliveryTripInsert = {
@@ -355,9 +377,10 @@ export const deliveryTripService = {
       planned_date: data.planned_date,
       odometer_start: data.odometer_start,
       notes: data.notes,
+      sequence_order: sequenceOrder,
       created_by: user.id,
       updated_by: user.id,
-    };
+    } as any; // Cast to any because sequence_order might not be in types yet
 
     const { data: trip, error: tripError } = await supabase
       .from('delivery_trips')
@@ -441,8 +464,9 @@ export const deliveryTripService = {
       odometer_end: data.odometer_end,
       status: data.status,
       notes: data.notes,
+      sequence_order: data.sequence_order,
       updated_by: user.id,
-    };
+    } as any; // Cast to any because sequence_order might not be in types yet
 
     // Remove undefined fields
     Object.keys(updateData).forEach(key => {
@@ -759,6 +783,106 @@ export const deliveryTripService = {
       console.error('[deliveryTripService] Error deleting trip:', error);
       throw error;
     }
+  },
+
+  // Cancel delivery trip (set status to 'cancelled')
+  cancel: async (id: string, reason?: string): Promise<DeliveryTripWithRelations> => {
+    console.log('[deliveryTripService] cancel called with:', { id, reason: reason ? 'provided' : 'none' });
+    
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+    if (authError) {
+      console.error('[deliveryTripService] Auth error:', authError);
+      throw new Error('Authentication error: ' + authError.message);
+    }
+
+    if (!user) {
+      console.error('[deliveryTripService] User not authenticated');
+      throw new Error('User not authenticated');
+    }
+
+    console.log('[deliveryTripService] User authenticated:', user.id);
+
+    // Get the trip to validate
+    console.log('[deliveryTripService] Fetching trip:', id);
+    const trip = await deliveryTripService.getById(id);
+    if (!trip) {
+      console.error('[deliveryTripService] Trip not found:', id);
+      throw new Error('Trip not found');
+    }
+
+    console.log('[deliveryTripService] Trip found:', {
+      id: trip.id,
+      trip_number: trip.trip_number,
+      status: trip.status,
+      vehicle_id: trip.vehicle_id,
+    });
+
+    // Only allow cancelling planned or in_progress trips
+    if (trip.status === 'completed') {
+      console.error('[deliveryTripService] Cannot cancel completed trip');
+      throw new Error('ไม่สามารถยกเลิกทริปที่จัดส่งเสร็จแล้วได้');
+    }
+
+    if (trip.status === 'cancelled') {
+      console.error('[deliveryTripService] Trip already cancelled');
+      throw new Error('ทริปนี้ถูกยกเลิกไปแล้ว');
+    }
+
+    if (trip.status !== 'planned' && trip.status !== 'in_progress') {
+      console.error('[deliveryTripService] Invalid status for cancellation:', trip.status);
+      throw new Error(`ไม่สามารถยกเลิกทริปที่มีสถานะ "${trip.status}" ได้ (ยกเลิกได้เฉพาะทริปที่ "รอจัดส่ง" หรือ "กำลังจัดส่ง")`);
+    }
+
+    // Update trip status to cancelled
+    const updateData: DeliveryTripUpdate = {
+      status: 'cancelled',
+      notes: reason ? `${trip.notes || ''}\n[ยกเลิก] ${reason}`.trim() : trip.notes,
+      updated_by: user.id,
+    } as any;
+
+    console.log('[deliveryTripService] Updating trip with data:', {
+      status: updateData.status,
+      has_notes: !!updateData.notes,
+      updated_by: updateData.updated_by,
+    });
+
+    const { data: updatedData, error: updateError } = await supabase
+      .from('delivery_trips')
+      .update(updateData)
+      .eq('id', id)
+      .select();
+
+    if (updateError) {
+      console.error('[deliveryTripService] Error cancelling trip:', {
+        error: updateError,
+        code: updateError.code,
+        message: updateError.message,
+        details: updateError.details,
+        hint: updateError.hint,
+      });
+      
+      // Provide more specific error messages
+      if (updateError.code === '42501') {
+        throw new Error('คุณไม่มีสิทธิ์ในการยกเลิกทริปนี้ (ต้องเป็น Admin, Manager, Inspector หรือคนขับของทริปนี้)');
+      } else if (updateError.code === 'PGRST116') {
+        throw new Error('ไม่พบทริปที่ต้องการยกเลิก');
+      } else {
+        throw new Error(`เกิดข้อผิดพลาดในการยกเลิกทริป: ${updateError.message || 'Unknown error'}`);
+      }
+    }
+
+    console.log('[deliveryTripService] Trip updated successfully:', updatedData?.[0]?.id);
+
+    // Return updated trip
+    const updatedTrip = await deliveryTripService.getById(id);
+    if (!updatedTrip) {
+      console.error('[deliveryTripService] Failed to retrieve cancelled trip');
+      throw new Error('ไม่สามารถดึงข้อมูลทริปที่ยกเลิกแล้วได้');
+    }
+
+    console.log('[deliveryTripService] Cancel completed successfully');
+    return updatedTrip;
   },
 
   // Get aggregated products for a trip (all products across all stores)

@@ -552,7 +552,7 @@ export interface Database {
           destination: string | null;
           route: string | null;
           notes: string | null;
-          status: 'checked_out' | 'checked_in';
+          status: 'checked_out' | 'checked_in' | 'cancelled';
           created_at: string;
           updated_at: string;
         };
