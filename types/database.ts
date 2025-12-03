@@ -625,6 +625,188 @@ export interface Database {
           changes?: Json | null;
         };
       };
+      service_staff: {
+        Row: {
+          id: string;
+          name: string;
+          status: 'active' | 'sick' | 'leave' | 'inactive';
+          default_team: string | null;
+          phone: string | null;
+          employee_code: string | null;
+          notes: string | null;
+          created_at: string;
+          updated_at: string;
+          created_by: string | null;
+          updated_by: string | null;
+        };
+        Insert: {
+          id?: string;
+          name: string;
+          status?: 'active' | 'sick' | 'leave' | 'inactive';
+          default_team?: string | null;
+          phone?: string | null;
+          employee_code?: string | null;
+          notes?: string | null;
+          created_at?: string;
+          updated_at?: string;
+          created_by?: string | null;
+          updated_by?: string | null;
+        };
+        Update: {
+          id?: string;
+          name?: string;
+          status?: 'active' | 'sick' | 'leave' | 'inactive';
+          default_team?: string | null;
+          phone?: string | null;
+          employee_code?: string | null;
+          notes?: string | null;
+          created_at?: string;
+          updated_at?: string;
+          created_by?: string | null;
+          updated_by?: string | null;
+        };
+      };
+      commission_rates: {
+        Row: {
+          id: string;
+          rate_name: string;
+          vehicle_type: string | null;
+          service_type: string | null;
+          rate_per_unit: number;
+          is_active: boolean;
+          effective_from: string;
+          effective_until: string | null;
+          notes: string | null;
+          created_at: string;
+          updated_at: string;
+          created_by: string | null;
+          updated_by: string | null;
+        };
+        Insert: {
+          id?: string;
+          rate_name: string;
+          vehicle_type?: string | null;
+          service_type?: string | null;
+          rate_per_unit?: number;
+          is_active?: boolean;
+          effective_from?: string;
+          effective_until?: string | null;
+          notes?: string | null;
+          created_at?: string;
+          updated_at?: string;
+          created_by?: string | null;
+          updated_by?: string | null;
+        };
+        Update: {
+          id?: string;
+          rate_name?: string;
+          vehicle_type?: string | null;
+          service_type?: string | null;
+          rate_per_unit?: number;
+          is_active?: boolean;
+          effective_from?: string;
+          effective_until?: string | null;
+          notes?: string | null;
+          created_at?: string;
+          updated_at?: string;
+          created_by?: string | null;
+          updated_by?: string | null;
+        };
+      };
+      delivery_trip_crews: {
+        Row: {
+          id: string;
+          delivery_trip_id: string;
+          staff_id: string;
+          role: 'driver' | 'helper';
+          status: 'active' | 'removed' | 'replaced';
+          start_at: string;
+          end_at: string | null;
+          replaced_by_staff_id: string | null;
+          reason_for_change: string | null;
+          notes: string | null;
+          created_at: string;
+          updated_at: string;
+          created_by: string | null;
+          updated_by: string | null;
+        };
+        Insert: {
+          id?: string;
+          delivery_trip_id: string;
+          staff_id: string;
+          role: 'driver' | 'helper';
+          status?: 'active' | 'removed' | 'replaced';
+          start_at?: string;
+          end_at?: string | null;
+          replaced_by_staff_id?: string | null;
+          reason_for_change?: string | null;
+          notes?: string | null;
+          created_at?: string;
+          updated_at?: string;
+          created_by?: string | null;
+          updated_by?: string | null;
+        };
+        Update: {
+          id?: string;
+          delivery_trip_id?: string;
+          staff_id?: string;
+          role?: 'driver' | 'helper';
+          status?: 'active' | 'removed' | 'replaced';
+          start_at?: string;
+          end_at?: string | null;
+          replaced_by_staff_id?: string | null;
+          reason_for_change?: string | null;
+          notes?: string | null;
+          created_at?: string;
+          updated_at?: string;
+          created_by?: string | null;
+          updated_by?: string | null;
+        };
+      };
+      commission_logs: {
+        Row: {
+          id: string;
+          delivery_trip_id: string;
+          staff_id: string;
+          total_items_delivered: number;
+          rate_applied: number;
+          commission_amount: number;
+          work_percentage: number;
+          actual_commission: number;
+          calculation_date: string;
+          calculated_by: string | null;
+          notes: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          delivery_trip_id: string;
+          staff_id: string;
+          total_items_delivered?: number;
+          rate_applied: number;
+          commission_amount: number;
+          work_percentage?: number;
+          actual_commission: number;
+          calculation_date?: string;
+          calculated_by?: string | null;
+          notes?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          delivery_trip_id?: string;
+          staff_id?: string;
+          total_items_delivered?: number;
+          rate_applied?: number;
+          commission_amount?: number;
+          work_percentage?: number;
+          actual_commission?: number;
+          calculation_date?: string;
+          calculated_by?: string | null;
+          notes?: string | null;
+          created_at?: string;
+        };
+      };
     };
     Views: {
       vehicle_dashboard: {

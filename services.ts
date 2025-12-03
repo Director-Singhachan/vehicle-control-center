@@ -31,6 +31,9 @@ export { tripLogService, type TripLogWithRelations, type CheckoutData, type Chec
 // Daily Summary Service
 export { dailySummaryService, type DailySummary, type DailyVehicleSummary } from './services/dailySummaryService';
 
+// Crew Service
+export { crewService, type CrewMemberWithDetails, type CommissionCalculationResult } from './services/crewService';
+
 // Legacy Vehicle interface for backward compatibility
 export interface Vehicle {
   id: string;

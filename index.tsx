@@ -20,6 +20,9 @@ import {
   Droplet,
   Calendar,
   Package,
+  Users,
+  DollarSign,
+  Settings as SettingsIcon,
 } from 'lucide-react';
 import { DashboardView } from './views/DashboardView';
 import { ProfileView } from './views/ProfileView';
@@ -42,6 +45,9 @@ import { DeliveryTripListView } from './views/DeliveryTripListView';
 import { DeliveryTripFormView } from './views/DeliveryTripFormView';
 import { DeliveryTripDetailView } from './views/DeliveryTripDetailView';
 import { StoreDeliveryDetailView } from './views/StoreDeliveryDetailView';
+import { ServiceStaffManagementView } from './views/ServiceStaffManagementView';
+import { CommissionManagementView } from './views/CommissionManagementView';
+import { CommissionRatesView } from './views/CommissionRatesView';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { useAuth, usePendingTickets } from './hooks';
 import { ticketService, type TicketWithRelations } from './services/ticketService';
@@ -89,7 +95,7 @@ const AppContent = () => {
     // We'll check this in useEffect after profile loads
     return 'dashboard';
   });
-  
+
   // Reset ticketView to 'list' when switching to maintenance tab
   // This ensures we always start with the list view when opening maintenance tab
   useEffect(() => {
@@ -110,7 +116,7 @@ const AppContent = () => {
       }
     }
   }, [activeTab]); // Only depend on activeTab to reset when tab changes
-  
+
   // Track viewport width to tailor driver experience on mobile
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -353,7 +359,7 @@ const AppContent = () => {
           )}
         </div>
 
-        <div className="flex-1 px-3 space-y-1 mt-4">
+        <div className="flex-1 px-3 space-y-1 mt-4 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-700 scrollbar-track-transparent hover:scrollbar-thumb-gray-400 dark:hover:scrollbar-thumb-gray-600">
           {!isDriver && (
             <SidebarItem
               icon={LayoutDashboard}
@@ -454,6 +460,42 @@ const AppContent = () => {
               isCollapsed={!isSidebarOpen}
             />
           )}
+          {!isDriver && (
+            <SidebarItem
+              icon={Users}
+              label={isSidebarOpen ? "จัดการพนักงาน" : ""}
+              active={activeTab === 'service-staff'}
+              onClick={() => setActiveTab('service-staff')}
+              isCollapsed={!isSidebarOpen}
+            />
+          )}
+
+          {/* Commission Section */}
+          {!isDriver && isSidebarOpen && (
+            <div className="px-4 pt-4 pb-2">
+              <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                ค่าคอมมิชชั่น
+              </p>
+            </div>
+          )}
+          {!isDriver && (
+            <SidebarItem
+              icon={DollarSign}
+              label={isSidebarOpen ? "คำนวณค่าคอมฯ" : ""}
+              active={activeTab === 'commission'}
+              onClick={() => setActiveTab('commission')}
+              isCollapsed={!isSidebarOpen}
+            />
+          )}
+          {!isDriver && (
+            <SidebarItem
+              icon={SettingsIcon}
+              label={isSidebarOpen ? "ตั้งค่าอัตราค่าคอมฯ" : ""}
+              active={activeTab === 'commission-rates'}
+              onClick={() => setActiveTab('commission-rates')}
+              isCollapsed={!isSidebarOpen}
+            />
+          )}
         </div>
 
         <div className="p-3 border-t border-slate-200 dark:border-slate-800/50 space-y-1">
@@ -523,7 +565,7 @@ const AppContent = () => {
               </button>
 
               {showNotifications && (
-                <div 
+                <div
                   data-notification-dropdown
                   className="absolute right-0 mt-2 w-80 sm:w-96 bg-white dark:bg-charcoal-900 border border-slate-200 dark:border-slate-700 rounded-xl shadow-xl z-20 overflow-hidden"
                 >
@@ -661,10 +703,10 @@ const AppContent = () => {
             (() => {
               console.log('[AppContent] ✅✅✅ ENTERED vehicles branch!');
               console.log('[AppContent] ✅ activeTab is vehicles, vehicleView:', vehicleView, 'selectedVehicleId:', selectedVehicleId);
-              
+
               // Fix: If vehicleView is 'detail' but no selectedVehicleId, show list instead
               const effectiveView = (vehicleView === 'detail' && !selectedVehicleId) ? 'list' : vehicleView;
-              
+
               if (effectiveView === 'list') {
                 console.log('[AppContent] ✅ Rendering VehiclesView (list)');
                 return (
@@ -732,13 +774,13 @@ const AppContent = () => {
             })()
           ) : activeTab === 'maintenance' ? (
             (() => {
-              console.log('[AppContent] Maintenance tab - rendering:', { 
-                isDriver, 
-                ticketView, 
+              console.log('[AppContent] Maintenance tab - rendering:', {
+                isDriver,
+                ticketView,
                 selectedTicketId,
                 willRenderTicketsView: !isDriver && ticketView === 'list'
               });
-              
+
               // For drivers, show the form by default if they are in list view
               if (isDriver && ticketView === 'list') {
                 return (
@@ -822,7 +864,7 @@ const AppContent = () => {
                   />
                 );
               }
-              
+
               // Fallback: Show TicketsView if state is invalid
               console.warn('[AppContent] Invalid state, resetting and showing TicketsView');
               // Reset state immediately using setTimeout to avoid state update during render
@@ -1039,7 +1081,7 @@ const AppContent = () => {
                 isDark={isDark}
               />
             ) : (
-              <ReportsView 
+              <ReportsView
                 isDark={isDark}
                 onNavigateToStoreDetail={(storeId) => {
                   setSelectedStoreId(storeId);
@@ -1108,6 +1150,12 @@ const AppContent = () => {
                 );
               }
             })()
+          ) : activeTab === 'service-staff' ? (
+            <ServiceStaffManagementView />
+          ) : activeTab === 'commission' ? (
+            <CommissionManagementView />
+          ) : activeTab === 'commission-rates' ? (
+            <CommissionRatesView />
           ) : (
             <div className="flex flex-col items-center justify-center h-[60vh] text-slate-400">
               <Wrench size={48} className="mb-4 opacity-50" />
