@@ -23,6 +23,7 @@ import { PageLayout } from '../components/layout/PageLayout';
 import { useDeliveryTrip } from '../hooks';
 import { deliveryTripService } from '../services/deliveryTripService';
 import { pdfService } from '../services/pdfService';
+import { CrewAssignment } from '../components/crew/CrewAssignment';
 import type {
   DeliveryTripStoreWithDetails,
   DeliveryTripItemWithProduct,
@@ -440,15 +441,15 @@ export const DeliveryTripDetailView: React.FC<DeliveryTripDetailViewProps> = ({
                             effectiveStatus === 'delivered'
                               ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
                               : effectiveStatus === 'failed'
-                              ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
-                              : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200';
+                                ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
+                                : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200';
 
                           const label =
                             effectiveStatus === 'delivered'
                               ? 'ส่งแล้ว'
                               : effectiveStatus === 'failed'
-                              ? 'ส่งไม่สำเร็จ'
-                              : 'รอส่ง';
+                                ? 'ส่งไม่สำเร็จ'
+                                : 'รอส่ง';
 
                           return (
                             <span className={`px-2 py-1 rounded text-xs ${className}`}>
@@ -596,6 +597,15 @@ export const DeliveryTripDetailView: React.FC<DeliveryTripDetailViewProps> = ({
         </Card>
       )}
 
+      {/* Crew Assignment Section */}
+      <CrewAssignment
+        tripId={trip.id}
+        tripStatus={trip.status}
+        onUpdate={() => {
+          refetch();
+        }}
+      />
+
       {/* Item Change History (Audit Log) */}
       <Card>
         <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-4 flex items-center gap-2">
@@ -624,8 +634,8 @@ export const DeliveryTripDetailView: React.FC<DeliveryTripDetailViewProps> = ({
                 change.action === 'add'
                   ? 'เพิ่มรายการ'
                   : change.action === 'remove'
-                  ? 'ลบรายการ'
-                  : 'แก้ไขจำนวน';
+                    ? 'ลบรายการ'
+                    : 'แก้ไขจำนวน';
 
               const storeLabel = change.store
                 ? `${change.store.customer_code} - ${change.store.customer_name}`
@@ -655,13 +665,13 @@ export const DeliveryTripDetailView: React.FC<DeliveryTripDetailViewProps> = ({
                       ปริมาณ:{' '}
                       {change.old_quantity != null && change.new_quantity != null
                         ? `${Number(change.old_quantity).toLocaleString()} → ${Number(
-                            change.new_quantity,
-                          ).toLocaleString()}`
+                          change.new_quantity,
+                        ).toLocaleString()}`
                         : change.old_quantity != null
-                        ? `${Number(change.old_quantity).toLocaleString()} → 0`
-                        : change.new_quantity != null
-                        ? `0 → ${Number(change.new_quantity).toLocaleString()}`
-                        : '-'}
+                          ? `${Number(change.old_quantity).toLocaleString()} → 0`
+                          : change.new_quantity != null
+                            ? `0 → ${Number(change.new_quantity).toLocaleString()}`
+                            : '-'}
                     </div>
                     {change.reason && (
                       <div className="mt-1 text-slate-600 dark:text-slate-300">
