@@ -151,18 +151,18 @@ export const CrewAssignment: React.FC<CrewAssignmentProps> = ({
 
             {/* Add Crew Form */}
             {showAddCrew && canModifyCrew && (
-                <div className="mb-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
-                    <h4 className="font-medium mb-3">เพิ่มพนักงาน</h4>
+                <div className="mb-4 p-4 bg-gray-50 dark:bg-slate-900/40 rounded-lg border border-gray-200 dark:border-slate-700">
+                    <h4 className="font-medium mb-3 text-gray-900 dark:text-slate-100">เพิ่มพนักงาน</h4>
 
                     <div className="space-y-3">
                         <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">
+                            <label className="block text-sm font-medium text-gray-700 dark:text-slate-200 mb-1">
                                 ตำแหน่ง
                             </label>
                             <select
                                 value={selectedRole}
                                 onChange={(e) => setSelectedRole(e.target.value as any)}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                                className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 text-gray-900 dark:text-slate-100 focus:ring-2 focus:ring-blue-500"
                             >
                                 <option value="driver">คนขับ</option>
                                 <option value="helper">ผู้ช่วย</option>
@@ -170,19 +170,19 @@ export const CrewAssignment: React.FC<CrewAssignmentProps> = ({
                         </div>
 
                         <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">
+                            <label className="block text-sm font-medium text-gray-700 dark:text-slate-200 mb-1">
                                 เลือกพนักงาน
                             </label>
-                            <div className="max-h-48 overflow-y-auto border border-gray-300 rounded-lg">
+                            <div className="max-h-48 overflow-y-auto border border-gray-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-900">
                                 {loadingStaff ? (
-                                    <div className="p-4 text-center text-gray-500">กำลังโหลด...</div>
+                                    <div className="p-4 text-center text-gray-500 dark:text-slate-400">กำลังโหลด...</div>
                                 ) : getAvailableStaffForSelection().length === 0 ? (
-                                    <div className="p-4 text-center text-gray-500">ไม่มีพนักงานที่พร้อมใช้งาน</div>
+                                    <div className="p-4 text-center text-gray-500 dark:text-slate-400">ไม่มีพนักงานที่พร้อมใช้งาน</div>
                                 ) : (
                                     getAvailableStaffForSelection().map((staff) => (
                                         <label
                                             key={staff.id}
-                                            className="flex items-center gap-2 p-2 hover:bg-gray-50 cursor-pointer"
+                                            className="flex items-center gap-2 p-2 hover:bg-gray-50 dark:hover:bg-slate-800 cursor-pointer"
                                         >
                                             <input
                                                 type="checkbox"
@@ -194,11 +194,11 @@ export const CrewAssignment: React.FC<CrewAssignmentProps> = ({
                                                         setSelectedStaffIds(selectedStaffIds.filter(id => id !== staff.id));
                                                     }
                                                 }}
-                                                className="rounded border-gray-300"
+                                                className="rounded border-gray-300 dark:border-slate-600"
                                             />
-                                            <span className="flex-1">{staff.name}</span>
+                                            <span className="flex-1 text-gray-900 dark:text-slate-100">{staff.name}</span>
                                             {staff.employee_code && (
-                                                <span className="text-xs text-gray-500">{staff.employee_code}</span>
+                                                <span className="text-xs text-gray-500 dark:text-slate-400">{staff.employee_code}</span>
                                             )}
                                             {getStatusBadge(staff.status)}
                                         </label>
