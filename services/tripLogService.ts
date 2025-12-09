@@ -28,7 +28,8 @@ export interface TripLogWithRelations extends TripLog {
 
 export interface CheckoutData {
   vehicle_id: string;
-  odometer_start: number;
+  odometer_start?: number; // Optional when using manual_distance_km
+  manual_distance_km?: number; // For vehicles with broken odometers
   checkout_time?: string; // ISO string - optional, defaults to now()
   destination?: string;
   route?: string;
@@ -37,7 +38,8 @@ export interface CheckoutData {
 }
 
 export interface CheckinData {
-  odometer_end: number;
+  odometer_end?: number; // Optional when using manual_distance_km
+  manual_distance_km?: number; // For vehicles with broken odometers
   destination?: string;
   route?: string;
   notes?: string;
@@ -86,7 +88,8 @@ export const tripLogService = {
     const tripLog: TripLogInsert = {
       vehicle_id: data.vehicle_id,
       driver_id: user.id,
-      odometer_start: data.odometer_start,
+      odometer_start: data.odometer_start || null,
+      manual_distance_km: data.manual_distance_km || null,
       checkout_time: checkoutTime,
       destination: data.destination,
       route: data.route,
@@ -181,7 +184,8 @@ export const tripLogService = {
         `📍 ปลายทาง: ${destination}`,
         route ? `🗺️ เส้นทาง: ${route}` : undefined,
         `⏰ เวลาออก: ${checkoutAt}`,
-        `📏 เลขไมล์เริ่มต้น: ${result.odometer_start?.toLocaleString() ?? data.odometer_start.toLocaleString()} km`,
+        result.odometer_start ? `📏 เลขไมล์เริ่มต้น: ${result.odometer_start.toLocaleString()} km` : undefined,
+        result.manual_distance_km ? `📏 ระบุระยะทางเอง: ${result.manual_distance_km.toLocaleString()} km (เลขไมล์เสีย)` : undefined,
         notes ? `📝 หมายเหตุ: ${notes}` : undefined,
       ].filter(Boolean);
 
@@ -259,9 +263,14 @@ export const tripLogService = {
       throw new Error('Trip already checked in');
     }
 
-    // Validate odometer
-    if (data.odometer_end <= trip.odometer_start) {
-      throw new Error('Odometer end must be greater than odometer start');
+    // Validate based on mode (odometer vs manual distance)
+    const isManualDistanceMode = trip.manual_distance_km !== null || data.manual_distance_km !== null;
+
+    if (!isManualDistanceMode) {
+      // Normal odometer mode - validate odometer readings
+      if (data.odometer_end && trip.odometer_start && data.odometer_end <= trip.odometer_start) {
+        throw new Error('Odometer end must be greater than odometer start');
+      }
     }
 
     // Note: Distance validation (e.g., > 500km) should be handled at UI level with user confirmation
@@ -271,7 +280,8 @@ export const tripLogService = {
     const checkinTime = data.checkin_time || new Date().toISOString();
 
     const updateData: TripLogUpdate = {
-      odometer_end: data.odometer_end,
+      odometer_end: data.odometer_end || null,
+      manual_distance_km: data.manual_distance_km || trip.manual_distance_km || null,
       checkin_time: checkinTime,
       status: 'checked_in',
       destination: data.destination ?? trip.destination,
@@ -325,7 +335,7 @@ export const tripLogService = {
             new_status: 'completed',
             odometer_end: data.odometer_end,
           });
-          
+
           // Update delivery trip to completed and set odometer_end
           const { error: updateError } = await supabase
             .from('delivery_trips')
@@ -446,9 +456,11 @@ export const tripLogService = {
       const destination = result.destination || trip.destination || 'ไม่ระบุ';
       const route = result.route || trip.route;
 
-      const odometerStart = trip.odometer_start;
-      const odometerEnd = result.odometer_end!;
-      const distance = odometerEnd - odometerStart;
+      // Calculate distance based on mode
+      const isManualMode = result.manual_distance_km !== null;
+      const distance = isManualMode
+        ? result.manual_distance_km!
+        : (result.odometer_end && trip.odometer_start ? result.odometer_end - trip.odometer_start : 0);
 
       // คำนวณระยะเวลาเดินทาง
       const diffMs = checkinDate.getTime() - checkoutDate.getTime();
@@ -470,9 +482,10 @@ export const tripLogService = {
         route ? `🗺️ เส้นทาง: ${route}` : undefined,
         `⏰ เวลาออก: ${checkoutAt}`,
         `⏱️ เวลากลับ: ${checkinAt}`,
-        `📏 เลขไมล์ออก: ${odometerStart.toLocaleString()} km`,
-        `📏 เลขไมล์กลับ: ${odometerEnd.toLocaleString()} km`,
-        `🚘 ระยะทางรวม: ${distance.toLocaleString()} km`,
+        // Show odometer info only if not in manual mode
+        !isManualMode && trip.odometer_start ? `📏 เลขไมล์ออก: ${trip.odometer_start.toLocaleString()} km` : undefined,
+        !isManualMode && result.odometer_end ? `📏 เลขไมล์กลับ: ${result.odometer_end.toLocaleString()} km` : undefined,
+        `🚘 ระยะทางรวม: ${distance.toLocaleString()} km${isManualMode ? ' (ระบุเอง - เลขไมล์เสีย)' : ''}`,
         `⏳ ระยะเวลาเดินทาง: ${durationLabel}`,
         notes ? `📝 หมายเหตุ: ${notes}` : undefined,
       ].filter(Boolean);

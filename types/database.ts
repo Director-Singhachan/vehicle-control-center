@@ -543,7 +543,8 @@ export interface Database {
           id: string;
           vehicle_id: string;
           driver_id: string;
-          odometer_start: number;
+          odometer_start: number | null;
+          manual_distance_km: number | null;
           checkout_time: string;
           odometer_end: number | null;
           checkin_time: string | null;
@@ -560,7 +561,8 @@ export interface Database {
           id?: string;
           vehicle_id: string;
           driver_id: string;
-          odometer_start: number;
+          odometer_start?: number | null;
+          manual_distance_km?: number | null;
           checkout_time?: string;
           odometer_end?: number | null;
           checkin_time?: string | null;
@@ -578,7 +580,8 @@ export interface Database {
           id?: string;
           vehicle_id?: string;
           driver_id?: string;
-          odometer_start?: number;
+          odometer_start?: number | null;
+          manual_distance_km?: number | null;
           checkout_time?: string;
           odometer_end?: number | null;
           checkin_time?: string | null;
