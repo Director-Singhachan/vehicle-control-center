@@ -84,8 +84,10 @@ export const TripLogFormView: React.FC<TripLogFormViewProps> = ({
     destination: '',
     route: '',
     notes: '',
+    manual_distance: '', // For manual distance entry
   });
   const [isBackfillMode, setIsBackfillMode] = useState(false); // Toggle for backfill mode
+  const [isManualDistanceMode, setIsManualDistanceMode] = useState(false); // Toggle for manual distance mode
 
   const [odometerValidation, setOdometerValidation] = useState<{
     valid: boolean;
@@ -313,17 +315,17 @@ export const TripLogFormView: React.FC<TripLogFormViewProps> = ({
         // This ensures destination is always filled, even after re-renders
         setFormData(prev => {
           // Check if this is user's manual input (different from our auto-fill)
-          const isUserInput = prev.destination && 
-                             prev.destination !== autoFilledDestinationRef.current &&
-                             autoFilledDestinationRef.current !== null &&
-                             prev.destination.trim() !== '';
-          
+          const isUserInput = prev.destination &&
+            prev.destination !== autoFilledDestinationRef.current &&
+            autoFilledDestinationRef.current !== null &&
+            prev.destination.trim() !== '';
+
           if (!isUserInput) {
             // Update destination - either it's empty or matches our auto-fill
             autoFilledDestinationRef.current = destinations;
             lastActiveDeliveryTripIdRef.current = currentTripId;
             shouldPreserveDestinationRef.current = true;
-            
+
             // Always set destination, even if it's the same (prevents it from disappearing)
             return {
               ...prev,
@@ -460,10 +462,21 @@ export const TripLogFormView: React.FC<TripLogFormViewProps> = ({
       return;
     }
 
-    const odometerValue = parseInt(formData.odometer);
-    if (isNaN(odometerValue) || odometerValue <= 0) {
-      setError('กรุณากรอกเลขไมล์ที่ถูกต้อง');
-      return;
+    // Validate based on mode
+    if (isManualDistanceMode) {
+      // Manual distance mode - validate manual distance
+      const manualDistance = parseInt(formData.manual_distance);
+      if (isNaN(manualDistance) || manualDistance <= 0) {
+        setError('กรุณากรอกระยะทางที่ถูกต้อง');
+        return;
+      }
+    } else {
+      // Normal odometer mode - validate odometer
+      const odometerValue = parseInt(formData.odometer);
+      if (isNaN(odometerValue) || odometerValue <= 0) {
+        setError('กรุณากรอกเลขไมล์ที่ถูกต้อง');
+        return;
+      }
     }
 
     // Validate destination for checkout mode
@@ -486,7 +499,8 @@ export const TripLogFormView: React.FC<TripLogFormViewProps> = ({
 
         await checkout({
           vehicle_id: selectedVehicleId,
-          odometer_start: odometerValue,
+          odometer_start: isManualDistanceMode ? undefined : parseInt(formData.odometer),
+          manual_distance_km: isManualDistanceMode ? parseInt(formData.manual_distance) : undefined,
           checkout_time: isBackfillMode && formData.checkout_time ? formData.checkout_time : undefined,
           destination: formData.destination || undefined,
           route: formData.route || undefined,
@@ -531,62 +545,73 @@ export const TripLogFormView: React.FC<TripLogFormViewProps> = ({
           return;
         }
 
-        // Validate odometer_end > odometer_start
-        const tripStart = tripData?.odometer_start || selectedTrip?.odometer_start;
-        if (tripStart && odometerValue <= tripStart) {
-          setError(`เลขไมล์กลับ (${odometerValue.toLocaleString()}) ต้องมากกว่าเลขไมล์ออก (${tripStart.toLocaleString()})`);
-          setSaving(false);
-          return;
-        }
+        // Check if trip is in manual distance mode
+        const tripIsManualMode = tripData?.manual_distance_km !== null;
 
-        // Validate distance > 500 km - show confirmation instead of blocking
-        if (tripStart && (odometerValue - tripStart) > 500) {
-          const distance = odometerValue - tripStart;
-          setPendingDistance(distance);
-          setPendingSubmit(() => async () => {
-            // Proceed with check-in
-            await checkin(selectedTripId, {
-              odometer_end: odometerValue,
-              checkin_time: isBackfillMode && formData.checkin_time ? formData.checkin_time : undefined,
-              notes: formData.notes || undefined,
-              is_backfill: isBackfillMode,
-            });
+        if (!tripIsManualMode && !isManualDistanceMode) {
+          // Normal odometer mode - validate odometer readings
+          const odometerValue = parseInt(formData.odometer);
+          const tripStart = tripData?.odometer_start || selectedTrip?.odometer_start;
 
-            setSuccessMode('checkin');
-            setSuccess(true);
-            refetchActiveTrips();
+          if (tripStart && odometerValue <= tripStart) {
+            setError(`เลขไมล์กลับ (${odometerValue.toLocaleString()}) ต้องมากกว่าเลขไมล์ออก (${tripStart.toLocaleString()})`);
+            setSaving(false);
+            return;
+          }
 
-            setTimeout(() => {
-              setFormData({
-                odometer: '',
-                checkout_time: '',
-                destination: '',
-                route: '',
-                notes: '',
+          // Validate distance > 500 km - show confirmation instead of blocking
+          if (tripStart && (odometerValue - tripStart) > 500) {
+            const distance = odometerValue - tripStart;
+            setPendingDistance(distance);
+            setPendingSubmit(() => async () => {
+              // Proceed with check-in
+              await checkin(selectedTripId, {
+                odometer_end: odometerValue,
+                checkin_time: isBackfillMode && formData.checkin_time ? formData.checkin_time : undefined,
+                notes: formData.notes || undefined,
+                is_backfill: isBackfillMode,
               });
-              setSelectedVehicleId('');
-              setSelectedTripId('');
-              setVehicleSearchQuery('');
-              setTripData(null);
-              setOdometerValidation(null);
-              setShowVehicleDropdown(false);
-              setUserMismatch(false);
-              setSuccessMode(null);
-              setSuccess(false);
-              setError(null);
-              setIsBackfillMode(false);
-              setMode('checkout');
-              if (onSave) onSave();
-            }, 1500);
-          });
-          setShowDistanceConfirm(true);
-          setSaving(false);
-          return;
+
+              setSuccessMode('checkin');
+              setSuccess(true);
+              refetchActiveTrips();
+
+              setTimeout(() => {
+                setFormData({
+                  odometer: '',
+                  checkout_time: '',
+                  checkin_time: '',
+                  destination: '',
+                  route: '',
+                  notes: '',
+                  manual_distance: '',
+                });
+                setSelectedVehicleId('');
+                setSelectedTripId('');
+                setVehicleSearchQuery('');
+                setTripData(null);
+                setOdometerValidation(null);
+                setShowVehicleDropdown(false);
+                setUserMismatch(false);
+                setSuccessMode(null);
+                setSuccess(false);
+                setError(null);
+                setIsBackfillMode(false);
+                setIsManualDistanceMode(false);
+                setMode('checkout');
+                if (onSave) onSave();
+              }, 1500);
+            });
+            setShowDistanceConfirm(true);
+            setSaving(false);
+            return;
+          }
         }
 
-        // For check-in, send odometer_end (and optional backfill checkin_time)
+        // For check-in, send odometer_end or manual_distance_km based on mode
         await checkin(selectedTripId, {
-          odometer_end: odometerValue,
+          odometer_end: (!tripIsManualMode && !isManualDistanceMode) ? parseInt(formData.odometer) : undefined,
+          manual_distance_km: (tripIsManualMode || isManualDistanceMode) ? parseInt(formData.manual_distance) : undefined,
           checkin_time: isBackfillMode && formData.checkin_time ? formData.checkin_time : undefined,
           notes: formData.notes || undefined,
           is_backfill: isBackfillMode,
@@ -1224,38 +1249,94 @@ export const TripLogFormView: React.FC<TripLogFormViewProps> = ({
               </div>
             )}
 
-            <div>
-              <Input
-                label={
-                  <span className="flex items-center gap-2">
-                    <Gauge size={18} />
-                    {mode === 'checkout' ? 'เลขไมล์ออก' : 'เลขไมล์กลับ'}
-                  </span>
-                }
-                type="number"
-                value={formData.odometer}
-                onChange={(e) => setFormData({ ...formData, odometer: e.target.value })}
-                placeholder="กรอกเลขไมล์"
-                required
-                min={0}
-                error={odometerValidation && !odometerValidation.valid ? odometerValidation.warning : undefined}
-                helperText={
-                  mode === 'checkin' && tripData
-                    ? `เลขไมล์ออก: ${tripData.odometer_start.toLocaleString()} km`
-                    : odometerValidation?.lastOdometer
-                      ? `เลขไมล์ล่าสุด: ${odometerValidation.lastOdometer.toLocaleString()} km (กรอกอัตโนมัติ)`
-                      : mode === 'checkout'
-                        ? 'เลขไมล์จะถูกกรอกอัตโนมัติเมื่อเลือกรถ'
-                        : undefined
-                }
-              />
-              {odometerValidation?.warning && odometerValidation.valid && (
-                <div className="mt-2 p-2 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded flex items-start gap-2 text-amber-800 dark:text-amber-200 text-sm">
-                  <AlertTriangle size={16} className="mt-0.5 flex-shrink-0" />
-                  <span>{odometerValidation.warning}</span>
+            {/* Manual Distance Mode Toggle */}
+            <div className="flex items-center justify-between p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
+              <div className="flex items-center gap-2">
+                <Package size={18} className="text-blue-600 dark:text-blue-400" />
+                <div>
+                  <div className="text-sm font-medium text-blue-700 dark:text-blue-300">
+                    ระบุระยะทางเอง (สำหรับรถที่เลขไมล์เสีย)
+                  </div>
+                  <div className="text-xs text-blue-600 dark:text-blue-400 mt-0.5">
+                    ใช้สำหรับรถที่เลขไมล์ไม่ทำงาน - ระบุระยะทางที่วิ่งเอง
+                  </div>
                 </div>
-              )}
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsManualDistanceMode(!isManualDistanceMode);
+                  // Clear odometer or manual distance when switching modes
+                  if (!isManualDistanceMode) {
+                    setFormData(prev => ({ ...prev, odometer: '', manual_distance: prev.manual_distance || '' }));
+                  } else {
+                    setFormData(prev => ({ ...prev, manual_distance: '', odometer: prev.odometer || '' }));
+                  }
+                }}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${isManualDistanceMode ? 'bg-blue-600' : 'bg-slate-300 dark:bg-slate-600'
+                  }`}
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${isManualDistanceMode ? 'translate-x-6' : 'translate-x-1'
+                    }`}
+                />
+              </button>
             </div>
+
+            {/* Conditional Input: Manual Distance or Odometer */}
+            {isManualDistanceMode ? (
+              <div>
+                <Input
+                  label={
+                    <span className="flex items-center gap-2">
+                      <Package size={18} />
+                      ระยะทางที่วิ่ง (กม.)
+                    </span>
+                  }
+                  type="number"
+                  value={formData.manual_distance}
+                  onChange={(e) => setFormData({ ...formData, manual_distance: e.target.value })}
+                  placeholder="กรอกระยะทางที่วิ่ง (เช่น 10)"
+                  required
+                  min={1}
+                  helperText="ระบุระยะทางที่วิ่งเป็นกิโลเมตร (สำหรับรถที่เลขไมล์เสีย)"
+                />
+              </div>
+            ) : (
+              <div>
+                <Input
+                  label={
+                    <span className="flex items-center gap-2">
+                      <Gauge size={18} />
+                      {mode === 'checkout' ? 'เลขไมล์ออก' : 'เลขไมล์กลับ'}
+                    </span>
+                  }
+                  type="number"
+                  value={formData.odometer}
+                  onChange={(e) => setFormData({ ...formData, odometer: e.target.value })}
+                  placeholder="กรอกเลขไมล์"
+                  required
+                  min={0}
+                  error={odometerValidation && !odometerValidation.valid ? odometerValidation.warning : undefined}
+                  helperText={
+                    mode === 'checkin' && tripData
+                      ? `เลขไมล์ออก: ${tripData.odometer_start?.toLocaleString() || 'N/A'} km`
+                      : odometerValidation?.lastOdometer
+                        ? `เลขไมล์ล่าสุด: ${odometerValidation.lastOdometer.toLocaleString()} km (กรอกอัตโนมัติ)`
+                        : mode === 'checkout'
+                          ? 'เลขไมล์จะถูกกรอกอัตโนมัติเมื่อเลือกรถ'
+                          : undefined
+                  }
+                />
+                {odometerValidation?.warning && odometerValidation.valid && (
+                  <div className="mt-2 p-2 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded flex items-start gap-2 text-amber-800 dark:text-amber-200 text-sm">
+                    <AlertTriangle size={16} className="mt-0.5 flex-shrink-0" />
+                    <span>{odometerValidation.warning}</span>
+                  </div>
+                )}
+              </div>
+            )}
+
 
             {/* Distance calculation for check-in */}
             {mode === 'checkin' && tripData && formData.odometer && (
@@ -1458,7 +1539,7 @@ export const TripLogFormView: React.FC<TripLogFormViewProps> = ({
           setSaving(false);
         }}
       />
-    </PageLayout>
+    </PageLayout >
   );
 };
 
