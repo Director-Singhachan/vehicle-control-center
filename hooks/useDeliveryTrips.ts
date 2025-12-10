@@ -57,6 +57,7 @@ export const useDeliveryTrips = (options: UseDeliveryTripsOptions = { autoFetch:
     options.driver_id,
     options.planned_date_from,
     options.planned_date_to,
+    options.has_item_changes,
     options.page,
     options.pageSize,
   ]);
@@ -66,7 +67,29 @@ export const useDeliveryTrips = (options: UseDeliveryTripsOptions = { autoFetch:
       fetchTrips();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [statusKey, options.vehicle_id, options.driver_id, options.planned_date_from, options.planned_date_to, options.autoFetch]);
+  }, [
+    statusKey,
+    options.vehicle_id,
+    options.driver_id,
+    options.planned_date_from,
+    options.planned_date_to,
+    options.has_item_changes,
+    options.autoFetch,
+  ]);
+
+  // Auto-refresh delivery trips periodically so that
+  // the Delivery Trip list reflects updates from check-out/check-in
+  // even if the user keeps the page open for a long time.
+  useEffect(() => {
+    if (options.autoFetch === false) return;
+
+    const interval = setInterval(() => {
+      // Use the memoized fetchTrips (no cache layer here)
+      fetchTrips();
+    }, 30000); // refresh every 30 seconds
+
+    return () => clearInterval(interval);
+  }, [fetchTrips, options.autoFetch]);
 
   return {
     trips,

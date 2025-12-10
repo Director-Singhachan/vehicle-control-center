@@ -189,9 +189,31 @@ export function useCrewManagement() {
         }
     };
 
+    const removeCrew = async (
+        tripId: string,
+        staffId: string,
+        reason: string
+    ): Promise<boolean> => {
+        setLoading(true);
+        setError(null);
+
+        try {
+            await crewService.removeCrewMember(tripId, staffId, reason);
+            return true;
+        } catch (err) {
+            const error = err instanceof Error ? err : new Error('Failed to remove crew member');
+            setError(error);
+            console.error('[useCrewManagement] Remove error:', err);
+            return false;
+        } finally {
+            setLoading(false);
+        }
+    };
+
     return {
         assignCrew,
         swapCrew,
+        removeCrew,
         loading,
         error,
     };

@@ -543,7 +543,8 @@ export interface Database {
           id: string;
           vehicle_id: string;
           driver_id: string;
-          odometer_start: number;
+          odometer_start: number | null;
+          manual_distance_km: number | null;
           checkout_time: string;
           odometer_end: number | null;
           checkin_time: string | null;
@@ -560,7 +561,8 @@ export interface Database {
           id?: string;
           vehicle_id: string;
           driver_id: string;
-          odometer_start: number;
+          odometer_start?: number | null;
+          manual_distance_km?: number | null;
           checkout_time?: string;
           odometer_end?: number | null;
           checkin_time?: string | null;
@@ -578,7 +580,8 @@ export interface Database {
           id?: string;
           vehicle_id?: string;
           driver_id?: string;
-          odometer_start?: number;
+          odometer_start?: number | null;
+          manual_distance_km?: number | null;
           checkout_time?: string;
           odometer_end?: number | null;
           checkin_time?: string | null;
@@ -711,6 +714,185 @@ export interface Database {
           updated_at?: string;
           created_by?: string | null;
           updated_by?: string | null;
+        };
+      };
+      delivery_trips: {
+        Row: {
+          id: string;
+          trip_number: string;
+          vehicle_id: string;
+          driver_id: string | null;
+          planned_date: string;
+          odometer_start: number | null;
+          odometer_end: number | null;
+          manual_distance_km: number | null;
+          status: 'planned' | 'in_progress' | 'completed' | 'cancelled';
+          notes: string | null;
+          sequence_order: number | null;
+          has_item_changes: boolean;
+          last_item_change_at: string | null;
+          created_at: string;
+          updated_at: string;
+          created_by: string | null;
+          updated_by: string | null;
+        };
+        Insert: {
+          id?: string;
+          trip_number?: string;
+          vehicle_id: string;
+          driver_id?: string | null;
+          planned_date: string;
+          odometer_start?: number | null;
+          odometer_end?: number | null;
+          manual_distance_km?: number | null;
+          status?: 'planned' | 'in_progress' | 'completed' | 'cancelled';
+          notes?: string | null;
+          sequence_order?: number | null;
+          has_item_changes?: boolean;
+          last_item_change_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+          created_by?: string | null;
+          updated_by?: string | null;
+        };
+        Update: {
+          id?: string;
+          trip_number?: string;
+          vehicle_id?: string;
+          driver_id?: string | null;
+          planned_date?: string;
+          odometer_start?: number | null;
+          odometer_end?: number | null;
+          manual_distance_km?: number | null;
+          status?: 'planned' | 'in_progress' | 'completed' | 'cancelled';
+          notes?: string | null;
+          sequence_order?: number | null;
+          has_item_changes?: boolean;
+          last_item_change_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+          created_by?: string | null;
+          updated_by?: string | null;
+        };
+      };
+      delivery_trip_stores: {
+        Row: {
+          id: string;
+          delivery_trip_id: string;
+          store_id: string;
+          sequence_order: number;
+          arrival_time: string | null;
+          departure_time: string | null;
+          delivery_status: 'pending' | 'delivered' | 'failed' | 'skipped';
+          notes: string | null;
+          created_at: string;
+          updated_at: string;
+          created_by: string | null;
+          updated_by: string | null;
+        };
+        Insert: {
+          id?: string;
+          delivery_trip_id: string;
+          store_id: string;
+          sequence_order: number;
+          arrival_time?: string | null;
+          departure_time?: string | null;
+          delivery_status?: 'pending' | 'delivered' | 'failed' | 'skipped';
+          notes?: string | null;
+          created_at?: string;
+          updated_at?: string;
+          created_by?: string | null;
+          updated_by?: string | null;
+        };
+        Update: {
+          id?: string;
+          delivery_trip_id?: string;
+          store_id?: string;
+          sequence_order?: number;
+          arrival_time?: string | null;
+          departure_time?: string | null;
+          delivery_status?: 'pending' | 'delivered' | 'failed' | 'skipped';
+          notes?: string | null;
+          created_at?: string;
+          updated_at?: string;
+          created_by?: string | null;
+          updated_by?: string | null;
+        };
+      };
+      delivery_trip_items: {
+        Row: {
+          id: string;
+          delivery_trip_store_id: string;
+          product_id: string;
+          quantity: number;
+          notes: string | null;
+          created_at: string;
+          updated_at: string;
+          created_by: string | null;
+          updated_by: string | null;
+        };
+        Insert: {
+          id?: string;
+          delivery_trip_store_id: string;
+          product_id: string;
+          quantity: number;
+          notes?: string | null;
+          created_at?: string;
+          updated_at?: string;
+          created_by?: string | null;
+          updated_by?: string | null;
+        };
+        Update: {
+          id?: string;
+          delivery_trip_store_id?: string;
+          product_id?: string;
+          quantity?: number;
+          notes?: string | null;
+          created_at?: string;
+          updated_at?: string;
+          created_by?: string | null;
+          updated_by?: string | null;
+        };
+      };
+      delivery_trip_item_changes: {
+        Row: {
+          id: string;
+          delivery_trip_id: string;
+          delivery_trip_store_id: string | null;
+          delivery_trip_item_id: string | null;
+          product_id: string | null;
+          change_type: 'add' | 'update' | 'remove';
+          old_quantity: number | null;
+          new_quantity: number | null;
+          reason: string | null;
+          created_at: string;
+          created_by: string | null;
+        };
+        Insert: {
+          id?: string;
+          delivery_trip_id: string;
+          delivery_trip_store_id?: string | null;
+          delivery_trip_item_id?: string | null;
+          product_id?: string | null;
+          change_type: 'add' | 'update' | 'remove';
+          old_quantity?: number | null;
+          new_quantity?: number | null;
+          reason?: string | null;
+          created_at?: string;
+          created_by?: string | null;
+        };
+        Update: {
+          id?: string;
+          delivery_trip_id?: string;
+          delivery_trip_store_id?: string | null;
+          delivery_trip_item_id?: string | null;
+          product_id?: string | null;
+          change_type?: 'add' | 'update' | 'remove';
+          old_quantity?: number | null;
+          new_quantity?: number | null;
+          reason?: string | null;
+          created_at?: string;
+          created_by?: string | null;
         };
       };
       delivery_trip_crews: {
