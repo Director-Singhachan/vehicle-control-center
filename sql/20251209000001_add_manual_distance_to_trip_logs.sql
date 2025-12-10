@@ -29,13 +29,16 @@ DROP CONSTRAINT IF EXISTS check_distance_method;
 ALTER TABLE trip_logs
 ADD CONSTRAINT check_distance_method 
 CHECK (
-  -- Either both odometers are provided (normal mode)
-  (odometer_start IS NOT NULL AND odometer_end IS NOT NULL) OR
-  -- Or manual distance is provided (broken odometer mode)
-  (manual_distance_km IS NOT NULL AND odometer_start IS NULL AND odometer_end IS NULL) OR
-  -- Or we're in checkout state (odometer_end is null, but start is provided)
+  -- Normal mode: Both odometers present, Manual is NULL
+  (odometer_start IS NOT NULL AND odometer_end IS NOT NULL AND manual_distance_km IS NULL) OR
+  
+  -- Manual mode: Manual is present, Odometer End is NULL (Odometer Start can be anything)
+  (manual_distance_km IS NOT NULL AND odometer_end IS NULL) OR
+  
+  -- Checkout mode (Normal): Start present, End NULL, Manual NULL
   (odometer_start IS NOT NULL AND odometer_end IS NULL AND manual_distance_km IS NULL) OR
-  -- Or we're in manual checkout state (waiting for manual checkin)
+  
+  -- Checkout mode (Manual/Pending): Start NULL, End NULL, Manual NULL (waiting for input)
   (odometer_start IS NULL AND odometer_end IS NULL AND manual_distance_km IS NULL AND status = 'checked_out')
 );
 

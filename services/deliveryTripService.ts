@@ -8,6 +8,8 @@ type DeliveryTripUpdate = Database['public']['Tables']['delivery_trips']['Update
 type DeliveryTripStore = Database['public']['Tables']['delivery_trip_stores']['Row'];
 type DeliveryTripItem = Database['public']['Tables']['delivery_trip_items']['Row'];
 type DeliveryTripItemChange = Database['public']['Tables']['delivery_trip_item_changes']['Row'];
+type DeliveryTripCrew = Database['public']['Tables']['delivery_trip_crews']['Row'];
+type DeliveryTripCrewInsert = Database['public']['Tables']['delivery_trip_crews']['Insert'];
 
 export interface DeliveryTripStoreWithDetails extends DeliveryTripStore {
   store?: {
@@ -30,6 +32,15 @@ export interface DeliveryTripItemWithProduct extends DeliveryTripItem {
   };
 }
 
+export interface DeliveryTripCrewWithDetails extends DeliveryTripCrew {
+  staff?: {
+    id: string;
+    name: string;
+    employee_code?: string;
+    phone?: string;
+  };
+}
+
 export interface DeliveryTripWithRelations extends DeliveryTrip {
   vehicle?: {
     plate: string;
@@ -41,6 +52,7 @@ export interface DeliveryTripWithRelations extends DeliveryTrip {
     email?: string;
   };
   stores?: DeliveryTripStoreWithDetails[];
+  crews?: DeliveryTripCrewWithDetails[];
 }
 
 export interface DeliveryTripItemChangeWithDetails extends DeliveryTripItemChange {
@@ -64,8 +76,10 @@ export interface DeliveryTripItemChangeWithDetails extends DeliveryTripItemChang
 export interface CreateDeliveryTripData {
   vehicle_id: string;
   driver_id?: string;
+  helpers?: string[]; // Array of service_staff IDs
   planned_date: string; // ISO date string
   odometer_start?: number;
+  manual_distance_km?: number; // Added support for manual distance
   notes?: string;
   sequence_order?: number; // Optional: if not provided, will be auto-calculated
   stores: Array<{
@@ -179,16 +193,21 @@ export const deliveryTripService = {
     const driverIds = [...new Set(trips.map(t => t.driver_id).filter(Boolean))];
 
     // Fetch vehicles
-    const { data: vehicles } = await supabase
-      .from('vehicles')
-      .select('id, plate, make, model')
-      .in('id', vehicleIds);
+    // Guard empty arrays to avoid Supabase `.in` error
+    const { data: vehicles } = vehicleIds.length > 0
+      ? await supabase
+          .from('vehicles')
+          .select('id, plate, make, model')
+          .in('id', vehicleIds)
+      : { data: [] as any[] };
 
-    // Fetch drivers (profiles)
-    const { data: drivers } = await supabase
-      .from('profiles')
-      .select('id, full_name, email')
-      .in('id', driverIds);
+    // Fetch drivers (profiles) with same guard
+    const { data: drivers } = driverIds.length > 0
+      ? await supabase
+          .from('profiles')
+          .select('id, full_name, email')
+          .in('id', driverIds)
+      : { data: [] as any[] };
 
     // Create lookup maps
     const vehicleMap = new Map((vehicles || []).map(v => [v.id, v]));
@@ -335,11 +354,41 @@ export const deliveryTripService = {
       items: items.filter(item => item.delivery_trip_store_id === ts.id),
     }));
 
+    // Get crews for this trip
+    const { data: tripCrews, error: crewsError } = await supabase
+      .from('delivery_trip_crews')
+      .select('*')
+      .eq('delivery_trip_id', id)
+      .order('created_at', { ascending: true });
+
+    if (crewsError) {
+      console.error('[deliveryTripService] Error fetching trip crews:', crewsError);
+      // Don't throw, just continue without crews
+    }
+
+    // Fetch staff details for crews
+    let crewsWithDetails: DeliveryTripCrewWithDetails[] = [];
+    if (tripCrews && tripCrews.length > 0) {
+      const staffIds = tripCrews.map(c => c.staff_id);
+      const { data: staffList } = await supabase
+        .from('service_staff')
+        .select('id, name, employee_code, phone')
+        .in('id', staffIds);
+
+      const staffMap = new Map((staffList || []).map(s => [s.id, s]));
+
+      crewsWithDetails = tripCrews.map(crew => ({
+        ...crew,
+        staff: staffMap.get(crew.staff_id),
+      }));
+    }
+
     return {
       ...trip,
       vehicle,
       driver,
       stores: storesWithItems,
+      crews: crewsWithDetails,
     } as DeliveryTripWithRelations;
   },
 
@@ -376,11 +425,12 @@ export const deliveryTripService = {
       driver_id: data.driver_id || user.id,
       planned_date: data.planned_date,
       odometer_start: data.odometer_start,
+      manual_distance_km: data.manual_distance_km,
       notes: data.notes,
       sequence_order: sequenceOrder,
       created_by: user.id,
       updated_by: user.id,
-    } as any; // Cast to any because sequence_order might not be in types yet
+    };
 
     const { data: trip, error: tripError } = await supabase
       .from('delivery_trips')
@@ -391,6 +441,28 @@ export const deliveryTripService = {
     if (tripError) {
       console.error('[deliveryTripService] Error creating trip:', tripError);
       throw tripError;
+    }
+
+    // 1.5 Create helpers (crew)
+    if (data.helpers && data.helpers.length > 0) {
+      const crewData = data.helpers.map(staffId => ({
+        delivery_trip_id: trip.id,
+        staff_id: staffId,
+        role: 'helper',
+        status: 'active',
+        start_at: new Date().toISOString(),
+        created_by: user.id,
+        updated_by: user.id,
+      }));
+
+      const { error: crewError } = await supabase
+        .from('delivery_trip_crews')
+        .insert(crewData);
+
+      if (crewError) {
+        console.error('[deliveryTripService] Error creating trip crew:', crewError);
+        throw crewError;
+      }
     }
 
     // 2. Create delivery trip stores and items
@@ -453,7 +525,7 @@ export const deliveryTripService = {
     const stores = data.stores;
     const changeReason = data.change_reason;
     let itemChangesOccurred = false;
-    
+
     // Update trip basic info (exclude stores/change_reason - they are not columns)
     // Create updateData without relation fields to avoid PGRST204 error
     const updateData: DeliveryTripUpdate = {
@@ -466,7 +538,7 @@ export const deliveryTripService = {
       notes: data.notes,
       sequence_order: data.sequence_order,
       updated_by: user.id,
-    } as any; // Cast to any because sequence_order might not be in types yet
+    };
 
     // Remove undefined fields
     Object.keys(updateData).forEach(key => {
@@ -507,14 +579,14 @@ export const deliveryTripService = {
       const { data: existingItems, error: existingItemsError } = existingStoreIds.length > 0 ? await supabase
         .from('delivery_trip_items')
         .select('id, delivery_trip_store_id, product_id, quantity')
-        .in('delivery_trip_store_id', existingStoreIds) : { data: [], error: null };
+        .in('delivery_trip_store_id', existingStoreIds) : { data: [] as any[], error: null };
 
       if (existingItemsError) {
         console.error('[deliveryTripService] Error loading existing trip items:', existingItemsError);
         throw existingItemsError;
       }
 
-      const existingStoreMap = new Map((existingStores || []).map(s => [s.store_id, s]));
+      const existingStoreMap = new Map((existingStores as any[] || []).map(s => [s.store_id, s]));
       const existingItemsByStore = new Map<string, typeof existingItems>();
       (existingItems || []).forEach(item => {
         const key = item.delivery_trip_store_id;
@@ -548,7 +620,7 @@ export const deliveryTripService = {
             delivery_trip_store_id,
             delivery_trip_item_id,
             product_id,
-            action,
+            change_type: action,
             old_quantity,
             new_quantity,
             reason: changeReason || null,
@@ -638,11 +710,19 @@ export const deliveryTripService = {
         }
 
         // Items for this store
-        const existingItemsForStore = existingStore
-          ? (existingItemsByStore.get(existingStore.id) || [])
+        type TripItemRow = {
+          id: string;
+          delivery_trip_store_id: string;
+          product_id: string;
+          quantity: number;
+          notes?: string | null;
+        };
+
+        const existingItemsForStore: TripItemRow[] = existingStore
+          ? ((existingItemsByStore.get(existingStore.id) || []) as TripItemRow[])
           : [];
 
-        const existingItemsMap = new Map(
+        const existingItemsMap = new Map<string, TripItemRow>(
           existingItemsForStore.map(item => [`${item.product_id}`, item])
         );
 
@@ -755,7 +835,7 @@ export const deliveryTripService = {
       const { error: flagError } = await supabase
         .from('delivery_trips')
         // cast as any because generated types may not know these new columns yet
-        .update({ has_item_changes: true, last_item_change_at: nowIso } as any)
+        .update({ has_item_changes: true, last_item_change_at: nowIso })
         .eq('id', id);
 
       if (flagError) {
@@ -788,7 +868,7 @@ export const deliveryTripService = {
   // Cancel delivery trip (set status to 'cancelled')
   cancel: async (id: string, reason?: string): Promise<DeliveryTripWithRelations> => {
     console.log('[deliveryTripService] cancel called with:', { id, reason: reason ? 'provided' : 'none' });
-    
+
     const { data: { user }, error: authError } = await supabase.auth.getUser();
 
     if (authError) {
@@ -839,7 +919,7 @@ export const deliveryTripService = {
       status: 'cancelled',
       notes: reason ? `${trip.notes || ''}\n[ยกเลิก] ${reason}`.trim() : trip.notes,
       updated_by: user.id,
-    } as any;
+    };
 
     console.log('[deliveryTripService] Updating trip with data:', {
       status: updateData.status,
@@ -861,7 +941,7 @@ export const deliveryTripService = {
         details: updateError.details,
         hint: updateError.hint,
       });
-      
+
       // Provide more specific error messages
       if (updateError.code === '42501') {
         throw new Error('คุณไม่มีสิทธิ์ในการยกเลิกทริปนี้ (ต้องเป็น Admin, Manager, Inspector หรือคนขับของทริปนี้)');
@@ -985,21 +1065,21 @@ export const deliveryTripService = {
     const [productsResult, tripStoresResult, usersResult] = await Promise.all([
       productIds.length
         ? supabase
-            .from('products')
-            .select('id, product_code, product_name, unit')
-            .in('id', productIds)
+          .from('products')
+          .select('id, product_code, product_name, unit')
+          .in('id', productIds)
         : Promise.resolve({ data: null, error: null } as any),
       tripStoreIds.length
         ? supabase
-            .from('delivery_trip_stores')
-            .select('id, store_id')
-            .in('id', tripStoreIds)
+          .from('delivery_trip_stores')
+          .select('id, store_id')
+          .in('id', tripStoreIds)
         : Promise.resolve({ data: null, error: null } as any),
       userIds.length
         ? supabase
-            .from('profiles')
-            .select('id, full_name')
-            .in('id', userIds)
+          .from('profiles')
+          .select('id, full_name')
+          .in('id', userIds)
         : Promise.resolve({ data: null, error: null } as any),
     ]);
 
@@ -1013,9 +1093,9 @@ export const deliveryTripService = {
     const storeIds = [...new Set(tripStores.map((ts: any) => ts.store_id).filter(Boolean))];
     const { data: storesData } = storeIds.length
       ? await supabase
-          .from('stores')
-          .select('id, customer_code, customer_name')
-          .in('id', storeIds)
+        .from('stores')
+        .select('id, customer_code, customer_name')
+        .in('id', storeIds)
       : { data: [] as any[] };
 
     const storeMap = new Map(storesData.map((s: any) => [s.id, s]));
@@ -1034,5 +1114,6 @@ export const deliveryTripService = {
       user: change.created_by ? userMap.get(change.created_by) || null : null,
     })) as DeliveryTripItemChangeWithDetails[];
   },
+
 };
 

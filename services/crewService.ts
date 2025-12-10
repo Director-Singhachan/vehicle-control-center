@@ -262,6 +262,59 @@ export const crewService = {
     },
 
     /**
+     * Remove a crew member from a trip
+     * @param tripId - UUID of the delivery trip
+     * @param staffId - UUID of staff to remove
+     * @param reason - Reason for removal
+     */
+    removeCrewMember: async (
+        tripId: string,
+        staffId: string,
+        reason: string
+    ): Promise<void> => {
+        const { data: { user } } = await supabase.auth.getUser();
+
+        if (!user) {
+            throw new Error('User not authenticated');
+        }
+
+        if (!reason || reason.trim() === '') {
+            throw new Error('Reason for removal is required');
+        }
+
+        // Find current active assignment
+        const { data: currentAssignment, error: findError } = await supabase
+            .from('delivery_trip_crews')
+            .select('*')
+            .eq('delivery_trip_id', tripId)
+            .eq('staff_id', staffId)
+            .eq('status', 'active')
+            .single();
+
+        if (findError || !currentAssignment) {
+            throw new Error(`No active assignment found for staff ${staffId} in trip ${tripId}`);
+        }
+
+        const now = new Date().toISOString();
+
+        // Update assignment
+        const { error: updateError } = await supabase
+            .from('delivery_trip_crews')
+            .update({
+                status: 'removed',
+                end_at: now,
+                reason_for_change: reason,
+                updated_by: user.id,
+            })
+            .eq('id', currentAssignment.id);
+
+        if (updateError) {
+            console.error('[crewService] Error removing crew member:', updateError);
+            throw new Error('Failed to remove crew member');
+        }
+    },
+
+    /**
      * Calculate commission for a completed delivery trip
      * 
      * This function:
