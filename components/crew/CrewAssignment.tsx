@@ -1,6 +1,6 @@
 // Crew Assignment Component - Assign and manage crew for delivery trips
 import React, { useState, useEffect } from 'react';
-import { Plus, X, Users, AlertTriangle, Check, RefreshCw } from 'lucide-react';
+import { Plus, X, Users, AlertTriangle, Check, RefreshCw, Trash2 } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
 import { useCrewByTrip, useCrewManagement } from '../../hooks/useCrew';
@@ -21,7 +21,7 @@ export const CrewAssignment: React.FC<CrewAssignmentProps> = ({
     onUpdate,
 }) => {
     const { crew, loading, refresh } = useCrewByTrip(tripId, true); // Active crew only
-    const { assignCrew, swapCrew, loading: managing, error: manageError } = useCrewManagement();
+    const { assignCrew, swapCrew, removeCrew, loading: managing, error: manageError } = useCrewManagement();
 
     const [availableStaff, setAvailableStaff] = useState<ServiceStaff[]>([]);
     const [loadingStaff, setLoadingStaff] = useState(false);
@@ -33,6 +33,10 @@ export const CrewAssignment: React.FC<CrewAssignmentProps> = ({
     const [swapping, setSwapping] = useState<string | null>(null); // crew ID being swapped
     const [swapReason, setSwapReason] = useState('');
     const [replacementStaffId, setReplacementStaffId] = useState('');
+
+    // Remove crew state
+    const [removing, setRemoving] = useState<string | null>(null); // crew ID being removed
+    const [removeReason, setRemoveReason] = useState('');
 
     // Fetch available staff
     const fetchAvailableStaff = async () => {
@@ -90,6 +94,24 @@ export const CrewAssignment: React.FC<CrewAssignmentProps> = ({
             setSwapping(null);
             setSwapReason('');
             setReplacementStaffId('');
+            refresh();
+            onUpdate?.();
+        }
+    };
+
+    // Handle remove crew
+    const handleRemoveCrew = async (staffId: string) => {
+        if (!removeReason.trim()) {
+            alert('กรุณาระบุเหตุผลการลบ');
+            return;
+        }
+
+        if (!window.confirm('ยืนยันลบพนักงานออกจากทริป?')) return;
+
+        const success = await removeCrew(tripId, staffId, removeReason);
+        if (success) {
+            setRemoving(null);
+            setRemoveReason('');
             refresh();
             onUpdate?.();
         }
@@ -246,6 +268,7 @@ export const CrewAssignment: React.FC<CrewAssignmentProps> = ({
                     {crew.map((member) => {
                         const staffInfo = member.staff;
                         const isSwapping = swapping === member.id;
+                        const isRemoving = removing === member.id;
 
                         return (
                             <div
@@ -269,16 +292,31 @@ export const CrewAssignment: React.FC<CrewAssignmentProps> = ({
                                         </p>
                                     </div>
 
-                                    {canModifyCrew && !isSwapping && (
-                                        <Button
-                                            size="sm"
-                                            variant="outline"
-                                            onClick={() => setSwapping(member.id)}
-                                            className="flex items-center gap-1"
-                                        >
-                                            <RefreshCw size={14} />
-                                            แทน
-                                        </Button>
+                                    {canModifyCrew && !isSwapping && !isRemoving && (
+                                        <div className="flex gap-1">
+                                            <Button
+                                                size="sm"
+                                                variant="outline"
+                                                onClick={() => setSwapping(member.id)}
+                                                className="flex items-center gap-1"
+                                                title="เปลี่ยนคน"
+                                            >
+                                                <RefreshCw size={14} />
+                                                <span className="hidden sm:inline">แทน</span>
+                                            </Button>
+                                            {member.role === 'helper' && (
+                                                <Button
+                                                    size="sm"
+                                                    variant="outline"
+                                                    onClick={() => setRemoving(member.id)}
+                                                    className="flex items-center gap-1 text-red-600 hover:text-red-700 hover:bg-red-50"
+                                                    title="ลบออก"
+                                                >
+                                                    <Trash2 size={14} />
+                                                    <span className="hidden sm:inline">ลบ</span>
+                                                </Button>
+                                            )}
+                                        </div>
                                     )}
                                 </div>
 
@@ -338,6 +376,45 @@ export const CrewAssignment: React.FC<CrewAssignmentProps> = ({
                                         </div>
                                     </div>
                                 )}
+
+                                {/* Remove Form */}
+                                {isRemoving && (
+                                    <div className="mt-3 pt-3 border-t border-gray-200 space-y-2">
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-1">
+                                                เหตุผลที่ลบ <span className="text-red-500">*</span>
+                                            </label>
+                                            <input
+                                                type="text"
+                                                value={removeReason}
+                                                onChange={(e) => setRemoveReason(e.target.value)}
+                                                placeholder="เช่น ไม่จำเป็นต้องใช้แล้ว, ใส่ผิดคน"
+                                                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                                            />
+                                        </div>
+
+                                        <div className="flex gap-2 justify-end">
+                                            <Button
+                                                size="sm"
+                                                variant="outline"
+                                                onClick={() => {
+                                                    setRemoving(null);
+                                                    setRemoveReason('');
+                                                }}
+                                            >
+                                                ยกเลิก
+                                            </Button>
+                                            <Button
+                                                size="sm"
+                                                onClick={() => handleRemoveCrew(member.staff_id)}
+                                                disabled={managing || !removeReason.trim()}
+                                                className="bg-red-600 text-white hover:bg-red-700"
+                                            >
+                                                {managing ? 'กำลังลบ...' : 'ยืนยันการลบ'}
+                                            </Button>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         );
                     })}
@@ -345,20 +422,22 @@ export const CrewAssignment: React.FC<CrewAssignmentProps> = ({
             )}
 
             {/* Refresh Button */}
-            {crew.length > 0 && (
-                <div className="mt-4 text-center">
-                    <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={refresh}
-                        disabled={loading}
-                        className="flex items-center gap-1 mx-auto"
-                    >
-                        <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-                        รีเฟรช
-                    </Button>
-                </div>
-            )}
+            {
+                crew.length > 0 && (
+                    <div className="mt-4 text-center">
+                        <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={refresh}
+                            disabled={loading}
+                            className="flex items-center gap-1 mx-auto"
+                        >
+                            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+                            รีเฟรช
+                        </Button>
+                    </div>
+                )
+            }
         </Card>
     );
 };

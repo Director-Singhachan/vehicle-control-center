@@ -27,6 +27,7 @@ import { ticketService } from '../services/ticketService';
 import { storeService, type Store } from '../services/storeService';
 import { productService, type Product } from '../services/productService';
 import { profileService } from '../services/profileService';
+import { serviceStaffService } from '../services/serviceStaffService';
 import type { DeliveryTripWithRelations } from '../services/deliveryTripService';
 
 interface DeliveryTripFormViewProps {
@@ -53,17 +54,17 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
   const isEdit = !!tripId;
   const { trip, loading: loadingTrip } = useDeliveryTrip(tripId || null);
   const { vehicles, loading: loadingVehicles } = useVehicles();
-  
+
   // Store search with debounce - use backend search instead of frontend filtering
   const [storeSearchDebounced, setStoreSearchDebounced] = useState('');
-  const { stores, loading: loadingStores } = useStores({ 
+  const { stores, loading: loadingStores } = useStores({
     is_active: true,
     search: storeSearchDebounced || undefined // Only search if there's a search term
   });
-  
+
   // Cache store info for selected stores to prevent disappearing when stores array is empty
   const [storeCache, setStoreCache] = React.useState<Map<string, Store>>(new Map());
-  
+
   // Update cache when stores are loaded
   React.useEffect(() => {
     if (stores.length > 0) {
@@ -76,25 +77,25 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
       });
     }
   }, [stores]);
-  
+
   // Get store info - use cache if stores array is empty
   const getStoreInfo = React.useCallback((storeId: string): Store | null => {
     // First try to find in current stores array
     const store = stores.find(s => s.id === storeId);
     if (store) return store;
-    
+
     // If not found, try cache
     return storeCache.get(storeId) || null;
   }, [stores, storeCache]);
-  
+
   // Product search with debounce - use server-side search (supports millions of records)
   const [productSearch, setProductSearch] = useState<Map<number, string>>(new Map());
   const [productSearchDebounced, setProductSearchDebounced] = useState<Map<number, string>>(new Map());
-  
+
   // Debounce product search for each store (300ms delay)
   useEffect(() => {
     const timers: NodeJS.Timeout[] = [];
-    
+
     productSearch.forEach((search, storeIndex) => {
       const timer = setTimeout(() => {
         setProductSearchDebounced(prev => {
@@ -109,7 +110,7 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
       }, 300);
       timers.push(timer);
     });
-    
+
     // Clean up searches that were removed
     const currentKeys = new Set(productSearch.keys());
     setProductSearchDebounced(prev => {
@@ -121,28 +122,28 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
       });
       return newMap;
     });
-    
+
     return () => {
       timers.forEach(timer => clearTimeout(timer));
     };
   }, [productSearch]);
-  
+
   // Get the most recent active search term (for single products fetch)
   // In a production app, you might want to fetch products per store separately
   const activeProductSearch = Array.from(productSearchDebounced.values())
     .find((s): s is string => typeof s === 'string' && s.trim().length > 0) || '';
-  
+
   // Fetch products with server-side search (supports millions of records)
   // Note: This fetches products for the first active search. For multiple stores with different searches,
   // you'd need a more complex solution (multiple hooks or a custom hook that handles multiple searches)
-  const { products, loading: loadingProducts } = useProducts({ 
+  const { products, loading: loadingProducts } = useProducts({
     is_active: true,
-    search: activeProductSearch || undefined 
+    search: activeProductSearch || undefined
   });
-  
+
   // Cache product info for selected products to prevent disappearing when products array changes
   const [productCache, setProductCache] = React.useState<Map<string, Product>>(new Map());
-  
+
   // Update cache when products are loaded
   React.useEffect(() => {
     if (products.length > 0) {
@@ -155,17 +156,17 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
       });
     }
   }, [products]);
-  
+
   // Get product info - use cache if products array is empty or doesn't contain the product
   const getProductInfo = React.useCallback((productId: string): Product | null => {
     // First try to find in current products array
     const product = products.find(p => p.id === productId);
     if (product) return product;
-    
+
     // If not found, try cache
     return productCache.get(productId) || null;
   }, [products, productCache]);
-  
+
   // Cache products when they are added to a store
   const cacheProduct = React.useCallback((product: Product) => {
     setProductCache(prev => {
@@ -174,25 +175,25 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
       return newCache;
     });
   }, []);
-  
+
   // Filter products - server-side search already done for active search
   // For stores with different search terms, fallback to client-side filtering from cache
   const getFilteredProducts = useMemo(() => {
     return (storeIndex: number) => {
       const searchTerm = productSearchDebounced.get(storeIndex);
-      
+
       // If no search for this store, return all cached products (or empty if cache is small)
       if (!searchTerm) {
         // Return cached products that are likely to be used
         // For better UX, we could return recently used products or all cached products
         return Array.from(productCache.values());
       }
-      
+
       // If this store's search matches the active search, products are already filtered by server
       if (searchTerm === activeProductSearch) {
         return products; // Already filtered by server
       }
-      
+
       // If this store has different search, filter client-side from cache (fallback)
       // Note: For better performance with millions of products, consider fetching separately per store
       const searchLower = searchTerm.toLowerCase();
@@ -203,9 +204,9 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
       );
     };
   }, [products, productSearchDebounced, activeProductSearch, productCache]);
-  
+
   // Removed debug logging to reduce console noise
-  
+
   // Drivers list
   const [drivers, setDrivers] = React.useState<Array<{ id: string; full_name: string }>>([]);
   const [loadingDrivers, setLoadingDrivers] = React.useState(false);
@@ -221,18 +222,18 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
   const [selectedStores, setSelectedStores] = useState<StoreWithItems[]>([]);
   const [storeSearch, setStoreSearch] = useState('');
   const [showStoreDropdown, setShowStoreDropdown] = useState(false);
-  
+
   // Debounce store search for server-side search (supports millions of records)
   useEffect(() => {
     const timer = setTimeout(() => {
       setStoreSearchDebounced(storeSearch.trim());
     }, 300); // 300ms delay - wait for user to finish typing
-    
+
     return () => clearTimeout(timer);
   }, [storeSearch]);
   const [expandedStoreIndex, setExpandedStoreIndex] = useState<number | null>(null);
   const [productQuantityInput, setProductQuantityInput] = useState<Map<string, string>>(new Map()); // key: `${storeIndex}-${productId}`
-  
+
   // Vehicle search
   const [vehicleSearch, setVehicleSearch] = useState('');
   const [showVehicleDropdown, setShowVehicleDropdown] = useState(false);
@@ -244,12 +245,20 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
   const [activeVehicleIds, setActiveVehicleIds] = useState<Set<string>>(new Set()); // Vehicles in use (trip logs)
   const [vehiclesWithActiveTickets, setVehiclesWithActiveTickets] = useState<Set<string>>(new Set()); // Vehicles with active maintenance tickets
   const [vehiclesWithActiveDeliveryTrips, setVehiclesWithActiveDeliveryTrips] = useState<Set<string>>(new Set()); // Vehicles with active delivery trips
-  
+
   // Refs for dropdown positioning
   const vehicleInputRef = useRef<HTMLDivElement>(null);
   const storeInputRef = useRef<HTMLDivElement>(null);
   const [vehicleDropdownPosition, setVehicleDropdownPosition] = useState<{ top: number; left: number; width: number } | null>(null);
   const [storeDropdownPosition, setStoreDropdownPosition] = useState<{ top: number; left: number; width: number } | null>(null);
+
+  // Helper staff
+  const [availableStaff, setAvailableStaff] = useState<Array<{ id: string; name: string }>>([]);
+  const [selectedHelpers, setSelectedHelpers] = useState<string[]>([]);
+  const [helperSearch, setHelperSearch] = useState('');
+  const [showHelperDropdown, setShowHelperDropdown] = useState(false);
+  const helperInputRef = useRef<HTMLDivElement>(null);
+  const [helperDropdownPosition, setHelperDropdownPosition] = useState<{ top: number; left: number; width: number } | null>(null);
 
   // Load trip data when editing
   useEffect(() => {
@@ -261,7 +270,15 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
         odometer_start: trip.odometer_start?.toString() || '',
         notes: trip.notes || '',
       });
-      
+
+      // Set helpers if editing
+      if (trip.crews) {
+        const helpers = trip.crews
+          .filter(c => c.role === 'helper' && c.status === 'active')
+          .map(c => c.staff_id);
+        setSelectedHelpers(helpers);
+      }
+
       // Set vehicle search text
       const selectedVehicle = vehicles.find(v => v.id === trip.vehicle_id);
       if (selectedVehicle) {
@@ -281,28 +298,28 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
           })),
         }));
         setSelectedStores(storesWithItems);
-        
+
         // Fetch store info and product info for all stores in the trip and cache them
         // This prevents "loading" state when stores/products arrays are empty
         const fetchStoreAndProductInfo = async () => {
           const storeIds = storesWithItems.map(s => s.store_id);
           const productIds = new Set<string>();
-          
+
           // Collect all product IDs from all stores
           storesWithItems.forEach(store => {
             store.items.forEach(item => {
               productIds.add(item.product_id);
             });
           });
-          
+
           // Fetch stores in parallel
-          const storePromises = storeIds.map(storeId => 
+          const storePromises = storeIds.map(storeId =>
             storeService.getById(storeId).catch(err => {
               console.error(`[DeliveryTripFormView] Error fetching store ${storeId}:`, err);
               return null;
             })
           );
-          
+
           // Fetch products in parallel
           const productPromises = Array.from(productIds).map(productId =>
             productService.getById(productId).catch(err => {
@@ -310,13 +327,13 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
               return null;
             })
           );
-          
+
           // Wait for all fetches to complete
           const [fetchedStores, fetchedProducts] = await Promise.all([
             Promise.all(storePromises),
             Promise.all(productPromises)
           ]);
-          
+
           // Cache all fetched stores
           const validStores = fetchedStores.filter((s): s is Store => s !== null);
           if (validStores.length > 0) {
@@ -328,7 +345,7 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
               return newCache;
             });
           }
-          
+
           // Cache all fetched products
           const validProducts = fetchedProducts.filter((p): p is Product => p !== null);
           if (validProducts.length > 0) {
@@ -341,7 +358,7 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
             });
           }
         };
-        
+
         fetchStoreAndProductInfo();
       }
     }
@@ -371,12 +388,12 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
       const makeLower = normalizeText(vehicle.make || '');
       const modelLower = normalizeText(vehicle.model || '');
       const searchableText = createSearchableText(vehicle.plate, vehicle.make, vehicle.model);
-      
+
       // Match in individual fields or combined
-      return plateLower.includes(searchLower) || 
-             makeLower.includes(searchLower) || 
-             modelLower.includes(searchLower) ||
-             searchableText.includes(searchLower);
+      return plateLower.includes(searchLower) ||
+        makeLower.includes(searchLower) ||
+        modelLower.includes(searchLower) ||
+        searchableText.includes(searchLower);
     });
   }, [vehicles, vehicleSearch]);
 
@@ -385,24 +402,24 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
   const filteredStores = useMemo(() => {
     // If no search, return empty (don't show all stores)
     if (!storeSearchDebounced || !storeSearchDebounced.trim()) return [];
-    
+
     // Server has already filtered, just sort by relevance
     const searchLower = normalizeText(storeSearchDebounced);
     const searchTrimmed = searchLower.trim();
-    
+
     // Score stores for better sorting (exact matches first)
     const scoredStores = stores.map(store => {
       // Get raw values (before normalization) for exact matching
       const rawCode = (store.customer_code || '').trim();
       const rawName = (store.customer_name || '').trim();
-      
+
       // Normalized values for case-insensitive matching
       const codeLower = normalizeText(rawCode);
       const nameLower = normalizeText(rawName);
-      
+
       let score = 0;
       let matches = false;
-      
+
       // 1. Exact match (case-insensitive) in customer_code - highest priority
       if (codeLower === searchTrimmed) {
         score = 1000;
@@ -483,17 +500,17 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
           }
         }
       }
-      
+
       return { store, score, matches };
     });
-    
+
     // Filter only matching stores and sort by score (highest first)
     const filtered = scoredStores
       .filter(item => item.matches)
       .sort((a, b) => b.score - a.score)
       .map(item => item.store)
       .slice(0, 100); // Limit to 100 results for performance
-    
+
     return filtered;
   }, [stores, storeSearchDebounced]);
 
@@ -530,22 +547,22 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
         // Query all active tickets at once instead of checking each vehicle
         const { supabase } = await import('../lib/supabase');
         const activeStatuses = ['pending', 'approved_inspector', 'approved_manager', 'ready_for_repair', 'in_progress'];
-        
+
         const { data: activeTickets, error } = await supabase
           .from('tickets')
           .select('vehicle_id')
           .in('status', activeStatuses);
-        
+
         if (error) {
           console.error('[DeliveryTripFormView] Error fetching active tickets:', error);
           setVehiclesWithActiveTickets(new Set());
           return;
         }
-        
+
         const vehicleIdsWithTickets = new Set(
           (activeTickets || []).map(ticket => ticket.vehicle_id).filter(Boolean)
         );
-        
+
         setVehiclesWithActiveTickets(vehicleIdsWithTickets);
       } catch (err) {
         console.error('[DeliveryTripFormView] Error fetching vehicles with active tickets:', err);
@@ -595,6 +612,19 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
     fetchDrivers();
   }, []);
 
+  // Fetch available staff
+  useEffect(() => {
+    const fetchStaff = async () => {
+      try {
+        const staff = await serviceStaffService.getAllActive();
+        setAvailableStaff(staff.map(s => ({ id: s.id, name: s.name })));
+      } catch (err) {
+        console.error('[DeliveryTripFormView] Error fetching staff:', err);
+      }
+    };
+    fetchStaff();
+  }, []);
+
   // Fetch latest odometer when vehicle is selected
   useEffect(() => {
     const fetchLatestOdometer = async () => {
@@ -606,7 +636,7 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
       try {
         const lastOdometer = await tripLogService.getLastOdometer(formData.vehicle_id);
         setLatestOdometer(lastOdometer);
-        
+
         // Auto-fill if odometer_start is empty
         if (!formData.odometer_start && lastOdometer) {
           setFormData(prev => ({
@@ -629,19 +659,19 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
       e.preventDefault();
       e.stopPropagation();
     }
-    
+
     const vehicle = vehicles.find(v => v.id === vehicleId);
     if (!vehicle) {
       console.error('[DeliveryTripFormView] Vehicle not found:', vehicleId);
       return;
     }
-    
+
     const displayText = `${vehicle.plate}${vehicle.make && vehicle.model ? ` (${vehicle.make} ${vehicle.model})` : ''}`;
-    
+
     // Close dropdown first
     setShowVehicleDropdown(false);
     setVehicleDropdownPosition(null);
-    
+
     // Then update form data and search text
     // Use setTimeout to ensure dropdown closes before updating
     setTimeout(() => {
@@ -662,7 +692,7 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
         return newCache;
       });
     }
-    
+
     // Use functional update to ensure we have the latest state
     setSelectedStores(prevStores => {
       // Check if store is already selected
@@ -678,7 +708,7 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
       };
 
       const newStores = [...prevStores, newStore];
-      
+
       // Clear search and close dropdown after state update
       // Use setTimeout to ensure state update completes first
       setTimeout(() => {
@@ -739,17 +769,17 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       const target = event.target as HTMLElement;
-      
+
       // Check if click is on a portal dropdown (they have data-dropdown attribute)
       const isOnVehicleDropdown = target.closest('[data-vehicle-dropdown-portal]');
       const isOnStoreDropdown = target.closest('[data-store-dropdown-portal]');
-      
+
       // Check if click is outside vehicle dropdown
       if (!isOnVehicleDropdown && !target.closest('[data-vehicle-dropdown]') && !target.closest('[data-vehicle-input]')) {
         setShowVehicleDropdown(false);
         setVehicleDropdownPosition(null);
       }
-      
+
       // Check if click is outside store dropdown
       if (!isOnStoreDropdown && !target.closest('[data-store-dropdown]') && !target.closest('[data-store-input]')) {
         setShowStoreDropdown(false);
@@ -785,7 +815,7 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
   const handleAddProduct = React.useCallback((storeIndex: number, productId: string, quantity: number = 1) => {
     // Get product from current products array or cache
     let product = getProductInfo(productId);
-    
+
     // If not found, try to fetch it
     if (!product) {
       // Try to fetch product by ID
@@ -800,7 +830,7 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
       });
       return;
     }
-    
+
     // Cache product to ensure it's available even if search changes
     cacheProduct(product);
 
@@ -810,13 +840,13 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
         ...store,
         items: [...store.items]
       }));
-      
+
       const store = newStores[storeIndex];
       if (!store) {
         console.warn('[DeliveryTripFormView] Store not found at index:', storeIndex);
         return prevStores;
       }
-      
+
       // Check if product already exists
       const existingIndex = store.items.findIndex(item => item.product_id === productId);
       if (existingIndex >= 0) {
@@ -958,6 +988,7 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
         planned_date: formData.planned_date,
         odometer_start: formData.odometer_start ? parseInt(formData.odometer_start) : undefined,
         notes: formData.notes || undefined,
+        helpers: selectedHelpers,
         stores: selectedStores.map(store => ({
           store_id: store.store_id,
           sequence_order: store.sequence_order,
@@ -1007,7 +1038,7 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
           </h3>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="relative z-10">
+            <div className="relative z-10">
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                 รถ <span className="text-red-500">*</span>
               </label>
@@ -1031,7 +1062,7 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
                   required={!formData.vehicle_id}
                 />
                 {showVehicleDropdown && filteredVehicles.length > 0 && vehicleDropdownPosition && createPortal(
-                  <div 
+                  <div
                     data-vehicle-dropdown-portal
                     className="fixed bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg shadow-xl z-[9999] max-h-60 overflow-y-auto overscroll-contain"
                     style={{
@@ -1048,7 +1079,7 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
                       const isInUse = activeVehicleIds.has(vehicle.id); // In use (trip logs)
                       const hasActiveTicket = vehiclesWithActiveTickets.has(vehicle.id); // Has active maintenance ticket
                       const hasActiveDeliveryTrip = vehiclesWithActiveDeliveryTrips.has(vehicle.id); // Has active delivery trip
-                      
+
                       // Collect all statuses
                       const statuses: string[] = [];
                       if (isInUse) {
@@ -1060,7 +1091,7 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
                       if (hasActiveDeliveryTrip) {
                         statuses.push('📦 จัดส่งอยู่');
                       }
-                      
+
                       return (
                         <button
                           key={vehicle.id}
@@ -1087,8 +1118,8 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
                                     status.includes('ใช้งานอยู่')
                                       ? 'text-amber-600 dark:text-amber-400'
                                       : status.includes('ซ่อมอยู่')
-                                      ? 'text-red-600 dark:text-red-400'
-                                      : 'text-blue-600 dark:text-blue-400'
+                                        ? 'text-red-600 dark:text-red-400'
+                                        : 'text-blue-600 dark:text-blue-400'
                                   }
                                 >
                                   {status}
@@ -1156,6 +1187,70 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
                   </option>
                 ))}
               </select>
+            </div>
+
+            {/* Helper Selection */}
+            <div>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                พนักงานผู้ช่วย
+              </label>
+              <div className="relative" ref={helperInputRef}>
+                <div className="flex flex-wrap gap-2 p-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 min-h-[42px]">
+                  {selectedHelpers.map(helperId => {
+                    const helper = availableStaff.find(s => s.id === helperId);
+                    return (
+                      <span key={helperId} className="inline-flex items-center px-2 py-1 rounded-md text-sm font-medium bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
+                        {helper?.name || 'Unknown'}
+                        <button
+                          type="button"
+                          onClick={() => setSelectedHelpers(prev => prev.filter(id => id !== helperId))}
+                          className="ml-1 hover:text-blue-900 dark:hover:text-blue-100"
+                        >
+                          <X size={14} />
+                        </button>
+                      </span>
+                    );
+                  })}
+                  <input
+                    type="text"
+                    value={helperSearch}
+                    onChange={(e) => {
+                      setHelperSearch(e.target.value);
+                      setShowHelperDropdown(true);
+                    }}
+                    onFocus={() => setShowHelperDropdown(true)}
+                    placeholder={selectedHelpers.length === 0 ? "ค้นหาพนักงานผู้ช่วย..." : ""}
+                    className="flex-1 min-w-[120px] outline-none bg-transparent text-sm text-slate-900 dark:text-slate-100 placeholder-slate-400"
+                  />
+                </div>
+
+                {showHelperDropdown && (
+                  <div className="absolute z-50 w-full mt-1 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                    {availableStaff
+                      .filter(s => !selectedHelpers.includes(s.id))
+                      .filter(s => s.name.toLowerCase().includes(helperSearch.toLowerCase()))
+                      .map(staff => (
+                        <button
+                          key={staff.id}
+                          type="button"
+                          onClick={() => {
+                            setSelectedHelpers(prev => [...prev, staff.id]);
+                            setHelperSearch('');
+                            setShowHelperDropdown(false);
+                          }}
+                          className="w-full text-left px-4 py-2 hover:bg-slate-100 dark:hover:bg-slate-700 text-sm text-slate-900 dark:text-slate-100"
+                        >
+                          {staff.name}
+                        </button>
+                      ))}
+                    {availableStaff.filter(s => !selectedHelpers.includes(s.id)).filter(s => s.name.toLowerCase().includes(helperSearch.toLowerCase())).length === 0 && (
+                      <div className="px-4 py-2 text-sm text-slate-500 text-center">
+                        ไม่พบพนักงาน
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
 
             <div>
@@ -1234,7 +1329,7 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
                 />
                 {showStoreDropdown && storeDropdownPosition && (
                   createPortal(
-                    <div 
+                    <div
                       data-store-dropdown-portal
                       className="fixed bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg shadow-xl z-[9999] max-h-60 overflow-y-auto overscroll-contain"
                       style={{
@@ -1250,7 +1345,7 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
                       {(() => {
                         const availableStores = filteredStores.filter(store => !selectedStores.find(s => s.store_id === store.id));
                         const totalMatches = filteredStores.length;
-                        
+
                         return availableStores.length > 0 ? (
                           <>
                             {totalMatches > 100 && (
@@ -1391,24 +1486,22 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
                             const inputKey = `${storeIndex}-${product.id}`;
                             const existingItem = storeWithItems.items.find(item => item.product_id === product.id);
                             const currentQuantity = productQuantityInput.get(inputKey) ?? (existingItem ? existingItem.quantity.toString() : '');
-                            
+
                             const isAdded = !!existingItem;
-                            
+
                             return (
                               <div
                                 key={product.id}
-                                className={`flex items-center gap-2 p-2 rounded border ${
-                                  isAdded
-                                    ? 'bg-green-50 dark:bg-green-900/20 border-green-300 dark:border-green-700 hover:bg-green-100 dark:hover:bg-green-900/30'
-                                    : 'border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800'
-                                }`}
+                                className={`flex items-center gap-2 p-2 rounded border ${isAdded
+                                  ? 'bg-green-50 dark:bg-green-900/20 border-green-300 dark:border-green-700 hover:bg-green-100 dark:hover:bg-green-900/30'
+                                  : 'border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800'
+                                  }`}
                               >
                                 <div className="flex-1 min-w-0">
-                                  <div className={`font-medium text-sm ${
-                                    isAdded
-                                      ? 'text-green-900 dark:text-green-100'
-                                      : 'text-slate-900 dark:text-slate-100'
-                                  }`}>
+                                  <div className={`font-medium text-sm ${isAdded
+                                    ? 'text-green-900 dark:text-green-100'
+                                    : 'text-slate-900 dark:text-slate-100'
+                                    }`}>
                                     {product.product_code}
                                     {isAdded && (
                                       <span className="ml-2 text-xs text-green-600 dark:text-green-400">
@@ -1416,11 +1509,10 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
                                       </span>
                                     )}
                                   </div>
-                                  <div className={`text-xs truncate ${
-                                    isAdded
-                                      ? 'text-green-700 dark:text-green-300'
-                                      : 'text-slate-500 dark:text-slate-400'
-                                  }`}>
+                                  <div className={`text-xs truncate ${isAdded
+                                    ? 'text-green-700 dark:text-green-300'
+                                    : 'text-slate-500 dark:text-slate-400'
+                                    }`}>
                                     {product.product_name} ({product.unit})
                                   </div>
                                 </div>
