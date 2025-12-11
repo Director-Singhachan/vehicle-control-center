@@ -59,25 +59,74 @@ export const tripLogService = {
     // Use provided checkout_time or default to now()
     const checkoutTime = data.checkout_time || new Date().toISOString();
 
-    // Find delivery trip first to get delivery_trip_id
-    // Use sequence_order to get the correct trip in order
+    // ========================================
+    // Validation: Check for existing active trip
+    // ========================================
+    const { data: existingActiveTrip } = await supabase
+      .from('trip_logs')
+      .select('id, delivery_trip_id, checkout_time')
+      .eq('vehicle_id', data.vehicle_id)
+      .eq('status', 'checked_out')
+      .maybeSingle();
+
+    if (existingActiveTrip) {
+      const checkoutDate = new Date(existingActiveTrip.checkout_time).toLocaleString('th-TH');
+      throw new Error(
+        `รถคันนี้มี trip log ที่ยังไม่ check-in อยู่แล้ว (ออกเมื่อ ${checkoutDate})\n` +
+        `กรุณา check-in ก่อนสร้างทริปใหม่`
+      );
+    }
+
+    // ========================================
+    // Find delivery trip and validate
+    // ========================================
+    // Match by vehicle_id AND planned_date to ensure correct trip
     let deliveryTripId: string | null = null;
     try {
+      // Extract date from checkout_time (YYYY-MM-DD)
+      const checkoutDate = new Date(checkoutTime).toISOString().split('T')[0];
+
       const { data: deliveryTrips } = await supabase
         .from('delivery_trips')
-        .select('id, sequence_order, trip_number')
+        .select('id, sequence_order, trip_number, planned_date')
         .eq('vehicle_id', data.vehicle_id)
+        .eq('planned_date', checkoutDate) // Match by date
         .in('status', ['planned', 'in_progress'])
-        .order('planned_date', { ascending: true }) // Earliest date first
-        .order('sequence_order', { ascending: true }) // Then by sequence
+        .order('sequence_order', { ascending: true }) // Lowest sequence first
         .limit(1);
 
       if (deliveryTrips && deliveryTrips.length > 0) {
-        deliveryTripId = deliveryTrips[0].id;
-        console.log('[tripLogService] Selected delivery trip for checkout:', {
-          id: deliveryTrips[0].id,
-          trip_number: deliveryTrips[0].trip_number,
-          sequence_order: deliveryTrips[0].sequence_order,
+        const selectedTrip = deliveryTrips[0];
+
+        // ========================================
+        // Validation: Check if delivery trip is already linked
+        // ========================================
+        const { data: existingLink } = await supabase
+          .from('trip_logs')
+          .select('id, checkout_time')
+          .eq('delivery_trip_id', selectedTrip.id)
+          .maybeSingle();
+
+        if (existingLink) {
+          console.warn(
+            `[tripLogService] Delivery trip ${selectedTrip.trip_number} already linked to trip log ${existingLink.id}`
+          );
+          // ไม่ผูก delivery trip ถ้ามีการใช้งานแล้ว
+          console.log('[tripLogService] Skipping delivery trip link due to existing usage');
+        } else {
+          deliveryTripId = selectedTrip.id;
+          console.log('[tripLogService] Selected delivery trip for checkout:', {
+            id: selectedTrip.id,
+            trip_number: selectedTrip.trip_number,
+            sequence_order: selectedTrip.sequence_order,
+            planned_date: selectedTrip.planned_date,
+            checkout_date: checkoutDate,
+          });
+        }
+      } else {
+        console.log('[tripLogService] No delivery trip found for vehicle on date:', {
+          vehicle_id: data.vehicle_id,
+          checkout_date: checkoutDate,
         });
       }
     } catch (err) {
@@ -308,16 +357,18 @@ export const tripLogService = {
         odometer_end: data.odometer_end,
       });
 
-      // Find active delivery trip for this vehicle
-      // Look for trips that are in_progress first (already started), then planned
-      // Use sequence_order to ensure we complete trips in the correct order
+      // Find active delivery trip for this vehicle on the checkout date
+      // Match by vehicle_id AND planned_date to ensure correct trip
+      // Extract date from checkout_time (YYYY-MM-DD)
+      const checkoutDate = new Date(trip.checkout_time).toISOString().split('T')[0];
+
       const { data: deliveryTrips, error: findError } = await supabase
         .from('delivery_trips')
         .select('id, status, odometer_start, odometer_end, trip_number, sequence_order, planned_date')
         .eq('vehicle_id', trip.vehicle_id)
+        .eq('planned_date', checkoutDate) // Match by date
         .in('status', ['planned', 'in_progress'])
         .order('status', { ascending: false }) // 'in_progress' before 'planned' (alphabetically)
-        .order('planned_date', { ascending: true }) // Earliest date first
         .order('sequence_order', { ascending: true }) // Then by sequence
         .limit(1);
 

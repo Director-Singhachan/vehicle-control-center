@@ -196,17 +196,17 @@ export const deliveryTripService = {
     // Guard empty arrays to avoid Supabase `.in` error
     const { data: vehicles } = vehicleIds.length > 0
       ? await supabase
-          .from('vehicles')
-          .select('id, plate, make, model')
-          .in('id', vehicleIds)
+        .from('vehicles')
+        .select('id, plate, make, model')
+        .in('id', vehicleIds)
       : { data: [] as any[] };
 
     // Fetch drivers (profiles) with same guard
     const { data: drivers } = driverIds.length > 0
       ? await supabase
-          .from('profiles')
-          .select('id, full_name, email')
-          .in('id', driverIds)
+        .from('profiles')
+        .select('id, full_name, email')
+        .in('id', driverIds)
       : { data: [] as any[] };
 
     // Create lookup maps
@@ -1113,6 +1113,85 @@ export const deliveryTripService = {
         : null,
       user: change.created_by ? userMap.get(change.created_by) || null : null,
     })) as DeliveryTripItemChangeWithDetails[];
+  },
+
+  // Change vehicle for delivery trip
+  changeVehicle: async (
+    tripId: string,
+    newVehicleId: string,
+    reason: string
+  ): Promise<DeliveryTripWithRelations> => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error('User not authenticated');
+
+    // ดึงข้อมูล delivery trip
+    const trip = await deliveryTripService.getById(tripId);
+    if (!trip) throw new Error('Delivery trip not found');
+
+    // ตรวจสอบสถานะ - ต้องเป็น planned หรือ in_progress เท่านั้น
+    if (!['planned', 'in_progress'].includes(trip.status)) {
+      throw new Error('ไม่สามารถเปลี่ยนรถสำหรับทริปที่เสร็จสิ้นหรือยกเลิกแล้ว');
+    }
+
+    const oldVehicleId = trip.vehicle_id;
+
+    // ตรวจสอบว่าเป็นรถคันเดียวกันหรือไม่
+    if (oldVehicleId === newVehicleId) {
+      throw new Error('รถคันใหม่ต้องไม่ใช่รถคันเดิม');
+    }
+
+    // อัปเดตรถใหม่
+    const { error: updateError } = await supabase
+      .from('delivery_trips')
+      .update({
+        vehicle_id: newVehicleId,
+        updated_at: new Date().toISOString(),
+        updated_by: user.id,
+      })
+      .eq('id', tripId);
+
+    if (updateError) {
+      console.error('[deliveryTripService] Error updating vehicle:', updateError);
+      throw updateError;
+    }
+
+    // บันทึก log การเปลี่ยนรถ
+    const { error: logError } = await supabase
+      .from('delivery_trip_vehicle_changes')
+      .insert({
+        delivery_trip_id: tripId,
+        old_vehicle_id: oldVehicleId,
+        new_vehicle_id: newVehicleId,
+        reason,
+        changed_by: user.id,
+        changed_at: new Date().toISOString(),
+      });
+
+    if (logError) {
+      console.error('[deliveryTripService] Error logging vehicle change:', logError);
+      // Don't throw - continue even if logging fails
+    }
+
+    // ยกเลิกการผูก trip logs ที่มีอยู่
+    // เพราะรถเปลี่ยนแล้ว trip log เก่าไม่ควรผูกกับทริปนี้
+    const { error: unlinkError } = await supabase
+      .from('trip_logs')
+      .update({ delivery_trip_id: null })
+      .eq('delivery_trip_id', tripId);
+
+    if (unlinkError) {
+      console.error('[deliveryTripService] Error unlinking trip logs:', unlinkError);
+      // Don't throw - this is not critical
+    }
+
+    console.log('[deliveryTripService] Vehicle changed successfully:', {
+      trip_id: tripId,
+      old_vehicle_id: oldVehicleId,
+      new_vehicle_id: newVehicleId,
+      reason,
+    });
+
+    return deliveryTripService.getById(tripId) as Promise<DeliveryTripWithRelations>;
   },
 
 };
