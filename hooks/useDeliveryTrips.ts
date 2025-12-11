@@ -46,7 +46,19 @@ export const useDeliveryTrips = (options: UseDeliveryTripsOptions = { autoFetch:
       setTrips(data);
       setTotal(total);
     } catch (err) {
-      setError(err as Error);
+      const error = err instanceof Error ? err : new Error('ไม่สามารถโหลดข้อมูลทริปได้');
+      
+      // Improve error message for connection errors
+      if (error.message.includes('ไม่สามารถเชื่อมต่อกับฐานข้อมูลได้') || 
+          error.message.includes('Failed to fetch') ||
+          error.message.includes('ERR_CONNECTION_CLOSED')) {
+        // Keep the user-friendly message from service
+        setError(error);
+      } else {
+        // For other errors, provide a generic message
+        setError(new Error('ไม่สามารถโหลดข้อมูลทริปได้ กรุณาลองอีกครั้ง'));
+      }
+      
       console.error('[useDeliveryTrips] Error:', err);
     } finally {
       setLoading(false);

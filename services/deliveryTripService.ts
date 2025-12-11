@@ -1,5 +1,6 @@
 // Delivery Trip Service - CRUD operations for delivery trips
 import { supabase } from '../lib/supabase';
+import { withRetry } from '../lib/retry';
 import type { Database } from '../types/database';
 
 type DeliveryTrip = Database['public']['Tables']['delivery_trips']['Row'];
@@ -46,10 +47,12 @@ export interface DeliveryTripWithRelations extends DeliveryTrip {
     plate: string;
     make?: string;
     model?: string;
+    image_url?: string | null;
   };
   driver?: {
     full_name: string;
     email?: string;
+    avatar_url?: string | null;
   };
   stores?: DeliveryTripStoreWithDetails[];
   crews?: DeliveryTripCrewWithDetails[];
@@ -148,39 +151,59 @@ export const deliveryTripService = {
     const from = (page - 1) * pageSize;
     const to = from + pageSize - 1;
 
-    // Build base query
-    // Show newest trips first: planned_date desc, then created_at desc, keep sequence_order for ties
-    let query = supabase
-      .from('delivery_trips')
-      .select('*', { count: 'exact' })
-      .order('planned_date', { ascending: false })
-      .order('created_at', { ascending: false })
-      .order('sequence_order', { ascending: true })
-      .range(from, to);
+    // Use retry logic for connection errors
+    const { data: trips, error, count } = await withRetry(async () => {
+      // Build base query inside retry function
+      // Show newest trips first: planned_date desc, then created_at desc, keep sequence_order for ties
+      let query = supabase
+        .from('delivery_trips')
+        .select('*', { count: 'exact' })
+        .order('planned_date', { ascending: false })
+        .order('created_at', { ascending: false })
+        .order('sequence_order', { ascending: true })
+        .range(from, to);
 
-    if (filters?.status && filters.status.length > 0) {
-      query = query.in('status', filters.status);
-    }
-    if (filters?.vehicle_id) {
-      query = query.eq('vehicle_id', filters.vehicle_id);
-    }
-    if (filters?.driver_id) {
-      query = query.eq('driver_id', filters.driver_id);
-    }
-    if (filters?.planned_date_from) {
-      query = query.gte('planned_date', filters.planned_date_from);
-    }
-    if (filters?.planned_date_to) {
-      query = query.lte('planned_date', filters.planned_date_to);
-    }
-    if (typeof filters?.has_item_changes === 'boolean') {
-      query = query.eq('has_item_changes', filters.has_item_changes);
-    }
+      if (filters?.status && filters.status.length > 0) {
+        query = query.in('status', filters.status);
+      }
+      if (filters?.vehicle_id) {
+        query = query.eq('vehicle_id', filters.vehicle_id);
+      }
+      if (filters?.driver_id) {
+        query = query.eq('driver_id', filters.driver_id);
+      }
+      if (filters?.planned_date_from) {
+        query = query.gte('planned_date', filters.planned_date_from);
+      }
+      if (filters?.planned_date_to) {
+        query = query.lte('planned_date', filters.planned_date_to);
+      }
+      if (typeof filters?.has_item_changes === 'boolean') {
+        query = query.eq('has_item_changes', filters.has_item_changes);
+      }
 
-    const { data: trips, error, count } = await query;
+      const result = await query;
+      if (result.error) {
+        throw result.error;
+      }
+      return result;
+    }, {
+      maxRetries: 3,
+      initialDelay: 1000,
+    });
 
     if (error) {
       console.error('[deliveryTripService] Error fetching delivery trips:', error);
+      // Create a more user-friendly error message
+      const isConnectionError = error.message?.includes('Failed to fetch') || 
+                                error.message?.includes('ERR_CONNECTION_CLOSED') ||
+                                error.code === 'ERR_CONNECTION_CLOSED';
+      
+      if (isConnectionError) {
+        const friendlyError = new Error('ไม่สามารถเชื่อมต่อกับฐานข้อมูลได้ กรุณาตรวจสอบการเชื่อมต่ออินเทอร์เน็ตและลองอีกครั้ง');
+        (friendlyError as any).originalError = error;
+        throw friendlyError;
+      }
       throw error;
     }
 
@@ -197,7 +220,7 @@ export const deliveryTripService = {
     const { data: vehicles } = vehicleIds.length > 0
       ? await supabase
         .from('vehicles')
-        .select('id, plate, make, model')
+        .select('id, plate, make, model, image_url')
         .in('id', vehicleIds)
       : { data: [] as any[] };
 
@@ -205,7 +228,7 @@ export const deliveryTripService = {
     const { data: drivers } = driverIds.length > 0
       ? await supabase
         .from('profiles')
-        .select('id, full_name, email')
+        .select('id, full_name, email, avatar_url')
         .in('id', driverIds)
       : { data: [] as any[] };
 
@@ -263,18 +286,39 @@ export const deliveryTripService = {
 
   // Get delivery trip by ID with full relations
   getById: async (id: string): Promise<DeliveryTripWithRelations | null> => {
-    // Get trip basic info
-    const { data: trip, error: tripError } = await supabase
-      .from('delivery_trips')
-      .select('*')
-      .eq('id', id)
-      .single();
+    // Get trip basic info with retry
+    const { data: trip, error: tripError } = await withRetry(async () => {
+      const result = await supabase
+        .from('delivery_trips')
+        .select('*')
+        .eq('id', id)
+        .single();
+      if (result.error) {
+        throw result.error;
+      }
+      return result;
+    }, {
+      maxRetries: 3,
+      initialDelay: 1000,
+    });
 
     if (tripError) {
       if (tripError.code === 'PGRST116') {
         return null; // Not found
       }
       console.error('[deliveryTripService] Error fetching trip:', tripError);
+      
+      // Create a more user-friendly error message for connection errors
+      const isConnectionError = tripError.message?.includes('Failed to fetch') || 
+                                tripError.message?.includes('ERR_CONNECTION_CLOSED') ||
+                                tripError.code === 'ERR_CONNECTION_CLOSED';
+      
+      if (isConnectionError) {
+        const friendlyError = new Error('ไม่สามารถเชื่อมต่อกับฐานข้อมูลได้ กรุณาตรวจสอบการเชื่อมต่ออินเทอร์เน็ตและลองอีกครั้ง');
+        (friendlyError as any).originalError = tripError;
+        throw friendlyError;
+      }
+      
       throw tripError;
     }
 
@@ -282,12 +326,12 @@ export const deliveryTripService = {
     const [vehicleResult, driverResult] = await Promise.all([
       trip.vehicle_id ? supabase
         .from('vehicles')
-        .select('id, plate, make, model')
+        .select('id, plate, make, model, image_url')
         .eq('id', trip.vehicle_id)
         .single() : { data: null, error: null },
       trip.driver_id ? supabase
         .from('profiles')
-        .select('id, full_name, email')
+        .select('id, full_name, email, avatar_url')
         .eq('id', trip.driver_id)
         .single() : { data: null, error: null },
     ]);

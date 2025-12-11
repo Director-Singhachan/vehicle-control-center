@@ -24,6 +24,7 @@ import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Card } from '../components/ui/Card';
 import { PageLayout } from '../components/layout/PageLayout';
+import { ImageModal } from '../components/ui/ImageModal';
 import { useDeliveryTrips, useVehicles, useAuth } from '../hooks';
 import { deliveryTripService, type DeliveryTripWithRelations } from '../services/deliveryTripService';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
@@ -51,6 +52,7 @@ export const DeliveryTripListView: React.FC<DeliveryTripListViewProps> = ({
   const [cancelTripId, setCancelTripId] = useState<string | null>(null);
   const [cancelReason, setCancelReason] = useState('');
   const [isCancelling, setIsCancelling] = useState(false);
+  const [selectedImage, setSelectedImage] = useState<{ url: string; alt: string } | null>(null);
 
   const { trips, total, loading, error, refetch } = useDeliveryTrips({
     status: statusFilter !== 'all' && Array.isArray(statusFilter) ? statusFilter : undefined,
@@ -325,7 +327,18 @@ export const DeliveryTripListView: React.FC<DeliveryTripListViewProps> = ({
 
                 <div className="space-y-2 mb-4">
                   <div className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400">
-                    <Truck size={16} />
+                    {trip.vehicle?.image_url ? (
+                      <img 
+                        src={trip.vehicle.image_url} 
+                        alt={trip.vehicle.plate || 'Vehicle'}
+                        className="w-8 h-8 rounded object-cover"
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).style.display = 'none';
+                        }}
+                      />
+                    ) : (
+                      <Truck size={16} />
+                    )}
                     <span>{trip.vehicle?.plate || 'N/A'}</span>
                     {trip.vehicle?.make && trip.vehicle?.model && (
                       <span className="text-slate-400">({trip.vehicle.make} {trip.vehicle.model})</span>
@@ -334,7 +347,25 @@ export const DeliveryTripListView: React.FC<DeliveryTripListViewProps> = ({
 
                   {trip.driver && (
                     <div className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400">
-                      <User size={16} />
+                      {trip.driver.avatar_url ? (
+                        <img 
+                          src={trip.driver.avatar_url} 
+                          alt={trip.driver.full_name || 'Driver'}
+                          className="w-8 h-8 rounded-full object-cover cursor-pointer hover:ring-2 hover:ring-enterprise-500 transition-all"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedImage({
+                              url: trip.driver.avatar_url!,
+                              alt: trip.driver.full_name || 'Driver'
+                            });
+                          }}
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).style.display = 'none';
+                          }}
+                        />
+                      ) : (
+                        <User size={16} />
+                      )}
                       <span>{trip.driver.full_name}</span>
                     </div>
                   )}
@@ -472,6 +503,14 @@ export const DeliveryTripListView: React.FC<DeliveryTripListViewProps> = ({
         confirmText="ยืนยันยกเลิกทริป"
         cancelText="ยกเลิก"
         variant="danger"
+      />
+
+      {/* Image Modal */}
+      <ImageModal
+        isOpen={!!selectedImage}
+        imageUrl={selectedImage?.url || ''}
+        alt={selectedImage?.alt || ''}
+        onClose={() => setSelectedImage(null)}
       />
     </PageLayout>
   );

@@ -20,6 +20,7 @@ import {
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
 import { PageLayout } from '../components/layout/PageLayout';
+import { ImageModal } from '../components/ui/ImageModal';
 import { useDeliveryTrip } from '../hooks';
 import { deliveryTripService } from '../services/deliveryTripService';
 import { pdfService } from '../services/pdfService';
@@ -46,6 +47,9 @@ export const DeliveryTripDetailView: React.FC<DeliveryTripDetailViewProps> = ({
   const [editingItems, setEditingItems] = useState(false);
   const [changeReason, setChangeReason] = useState('');
   const [savingItems, setSavingItems] = useState(false);
+  const [vehicleImageError, setVehicleImageError] = useState(false);
+  const [driverImageError, setDriverImageError] = useState(false);
+  const [selectedImage, setSelectedImage] = useState<{ url: string; alt: string } | null>(null);
 
   // Editable copy of stores/items
   const [editableStores, setEditableStores] = useState<DeliveryTripStoreWithDetails[] | null>(null);
@@ -65,6 +69,9 @@ export const DeliveryTripDetailView: React.FC<DeliveryTripDetailViewProps> = ({
         // Reset editable stores when trip changes and not currently editing
         setEditableStores(trip.stores || null);
       }
+      // Reset image error states when trip changes
+      setVehicleImageError(false);
+      setDriverImageError(false);
     }
   }, [trip, editingItems]);
 
@@ -295,7 +302,18 @@ export const DeliveryTripDetailView: React.FC<DeliveryTripDetailViewProps> = ({
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="flex items-center gap-3">
-            <Truck className="text-slate-400" size={20} />
+            {trip.vehicle?.image_url && !vehicleImageError ? (
+              <img 
+                src={trip.vehicle.image_url} 
+                alt={trip.vehicle.plate || 'Vehicle'}
+                className="w-16 h-16 rounded-lg object-cover border border-slate-200 dark:border-slate-700"
+                onError={() => setVehicleImageError(true)}
+              />
+            ) : (
+              <div className="flex items-center justify-center w-16 h-16 rounded-lg bg-slate-100 dark:bg-slate-800">
+                <Truck className="text-slate-400" size={24} />
+              </div>
+            )}
             <div>
               <div className="text-sm text-slate-500 dark:text-slate-400">รถ</div>
               <div className="font-medium text-slate-900 dark:text-slate-100">
@@ -309,7 +327,24 @@ export const DeliveryTripDetailView: React.FC<DeliveryTripDetailViewProps> = ({
 
           {trip.driver && (
             <div className="flex items-center gap-3">
-              <User className="text-slate-400" size={20} />
+              {trip.driver.avatar_url && !driverImageError ? (
+                <img 
+                  src={trip.driver.avatar_url} 
+                  alt={trip.driver.full_name || 'Driver'}
+                  className="w-16 h-16 rounded-full object-cover border-2 border-slate-200 dark:border-slate-700 cursor-pointer hover:ring-2 hover:ring-enterprise-500 transition-all"
+                  onClick={() => {
+                    setSelectedImage({
+                      url: trip.driver.avatar_url!,
+                      alt: trip.driver.full_name || 'Driver'
+                    });
+                  }}
+                  onError={() => setDriverImageError(true)}
+                />
+              ) : (
+                <div className="flex items-center justify-center w-16 h-16 rounded-full bg-slate-100 dark:bg-slate-800">
+                  <User className="text-slate-400" size={24} />
+                </div>
+              )}
               <div>
                 <div className="text-sm text-slate-500 dark:text-slate-400">คนขับ</div>
                 <div className="font-medium text-slate-900 dark:text-slate-100">
@@ -700,6 +735,14 @@ export const DeliveryTripDetailView: React.FC<DeliveryTripDetailViewProps> = ({
           </Button>
         </div>
       )}
+
+      {/* Image Modal */}
+      <ImageModal
+        isOpen={!!selectedImage}
+        imageUrl={selectedImage?.url || ''}
+        alt={selectedImage?.alt || ''}
+        onClose={() => setSelectedImage(null)}
+      />
     </PageLayout>
   );
 };
