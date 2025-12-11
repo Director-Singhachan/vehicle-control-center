@@ -96,24 +96,43 @@ CREATE INDEX IF NOT EXISTS idx_delivery_trip_items_store_id ON public.delivery_t
 CREATE INDEX IF NOT EXISTS idx_delivery_trip_items_product_id ON public.delivery_trip_items(product_id);
 
 -- Trigger for trip_number auto-generation
+-- รูปแบบ: DT-YYMM-XXXX (เช่น DT-2512-0001) และใช้ advisory lock ป้องกันเลขซ้ำ
 CREATE OR REPLACE FUNCTION generate_delivery_trip_number()
 RETURNS TRIGGER AS $$
 DECLARE
-  year_prefix TEXT;
+  year_month_prefix TEXT;
   last_number INTEGER;
   new_number TEXT;
+  current_year INTEGER;
+  current_month INTEGER;
+  lock_key BIGINT;
 BEGIN
-  -- Generate format: DT-YYYY-XXX (e.g., DT-2025-001)
-  year_prefix := TO_CHAR(NOW(), 'YYYY');
+  -- Get current year and month
+  current_year := EXTRACT(YEAR FROM NOW())::INTEGER;
+  current_month := EXTRACT(MONTH FROM NOW())::INTEGER;
   
-  -- Get last trip number for this year
+  -- Generate format: DT-YYMM-XXXX (e.g., DT-2512-0001)
+  year_month_prefix := 'DT-' || 
+    LPAD((current_year % 100)::TEXT, 2, '0') || 
+    LPAD(current_month::TEXT, 2, '0') || 
+    '-';
+  
+  -- Create a lock key based on year and month to prevent race conditions
+  -- Using year*100 + month as lock key (e.g., 202512 for Dec 2025)
+  lock_key := (current_year * 100 + current_month)::BIGINT;
+  
+  -- Acquire advisory lock (will be released at end of transaction)
+  PERFORM pg_advisory_xact_lock(lock_key);
+  
+  -- Get last trip number for this year-month
   SELECT COALESCE(MAX(CAST(SUBSTRING(trip_number FROM '[0-9]+$') AS INTEGER)), 0)
   INTO last_number
   FROM public.delivery_trips
-  WHERE trip_number LIKE 'DT-' || year_prefix || '-%';
+  WHERE trip_number LIKE year_month_prefix || '%'
+    AND trip_number ~ (year_month_prefix || '[0-9]+$'); -- Ensure it matches the pattern
   
   -- Generate new number
-  new_number := 'DT-' || year_prefix || '-' || LPAD((last_number + 1)::TEXT, 3, '0');
+  new_number := year_month_prefix || LPAD((last_number + 1)::TEXT, 4, '0');
   
   NEW.trip_number := new_number;
   RETURN NEW;
