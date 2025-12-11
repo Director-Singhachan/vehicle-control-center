@@ -1192,7 +1192,7 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
             {/* Helper Selection */}
             <div>
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                พนักงานผู้ช่วย
+                พนักงานบริการ
               </label>
               <div className="relative" ref={helperInputRef}>
                 <div className="flex flex-wrap gap-2 p-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 min-h-[42px]">
@@ -1219,7 +1219,7 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
                       setShowHelperDropdown(true);
                     }}
                     onFocus={() => setShowHelperDropdown(true)}
-                    placeholder={selectedHelpers.length === 0 ? "ค้นหาพนักงานผู้ช่วย..." : ""}
+                    placeholder={selectedHelpers.length === 0 ? "ค้นหาพนักงานบริการ..." : ""}
                     className="flex-1 min-w-[120px] outline-none bg-transparent text-sm text-slate-900 dark:text-slate-100 placeholder-slate-400"
                   />
                 </div>

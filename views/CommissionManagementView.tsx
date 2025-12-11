@@ -152,7 +152,7 @@ export const CommissionManagementView: React.FC = () => {
                                                 <div>
                                                     <p className="font-medium">{crew.staffName}</p>
                                                     <p className="text-sm text-gray-600">
-                                                        {crew.role === 'driver' ? 'คนขับ' : 'ผู้ช่วย'}
+                                                        {crew.role === 'driver' ? 'คนขับ' : 'พนักงานบริการ'}
                                                     </p>
                                                 </div>
                                                 <div className="text-right">
