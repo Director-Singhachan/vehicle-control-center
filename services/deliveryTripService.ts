@@ -149,13 +149,13 @@ export const deliveryTripService = {
     const to = from + pageSize - 1;
 
     // Build base query
-    // Order by sequence_order first (for trips with same vehicle), then planned_date, then created_at
+    // Show newest trips first: planned_date desc, then created_at desc, keep sequence_order for ties
     let query = supabase
       .from('delivery_trips')
       .select('*', { count: 'exact' })
-      .order('sequence_order', { ascending: true })
       .order('planned_date', { ascending: false })
       .order('created_at', { ascending: false })
+      .order('sequence_order', { ascending: true })
       .range(from, to);
 
     if (filters?.status && filters.status.length > 0) {

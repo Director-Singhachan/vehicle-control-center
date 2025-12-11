@@ -24,7 +24,7 @@ import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Card } from '../components/ui/Card';
 import { PageLayout } from '../components/layout/PageLayout';
-import { useDeliveryTrips, useVehicles } from '../hooks';
+import { useDeliveryTrips, useVehicles, useAuth } from '../hooks';
 import { deliveryTripService, type DeliveryTripWithRelations } from '../services/deliveryTripService';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 
@@ -38,6 +38,7 @@ export const DeliveryTripListView: React.FC<DeliveryTripListViewProps> = ({
   onCreate,
 }) => {
   const { vehicles } = useVehicles();
+  const { isReadOnly } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string[] | 'all'>('all');
   const [vehicleFilter, setVehicleFilter] = useState<string>('');
@@ -149,7 +150,11 @@ export const DeliveryTripListView: React.FC<DeliveryTripListViewProps> = ({
       title="ทริปส่งสินค้า"
       subtitle="จัดการทริปส่งสินค้าและรายการสินค้า"
       actions={
-        <Button onClick={onCreate} className="flex items-center gap-2">
+        <Button
+          onClick={isReadOnly ? undefined : onCreate}
+          disabled={isReadOnly}
+          className="flex items-center gap-2"
+        >
           <Plus size={18} />
           สร้างทริปใหม่
         </Button>
@@ -365,7 +370,9 @@ export const DeliveryTripListView: React.FC<DeliveryTripListViewProps> = ({
                     <Button
                       variant="outline"
                       size="sm"
+                      disabled={isReadOnly}
                       onClick={() => {
+                        if (isReadOnly) return;
                         console.log('[DeliveryTripListView] Cancel button clicked for trip:', trip.id);
                         setCancelTripId(trip.id);
                       }}
@@ -420,6 +427,7 @@ export const DeliveryTripListView: React.FC<DeliveryTripListViewProps> = ({
           setCancelReason('');
         }}
         onConfirm={async () => {
+          if (isReadOnly) return;
           if (!cancelTripId) return;
           console.log('[DeliveryTripListView] Confirming cancel for trip:', cancelTripId);
           setIsCancelling(true);

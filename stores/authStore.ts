@@ -20,6 +20,7 @@ interface AuthState {
   isInspector: boolean;
   isExecutive: boolean;
   isDriver: boolean;
+  isReadOnly: boolean;
 
   // Actions
   setUser: (user: User | null) => void;
@@ -48,6 +49,7 @@ export const useAuthStore = create<AuthState>()(
       isInspector: false,
       isExecutive: false,
       isDriver: false,
+      isReadOnly: false,
 
       setUser: (user) => set({ user }),
       setProfile: (profile) => {
@@ -58,6 +60,7 @@ export const useAuthStore = create<AuthState>()(
           isInspector: profile?.role === 'inspector',
           isExecutive: profile?.role === 'executive',
           isDriver: profile?.role === 'driver',
+          isReadOnly: profile?.role === 'user',
         });
       },
       setLoading: (loading) => set({ loading }),
@@ -78,6 +81,7 @@ export const useAuthStore = create<AuthState>()(
             isInspector: profile.role === 'inspector',
             isExecutive: profile.role === 'executive',
             isDriver: profile.role === 'driver',
+            isReadOnly: profile.role === 'user',
           });
           console.log('[Auth] Using cached data, verifying session in background...');
         } else {
@@ -204,7 +208,8 @@ export const useAuthStore = create<AuthState>()(
             isManager: false,
             isInspector: false,
             isExecutive: false,
-            isDriver: false
+            isDriver: false,
+            isReadOnly: false
           });
         } finally {
           set({ loading: false });
@@ -237,6 +242,7 @@ export const useAuthStore = create<AuthState>()(
         isInspector: state.isInspector,
         isExecutive: state.isExecutive,
         isDriver: state.isDriver,
+        isReadOnly: state.isReadOnly,
       }),
     }
   )

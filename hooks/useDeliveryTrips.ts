@@ -63,19 +63,9 @@ export const useDeliveryTrips = (options: UseDeliveryTripsOptions = { autoFetch:
   ]);
 
   useEffect(() => {
-    if (options.autoFetch !== false) {
-      fetchTrips();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    statusKey,
-    options.vehicle_id,
-    options.driver_id,
-    options.planned_date_from,
-    options.planned_date_to,
-    options.has_item_changes,
-    options.autoFetch,
-  ]);
+    if (options.autoFetch === false) return;
+    fetchTrips();
+  }, [fetchTrips, options.autoFetch]);
 
   // Auto-refresh delivery trips periodically so that
   // the Delivery Trip list reflects updates from check-out/check-in
