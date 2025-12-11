@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { Card } from './ui/Card';
 import { Button } from './ui/Button';
+import { ImageModal } from './ui/ImageModal';
 import { useActiveTrips, useOverdueTrips } from '../hooks';
 import type { TripLogWithRelations } from '../services/tripLogService';
 
@@ -30,6 +31,8 @@ export const ActiveTripsWidget: React.FC<ActiveTripsWidgetProps> = ({
 }) => {
   const { trips: activeTrips, loading, error } = useActiveTrips(vehicleId);
   const { trips: overdueTrips } = useOverdueTrips();
+  const [imageErrors, setImageErrors] = React.useState<Set<string>>(new Set());
+  const [selectedImage, setSelectedImage] = React.useState<{ url: string; alt: string } | null>(null);
 
   const displayTrips = showOverdueOnly
     ? activeTrips.filter((trip) =>
@@ -167,8 +170,26 @@ export const ActiveTripsWidget: React.FC<ActiveTripsWidgetProps> = ({
                         {trip.vehicle.make} {trip.vehicle.model}
                       </p>
                     )}
-                    <p className="text-sm text-slate-600 dark:text-slate-400 flex items-center gap-1">
-                      <User size={14} />
+                    <p className="text-sm text-slate-600 dark:text-slate-400 flex items-center gap-2">
+                      {trip.driver?.avatar_url && !imageErrors.has(`driver-${trip.id}`) ? (
+                        <img
+                          src={trip.driver.avatar_url}
+                          alt={trip.driver.full_name || 'Driver'}
+                          className="w-6 h-6 rounded-full object-cover border border-slate-200 dark:border-slate-700 cursor-pointer hover:ring-2 hover:ring-enterprise-500 transition-all"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedImage({
+                              url: trip.driver.avatar_url!,
+                              alt: trip.driver.full_name || 'Driver'
+                            });
+                          }}
+                          onError={() => {
+                            setImageErrors(prev => new Set(prev).add(`driver-${trip.id}`));
+                          }}
+                        />
+                      ) : (
+                        <User size={14} />
+                      )}
                       <span className="truncate">{trip.driver?.full_name || 'N/A'}</span>
                     </p>
                   </div>
@@ -244,6 +265,14 @@ export const ActiveTripsWidget: React.FC<ActiveTripsWidgetProps> = ({
           </div>
         </div>
       )}
+
+      {/* Image Modal */}
+      <ImageModal
+        isOpen={!!selectedImage}
+        imageUrl={selectedImage?.url || ''}
+        alt={selectedImage?.alt || ''}
+        onClose={() => setSelectedImage(null)}
+      />
     </Card>
   );
 };

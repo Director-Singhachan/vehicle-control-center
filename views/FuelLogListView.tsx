@@ -22,6 +22,7 @@ import { Input } from '../components/ui/Input';
 import { Card } from '../components/ui/Card';
 import { PageLayout } from '../components/layout/PageLayout';
 import { Avatar } from '../components/ui/Avatar';
+import { ImageModal } from '../components/ui/ImageModal';
 import { useFuelLogs, useFuelStats, useVehicles, useVehicleEfficiencyComparison } from '../hooks';
 import { useVehicleFuelComparison, useFuelTrend } from '../hooks/useReports';
 import type { Database } from '../types/database';
@@ -72,6 +73,7 @@ export const FuelLogListView: React.FC<FuelLogListViewProps> = ({
 }) => {
   const { vehicles } = useVehicles();
   const [expandedImage, setExpandedImage] = useState<{ src: string; alt: string } | null>(null);
+  const [selectedVehicleImage, setSelectedVehicleImage] = useState<{ url: string; alt: string } | null>(null);
 
   const [filters, setFilters] = useState<{
     vehicle_id?: string;
@@ -679,12 +681,34 @@ export const FuelLogListView: React.FC<FuelLogListViewProps> = ({
                     <div className="flex items-start justify-between mb-4">
                       <div className="flex-1">
                         <div className="flex items-center gap-3 mb-2">
-                          <div className="p-2 bg-enterprise-100 dark:bg-enterprise-900 rounded-lg">
+                          {(record as any).vehicle?.image_url ? (
+                            <img
+                              src={(record as any).vehicle.image_url}
+                              alt={(record as any).vehicle.plate || 'Vehicle'}
+                              className="w-16 h-16 rounded-lg object-cover border border-slate-200 dark:border-slate-700 cursor-pointer hover:ring-2 hover:ring-enterprise-500 transition-all"
+                              onClick={() => {
+                                setSelectedVehicleImage({
+                                  url: (record as any).vehicle.image_url,
+                                  alt: (record as any).vehicle.plate || 'Vehicle'
+                                });
+                              }}
+                              onError={(e) => {
+                                (e.target as HTMLImageElement).style.display = 'none';
+                                const fallback = (e.target as HTMLImageElement).nextElementSibling as HTMLElement;
+                                if (fallback) fallback.style.display = 'flex';
+                              }}
+                            />
+                          ) : null}
+                          <div
+                            className={`p-2 bg-enterprise-100 dark:bg-enterprise-900 rounded-lg ${
+                              (record as any).vehicle?.image_url ? 'hidden' : ''
+                            }`}
+                          >
                             <Droplet className="w-5 h-5 text-enterprise-600 dark:text-enterprise-400" />
                           </div>
                           <div>
                             <h3 className="font-semibold text-lg text-slate-900 dark:text-white">
-                              {vehicle?.plate || 'N/A'}
+                              {vehicle?.plate || (record as any).vehicle?.plate || 'N/A'}
                             </h3>
                             <p className="text-sm text-slate-500 dark:text-slate-400">
                               {FUEL_TYPE_LABELS[record.fuel_type] || record.fuel_type} • {formatDateOnly(record.filled_at)}
@@ -997,36 +1021,21 @@ export const FuelLogListView: React.FC<FuelLogListViewProps> = ({
         )}
       </div>
 
-      {/* Expanded Image Modal */}
-      {expandedImage && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4"
-          onClick={() => setExpandedImage(null)}
-        >
-          <div className="relative max-w-4xl max-h-[90vh] w-full">
-            <button
-              onClick={() => setExpandedImage(null)}
-              className="absolute -top-12 right-0 text-white hover:text-slate-300 transition-colors p-2"
-              aria-label="ปิด"
-            >
-              <X size={24} />
-            </button>
-            <div className="bg-white dark:bg-slate-800 rounded-lg overflow-hidden shadow-2xl">
-              <img
-                src={expandedImage.src}
-                alt={expandedImage.alt}
-                className="w-full h-auto max-h-[80vh] object-contain"
-                onClick={(e) => e.stopPropagation()}
-              />
-              <div className="p-4 border-t border-slate-200 dark:border-slate-700">
-                <p className="text-center text-slate-700 dark:text-slate-300 font-medium">
-                  {expandedImage.alt}
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Expanded Image Modal for User Avatar */}
+      <ImageModal
+        isOpen={!!expandedImage}
+        imageUrl={expandedImage?.src || ''}
+        alt={expandedImage?.alt || ''}
+        onClose={() => setExpandedImage(null)}
+      />
+
+      {/* Vehicle Image Modal */}
+      <ImageModal
+        isOpen={!!selectedVehicleImage}
+        imageUrl={selectedVehicleImage?.url || ''}
+        alt={selectedVehicleImage?.alt || ''}
+        onClose={() => setSelectedVehicleImage(null)}
+      />
     </PageLayout>
   );
 };
