@@ -532,7 +532,7 @@ export const pdfService = {
             // Header
             doc.setFontSize(16);
             doc.setFont('Sarabun', 'normal');
-            doc.text('ใบส่งสินค้า', 74, yPos, { align: 'center' });
+            doc.text('ใบเบิกสินค้า', 74, yPos, { align: 'center' });
             yPos += 8;
 
             // First row: Date (left) and Trip Number (right)
@@ -599,7 +599,26 @@ export const pdfService = {
                                     yPos = 15;
                                 }
 
-                                doc.text(`   • ${product.product_code} - ${product.product_name} (${item.quantity} ${product.unit})`, 10, yPos);
+                                // Format: bullet, product code, product name (left aligned)
+                                // quantity and unit separated on the right
+                                const productText = `   • ${product.product_code} - ${product.product_name}`;
+                                const quantityText = item.quantity.toLocaleString();
+                                const unitText = product.unit;
+                                
+                                // Calculate positions
+                                const leftX = 10;
+                                const quantityX = 115; // Position for quantity (right aligned)
+                                const unitX = 138; // Position for unit (rightmost, with space from quantity)
+                                
+                                // Draw product info on left
+                                doc.text(productText, leftX, yPos);
+                                
+                                // Draw quantity on right (aligned right)
+                                doc.text(quantityText, quantityX, yPos, { align: 'right' });
+                                
+                                // Draw unit separately, with space from quantity
+                                doc.text(unitText, unitX, yPos, { align: 'right' });
+                                
                                 yPos += 4;
                             });
                         }
