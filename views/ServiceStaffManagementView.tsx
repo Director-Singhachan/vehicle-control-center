@@ -202,7 +202,7 @@ export const ServiceStaffManagementView: React.FC = () => {
     return (
         <PageLayout
             title="จัดการพนักงาน"
-            subtitle="จัดการข้อมูลพนักงานขับรถและผู้ช่วย"
+            subtitle="จัดการข้อมูลพนักงานขับรถและพนักงานบริการ"
         >
             {/* Header Actions */}
             <div className="mb-6 flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center">

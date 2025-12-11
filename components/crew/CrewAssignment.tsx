@@ -187,7 +187,7 @@ export const CrewAssignment: React.FC<CrewAssignmentProps> = ({
                                 className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 text-gray-900 dark:text-slate-100 focus:ring-2 focus:ring-blue-500"
                             >
                                 <option value="driver">คนขับ</option>
-                                <option value="helper">ผู้ช่วย</option>
+                                <option value="helper">พนักงานบริการ</option>
                             </select>
                         </div>
 
@@ -280,7 +280,7 @@ export const CrewAssignment: React.FC<CrewAssignmentProps> = ({
                                         <div className="flex items-center gap-2 mb-1">
                                             <span className="font-medium">{staffInfo?.name || 'Unknown'}</span>
                                             <span className="px-2 py-0.5 bg-blue-100 text-blue-800 text-xs rounded-full">
-                                                {member.role === 'driver' ? 'คนขับ' : 'ผู้ช่วย'}
+                                                {member.role === 'driver' ? 'คนขับ' : 'พนักงานบริการ'}
                                             </span>
                                             {staffInfo && getStatusBadge(staffInfo.status)}
                                         </div>
