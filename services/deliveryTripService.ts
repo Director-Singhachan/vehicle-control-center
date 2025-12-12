@@ -487,7 +487,86 @@ export const deliveryTripService = {
       throw tripError;
     }
 
-    // 1.5 Create helpers (crew)
+    // 1.5 Ensure driver is also present in delivery_trip_crews as role = 'driver'
+    try {
+      if (trip.driver_id) {
+        // Check if there is already an active driver crew for this trip (in case user added manually)
+        const { data: existingDriverCrews } = await supabase
+          .from('delivery_trip_crews')
+          .select('id')
+          .eq('delivery_trip_id', trip.id)
+          .eq('role', 'driver')
+          .eq('status', 'active')
+          .limit(1);
+
+        const hasDriverCrew = (existingDriverCrews || []).length > 0;
+
+        if (!hasDriverCrew) {
+          // Find matching service_staff by driver profile name
+          const { data: driverProfile } = await supabase
+            .from('profiles')
+            .select('id, full_name')
+            .eq('id', trip.driver_id)
+            .single();
+
+          if (driverProfile?.full_name) {
+            const driverName = driverProfile.full_name.trim();
+
+            const { data: staffMatches, error: staffError } = await supabase
+              .from('service_staff')
+              .select('id, name, status')
+              .eq('name', driverName)
+              .limit(5);
+
+            if (staffError) {
+              console.error('[deliveryTripService] Error matching driver to service_staff:', staffError);
+            } else if (staffMatches && staffMatches.length > 0) {
+              // Prefer active staff, fall back to first match
+              const staff =
+                staffMatches.find(s => s.status === 'active') ||
+                staffMatches[0];
+
+              if (staff) {
+                const now = new Date().toISOString();
+
+                const { error: insertDriverCrewError } = await supabase
+                  .from('delivery_trip_crews')
+                  .insert({
+                    delivery_trip_id: trip.id,
+                    staff_id: staff.id,
+                    role: 'driver',
+                    status: 'active',
+                    start_at: now,
+                    created_by: user.id,
+                    updated_by: user.id,
+                  });
+
+                if (insertDriverCrewError) {
+                  console.error('[deliveryTripService] Error creating driver crew from trip driver_id:', insertDriverCrewError);
+                } else {
+                  console.log('[deliveryTripService] Synced driver to delivery_trip_crews as driver role:', {
+                    trip_id: trip.id,
+                    driver_profile_id: trip.driver_id,
+                    staff_id: staff.id,
+                  });
+                }
+              }
+            } else {
+              console.warn('[deliveryTripService] No matching service_staff found for driver profile name. Driver will not be included in crew automatically.', {
+                trip_id: trip.id,
+                driver_profile_id: trip.driver_id,
+                driver_name: driverName,
+              });
+            }
+          }
+        }
+      }
+    } catch (driverCrewError) {
+      console.error('[deliveryTripService] Failed to sync driver to delivery_trip_crews:', driverCrewError);
+      // Do not throw – trip creation should still succeed
+    }
+
+    // 1.6 Create helpers (crew)
     if (data.helpers && data.helpers.length > 0) {
       const crewData = data.helpers.map(staffId => ({
         delivery_trip_id: trip.id,
@@ -884,6 +963,38 @@ export const deliveryTripService = {
 
       if (flagError) {
         console.error('[deliveryTripService] Error updating item change flags on trip:', flagError);
+      } else {
+        // ถ้าทริปนี้เป็นสถานะ completed แล้ว และมีการแก้ไขสินค้า → เรียกคำนวณค่าคอมใหม่อัตโนมัติ
+        try {
+          const { data: updatedTrip } = await supabase
+            .from('delivery_trips')
+            .select('id, status, trip_number')
+            .eq('id', id)
+            .single();
+
+          if (updatedTrip && updatedTrip.status === 'completed') {
+            console.log(
+              '[deliveryTripService] Trip items changed for completed trip. Invoking auto-commission-worker:',
+              {
+                trip_id: updatedTrip.id,
+                trip_number: updatedTrip.trip_number,
+              }
+            );
+
+            await supabase.functions.invoke('auto-commission-worker', {
+              body: {
+                source: 'trip_items_update',
+                trip_id: updatedTrip.id,
+              },
+            });
+          }
+        } catch (commissionRecalcError) {
+          console.warn(
+            '[deliveryTripService] Failed to invoke auto-commission-worker after item changes:',
+            commissionRecalcError
+          );
+          // ไม่ throw ต่อ เพื่อไม่ให้กระทบ UX การแก้ไขทริป
+        }
       }
     }
 
