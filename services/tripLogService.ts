@@ -354,121 +354,185 @@ export const tripLogService = {
     try {
       console.log('[tripLogService] Checking for delivery trip to update:', {
         vehicle_id: trip.vehicle_id,
+        delivery_trip_id: trip.delivery_trip_id,
         odometer_end: data.odometer_end,
       });
 
-      // Find active delivery trip for this vehicle on the checkout date
-      // Match by vehicle_id AND planned_date to ensure correct trip
-      // Extract date from checkout_time (YYYY-MM-DD)
-      const checkoutDate = new Date(trip.checkout_time).toISOString().split('T')[0];
+      // ========================================
+      // Find delivery trip for this checkin
+      // Priority:
+      //   1) If this trip log is already linked to a delivery trip, use that
+      //   2) Otherwise, find by vehicle_id + planned_date
+      // ========================================
+      let deliveryTrip:
+        | {
+            id: string;
+            status: string;
+            odometer_start: number | null;
+            odometer_end: number | null;
+            trip_number: string | null;
+            sequence_order: number | null;
+            planned_date: string | null;
+          }
+        | null = null;
 
-      const { data: deliveryTrips, error: findError } = await supabase
-        .from('delivery_trips')
-        .select('id, status, odometer_start, odometer_end, trip_number, sequence_order, planned_date')
-        .eq('vehicle_id', trip.vehicle_id)
-        .eq('planned_date', checkoutDate) // Match by date
-        .in('status', ['planned', 'in_progress'])
-        .order('status', { ascending: false }) // 'in_progress' before 'planned' (alphabetically)
-        .order('sequence_order', { ascending: true }) // Then by sequence
-        .limit(1);
+      // 1) Use existing link if present
+      if (trip.delivery_trip_id) {
+        const { data: linkedTrip, error: linkedError } = await supabase
+          .from('delivery_trips')
+          .select('id, status, odometer_start, odometer_end, trip_number, sequence_order, planned_date')
+          .eq('id', trip.delivery_trip_id)
+          .maybeSingle();
 
-      if (findError) {
-        console.error('[tripLogService] Error finding delivery trip:', findError);
-      } else {
-        console.log('[tripLogService] Found delivery trips:', deliveryTrips);
+        if (linkedError) {
+          console.error('[tripLogService] Error loading linked delivery trip:', linkedError);
+        } else if (linkedTrip) {
+          deliveryTrip = linkedTrip as any;
+          console.log('[tripLogService] Using already linked delivery trip for checkin:', {
+            id: linkedTrip.id,
+            trip_number: linkedTrip.trip_number,
+            status: linkedTrip.status,
+          });
+        }
+      }
 
-        if (deliveryTrips && deliveryTrips.length > 0) {
-          const deliveryTrip = deliveryTrips[0];
-          console.log('[tripLogService] Updating delivery trip:', {
+      // 2) Fallback: find active delivery trip for this vehicle on the checkout date
+      if (!deliveryTrip) {
+        // Match by vehicle_id AND planned_date to ensure correct trip
+        // Extract date from checkout_time (YYYY-MM-DD)
+        const checkoutDate = new Date(trip.checkout_time).toISOString().split('T')[0];
+
+        const { data: deliveryTrips, error: findError } = await supabase
+          .from('delivery_trips')
+          .select('id, status, odometer_start, odometer_end, trip_number, sequence_order, planned_date')
+          .eq('vehicle_id', trip.vehicle_id)
+          .eq('planned_date', checkoutDate) // Match by date
+          .in('status', ['planned', 'in_progress'])
+          // Prefer in_progress over planned explicitly (avoid relying on lexical order)
+          .order('status', { ascending: true }) // 'in_progress' before 'planned'
+          .order('sequence_order', { ascending: true }) // Then by sequence
+          .limit(1);
+
+        if (findError) {
+          console.error('[tripLogService] Error finding delivery trip by vehicle/date:', findError);
+        } else if (deliveryTrips && deliveryTrips.length > 0) {
+          deliveryTrip = deliveryTrips[0] as any;
+          console.log('[tripLogService] Found delivery trip by vehicle/date for checkin:', {
             id: deliveryTrip.id,
             trip_number: deliveryTrip.trip_number,
-            current_status: deliveryTrip.status,
-            new_status: 'completed',
-            odometer_end: data.odometer_end,
+            status: deliveryTrip.status,
+            sequence_order: deliveryTrip.sequence_order,
+            planned_date: deliveryTrip.planned_date,
+          });
+        } else {
+          console.log('[tripLogService] No active delivery trip found for vehicle/date on checkin:', {
+            vehicle_id: trip.vehicle_id,
+            checkout_date: checkoutDate,
+          });
+        }
+      }
+
+      if (!deliveryTrip) {
+        console.log(
+          '[tripLogService] No delivery trip to update for this checkin. Trip may be non-delivery usage.',
+          {
+            vehicle_id: trip.vehicle_id,
+            trip_id: trip.id,
+          }
+        );
+        // Nothing else to do for non-delivery usage
+        return result;
+      }
+
+      console.log('[tripLogService] Updating delivery trip:', {
+        id: deliveryTrip.id,
+        trip_number: deliveryTrip.trip_number,
+        current_status: deliveryTrip.status,
+        new_status: 'completed',
+        odometer_end: data.odometer_end,
+      });
+
+      // Update delivery trip to completed and set odometer_end
+      const { error: updateError } = await supabase
+        .from('delivery_trips')
+        .update({
+          status: 'completed',
+          odometer_end: data.odometer_end,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', deliveryTrip.id);
+
+      if (updateError) {
+        console.error('[tripLogService] Error updating delivery trip status:', updateError);
+        // Don't throw - continue with notification
+      } else {
+        console.log('[tripLogService] Successfully updated delivery trip to completed:', {
+          id: deliveryTrip.id,
+          trip_number: deliveryTrip.trip_number,
+        });
+
+        // Update all stores' delivery_status to 'delivered' when trip is completed
+        // Update all stores regardless of current status (pending, failed, etc.)
+        try {
+          const { error: storesUpdateError } = await supabase
+            .from('delivery_trip_stores')
+            .update({
+              delivery_status: 'delivered',
+              delivered_at: new Date().toISOString(),
+            })
+            .eq('delivery_trip_id', deliveryTrip.id);
+          // Removed .in('delivery_status', ['pending']) to update ALL stores in the trip
+
+          if (storesUpdateError) {
+            console.error('[tripLogService] Error updating store delivery status:', storesUpdateError);
+          } else {
+            console.log(
+              '[tripLogService] Updated all stores to delivered status for trip:',
+              deliveryTrip.id
+            );
+          }
+        } catch (storesError) {
+          console.error('[tripLogService] Error updating stores:', storesError);
+          // Don't throw - continue with notification
+        }
+
+        // Trigger auto commission calculation for this delivery trip (fire-and-forget)
+        try {
+          console.log('[tripLogService] Invoking auto-commission-worker for completed trip:', {
+            delivery_trip_id: deliveryTrip.id,
+            trip_number: deliveryTrip.trip_number,
           });
 
-          // Update delivery trip to completed and set odometer_end
-          const { error: updateError } = await supabase
-            .from('delivery_trips')
-            .update({
-              status: 'completed',
-              odometer_end: data.odometer_end,
-              updated_at: new Date().toISOString(),
-            })
-            .eq('id', deliveryTrip.id);
+          await supabase.functions.invoke('auto-commission-worker', {
+            body: {
+              source: 'trip_checkin',
+              trip_id: deliveryTrip.id,
+            },
+          });
+        } catch (commissionInvokeError) {
+          console.warn(
+            '[tripLogService] Failed to invoke auto-commission-worker. Commission will not be auto-calculated for this trip:',
+            commissionInvokeError
+          );
+          // ไม่ throw ต่อ เพื่อไม่ให้กระทบ UX การเช็คอิน
+        }
+      }
 
-          if (updateError) {
-            console.error('[tripLogService] Error updating delivery trip status:', updateError);
-            // Don't throw - continue with notification
+      // Update trip log with delivery_trip_id if not already set
+      if (result && !result.delivery_trip_id) {
+        try {
+          const { error: linkError } = await supabase
+            .from('trip_logs')
+            .update({ delivery_trip_id: deliveryTrip.id })
+            .eq('id', result.id);
+
+          if (linkError) {
+            console.error('[tripLogService] Error linking delivery trip to trip log:', linkError);
           } else {
-            console.log('[tripLogService] Successfully updated delivery trip to completed:', {
-              id: deliveryTrip.id,
-              trip_number: deliveryTrip.trip_number,
-            });
-
-            // Update all stores' delivery_status to 'delivered' when trip is completed
-            // Update all stores regardless of current status (pending, failed, etc.)
-            try {
-              const { error: storesUpdateError } = await supabase
-                .from('delivery_trip_stores')
-                .update({
-                  delivery_status: 'delivered',
-                  delivered_at: new Date().toISOString(),
-                })
-                .eq('delivery_trip_id', deliveryTrip.id);
-              // Removed .in('delivery_status', ['pending']) to update ALL stores in the trip
-
-              if (storesUpdateError) {
-                console.error('[tripLogService] Error updating store delivery status:', storesUpdateError);
-              } else {
-                console.log('[tripLogService] Updated all stores to delivered status for trip:', deliveryTrip.id);
-              }
-            } catch (storesError) {
-              console.error('[tripLogService] Error updating stores:', storesError);
-              // Don't throw - continue with notification
-            }
-
-            // Trigger auto commission calculation for this delivery trip (fire-and-forget)
-            try {
-              console.log('[tripLogService] Invoking auto-commission-worker for completed trip:', {
-                delivery_trip_id: deliveryTrip.id,
-                trip_number: deliveryTrip.trip_number,
-              });
-
-              await supabase.functions.invoke('auto-commission-worker', {
-                body: {
-                  source: 'trip_checkin',
-                  trip_id: deliveryTrip.id,
-                },
-              });
-            } catch (commissionInvokeError) {
-              console.warn(
-                '[tripLogService] Failed to invoke auto-commission-worker. Commission will not be auto-calculated for this trip:',
-                commissionInvokeError
-              );
-              // ไม่ throw ต่อ เพื่อไม่ให้กระทบ UX การเช็คอิน
-            }
+            console.log('[tripLogService] Linked delivery trip to trip log:', deliveryTrip.id);
           }
-
-          // Update trip log with delivery_trip_id if not already set
-          if (result && !result.delivery_trip_id) {
-            try {
-              const { error: linkError } = await supabase
-                .from('trip_logs')
-                .update({ delivery_trip_id: deliveryTrip.id })
-                .eq('id', result.id);
-
-              if (linkError) {
-                console.error('[tripLogService] Error linking delivery trip to trip log:', linkError);
-              } else {
-                console.log('[tripLogService] Linked delivery trip to trip log:', deliveryTrip.id);
-              }
-            } catch (linkError) {
-              console.error('[tripLogService] Error linking delivery trip:', linkError);
-            }
-          }
-        } else {
-          console.log('[tripLogService] No active delivery trip found for vehicle:', trip.vehicle_id);
+        } catch (linkError) {
+          console.error('[tripLogService] Error linking delivery trip:', linkError);
         }
       }
     } catch (deliveryTripError) {
