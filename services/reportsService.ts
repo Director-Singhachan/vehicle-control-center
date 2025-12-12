@@ -73,6 +73,15 @@ export interface DriverTripReport {
   vehicles_used: string[];
 }
 
+// Commission / Staff workload reports
+export interface StaffCommissionSummary {
+  staff_id: string;
+  staff_name: string;
+  totalTrips: number;
+  totalActualCommission: number;
+  averageCommissionPerTrip: number;
+}
+
 // Maintenance Reports
 export interface MonthlyMaintenanceReport {
   month: string;
@@ -2260,6 +2269,138 @@ export const reportsService = {
       return result;
     } catch (error) {
       console.error('[reportsService] getMonthlyDeliveryReport error:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Get staff commission summary
+   * สรุปค่าคอมมิชชั่นตามพนักงาน (ใช้สำหรับดูภาพรวมการกระจายงาน/ค่าคอม)
+   * ใช้ข้อมูลจาก commission_logs ที่ถูกคำนวณและบันทึกแล้ว
+   */
+  getStaffCommissionSummary: async (
+    startDate?: Date,
+    endDate?: Date
+  ): Promise<StaffCommissionSummary[]> => {
+    try {
+      const { supabase } = await import('../lib/supabase');
+
+      // ถ้าไม่กำหนดช่วงวันที่ ให้ default เป็น 3 เดือนล่าสุด
+      if (!startDate || !endDate) {
+        const now = new Date();
+        endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+        startDate = new Date(now.getFullYear(), now.getMonth() - 2, 1);
+      }
+
+      const formatDateForQuery = (date: Date): string => {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+      };
+
+      const startDateStr = formatDateForQuery(startDate);
+      const endDateStr = formatDateForQuery(endDate);
+
+      // 1) ดึงทริปที่อยู่ในช่วงวันที่ (ใช้ planned_date ของ delivery_trips)
+      const { data: trips, error: tripsError } = await supabase
+        .from('delivery_trips')
+        .select('id, planned_date')
+        .eq('status', 'completed')
+        .gte('planned_date', startDateStr)
+        .lte('planned_date', endDateStr);
+
+      if (tripsError) {
+        console.error('[reportsService] Error fetching trips for staff commission summary:', tripsError);
+        throw tripsError;
+      }
+
+      if (!trips || trips.length === 0) {
+        return [];
+      }
+
+      const tripIds = (trips as any[]).map(t => t.id);
+
+      // 2) ดึง commission_logs ของทริปเหล่านี้ พร้อมข้อมูลพนักงาน
+      const { data: logs, error: logsError } = await supabase
+        .from('commission_logs')
+        .select(`
+          staff_id,
+          delivery_trip_id,
+          total_items_delivered,
+          actual_commission,
+          staff:service_staff!commission_logs_staff_id_fkey (
+            id,
+            name,
+            status
+          )
+        `)
+        .in('delivery_trip_id', tripIds);
+
+      if (logsError) {
+        console.error('[reportsService] Error fetching commission logs for staff summary:', logsError);
+        throw logsError;
+      }
+
+      if (!logs || logs.length === 0) {
+        return [];
+      }
+
+      // 3) สรุปข้อมูลตามพนักงาน
+      type StaffAgg = {
+        staff_id: string;
+        staff_name: string;
+        totalActualCommission: number;
+        tripIds: Set<string>;
+      };
+
+      const staffMap = new Map<string, StaffAgg>();
+
+      (logs as any[]).forEach(log => {
+        const staffId = log.staff_id as string | null;
+        if (!staffId) return;
+
+        const staffName =
+          (log.staff as any)?.name ||
+          'ไม่ทราบชื่อ';
+
+        if (!staffMap.has(staffId)) {
+          staffMap.set(staffId, {
+            staff_id: staffId,
+            staff_name: staffName,
+            totalActualCommission: 0,
+            tripIds: new Set<string>(),
+          });
+        }
+
+        const agg = staffMap.get(staffId)!;
+        agg.totalActualCommission += Number(log.actual_commission || 0);
+        if (log.delivery_trip_id) {
+          agg.tripIds.add(log.delivery_trip_id as string);
+        }
+      });
+
+      // 4) แปลงเป็น array และคำนวณค่าเฉลี่ย/ทริป
+      const result: StaffCommissionSummary[] = Array.from(staffMap.values()).map(agg => {
+        const totalTrips = agg.tripIds.size;
+        const totalActualCommission = agg.totalActualCommission;
+
+        return {
+          staff_id: agg.staff_id,
+          staff_name: agg.staff_name,
+          totalTrips,
+          totalActualCommission,
+          averageCommissionPerTrip: totalTrips > 0
+            ? totalActualCommission / totalTrips
+            : 0,
+        };
+      })
+      // เรียงจากคนที่มียอดค่าคอมมากไปน้อย
+      .sort((a, b) => b.totalActualCommission - a.totalActualCommission);
+
+      return result;
+    } catch (error) {
+      console.error('[reportsService] getStaffCommissionSummary error:', error);
       throw error;
     }
   },

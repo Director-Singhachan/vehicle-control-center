@@ -14,6 +14,7 @@ import type {
   CostAnalysis,
   CostPerKm,
   MonthlyCostTrend,
+  StaffCommissionSummary,
 } from '../services/reportsService';
 
 // Fuel Reports Hooks
@@ -649,6 +650,44 @@ export const useMonthlyDeliveryReport = (months: number = 6) => {
 
     fetchData();
   }, [months]);
+
+  return { data, loading, error };
+};
+
+// Staff commission / workload report hooks
+export const useStaffCommissionSummary = (
+  startDate?: Date,
+  endDate?: Date
+) => {
+  const [data, setData] = useState<StaffCommissionSummary[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<Error | null>(null);
+
+  const dependencyKey = useMemo(() => {
+    return JSON.stringify({
+      start: startDate?.getTime(),
+      end: endDate?.getTime(),
+    });
+  }, [startDate?.getTime(), endDate?.getTime()]);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        setLoading(true);
+        const result = await reportsService.getStaffCommissionSummary(startDate, endDate);
+        setData(result);
+        setError(null);
+      } catch (err) {
+        setError(err as Error);
+        console.error('[useStaffCommissionSummary] Error:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dependencyKey]);
 
   return { data, loading, error };
 };

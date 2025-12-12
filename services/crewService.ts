@@ -363,10 +363,16 @@ export const crewService = {
             throw storesError;
         }
 
-        // Get items only from successfully delivered stores
+        // Get items from stores thatถือว่า "ส่งแล้ว"
+        // ปกติจะใช้ delivery_status = 'delivered'
+        // แต่สำหรับทริปเก่า/ทริปที่สถานะร้านยังเป็น pending แต่ทริปถูกปิดเป็น completed แล้ว
+        // ให้ถือว่า pending เหล่านั้น "ส่งแล้ว" ด้วย (เหมือน UI ที่แสดงเป็น "ส่งแล้ว")
         const deliveredStoreIds = (tripStores || [])
-            .filter(s => s.delivery_status === 'delivered')
-            .map(s => s.id);
+            .filter((s: any) =>
+                s.delivery_status === 'delivered' ||
+                (s.delivery_status === 'pending' && trip.status === 'completed')
+            )
+            .map((s: any) => s.id);
 
         let totalItemsDelivered = 0;
 
@@ -453,7 +459,7 @@ export const crewService = {
         role,
         start_at,
         end_at,
-        service_staff (
+        service_staff:service_staff!delivery_trip_crews_staff_id_fkey (
           id,
           name
         )

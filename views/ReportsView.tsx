@@ -41,6 +41,7 @@ import {
   useDeliverySummaryByStore,
   useDeliverySummaryByProduct,
   useMonthlyDeliveryReport,
+  useStaffCommissionSummary,
 } from '../hooks/useReports';
 import { VehicleUsageRankingChart } from '../components/VehicleUsageRankingChart';
 import { VehicleFuelConsumptionChart } from '../components/VehicleFuelConsumptionChart';
@@ -1170,7 +1171,7 @@ const DeliveryReportsTab: React.FC<{
   isDark: boolean;
   onNavigateToStoreDetail?: (storeId: string) => void;
 }> = ({ startDate, endDate, isDark, onNavigateToStoreDetail }) => {
-  const [activeSubTab, setActiveSubTab] = useState<'vehicle' | 'store' | 'product' | 'monthly'>('vehicle');
+  const [activeSubTab, setActiveSubTab] = useState<'vehicle' | 'store' | 'product' | 'staff' | 'monthly'>('vehicle');
   const [expandedStores, setExpandedStores] = useState<Set<string>>(new Set());
   
   // Filter states
@@ -1482,6 +1483,10 @@ const DeliveryReportsTab: React.FC<{
     selectedProductId || undefined
   );
   const { data: monthlyData, loading: monthlyLoading } = useMonthlyDeliveryReport(monthlyMonths);
+  const { data: staffCommissionData, loading: staffCommissionLoading } = useStaffCommissionSummary(
+    effectiveStartDate,
+    effectiveEndDate
+  );
   
   // Filter vehicle data by branch if selected
   const filteredVehicleData = React.useMemo(() => {
@@ -1608,6 +1613,17 @@ const DeliveryReportsTab: React.FC<{
         >
           <Package className="inline-block w-4 h-4 mr-2" />
           ตามสินค้า
+        </button>
+        <button
+          onClick={() => setActiveSubTab('staff')}
+          className={`px-4 py-2 font-medium transition-colors ${
+            activeSubTab === 'staff'
+              ? 'border-b-2 border-enterprise-600 text-enterprise-600 dark:text-enterprise-400'
+              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+          }`}
+        >
+          <User className="inline-block w-4 h-4 mr-2" />
+          ตามพนักงาน
         </button>
         <button
           onClick={() => setActiveSubTab('monthly')}
@@ -2239,6 +2255,148 @@ const DeliveryReportsTab: React.FC<{
               </div>
             ) : (
               <div className="text-center py-8 text-slate-400">ไม่มีข้อมูล</div>
+            )}
+          </Card>
+        </div>
+      )}
+
+      {/* Staff Commission Summary */}
+      {activeSubTab === 'staff' && (
+        <div className="space-y-6">
+          {/* Filters */}
+          <Card className="p-4 relative z-[20]">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <Filter className="w-5 h-5 text-slate-600 dark:text-slate-400" />
+                <h4 className="font-medium text-slate-900 dark:text-slate-100">ตัวกรอง</h4>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t border-slate-200 dark:border-slate-700">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                  วันที่เริ่มต้น
+                </label>
+                <Input
+                  type="date"
+                  value={filterStartDate}
+                  onChange={(e) => setFilterStartDate(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                  วันที่สิ้นสุด
+                </label>
+                <Input
+                  type="date"
+                  value={filterEndDate}
+                  onChange={(e) => setFilterEndDate(e.target.value)}
+                />
+              </div>
+            </div>
+          </Card>
+
+          <Card>
+            <div className="flex justify-between items-center mb-4">
+              <div>
+                <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+                  สรุปค่าคอมมิชชั่นตามพนักงาน
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                  ใช้ข้อมูลจากทริปที่คำนวณและบันทึกค่าคอมแล้วในช่วงวันที่ที่เลือก
+                </p>
+              </div>
+            </div>
+
+            {staffCommissionLoading ? (
+              <div className="text-center py-8 text-slate-400">กำลังโหลด...</div>
+            ) : staffCommissionData && staffCommissionData.length > 0 ? (
+              <div className="h-96">
+                {(() => {
+                  const sortedStaff = [...staffCommissionData]
+                    .sort((a, b) => b.totalActualCommission - a.totalActualCommission)
+                    .slice(0, 15);
+
+                  return (
+                    <Bar
+                      data={{
+                        labels: sortedStaff.map(s => s.staff_name),
+                        datasets: [
+                          {
+                            label: 'ยอดค่าคอมมิชชั่น (฿)',
+                            data: sortedStaff.map(s => s.totalActualCommission),
+                            backgroundColor: isDark
+                              ? 'rgba(139, 92, 246, 0.85)'
+                              : 'rgba(124, 58, 237, 0.85)',
+                            borderRadius: 4,
+                          },
+                        ],
+                      }}
+                      options={{
+                        indexAxis: 'y' as const,
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                          legend: {
+                            display: false,
+                          },
+                          tooltip: {
+                            backgroundColor: isDark ? '#020617' : '#ffffff',
+                            titleColor: isDark ? '#f8fafc' : '#0f172a',
+                            bodyColor: isDark ? '#cbd5e1' : '#475569',
+                            borderColor: isDark ? '#334155' : '#e2e8f0',
+                            borderWidth: 1,
+                            callbacks: {
+                              label: (context: any) => {
+                                const staff = sortedStaff[context.dataIndex];
+                                const total = staff.totalActualCommission;
+                                return `ยอดค่าคอม: ฿${total.toLocaleString('th-TH', {
+                                  minimumFractionDigits: 2,
+                                  maximumFractionDigits: 2,
+                                })}`;
+                              },
+                              afterLabel: (context: any) => {
+                                const staff = sortedStaff[context.dataIndex];
+                                return [
+                                  `จำนวนทริป: ${staff.totalTrips.toLocaleString('th-TH')}`,
+                                  `ค่าคอมเฉลี่ย/ทริป: ฿${staff.averageCommissionPerTrip.toLocaleString('th-TH', {
+                                    minimumFractionDigits: 2,
+                                    maximumFractionDigits: 2,
+                                  })}`,
+                                ];
+                              },
+                            },
+                          },
+                        },
+                        scales: {
+                          x: {
+                            grid: {
+                              color: isDark ? '#334155' : '#e2e8f0',
+                            },
+                            ticks: {
+                              color: isDark ? '#94a3b8' : '#64748b',
+                              callback: (value: any) => {
+                                return `฿${Number(value).toLocaleString('th-TH')}`;
+                              },
+                            },
+                          },
+                          y: {
+                            grid: {
+                              display: false,
+                            },
+                            ticks: {
+                              color: isDark ? '#94a3b8' : '#64748b',
+                            },
+                          },
+                        },
+                      }}
+                    />
+                  );
+                })()}
+              </div>
+            ) : (
+              <div className="text-center py-8 text-slate-400">
+                ยังไม่มีการคำนวณค่าคอมมิชชั่นในช่วงวันที่นี้
+              </div>
             )}
           </Card>
         </div>

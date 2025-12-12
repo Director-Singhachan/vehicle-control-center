@@ -427,6 +427,27 @@ export const tripLogService = {
               console.error('[tripLogService] Error updating stores:', storesError);
               // Don't throw - continue with notification
             }
+
+            // Trigger auto commission calculation for this delivery trip (fire-and-forget)
+            try {
+              console.log('[tripLogService] Invoking auto-commission-worker for completed trip:', {
+                delivery_trip_id: deliveryTrip.id,
+                trip_number: deliveryTrip.trip_number,
+              });
+
+              await supabase.functions.invoke('auto-commission-worker', {
+                body: {
+                  source: 'trip_checkin',
+                  trip_id: deliveryTrip.id,
+                },
+              });
+            } catch (commissionInvokeError) {
+              console.warn(
+                '[tripLogService] Failed to invoke auto-commission-worker. Commission will not be auto-calculated for this trip:',
+                commissionInvokeError
+              );
+              // ไม่ throw ต่อ เพื่อไม่ให้กระทบ UX การเช็คอิน
+            }
           }
 
           // Update trip log with delivery_trip_id if not already set
