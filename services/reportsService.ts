@@ -252,7 +252,7 @@ export const reportsService = {
       const yesterdayCost = yesterdayMaintenanceCost + yesterdayFuelCost;
       const monthlyCost = monthlyMaintenanceCost + monthlyFuelCost;
 
-      console.log('[reportsService] Costs:', { 
+      console.log('[reportsService] Costs:', {
         today: { maintenance: todayMaintenanceCost, fuel: todayFuelCost, total: todayCost },
         yesterday: { maintenance: yesterdayMaintenanceCost, fuel: yesterdayFuelCost, total: yesterdayCost },
         monthly: { maintenance: monthlyMaintenanceCost, fuel: monthlyFuelCost, total: monthlyCost },
@@ -377,7 +377,7 @@ export const reportsService = {
 
     data?.forEach(record => {
       const monthKey = record.month.toString().substring(0, 7); // YYYY-MM
-      
+
       if (!monthMap.has(monthKey)) {
         monthMap.set(monthKey, {
           totalLiters: 0,
@@ -478,7 +478,7 @@ export const reportsService = {
   // Get fuel trend (for charts)
   getFuelTrend: async (months: number = 6): Promise<FuelTrend> => {
     const report = await reportsService.getMonthlyFuelReport(months);
-    
+
     return {
       labels: report.map(r => r.monthLabel),
       liters: report.map(r => r.totalLiters),
@@ -511,7 +511,7 @@ export const reportsService = {
 
     data?.forEach(record => {
       const monthKey = record.month.toString().substring(0, 7); // YYYY-MM
-      
+
       if (!monthMap.has(monthKey)) {
         monthMap.set(monthKey, {
           totalTrips: 0,
@@ -749,7 +749,7 @@ export const reportsService = {
         created_at: string;
         vehicles: { plate: string; make: string | null; model: string | null } | null;
       } | null;
-      
+
       if (!ticket || !ticket.vehicle_id) return;
 
       if (!vehicleMap.has(ticket.vehicle_id)) {
@@ -766,7 +766,7 @@ export const reportsService = {
       const entry = vehicleMap.get(ticket.vehicle_id)!;
       entry.totalCost += item.cost || 0;
       entry.ticketIds.add(ticket.id);
-      
+
       // Track latest maintenance date
       const ticketDate = new Date(ticket.created_at);
       if (!entry.lastMaintenanceDate || ticketDate > new Date(entry.lastMaintenanceDate)) {
@@ -912,7 +912,7 @@ export const reportsService = {
     fuelData?.forEach(record => {
       const vehicle = record.vehicles as { plate: string; make: string | null; model: string | null } | null;
       const vehicleId = record.vehicle_id;
-      
+
       if (!vehicleMap.has(vehicleId)) {
         vehicleMap.set(vehicleId, {
           plate: vehicle?.plate || 'Unknown',
@@ -933,7 +933,7 @@ export const reportsService = {
         vehicle_id: string;
         vehicles: { plate: string; make: string | null; model: string | null } | null;
       } | null;
-      
+
       if (!ticket?.vehicle_id) return;
 
       if (!vehicleMap.has(ticket.vehicle_id)) {
@@ -954,7 +954,7 @@ export const reportsService = {
     tripData?.forEach(trip => {
       const vehicle = trip.vehicles as { plate: string; make: string | null; model: string | null } | null;
       const vehicleId = trip.vehicle_id;
-      
+
       if (!vehicleMap.has(vehicleId)) {
         vehicleMap.set(vehicleId, {
           plate: vehicle?.plate || 'Unknown',
@@ -1338,14 +1338,14 @@ export const reportsService = {
       }>();
 
       fuelRecords.forEach(record => {
-        const vehicle = record.vehicle as { 
+        const vehicle = record.vehicle as {
           id: string;
-          plate: string; 
-          make: string | null; 
-          model: string | null; 
+          plate: string;
+          make: string | null;
+          model: string | null;
           branch: string | null;
         } | null;
-        
+
         if (!vehicle || !record.vehicle_id) return;
 
         // Filter by branch if provided
@@ -1372,7 +1372,7 @@ export const reportsService = {
         entry.totalLiters += record.liters || 0;
         entry.totalCost += record.total_cost || 0;
         entry.fillCount += 1;
-        
+
         // Add distance if available
         // ใช้ distance_since_last_fill เท่านั้น (ไม่ใช้ odometer range)
         // เพราะ distance_since_last_fill คำนวณจาก odometer ระหว่างการเติมน้ำมัน 2 ครั้ง
@@ -1380,7 +1380,7 @@ export const reportsService = {
         if (record.distance_since_last_fill && record.distance_since_last_fill > 0) {
           entry.totalDistance += record.distance_since_last_fill;
         }
-        
+
         // Update odometer range
         if (record.odometer) {
           if (entry.firstOdometer === null || record.odometer < entry.firstOdometer) {
@@ -1414,14 +1414,14 @@ export const reportsService = {
          * สูตร: efficiency = Σ(efficiency_i) / n
          * ข้อเสีย: ไม่คำนึงถึงปริมาณน้ำมันในแต่ละครั้ง
          */
-        
+
         let calculatedEfficiency: number | null = null;
-        
+
         // วิธีที่แม่นยำที่สุด: ใช้ totalDistance (sum of distance_since_last_fill)
         if (data.totalDistance > 0 && data.totalLiters > 0) {
           // สูตร: efficiency = totalDistance / totalLiters
           calculatedEfficiency = data.totalDistance / data.totalLiters;
-        } 
+        }
         // Fallback: ใช้ odometer range (ถ้าไม่มี distance_since_last_fill)
         // หมายเหตุ: วิธีนี้จะแม่นยำน้อยกว่าเพราะอาจไม่ครอบคลุมทุกครั้งที่เติมน้ำมัน
         else if (data.firstOdometer !== null && data.lastOdometer !== null && data.totalLiters > 0) {
@@ -1445,7 +1445,7 @@ export const reportsService = {
           averagePricePerLiter: data.fillCount > 0 ? data.totalCost / (data.totalLiters || 1) : 0,
         };
       }).sort((a, b) => b.totalCost - a.totalCost);
-      
+
       console.log('[reportsService] getVehicleFuelConsumption - Returning', result.length, 'vehicles');
       return result;
     } catch (error) {
@@ -1487,7 +1487,7 @@ export const reportsService = {
   }>> => {
     try {
       const { supabase } = await import('../lib/supabase');
-      
+
       // Default to last 3 months if no date range provided
       if (!startDate || !endDate) {
         const now = new Date();
@@ -1646,7 +1646,7 @@ export const reportsService = {
   }>> => {
     try {
       const { supabase } = await import('../lib/supabase');
-      
+
       // Default to last 3 months if no date range provided
       if (!startDate || !endDate) {
         const now = new Date();
@@ -1884,7 +1884,7 @@ export const reportsService = {
   }>> => {
     try {
       const { supabase } = await import('../lib/supabase');
-      
+
       // Default to last 3 months if no date range provided
       if (!startDate || !endDate) {
         const now = new Date();
@@ -2082,7 +2082,7 @@ export const reportsService = {
   }>> => {
     try {
       const { supabase } = await import('../lib/supabase');
-      
+
       const now = new Date();
       const endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
       const startDate = new Date(now.getFullYear(), now.getMonth() - months + 1, 1);
@@ -2092,7 +2092,7 @@ export const reportsService = {
       // Strategy: Get all completed trips, then filter by store delivery dates
       const { data: allCompletedTrips, error: tripsError } = await supabase
         .from('delivery_trips')
-        .select('id')
+        .select('id, planned_date')
         .eq('status', 'completed');
 
       if (tripsError) {
@@ -2136,7 +2136,7 @@ export const reportsService = {
       const filteredStores = tripStores.filter((store: any) => {
         // Determine effective date - use multiple fallbacks
         let effectiveDateStr = store.delivered_at;
-        
+
         if (!effectiveDateStr) {
           // Fallback 1: Use checkin_time from trip_logs (most accurate for old data)
           const tripLog = tripLogMap.get(store.delivery_trip_id) as any;
@@ -2144,19 +2144,19 @@ export const reportsService = {
             effectiveDateStr = tripLog.checkin_time;
           }
         }
-        
+
         if (!effectiveDateStr) {
           // Fallback 2: Use trip updated_at
           effectiveDateStr = store.delivery_trip?.updated_at;
         }
-        
+
         if (!effectiveDateStr) {
           // Fallback 3: Use trip planned_date (last resort)
           effectiveDateStr = store.delivery_trip?.planned_date;
         }
-        
+
         if (!effectiveDateStr) return false; // Skip stores without any date
-        
+
         const effectiveDate = new Date(effectiveDateStr);
         return effectiveDate >= startDate && effectiveDate <= endDate;
       });
@@ -2192,7 +2192,7 @@ export const reportsService = {
       allCompletedTrips.forEach(trip => {
         const date = new Date(trip.planned_date);
         const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-        
+
         if (!monthMap.has(monthKey)) {
           monthMap.set(monthKey, {
             trips: [],
@@ -2210,22 +2210,22 @@ export const reportsService = {
           if (storeForTrip) {
             // Determine effective date for grouping
             let effectiveDateStr = storeForTrip.delivered_at;
-            
+
             if (!effectiveDateStr) {
               const tripLog = tripLogMap.get(storeForTrip.delivery_trip_id) as any;
               if (tripLog?.checkin_time) {
                 effectiveDateStr = tripLog.checkin_time;
               }
             }
-            
+
             if (!effectiveDateStr) {
               effectiveDateStr = storeForTrip.delivery_trip?.updated_at;
             }
-            
+
             if (!effectiveDateStr) {
               effectiveDateStr = storeForTrip.delivery_trip?.planned_date;
             }
-            
+
             if (effectiveDateStr) {
               const date = new Date(effectiveDateStr);
               const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
@@ -2395,8 +2395,8 @@ export const reportsService = {
             : 0,
         };
       })
-      // เรียงจากคนที่มียอดค่าคอมมากไปน้อย
-      .sort((a, b) => b.totalActualCommission - a.totalActualCommission);
+        // เรียงจากคนที่มียอดค่าคอมมากไปน้อย
+        .sort((a, b) => b.totalActualCommission - a.totalActualCommission);
 
       return result;
     } catch (error) {
@@ -2424,7 +2424,7 @@ export const reportsService = {
   }>> => {
     try {
       const { supabase } = await import('../lib/supabase');
-      
+
       // Default to last 3 months if no date range provided
       if (!startDate || !endDate) {
         const now = new Date();
@@ -2532,7 +2532,7 @@ export const reportsService = {
           console.warn('[getProductDeliveryHistory] Trip store not found for item:', item);
           return null;
         }
-        
+
         const trip = tripMap.get(tripStore.delivery_trip_id) as any;
         if (!trip) {
           console.warn('[getProductDeliveryHistory] Trip not found for trip_id:', tripStore.delivery_trip_id);
