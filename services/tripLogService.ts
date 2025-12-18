@@ -440,99 +440,97 @@ export const tripLogService = {
             trip_id: trip.id,
           }
         );
-        // Nothing else to do for non-delivery usage
-        return result;
-      }
-
-      console.log('[tripLogService] Updating delivery trip:', {
-        id: deliveryTrip.id,
-        trip_number: deliveryTrip.trip_number,
-        current_status: deliveryTrip.status,
-        new_status: 'completed',
-        odometer_end: data.odometer_end,
-      });
-
-      // Update delivery trip to completed and set odometer_end
-      const { error: updateError } = await supabase
-        .from('delivery_trips')
-        .update({
-          status: 'completed',
-          odometer_end: data.odometer_end,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', deliveryTrip.id);
-
-      if (updateError) {
-        console.error('[tripLogService] Error updating delivery trip status:', updateError);
-        // Don't throw - continue with notification
       } else {
-        console.log('[tripLogService] Successfully updated delivery trip to completed:', {
+        console.log('[tripLogService] Updating delivery trip:', {
           id: deliveryTrip.id,
           trip_number: deliveryTrip.trip_number,
+          current_status: deliveryTrip.status,
+          new_status: 'completed',
+          odometer_end: data.odometer_end,
         });
 
-        // Update all stores' delivery_status to 'delivered' when trip is completed
-        // Update all stores regardless of current status (pending, failed, etc.)
-        try {
-          const { error: storesUpdateError } = await supabase
-            .from('delivery_trip_stores')
-            .update({
-              delivery_status: 'delivered',
-              delivered_at: new Date().toISOString(),
-            })
-            .eq('delivery_trip_id', deliveryTrip.id);
-          // Removed .in('delivery_status', ['pending']) to update ALL stores in the trip
+        // Update delivery trip to completed and set odometer_end
+        const { error: updateError } = await supabase
+          .from('delivery_trips')
+          .update({
+            status: 'completed',
+            odometer_end: data.odometer_end,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', deliveryTrip.id);
 
-          if (storesUpdateError) {
-            console.error('[tripLogService] Error updating store delivery status:', storesUpdateError);
-          } else {
-            console.log(
-              '[tripLogService] Updated all stores to delivered status for trip:',
-              deliveryTrip.id
-            );
-          }
-        } catch (storesError) {
-          console.error('[tripLogService] Error updating stores:', storesError);
+        if (updateError) {
+          console.error('[tripLogService] Error updating delivery trip status:', updateError);
           // Don't throw - continue with notification
-        }
-
-        // Trigger auto commission calculation for this delivery trip (fire-and-forget)
-        try {
-          console.log('[tripLogService] Invoking auto-commission-worker for completed trip:', {
-            delivery_trip_id: deliveryTrip.id,
+        } else {
+          console.log('[tripLogService] Successfully updated delivery trip to completed:', {
+            id: deliveryTrip.id,
             trip_number: deliveryTrip.trip_number,
           });
 
-          await supabase.functions.invoke('auto-commission-worker', {
-            body: {
-              source: 'trip_checkin',
-              trip_id: deliveryTrip.id,
-            },
-          });
-        } catch (commissionInvokeError) {
-          console.warn(
-            '[tripLogService] Failed to invoke auto-commission-worker. Commission will not be auto-calculated for this trip:',
-            commissionInvokeError
-          );
-          // ไม่ throw ต่อ เพื่อไม่ให้กระทบ UX การเช็คอิน
-        }
-      }
+          // Update all stores' delivery_status to 'delivered' when trip is completed
+          // Update all stores regardless of current status (pending, failed, etc.)
+          try {
+            const { error: storesUpdateError } = await supabase
+              .from('delivery_trip_stores')
+              .update({
+                delivery_status: 'delivered',
+                delivered_at: new Date().toISOString(),
+              })
+              .eq('delivery_trip_id', deliveryTrip.id);
+            // Removed .in('delivery_status', ['pending']) to update ALL stores in the trip
 
-      // Update trip log with delivery_trip_id if not already set
-      if (result && !result.delivery_trip_id) {
-        try {
-          const { error: linkError } = await supabase
-            .from('trip_logs')
-            .update({ delivery_trip_id: deliveryTrip.id })
-            .eq('id', result.id);
-
-          if (linkError) {
-            console.error('[tripLogService] Error linking delivery trip to trip log:', linkError);
-          } else {
-            console.log('[tripLogService] Linked delivery trip to trip log:', deliveryTrip.id);
+            if (storesUpdateError) {
+              console.error('[tripLogService] Error updating store delivery status:', storesUpdateError);
+            } else {
+              console.log(
+                '[tripLogService] Updated all stores to delivered status for trip:',
+                deliveryTrip.id
+              );
+            }
+          } catch (storesError) {
+            console.error('[tripLogService] Error updating stores:', storesError);
+            // Don't throw - continue with notification
           }
-        } catch (linkError) {
-          console.error('[tripLogService] Error linking delivery trip:', linkError);
+
+          // Trigger auto commission calculation for this delivery trip (fire-and-forget)
+          try {
+            console.log('[tripLogService] Invoking auto-commission-worker for completed trip:', {
+              delivery_trip_id: deliveryTrip.id,
+              trip_number: deliveryTrip.trip_number,
+            });
+
+            await supabase.functions.invoke('auto-commission-worker', {
+              body: {
+                source: 'trip_checkin',
+                trip_id: deliveryTrip.id,
+              },
+            });
+          } catch (commissionInvokeError) {
+            console.warn(
+              '[tripLogService] Failed to invoke auto-commission-worker. Commission will not be auto-calculated for this trip:',
+              commissionInvokeError
+            );
+            // ไม่ throw ต่อ เพื่อไม่ให้กระทบ UX การเช็คอิน
+          }
+        }
+
+        // Update trip log with delivery_trip_id if not already set
+        if (result && !result.delivery_trip_id) {
+          try {
+            const { error: linkError } = await supabase
+              .from('trip_logs')
+              .update({ delivery_trip_id: deliveryTrip.id })
+              .eq('id', result.id);
+
+            if (linkError) {
+              console.error('[tripLogService] Error linking delivery trip to trip log:', linkError);
+            } else {
+              console.log('[tripLogService] Linked delivery trip to trip log:', deliveryTrip.id);
+            }
+          } catch (linkError) {
+            console.error('[tripLogService] Error linking delivery trip:', linkError);
+          }
         }
       }
     } catch (deliveryTripError) {
