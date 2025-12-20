@@ -88,11 +88,15 @@ export const tripLogService = {
 
       const { data: deliveryTrips } = await supabase
         .from('delivery_trips')
-        .select('id, sequence_order, trip_number, planned_date')
+        .select('id, sequence_order, trip_number, planned_date, status, created_at')
         .eq('vehicle_id', data.vehicle_id)
         .eq('planned_date', checkoutDate) // Match by date
         .in('status', ['planned', 'in_progress'])
-        .order('sequence_order', { ascending: true }) // Lowest sequence first
+        // Explicit ordering to pick the earliest planned trip deterministically
+        .order('status', { ascending: true }) // in_progress before planned if any
+        .order('sequence_order', { ascending: true, nullsFirst: false })
+        .order('created_at', { ascending: true })
+        .order('trip_number', { ascending: true })
         .limit(1);
 
       if (deliveryTrips && deliveryTrips.length > 0) {
@@ -404,13 +408,15 @@ export const tripLogService = {
 
         const { data: deliveryTrips, error: findError } = await supabase
           .from('delivery_trips')
-          .select('id, status, odometer_start, odometer_end, trip_number, sequence_order, planned_date')
+          .select('id, status, odometer_start, odometer_end, trip_number, sequence_order, planned_date, created_at')
           .eq('vehicle_id', trip.vehicle_id)
           .eq('planned_date', checkoutDate) // Match by date
           .in('status', ['planned', 'in_progress'])
           // Prefer in_progress over planned explicitly (avoid relying on lexical order)
           .order('status', { ascending: true }) // 'in_progress' before 'planned'
-          .order('sequence_order', { ascending: true }) // Then by sequence
+          .order('sequence_order', { ascending: true, nullsFirst: false }) // Then by sequence
+          .order('created_at', { ascending: true }) // Oldest created first
+          .order('trip_number', { ascending: true }) // Deterministic tie-breaker
           .limit(1);
 
         if (findError) {
