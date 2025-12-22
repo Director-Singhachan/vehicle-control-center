@@ -12,6 +12,7 @@ export interface UseDeliveryTripsOptions {
   has_item_changes?: boolean;
   page?: number;
   pageSize?: number;
+  lite?: boolean;
 }
 
 export const useDeliveryTrips = (options: UseDeliveryTripsOptions = { autoFetch: true }) => {
@@ -42,23 +43,24 @@ export const useDeliveryTrips = (options: UseDeliveryTripsOptions = { autoFetch:
         has_item_changes: options.has_item_changes,
         page,
         pageSize,
+        lite: options.lite !== false, // Default to true (lite mode) if not specified
       });
       setTrips(data);
       setTotal(total);
     } catch (err) {
       const error = err instanceof Error ? err : new Error('ไม่สามารถโหลดข้อมูลทริปได้');
-      
+
       // Improve error message for connection errors
-      if (error.message.includes('ไม่สามารถเชื่อมต่อกับฐานข้อมูลได้') || 
-          error.message.includes('Failed to fetch') ||
-          error.message.includes('ERR_CONNECTION_CLOSED')) {
+      if (error.message.includes('ไม่สามารถเชื่อมต่อกับฐานข้อมูลได้') ||
+        error.message.includes('Failed to fetch') ||
+        error.message.includes('ERR_CONNECTION_CLOSED')) {
         // Keep the user-friendly message from service
         setError(error);
       } else {
         // For other errors, provide a generic message
         setError(new Error('ไม่สามารถโหลดข้อมูลทริปได้ กรุณาลองอีกครั้ง'));
       }
-      
+
       console.error('[useDeliveryTrips] Error:', err);
     } finally {
       setLoading(false);
@@ -72,6 +74,40 @@ export const useDeliveryTrips = (options: UseDeliveryTripsOptions = { autoFetch:
     options.has_item_changes,
     options.page,
     options.pageSize,
+    options.lite,
+  ]);
+
+  // Prefetch next page (basic implementation)
+  const prefetch = useCallback(async (page: number) => {
+    // Note: This is an optimistic prefetch. 
+    // Since we don't have a global cache like React Query, this just warms up the database/network capability
+    // or relies on browser HTTP caching if enabled.
+    // For a more complete solution, we would need a proper cache store.
+    try {
+      await deliveryTripService.getAllWithPagination({
+        status: options.status,
+        vehicle_id: options.vehicle_id,
+        driver_id: options.driver_id,
+        planned_date_from: options.planned_date_from,
+        planned_date_to: options.planned_date_to,
+        has_item_changes: options.has_item_changes,
+        page,
+        pageSize: options.pageSize || 20,
+        lite: options.lite !== false,
+      });
+    } catch (err) {
+      // Ignore prefetch errors
+      console.log('[useDeliveryTrips] Prefetch error (ignored):', err);
+    }
+  }, [
+    statusKey,
+    options.vehicle_id,
+    options.driver_id,
+    options.planned_date_from,
+    options.planned_date_to,
+    options.has_item_changes,
+    options.pageSize,
+    options.lite,
   ]);
 
   useEffect(() => {
@@ -99,6 +135,7 @@ export const useDeliveryTrips = (options: UseDeliveryTripsOptions = { autoFetch:
     loading,
     error,
     refetch: fetchTrips,
+    prefetch,
   };
 };
 
