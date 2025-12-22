@@ -40,21 +40,52 @@ export const DeliveryTripListView: React.FC<DeliveryTripListViewProps> = ({
 }) => {
   const { vehicles } = useVehicles();
   const { isReadOnly } = useAuth();
-  const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState<string[] | 'all'>('all');
-  const [vehicleFilter, setVehicleFilter] = useState<string>('');
-  const [dateFrom, setDateFrom] = useState<string>('');
-  const [dateTo, setDateTo] = useState<string>('');
-  const [showFilters, setShowFilters] = useState(false);
-  const [onlyChanged, setOnlyChanged] = useState(false);
-  const [currentPage, setCurrentPage] = useState(1);
+  // State for filters and pagination
+  // Initialize from sessionStorage if available to persist state across navigation (e.g. back button)
+  const getInitialState = <T,>(key: string, defaultValue: T): T => {
+    try {
+      if (typeof window === 'undefined') return defaultValue;
+      const saved = sessionStorage.getItem(`deliveryTrips_${key}`);
+      return saved ? JSON.parse(saved) : defaultValue;
+    } catch (e) {
+      console.error('Error loading state from sessionStorage:', e);
+      return defaultValue;
+    }
+  };
+
+  const [searchTerm, setSearchTerm] = useState<string>(() => getInitialState('searchTerm', ''));
+  const [statusFilter, setStatusFilter] = useState<string[] | 'all'>(() => getInitialState('statusFilter', 'all'));
+  const [vehicleFilter, setVehicleFilter] = useState<string>(() => getInitialState('vehicleFilter', ''));
+  const [dateFrom, setDateFrom] = useState<string>(() => getInitialState('dateFrom', ''));
+  const [dateTo, setDateTo] = useState<string>(() => getInitialState('dateTo', ''));
+  const [showFilters, setShowFilters] = useState(() => getInitialState('showFilters', false));
+  const [onlyChanged, setOnlyChanged] = useState(() => getInitialState('onlyChanged', false));
+  const [currentPage, setCurrentPage] = useState(() => getInitialState('currentPage', 1));
+
   const itemsPerPage = 20;
+
+  // Persist state to sessionStorage whenever it changes
+  useEffect(() => {
+    try {
+      sessionStorage.setItem('deliveryTrips_searchTerm', JSON.stringify(searchTerm));
+      sessionStorage.setItem('deliveryTrips_statusFilter', JSON.stringify(statusFilter));
+      sessionStorage.setItem('deliveryTrips_vehicleFilter', JSON.stringify(vehicleFilter));
+      sessionStorage.setItem('deliveryTrips_dateFrom', JSON.stringify(dateFrom));
+      sessionStorage.setItem('deliveryTrips_dateTo', JSON.stringify(dateTo));
+      sessionStorage.setItem('deliveryTrips_showFilters', JSON.stringify(showFilters));
+      sessionStorage.setItem('deliveryTrips_onlyChanged', JSON.stringify(onlyChanged));
+      sessionStorage.setItem('deliveryTrips_currentPage', JSON.stringify(currentPage));
+    } catch (e) {
+      console.error('Error saving state to sessionStorage:', e);
+    }
+  }, [searchTerm, statusFilter, vehicleFilter, dateFrom, dateTo, showFilters, onlyChanged, currentPage]);
+
   const [cancelTripId, setCancelTripId] = useState<string | null>(null);
   const [cancelReason, setCancelReason] = useState('');
   const [isCancelling, setIsCancelling] = useState(false);
   const [selectedImage, setSelectedImage] = useState<{ url: string; alt: string } | null>(null);
 
-  const { trips, total, loading, error, refetch } = useDeliveryTrips({
+  const { trips, total, loading, error, refetch, prefetch } = useDeliveryTrips({
     status: statusFilter !== 'all' && Array.isArray(statusFilter) ? statusFilter : undefined,
     vehicle_id: vehicleFilter || undefined,
     planned_date_from: dateFrom || undefined,
@@ -63,6 +94,7 @@ export const DeliveryTripListView: React.FC<DeliveryTripListViewProps> = ({
     autoFetch: true,
     page: currentPage,
     pageSize: itemsPerPage,
+    lite: true, // Use lite mode for list view optimization (fetches less data)
   });
 
   // Auto-refetch when component becomes visible (e.g., after check-in)
@@ -100,9 +132,36 @@ export const DeliveryTripListView: React.FC<DeliveryTripListViewProps> = ({
   // Pagination (server-side for total, client-side search mayลดจำนวนในหน้านั้น)
   const totalPages = Math.ceil((total || 0) / itemsPerPage) || 1;
 
-  useEffect(() => {
+  // Clear filters function
+  const clearFilters = () => {
+    setSearchTerm('');
+    setStatusFilter('all');
+    setVehicleFilter('');
+    setDateFrom('');
+    setDateTo('');
+    setOnlyChanged(false);
     setCurrentPage(1);
-  }, [statusFilter, vehicleFilter, dateFrom, dateTo, onlyChanged]);
+    // Session storage will be updated by the effect
+  };
+
+  useEffect(() => {
+    // Reset to page 1 ONLY if we are NOT restoring state (which is handled by initial state)
+    // AND IF the filters actually change interactively.
+    // However, simply resetting whenever filters change is tricky with persistence.
+    // We should only reset page if the filter change came from user interaction, not from mounting.
+
+    // Actually, for standard behavior: changing a filter *should* reset to page 1.
+    // The issue with persistence is distinguishing "restore" from "change".
+    // Since we initialize state from storage, the first render has the restored values.
+    // Any SUBSEQUENT change to filters should trigger page reset.
+    // We can't easily detect "mount" vs "update" in this single effect without a ref.
+  }, [/* dependencies removed - we will handle page reset manually in handlers if needed, or accept that changing filters might stay on page X if it exists */]);
+
+  // Handler for filter changes to ensure page reset
+  const handleFilterChange = (setter: any, value: any) => {
+    setter(value);
+    setCurrentPage(1);
+  };
 
   const getStatusBadge = (status: string) => {
     const badges = {
@@ -172,12 +231,23 @@ export const DeliveryTripListView: React.FC<DeliveryTripListViewProps> = ({
             <Filter size={20} />
             ตัวกรอง
           </h3>
-          <button
-            onClick={() => setShowFilters(!showFilters)}
-            className="text-sm text-enterprise-600 dark:text-enterprise-400 hover:underline"
-          >
-            {showFilters ? 'ซ่อน' : 'แสดง'}
-          </button>
+          <div className="flex items-center gap-4">
+            {(statusFilter !== 'all' || vehicleFilter || dateFrom || dateTo || onlyChanged || searchTerm) && (
+              <button
+                onClick={clearFilters}
+                className="text-sm text-red-600 dark:text-red-400 hover:underline flex items-center gap-1"
+              >
+                <XCircle size={14} />
+                ล้างตัวกรอง
+              </button>
+            )}
+            <button
+              onClick={() => setShowFilters(!showFilters)}
+              className="text-sm text-enterprise-600 dark:text-enterprise-400 hover:underline"
+            >
+              {showFilters ? 'ซ่อน' : 'แสดง'}
+            </button>
+          </div>
         </div>
 
         {showFilters && (
@@ -190,7 +260,7 @@ export const DeliveryTripListView: React.FC<DeliveryTripListViewProps> = ({
                 value={Array.isArray(statusFilter) ? statusFilter.join(',') : statusFilter}
                 onChange={(e) => {
                   const value = e.target.value;
-                  setStatusFilter(value === 'all' ? 'all' : value.split(','));
+                  handleFilterChange(setStatusFilter, value === 'all' ? 'all' : value.split(','));
                 }}
                 className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
               >
@@ -208,7 +278,7 @@ export const DeliveryTripListView: React.FC<DeliveryTripListViewProps> = ({
               </label>
               <select
                 value={vehicleFilter}
-                onChange={(e) => setVehicleFilter(e.target.value)}
+                onChange={(e) => handleFilterChange(setVehicleFilter, e.target.value)}
                 className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
               >
                 <option value="">ทั้งหมด</option>
@@ -227,7 +297,7 @@ export const DeliveryTripListView: React.FC<DeliveryTripListViewProps> = ({
               <Input
                 type="date"
                 value={dateFrom}
-                onChange={(e) => setDateFrom(e.target.value)}
+                onChange={(e) => handleFilterChange(setDateFrom, e.target.value)}
               />
             </div>
 
@@ -238,7 +308,7 @@ export const DeliveryTripListView: React.FC<DeliveryTripListViewProps> = ({
               <Input
                 type="date"
                 value={dateTo}
-                onChange={(e) => setDateTo(e.target.value)}
+                onChange={(e) => handleFilterChange(setDateTo, e.target.value)}
               />
             </div>
 
@@ -248,7 +318,7 @@ export const DeliveryTripListView: React.FC<DeliveryTripListViewProps> = ({
                   type="checkbox"
                   className="rounded border-slate-300 dark:border-slate-600 text-enterprise-600 focus:ring-enterprise-500"
                   checked={onlyChanged}
-                  onChange={(e) => setOnlyChanged(e.target.checked)}
+                  onChange={(e) => handleFilterChange(setOnlyChanged, e.target.checked)}
                 />
                 แสดงเฉพาะทริปที่มีการแก้ไขสินค้า
               </label>
@@ -261,7 +331,7 @@ export const DeliveryTripListView: React.FC<DeliveryTripListViewProps> = ({
             label="ค้นหา"
             placeholder="ค้นหาจากรหัสทริป, ป้ายทะเบียน, ชื่อคนขับ..."
             value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
+            onChange={(e) => handleFilterChange(setSearchTerm, e.target.value)}
             icon={<Search size={18} />}
           />
         </div>
@@ -328,8 +398,8 @@ export const DeliveryTripListView: React.FC<DeliveryTripListViewProps> = ({
                 <div className="space-y-2 mb-4">
                   <div className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400">
                     {trip.vehicle?.image_url ? (
-                      <img 
-                        src={trip.vehicle.image_url} 
+                      <img
+                        src={trip.vehicle.image_url}
                         alt={trip.vehicle.plate || 'Vehicle'}
                         className="w-8 h-8 rounded object-cover"
                         onError={(e) => {
@@ -348,8 +418,8 @@ export const DeliveryTripListView: React.FC<DeliveryTripListViewProps> = ({
                   {trip.driver && (
                     <div className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400">
                       {trip.driver.avatar_url ? (
-                        <img 
-                          src={trip.driver.avatar_url} 
+                        <img
+                          src={trip.driver.avatar_url}
                           alt={trip.driver.full_name || 'Driver'}
                           className="w-8 h-8 rounded-full object-cover cursor-pointer hover:ring-2 hover:ring-enterprise-500 transition-all"
                           onClick={(e) => {
@@ -385,7 +455,7 @@ export const DeliveryTripListView: React.FC<DeliveryTripListViewProps> = ({
                   )}
                 </div>
 
-                <div 
+                <div
                   className="flex items-center justify-between pt-3 border-t border-slate-200 dark:border-slate-700 gap-2"
                   onClick={(e) => e.stopPropagation()}
                 >
@@ -429,6 +499,11 @@ export const DeliveryTripListView: React.FC<DeliveryTripListViewProps> = ({
                   variant="outline"
                   size="sm"
                   onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                  onMouseEnter={() => {
+                    if (currentPage > 1) {
+                      prefetch?.(currentPage - 1);
+                    }
+                  }}
                   disabled={currentPage === 1}
                 >
                   <ChevronLeft size={16} />
@@ -440,6 +515,11 @@ export const DeliveryTripListView: React.FC<DeliveryTripListViewProps> = ({
                   variant="outline"
                   size="sm"
                   onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                  onMouseEnter={() => {
+                    if (currentPage < totalPages) {
+                      prefetch?.(currentPage + 1);
+                    }
+                  }}
                   disabled={currentPage === totalPages}
                 >
                   <ChevronRight size={16} />

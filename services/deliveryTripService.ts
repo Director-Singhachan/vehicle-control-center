@@ -145,19 +145,26 @@ export const deliveryTripService = {
     has_item_changes?: boolean;
     page?: number;
     pageSize?: number;
+    lite?: boolean;
   }): Promise<{ trips: DeliveryTripWithRelations[]; total: number }> => {
     const page = filters?.page && filters.page > 0 ? filters.page : 1;
     const pageSize = filters?.pageSize && filters.pageSize > 0 ? filters.pageSize : 20;
     const from = (page - 1) * pageSize;
     const to = from + pageSize - 1;
+    const lite = filters?.lite !== false; // Default to lite mode if not specified
 
     // Use retry logic for connection errors
     const { data: trips, error, count } = await withRetry(async () => {
       // Build base query inside retry function
       // Show newest trips first: planned_date desc, then created_at desc, keep sequence_order for ties
+
       let query = supabase
         .from('delivery_trips')
-        .select('*', { count: 'exact' })
+        .select(lite
+          ? 'id, trip_number, status, planned_date, vehicle_id, driver_id, has_item_changes, odometer_start, notes, sequence_order, created_at'
+          : '*',
+          { count: 'exact' }
+        )
         .order('planned_date', { ascending: false })
         .order('created_at', { ascending: false })
         .order('sequence_order', { ascending: true })
@@ -195,10 +202,10 @@ export const deliveryTripService = {
     if (error) {
       console.error('[deliveryTripService] Error fetching delivery trips:', error);
       // Create a more user-friendly error message
-      const isConnectionError = error.message?.includes('Failed to fetch') || 
-                                error.message?.includes('ERR_CONNECTION_CLOSED') ||
-                                error.code === 'ERR_CONNECTION_CLOSED';
-      
+      const isConnectionError = error.message?.includes('Failed to fetch') ||
+        error.message?.includes('ERR_CONNECTION_CLOSED') ||
+        error.code === 'ERR_CONNECTION_CLOSED';
+
       if (isConnectionError) {
         const friendlyError = new Error('ไม่สามารถเชื่อมต่อกับฐานข้อมูลได้ กรุณาตรวจสอบการเชื่อมต่ออินเทอร์เน็ตและลองอีกครั้ง');
         (friendlyError as any).originalError = error;
@@ -237,21 +244,14 @@ export const deliveryTripService = {
     const driverMap = new Map((drivers || []).map(d => [d.id, d]));
 
     // Fetch stores for all trips
+    // In lite mode, we only need basic info (or just count if we wanted to be super minimal, 
+    // but the UI currently shows "X Stores" based on array length, so we need the count)
     const tripIds = trips.map(t => t.id);
     const { data: tripStores } = tripIds.length > 0 ? await supabase
       .from('delivery_trip_stores')
-      .select('*')
+      .select('id, delivery_trip_store_id:id, delivery_trip_id, store_id, sequence_order') // Minimally select needed fields
       .in('delivery_trip_id', tripIds)
       .order('sequence_order', { ascending: true }) : { data: [] };
-
-    // Fetch stores separately
-    const storeIds = [...new Set((tripStores || []).map(ts => ts.store_id).filter(Boolean))];
-    const { data: stores } = storeIds.length > 0 ? await supabase
-      .from('stores')
-      .select('id, customer_code, customer_name, address, phone')
-      .in('id', storeIds) : { data: [] };
-
-    const storeMap = new Map((stores || []).map(s => [s.id, s]));
 
     // Group trip stores by trip_id
     const tripStoresMap = new Map<string, typeof tripStores>();
@@ -262,11 +262,26 @@ export const deliveryTripService = {
       tripStoresMap.get(ts.delivery_trip_id)!.push(ts);
     });
 
+    let storeMap = new Map<string, any>();
+
+    // In FULL mode only, fetch detailed store info
+    if (!lite) {
+      const storeIds = [...new Set((tripStores || []).map(ts => ts.store_id).filter(Boolean))];
+      const { data: stores } = storeIds.length > 0 ? await supabase
+        .from('stores')
+        .select('id, customer_code, customer_name, address, phone')
+        .in('id', storeIds) : { data: [] };
+
+      storeMap = new Map((stores || []).map(s => [s.id, s]));
+    }
+
     // Combine data
     const combinedTrips = trips.map(trip => {
       const tripStoresForTrip = tripStoresMap.get(trip.id) || [];
       const storesWithDetails: DeliveryTripStoreWithDetails[] = tripStoresForTrip.map(ts => ({
         ...ts,
+        // In lite mode, store detail will be undefined, which is fine for list view specific needs
+        // The list view primarily checks `stores.length`
         store: storeMap.get(ts.store_id),
       }));
 
@@ -307,18 +322,18 @@ export const deliveryTripService = {
         return null; // Not found
       }
       console.error('[deliveryTripService] Error fetching trip:', tripError);
-      
+
       // Create a more user-friendly error message for connection errors
-      const isConnectionError = tripError.message?.includes('Failed to fetch') || 
-                                tripError.message?.includes('ERR_CONNECTION_CLOSED') ||
-                                tripError.code === 'ERR_CONNECTION_CLOSED';
-      
+      const isConnectionError = tripError.message?.includes('Failed to fetch') ||
+        tripError.message?.includes('ERR_CONNECTION_CLOSED') ||
+        tripError.code === 'ERR_CONNECTION_CLOSED';
+
       if (isConnectionError) {
         const friendlyError = new Error('ไม่สามารถเชื่อมต่อกับฐานข้อมูลได้ กรุณาตรวจสอบการเชื่อมต่ออินเทอร์เน็ตและลองอีกครั้ง');
         (friendlyError as any).originalError = tripError;
         throw friendlyError;
       }
-      
+
       throw tripError;
     }
 
