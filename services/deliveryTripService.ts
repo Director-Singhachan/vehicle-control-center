@@ -126,6 +126,7 @@ export const deliveryTripService = {
     driver_id?: string;
     planned_date_from?: string;
     planned_date_to?: string;
+    sortAscending?: boolean; // If true, sort by planned_date ASC (earliest first)
   }): Promise<DeliveryTripWithRelations[]> => {
     const result = await deliveryTripService.getAllWithPagination({
       ...filters,
@@ -146,17 +147,20 @@ export const deliveryTripService = {
     page?: number;
     pageSize?: number;
     lite?: boolean;
+    sortAscending?: boolean; // If true, sort by planned_date ASC (earliest first)
   }): Promise<{ trips: DeliveryTripWithRelations[]; total: number }> => {
     const page = filters?.page && filters.page > 0 ? filters.page : 1;
     const pageSize = filters?.pageSize && filters.pageSize > 0 ? filters.pageSize : 20;
     const from = (page - 1) * pageSize;
     const to = from + pageSize - 1;
     const lite = filters?.lite !== false; // Default to lite mode if not specified
+    const sortAscending = filters?.sortAscending === true; // Default to false (DESC)
 
     // Use retry logic for connection errors
     const { data: trips, error, count } = await withRetry(async () => {
       // Build base query inside retry function
-      // Show newest trips first: planned_date desc, then created_at desc, keep sequence_order for ties
+      // Default: Show newest trips first (DESC)
+      // If sortAscending=true: Show oldest trips first (ASC) - useful for selecting earliest planned trip
 
       let query = supabase
         .from('delivery_trips')
@@ -165,8 +169,8 @@ export const deliveryTripService = {
           : '*',
           { count: 'exact' }
         )
-        .order('planned_date', { ascending: false })
-        .order('created_at', { ascending: false })
+        .order('planned_date', { ascending: sortAscending })
+        .order('created_at', { ascending: sortAscending })
         .order('sequence_order', { ascending: true })
         .range(from, to);
 
