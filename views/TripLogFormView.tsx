@@ -267,7 +267,8 @@ export const TripLogFormView: React.FC<TripLogFormViewProps> = ({
         const deliveryTrips = await deliveryTripService.getAll({
           vehicle_id: selectedVehicleId,
           status: ['planned', 'in_progress'],
-          sortAscending: true // Get earliest trip first for sequential processing
+          sortAscending: true, // Get earliest trip first for sequential processing
+          lite: false // Fetch full store details including customer names for destination auto-fill
         });
 
         // Get the earliest active delivery trip (first in sequence)
