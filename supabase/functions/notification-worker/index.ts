@@ -13,8 +13,8 @@ const corsHeaders = {
 Deno.serve(async (req) => {
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { 
-      headers: corsHeaders 
+    return new Response('ok', {
+      headers: corsHeaders
     });
   }
 
@@ -41,7 +41,7 @@ Deno.serve(async (req) => {
     }
 
     console.log(`[notification-worker] Found ${events?.length || 0} pending events`);
-    
+
     // Log event details for debugging
     if (events && events.length > 0) {
       events.forEach((evt: any) => {
@@ -69,21 +69,33 @@ Deno.serve(async (req) => {
         // ให้ยิงเข้า "กลุ่มกลาง" จาก Environment Variable แทน ไม่ต้องพึ่ง settings ของคนขับ
         // แต่ถ้า event_type เป็น ticket_created หรือ ticket_closed ให้เช็ค notify_ticket_created หรือ notify_ticket_closed
         if (event.channel === 'telegram' && !isApprovalPdf) {
+          // ตัดการแจ้งเตือน Telegram เฉพาะงานแจ้งซ่อม (ticket_created/ticket_closed) แต่คง trip_started/trip_finished, fuel_refill
+          const isRepairTicket =
+            event.event_type === 'ticket_created' ||
+            event.event_type === 'ticket_closed';
+
+          if (isRepairTicket) {
+            console.log(`[notification-worker] Telegram disabled for repair tickets. Skipping event ${event.id}.`);
+            await markEventSent(supabase, event.id, 'Telegram repair notifications disabled');
+            processed++;
+            continue;
+          }
+
           console.log(`[notification-worker] Processing Telegram operational event: ${event.event_type}, event ID: ${event.id}`);
-          
+
           // เช็คว่าต้องการเช็ค user settings หรือไม่
           // สำหรับ ticket_created, ticket_closed, fuel_refill, trip_started, trip_finished
-          const needsUserSettingCheck = 
-            event.event_type === 'ticket_created' || 
+          const needsUserSettingCheck =
+            event.event_type === 'ticket_created' ||
             event.event_type === 'ticket_closed' ||
             event.event_type === 'fuel_refill' ||
             event.event_type === 'trip_started' ||
             event.event_type === 'trip_finished';
-          
+
           if (needsUserSettingCheck) {
             // Determine target user (use target_user_id if available, otherwise use user_id)
             const targetUserId = event.target_user_id || event.user_id;
-            
+
             if (targetUserId) {
               // Get notification settings for target user
               const { data: userSettings } = await supabase
@@ -117,32 +129,58 @@ Deno.serve(async (req) => {
               // if (!shouldNotify) { continue; }
             }
           }
-          
-          const botToken =
-            Deno.env.get('TELEGRAM_BOT_TOKEN') ||
-            Deno.env.get('TELEGRAM_MAINTENANCE_BOT_TOKEN');
-          const groupChatId =
-            Deno.env.get('TELEGRAM_MAINTENANCE_GROUP_CHAT_ID') ||
-            Deno.env.get('TELEGRAM_GROUP_CHAT_ID') ||
-            Deno.env.get('TELEGRAM_CHAT_ID');
 
-          if (!botToken || !groupChatId) {
-            console.warn(
-              `[notification-worker] Global Telegram group not configured (botToken or groupChatId missing), event ${event.id}`,
-            );
-            await markEventFailed(
-              supabase,
-              event.id,
-              'Global Telegram group chat not configured',
-            );
+          const botToken = Deno.env.get('TELEGRAM_BOT_TOKEN') || Deno.env.get('TELEGRAM_MAINTENANCE_BOT_TOKEN');
+          const groupChatId = Deno.env.get('TELEGRAM_MAINTENANCE_GROUP_CHAT_ID') || Deno.env.get('TELEGRAM_GROUP_CHAT_ID') || Deno.env.get('TELEGRAM_CHAT_ID');
+
+          let targetChatId: string | null = null;
+
+          // Case 1: Targeted notification (Private)
+          if (event.target_user_id) {
+            const { data: targetSettings } = await supabase
+              .from('notification_settings')
+              .select('*')
+              .eq('user_id', event.target_user_id)
+              .maybeSingle();
+
+            if (targetSettings?.telegram_chat_id && targetSettings.enable_telegram) {
+              targetChatId = targetSettings.telegram_chat_id;
+              console.log(`[notification-worker] Using private Telegram chatId for user ${event.target_user_id}`);
+            } else {
+              // Fallback to group ONLY for a "Bind Request" notification
+              console.warn(`[notification-worker] User ${event.target_user_id} not bound for Telegram. Sending notice to group.`);
+              const bindNotice = `🔔 มีแจ้งเตือนสำหรับคุณ แจ้งโดยระบุอีเมลผู้รับ แต่ยังไม่ได้ผูก Telegram Bot ครับ\n` +
+                `กรุณาเปิดแชทกับบอทแล้วพิมพ์อีเมลเพื่อรับแจ้งเตือนส่วนตัว`;
+              if (groupChatId) {
+                await sendTelegramTextMessage(botToken!, groupChatId, bindNotice);
+              }
+              await markEventFailed(supabase, event.id, 'No private Telegram chatId found, sent bind notice to group');
+              failed++;
+              continue;
+            }
+          } else {
+            // Case 2: Broadcast to group (Only for non-ticket events or if explicitly allowed)
+            // สำหรับความปลอดภัย เราจะไม่อนุญาตให้ ticket_created/closed ส่งลงกลุ่มแบบ Broadcast
+            const isSensitiveEvent = event.event_type === 'ticket_created' || event.event_type === 'ticket_closed' || isApprovalPdf;
+
+            if (isSensitiveEvent) {
+              console.warn(`[notification-worker] Skip: Sensitive event ${event.event_type} must have target_user_id to be sent.`);
+              await markEventSent(supabase, event.id); // Mark as sent to avoid spam/retry
+              continue;
+            }
+
+            targetChatId = groupChatId || null;
+          }
+
+          if (!botToken || !targetChatId) {
+            console.warn(`[notification-worker] Telegram botToken or chatId missing.`);
+            await markEventFailed(supabase, event.id, 'Telegram not configured');
             failed++;
             continue;
           }
 
-          console.log(`[notification-worker] Sending Telegram notification for event ${event.id} (${event.event_type})`);
-          await sendTelegramNotificationToChat(event, botToken, groupChatId);
+          await sendTelegramNotificationToChat(event, botToken, targetChatId);
           await markEventSent(supabase, event.id);
-          console.log(`[notification-worker] Successfully sent Telegram notification for event ${event.id}`);
           processed++;
           continue;
         }
@@ -151,27 +189,61 @@ Deno.serve(async (req) => {
         // ใช้ LINE Messaging API (LINE OA) - ต้องส่งไปยังผู้ใช้แต่ละคนที่มี line_user_id
         if (event.channel === 'line' && !isApprovalPdf) {
           console.log(`[notification-worker] Processing LINE operational event: ${event.event_type}, event ID: ${event.id}`);
-          
+
           const channelAccessToken = Deno.env.get('LINE_CHANNEL_ACCESS_TOKEN');
 
           if (!channelAccessToken) {
-            console.warn(
-              `[notification-worker] LINE_CHANNEL_ACCESS_TOKEN not configured, event ${event.id}`,
-            );
-            await markEventFailed(
-              supabase,
-              event.id,
-              'LINE_CHANNEL_ACCESS_TOKEN not configured',
-            );
+            console.warn(`[notification-worker] LINE_CHANNEL_ACCESS_TOKEN not configured`);
+            await markEventFailed(supabase, event.id, 'LINE_CHANNEL_ACCESS_TOKEN not configured');
             failed++;
             continue;
           }
 
-          // สำหรับ operational events ต้องส่งไปยังผู้ใช้ที่มี line_user_id และ enable_line = true
-          // หาผู้ใช้ทั้งหมดที่มีการตั้งค่า LINE
+          // Case 1: Targeted notification (Only for the specified user)
+          if (event.target_user_id) {
+            console.log(`[notification-worker] Targeted LINE event for user: ${event.target_user_id}`);
+            const { data: targetSettings } = await supabase
+              .from('notification_settings')
+              .select('*')
+              .eq('user_id', event.target_user_id)
+              .maybeSingle();
+
+            if (targetSettings?.line_user_id && targetSettings.enable_line) {
+              // Check user preference for this event type
+              let shouldNotify = true;
+              switch (event.event_type) {
+                case 'ticket_created': shouldNotify = targetSettings.notify_ticket_created !== false; break;
+                case 'ticket_closed': shouldNotify = targetSettings.notify_ticket_closed !== false; break;
+                case 'fuel_refill': shouldNotify = targetSettings.notify_fuel_refill !== false; break;
+                case 'trip_started': shouldNotify = targetSettings.notify_trip_started !== false; break;
+                case 'trip_finished': shouldNotify = targetSettings.notify_trip_finished !== false; break;
+              }
+
+              if (shouldNotify) {
+                // Use the main sendLineNotification function instead of just text message
+                // This will automatically handle PDF attachments if present
+                await sendLineNotification(event, targetSettings);
+                console.log(`[notification-worker] Sent targeted LINE notification to user ${event.target_user_id}`);
+                await markEventSent(supabase, event.id);
+                processed++;
+              } else {
+                console.log(`[notification-worker] User ${event.target_user_id} has disabled ${event.event_type}, marking as sent`);
+                await markEventSent(supabase, event.id);
+                processed++;
+              }
+            } else {
+              const reason = !targetSettings ? 'No settings found' : !targetSettings.enable_line ? 'LINE disabled' : 'No line_user_id';
+              console.warn(`[notification-worker] Could not send targeted LINE message: ${reason}`);
+              await markEventFailed(supabase, event.id, reason);
+              failed++;
+            }
+            continue;
+          }
+
+          // Case 2: Broadcast notification (Original behavior)
           const { data: allSettings, error: settingsError } = await supabase
             .from('notification_settings')
-            .select('line_user_id, user_id, enable_line, notify_ticket_created, notify_ticket_closed, notify_fuel_refill, notify_trip_started, notify_trip_finished')
+            .select('*')
             .eq('enable_line', true)
             .not('line_user_id', 'is', null);
 
@@ -183,7 +255,7 @@ Deno.serve(async (req) => {
           }
 
           console.log(`[notification-worker] Found ${allSettings?.length || 0} user(s) with LINE enabled and line_user_id`);
-          
+
           // Log user details for debugging
           if (allSettings && allSettings.length > 0) {
             allSettings.forEach((setting: any) => {
@@ -216,8 +288,8 @@ Deno.serve(async (req) => {
 
           // เช็คว่าต้องการเช็ค user settings หรือไม่
           // สำหรับ ticket_created, ticket_closed, fuel_refill, trip_started, trip_finished
-          const needsUserSettingCheck = 
-            event.event_type === 'ticket_created' || 
+          const needsUserSettingCheck =
+            event.event_type === 'ticket_created' ||
             event.event_type === 'ticket_closed' ||
             event.event_type === 'fuel_refill' ||
             event.event_type === 'trip_started' ||
@@ -281,7 +353,7 @@ Deno.serve(async (req) => {
             await markEventSent(supabase, event.id);
             processed++;
           } else {
-            const reason = skippedCount > 0 
+            const reason = skippedCount > 0
               ? `All ${allSettings.length} user(s) have notifications disabled for ${event.event_type}`
               : 'No users to send to';
             console.warn(`[notification-worker] ${reason} for event ${event.id}`);
@@ -468,9 +540,24 @@ async function sendTelegramNotificationToChat(
 
 // Send Telegram notification (กับ user ที่มี settings ของตัวเอง – ใช้ใน approval flow)
 async function sendTelegramNotification(event: any, settings: any) {
-  const botToken =
-    settings.telegram_bot_token || Deno.env.get('TELEGRAM_BOT_TOKEN');
-  const chatId = settings.telegram_chat_id || Deno.env.get('TELEGRAM_CHAT_ID');
+  const isApprovalPdf = event.event_type === 'ticket_pdf_for_approval';
+  const botToken = settings.telegram_bot_token || Deno.env.get('TELEGRAM_BOT_TOKEN');
+
+  // สำหรับเรื่องใบแจ้งซ่อมที่เจาะจงตัวบุคคล ต้องมี chatId ส่วนตัวเท่านั้น ห้ามส่งลงกลุ่ม
+  const isSensitive = isApprovalPdf || event.event_type === 'ticket_created' || event.event_type === 'ticket_closed';
+
+  if (isSensitive && !settings.telegram_chat_id) {
+    console.warn(`[notification-worker] Skipping Telegram sensitive event: No private chatId for user ${settings.id || settings.user_id}`);
+    return;
+  }
+
+  // ห้ามใช้ OR (||) กับ Default Group ID สำหรับ Private Notification
+  const chatId = settings.telegram_chat_id;
+
+  if (!botToken || !chatId) {
+    console.warn('[notification-worker] Telegram botToken or chatId missing, skipping private notification');
+    return;
+  }
 
   await sendTelegramNotificationToChat(event, botToken, chatId);
 }
@@ -499,15 +586,6 @@ async function sendTelegramTextMessage(botToken: string, chatId: string, message
 // Send LINE notification (with optional PDF attachment) using user's settings
 // ใช้ LINE Messaging API (LINE OA) เท่านั้น - LINE Notify ถูกยกเลิกแล้ว
 async function sendLineNotification(event: any, settings: any) {
-  const isApprovalPdf = event.event_type === 'ticket_pdf_for_approval';
-
-  // สำหรับ ticket_pdf_for_approval ใช้ LINE Messaging API เพื่อส่งปุ่ม
-  if (isApprovalPdf && settings.line_user_id) {
-    await sendLineMessagingApiNotification(event, settings);
-    return;
-  }
-
-  // สำหรับ operational events ใช้ LINE Messaging API
   const channelAccessToken = Deno.env.get('LINE_CHANNEL_ACCESS_TOKEN');
   const lineUserId = settings.line_user_id;
 
@@ -516,14 +594,8 @@ async function sendLineNotification(event: any, settings: any) {
     return;
   }
 
-  await sendLineMessagingApiTextMessage(channelAccessToken, lineUserId, event.message); // ใช้แค่ message เท่านั้น (ไม่รวม title)
+  await sendLineMessagingApiNotification(event, settings);
 }
-
-// Send LINE notification directly to a given token (global group)
-// DEPRECATED: LINE Notify ถูกยกเลิกแล้ว - ใช้ LINE Messaging API แทน
-// async function sendLineNotificationToToken(event: any, lineToken: string) {
-//   // LINE Notify ถูกยกเลิกแล้ว ใช้ LINE Messaging API แทน
-// }
 
 // Send LINE notification via Messaging API (for interactive buttons)
 async function sendLineMessagingApiNotification(event: any, settings: any) {
@@ -535,34 +607,32 @@ async function sendLineMessagingApiNotification(event: any, settings: any) {
     return;
   }
 
-  // ใช้แค่ message เท่านั้น (ไม่รวม title เพื่อหลีกเลี่ยงการซ้ำ)
   const message = event.message;
 
   // ถ้ามี PDF data หรือ PDF URL ให้ส่ง PDF พร้อมปุ่ม
-  if ((event.pdf_data || event.payload?.pdf_url) && event.payload?.ticket_id && event.payload?.approval_role) {
+  if (event.pdf_data || event.payload?.pdf_url) {
     try {
-      const ticketId = event.payload.ticket_id;
-      const ticketNumber = event.payload.ticket_number || `#${ticketId}`;
-      const role = event.payload.approval_role;
-      
+      const ticketId = event.payload?.ticket_id;
+      const ticketNumber = event.payload?.ticket_number || `#${ticketId || 'New'}`;
+      const role = event.payload?.approval_role || 'inspector'; // Fallback role
+
       let publicUrl: string | null = null;
-      
-      // ถ้ามี pdf_url อยู่แล้ว (จาก line-webhook ที่ส่ง PDF ไปหาผู้อนุมัติถัดไป)
-      if (event.payload.pdf_url) {
+
+      if (event.payload?.pdf_url) {
         publicUrl = event.payload.pdf_url;
-        console.log(`[notification-worker] Using existing PDF URL: ${publicUrl}`);
       } else if (event.pdf_data) {
-        // Convert base64 to binary
         const pdfBuffer = Uint8Array.from(atob(event.pdf_data), c => c.charCodeAt(0));
-        
-        // อัปโหลด PDF ไปยัง Supabase Storage
         const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
         const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
         const supabase = createClient(supabaseUrl, supabaseServiceKey);
-        
+
         const timestamp = Date.now();
-        const storageFileName = `ticket-pdfs/${ticketId}/approval_${role}_${timestamp}.pdf`;
-        
+        // ใช้ชื่อไฟล์ที่มี Ticket number เพื่อให้ดาวน์โหลดแล้วมีชื่อไฟล์ที่เหมาะสม
+        // Format: Ticket_2512-023.pdf (ถ้ามี role ให้ใส่ prefix)
+        const ticketNumberForFilename = ticketNumber.replace(/#/g, ''); // ลบ # ออก
+        const filename = `${role}_Ticket_${ticketNumberForFilename}.pdf`;
+        const storageFileName = `ticket-pdfs/${ticketId || 'unknown'}/${filename}`;
+
         const { data: uploadData, error: uploadError } = await supabase.storage
           .from('ticket-attachments')
           .upload(storageFileName, pdfBuffer, {
@@ -571,114 +641,91 @@ async function sendLineMessagingApiNotification(event: any, settings: any) {
           });
 
         if (uploadError) {
-          console.error('[notification-worker] Error uploading PDF to Supabase Storage:', uploadError);
-          // Fallback: send text message without PDF link
-          const messages = [
-            {
-              type: 'text',
-              text: message + '\n\n📄 กรุณาส่งไฟล์ PDF ที่เซ็นแล้วกลับมา\nหรือกดปุ่ม "ไม่อนุมัติ" ด้านล่าง',
-              quickReply: {
-                items: [
-                  {
-                    type: 'action',
-                    action: {
-                      type: 'postback',
-                      label: '❌ ไม่อนุมัติ',
-                      data: `reject:ticket:${ticketId}:${role}`,
-                      displayText: 'ไม่อนุมัติตั๋วนี้',
-                    },
-                  },
-                ],
-              },
-            },
-          ];
-          
-          await fetch('https://api.line.me/v2/bot/message/push', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${channelAccessToken}`,
-            },
-            body: JSON.stringify({
-              to: lineUserId,
-              messages: messages,
-            }),
-          });
-          return;
+          console.error('[notification-worker] Error uploading PDF fallback:', uploadError);
+        } else {
+          // Supabase Storage จะใช้ชื่อไฟล์จาก path เป็นชื่อไฟล์เมื่อดาวน์โหลด
+          const { data: { publicUrl: uploadedUrl } } = supabase.storage
+            .from('ticket-attachments')
+            .getPublicUrl(storageFileName);
+          publicUrl = uploadedUrl;
         }
-
-        // Get public URL
-        const { data: { publicUrl: uploadedUrl } } = supabase.storage
-          .from('ticket-attachments')
-          .getPublicUrl(storageFileName);
-        
-        publicUrl = uploadedUrl;
       }
 
-      if (!publicUrl) {
-        throw new Error('No PDF URL available');
-      }
-
-      // ส่งข้อความพร้อมปุ่ม (ไม่ใส่ลิงค์ PDF ในข้อความ - ใช้แค่ปุ่ม)
-      const messages = [
-        {
-          type: 'text',
-          text: message + `\n\nกรุณาเซ็น PDF แล้วส่งกลับมาพร้อมระบุเลขที่ตั๋ว:\n"Ticket ${ticketNumber}" หรือ "เลขที่ ${ticketNumber}"\n\nหรือกดปุ่ม "ไม่อนุมัติ" ด้านล่าง`,
-          quickReply: {
-            items: [
+      if (publicUrl) {
+        // Message 1: ปุ่มดาวน์โหลดอยู่เดี่ยว ๆ
+        const downloadCard = {
+          type: 'template',
+          altText: `เอกสารประกอบ #${ticketNumber}`,
+          template: {
+            type: 'buttons',
+            title: `Ticket #${ticketNumber}`,
+            text: message.length > 60 ? message.substring(0, 57) + '...' : message,
+            actions: [
               {
-                type: 'action',
-                action: {
-                  type: 'uri',
-                  label: `📥 Ticket #${ticketNumber}`, // ใช้เลขที่ตั๋วแทนชื่อยาว
-                  uri: publicUrl,
-                },
-              },
-              {
-                type: 'action',
-                action: {
-                  type: 'postback',
-                  label: '❌ ไม่อนุมัติ',
-                  data: `reject:ticket:${ticketId}:${role}`,
-                  displayText: 'ไม่อนุมัติตั๋วนี้',
-                },
+                type: 'uri',
+                label: `📥 ดาวน์โหลด #${ticketNumber}`,
+                uri: publicUrl,
               },
             ],
           },
-        },
-      ];
+        };
 
-      const response = await fetch('https://api.line.me/v2/bot/message/push', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${channelAccessToken}`,
-        },
-        body: JSON.stringify({
-          to: lineUserId, // ใช้ line_user_id (ไม่ใช่ chat ID)
-          messages: messages,
-        }),
-      });
+        // Message 2: ปุ่มไม่อนุมัติเป็น template แยก เพื่อให้เห็นชัด
+        const rejectCard = {
+          type: 'template',
+          altText: `ไม่อนุมัติ Ticket #${ticketNumber}`,
+          template: {
+            type: 'buttons',
+            title: `ไม่อนุมัติ #${ticketNumber}`,
+            text: 'หากต้องการไม่อนุมัติ ให้กดปุ่มด้านล่าง',
+            actions: [
+              {
+                type: 'postback',
+                label: '❌ ไม่อนุมัติ',
+                data: `reject:ticket:${ticketId}:${role}`,
+                displayText: 'ไม่อนุมัติตั๋วนี้',
+              },
+            ],
+          },
+        };
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`LINE Messaging API error: ${response.status} - ${errorText}`);
+        const messages = [
+          downloadCard,
+          rejectCard,
+          {
+            type: 'text',
+            text: message + `\n\n📄 PDF: Ticket: #${ticketNumber}\n(ใช้ปุ่มดาวน์โหลดด้านบน)`,
+          },
+        ];
+
+        const resp = await fetch('https://api.line.me/v2/bot/message/push', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${channelAccessToken}`,
+          },
+          body: JSON.stringify({ to: lineUserId, messages }),
+        });
+
+        // ตรวจสอบการตอบกลับจาก LINE เพื่อไม่ให้หลุดสถานะ sent ถ้าส่งไม่สำเร็จ
+        if (!resp.ok) {
+          const errorText = await resp.text();
+          throw new Error(`LINE push error: ${resp.status} - ${errorText}`);
+        }
+        return;
       }
-
-      console.log(`[notification-worker] Sent approval request with PDF link to LINE for event ${event.id} (user: ${lineUserId})`);
-    } catch (error) {
-      console.error('[notification-worker] Error sending approval request to LINE:', error);
-      // Fallback: send text message only
-      await sendLineMessagingApiTextMessage(channelAccessToken, lineUserId, message);
+    } catch (err) {
+      console.error('[notification-worker] Error in LINE PDF flow:', err);
     }
-  } else {
-    // Send text message only
-    await sendLineMessagingApiTextMessage(channelAccessToken, lineUserId, message);
   }
+
+  // Fallback to plain text if everything else fails
+  const resp = await sendLineMessagingApiTextMessage(channelAccessToken, lineUserId, message);
+  // sendLineMessagingApiTextMessage จะ throw เองถ้า error
+  return resp;
 }
 
 // Send LINE text message via Messaging API
-// ใช้ line_user_id (ไม่ใช่ chat ID) สำหรับส่งข้อความไปยัง LINE ส่วนตัว
 async function sendLineMessagingApiTextMessage(channelAccessToken: string, lineUserId: string, message: string) {
   const response = await fetch('https://api.line.me/v2/bot/message/push', {
     method: 'POST',
@@ -687,7 +734,7 @@ async function sendLineMessagingApiTextMessage(channelAccessToken: string, lineU
       'Authorization': `Bearer ${channelAccessToken}`,
     },
     body: JSON.stringify({
-      to: lineUserId, // ใช้ line_user_id (ไม่ใช่ chat ID)
+      to: lineUserId,
       messages: [{
         type: 'text',
         text: message,
@@ -699,12 +746,9 @@ async function sendLineMessagingApiTextMessage(channelAccessToken: string, lineU
     const errorText = await response.text();
     throw new Error(`LINE Messaging API error: ${response.status} - ${errorText}`);
   }
-}
 
-// DEPRECATED: LINE Notify ถูกยกเลิกแล้ว - ใช้ LINE Messaging API แทน
-// async function sendLineTextMessage(lineToken: string, message: string) {
-//   // LINE Notify ถูกยกเลิกแล้ว ใช้ LINE Messaging API แทน
-// }
+  return response;
+}
 
 // Mark event as sent
 async function markEventSent(supabase: any, eventId: string, note?: string) {
@@ -728,4 +772,3 @@ async function markEventFailed(supabase: any, eventId: string, errorMessage: str
     })
     .eq('id', eventId);
 }
-

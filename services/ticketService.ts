@@ -50,7 +50,7 @@ export const ticketService = {
   // Check if vehicle has active tickets (not completed or rejected)
   hasActiveTicket: async (vehicleId: string, excludeTicketId?: number): Promise<boolean> => {
     const activeStatuses = ['pending', 'approved_inspector', 'approved_manager', 'ready_for_repair', 'in_progress'];
-    
+
     let query = supabase
       .from('tickets')
       .select('id')
@@ -76,7 +76,7 @@ export const ticketService = {
   // Get active ticket for a vehicle
   getActiveTicket: async (vehicleId: string, excludeTicketId?: number): Promise<TicketWithRelations | null> => {
     const activeStatuses = ['pending', 'approved_inspector', 'approved_manager', 'ready_for_repair', 'in_progress'];
-    
+
     let query = supabase
       .from('tickets_with_relations')
       .select('*')
@@ -165,17 +165,17 @@ export const ticketService = {
           details: error.details,
           hint: error.hint
         });
-        
+
         // Check for RLS policy errors
         if (error.message.includes('permission denied') || error.message.includes('policy') || error.code === '42501') {
           throw new Error('Permission denied. Please run migration: sql/20260104000000_fix_tickets_with_relations_rls.sql');
         }
-        
+
         // Check for connection errors
         if (error.message.includes('fetch') || error.message.includes('network') || error.message.includes('Failed to fetch')) {
           throw new Error('Connection failed. If the problem persists, please check your internet connection or VPN');
         }
-        
+
         throw error;
       }
 
@@ -278,7 +278,7 @@ export const ticketService = {
           .select('plate')
           .eq('id', data.vehicle_id)
           .single();
-        
+
         if (vehicle && vehicle.plate) {
           vehiclePlate = vehicle.plate;
         }
@@ -296,20 +296,38 @@ export const ticketService = {
         `📊 สถานะ: ${data.status}`,
       ].filter(Boolean);
 
-      // ไม่ส่ง ticket_created ไป LINE เพื่อหลีกเลี่ยงการส่งซ้ำกับ ticket_pdf_for_approval
-      // ส่งแค่ "ใบแจ้งซ่อมรอการอนุมัติ" เท่านั้น (จะส่งในส่วน ticket_pdf_for_approval)
-      // await notificationService.createEvent({
-      //   channel: 'line',
-      //   event_type: 'ticket_created',
-      //   title: `แจ้งซ่อมใหม่: ${vehiclePlate}`,
-      //   message: messageLines.join('\n'),
-      //   payload: {
-      //     ticket_id: data.id,
-      //     ticket_number: data.ticket_number,
-      //     status: data.status,
-      //     vehicle_id: data.vehicle_id,
-      //   },
-      // });
+      // Telegram (เฉพาะผู้แจ้ง)
+      await notificationService.createEvent({
+        channel: 'telegram',
+        event_type: 'ticket_created',
+        title: `รับเรื่องแจ้งซ่อมแล้ว: ${vehiclePlate}`,
+        message: messageLines.join('\n'),
+        target_user_id: data.reporter_id,
+        payload: {
+          ticket_id: data.id,
+          ticket_number: data.ticket_number,
+          status: data.status,
+        },
+      });
+
+      // LINE (เฉพาะผู้แจ้ง)
+      await notificationService.createEvent({
+        channel: 'line',
+        event_type: 'ticket_created',
+        title: `รับเรื่องแจ้งซ่อมแล้ว: ${vehiclePlate}`,
+        message: messageLines.join('\n'),
+        target_user_id: data.reporter_id, // ส่งกลับไปหาคนแจ้งโดยตรง
+        payload: {
+          ticket_id: data.id,
+          ticket_number: data.ticket_number,
+          status: data.status,
+        },
+      });
+
+      // ถ้าคุณต้องการให้ส่งลงกลุ่มเป็นส่วนกลาง ให้ใช้ event_type แยกต่างหาก เช่น 'ticket_broadcast' 
+      // และไม่ต้องใส่ target_user_id เพื่อให้ worker ส่งไปที่ Group ID ที่ตั้งค่าไว้ใน ENV
+      // แต่สำหรับการทำงานเบื้องต้น เราจะส่งหาบุคคลที่เกี่ยวข้องก่อนครับ
+
     } catch (notifyError) {
       console.error('[ticketService] Failed to create notification event for ticket_created:', notifyError);
       // ไม่ต้อง throw ต่อ เพื่อไม่ให้กระทบการสร้างตั๋ว
@@ -435,7 +453,7 @@ export const ticketService = {
             .select('plate')
             .eq('id', data.vehicle_id)
             .single();
-          
+
           if (vehicle && vehicle.plate) {
             vehiclePlate = vehicle.plate;
           }
@@ -464,17 +482,20 @@ export const ticketService = {
           },
         };
 
-        // Telegram (กลุ่มกลาง)
+        // Telegram (เฉพาะผู้แจ้ง)
         await notificationService.createEvent({
           channel: 'telegram',
           ...baseEvent,
+          target_user_id: data.reporter_id,
         });
 
-        // LINE (กลุ่มกลาง)
+        // LINE (เฉพาะผู้แจ้ง)
         await notificationService.createEvent({
           channel: 'line',
           ...baseEvent,
+          target_user_id: data.reporter_id,
         });
+
       }
     } catch (notifyError) {
       console.error('[ticketService] Failed to create notification event for ticket_closed:', notifyError);
@@ -722,7 +743,7 @@ export const ticketService = {
           const pdfBuffer = Uint8Array.from(atob(pdfBase64), c => c.charCodeAt(0));
           const timestamp = Date.now();
           const storageFileName = `ticket-pdfs/${ticketWithRelations.id}/approval_${nextRole}_${timestamp}.pdf`;
-          
+
           const { data: uploadData, error: uploadError } = await supabase.storage
             .from('ticket-attachments')
             .upload(storageFileName, pdfBuffer, {
