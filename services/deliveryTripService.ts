@@ -127,6 +127,7 @@ export const deliveryTripService = {
     planned_date_from?: string;
     planned_date_to?: string;
     sortAscending?: boolean; // If true, sort by planned_date ASC (earliest first)
+    lite?: boolean; // If false, fetch full store details
   }): Promise<DeliveryTripWithRelations[]> => {
     const result = await deliveryTripService.getAllWithPagination({
       ...filters,
