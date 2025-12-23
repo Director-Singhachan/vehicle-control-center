@@ -627,7 +627,11 @@ async function sendLineMessagingApiNotification(event: any, settings: any) {
         const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
         const timestamp = Date.now();
-        const storageFileName = `ticket-pdfs/${ticketId || 'unknown'}/${role}_${timestamp}.pdf`;
+        // ใช้ชื่อไฟล์ที่มี Ticket number เพื่อให้ดาวน์โหลดแล้วมีชื่อไฟล์ที่เหมาะสม
+        // Format: Ticket_2512-023.pdf (ถ้ามี role ให้ใส่ prefix)
+        const ticketNumberForFilename = ticketNumber.replace(/#/g, ''); // ลบ # ออก
+        const filename = `${role}_Ticket_${ticketNumberForFilename}.pdf`;
+        const storageFileName = `ticket-pdfs/${ticketId || 'unknown'}/${filename}`;
 
         const { data: uploadData, error: uploadError } = await supabase.storage
           .from('ticket-attachments')
@@ -639,6 +643,7 @@ async function sendLineMessagingApiNotification(event: any, settings: any) {
         if (uploadError) {
           console.error('[notification-worker] Error uploading PDF fallback:', uploadError);
         } else {
+          // Supabase Storage จะใช้ชื่อไฟล์จาก path เป็นชื่อไฟล์เมื่อดาวน์โหลด
           const { data: { publicUrl: uploadedUrl } } = supabase.storage
             .from('ticket-attachments')
             .getPublicUrl(storageFileName);
@@ -647,34 +652,50 @@ async function sendLineMessagingApiNotification(event: any, settings: any) {
       }
 
       if (publicUrl) {
-        // Build template with buttons
-        const messages = [
-          {
-            type: 'template',
-            altText: `เอกสารประกอบ #${ticketNumber}`,
-            template: {
-              type: 'buttons',
-              title: `Ticket #${ticketNumber}`,
-              text: message.length > 60 ? message.substring(0, 57) + '...' : message,
-              actions: [
-                {
-                  type: 'uri',
-                  label: '📥 ดาวน์โหลด PDF',
-                  uri: publicUrl,
-                },
-                {
-                  type: 'postback',
-                  label: '❌ ไม่อนุมัติ',
-                  data: `reject:ticket:${ticketId}:${role}`,
-                  displayText: 'ไม่อนุมัติตั๋วนี้',
-                },
-              ].filter(a => ticketId ? true : a.label !== '❌ ไม่อนุมัติ'),
-            },
+        // Message 1: ปุ่มดาวน์โหลดอยู่เดี่ยว ๆ
+        const downloadCard = {
+          type: 'template',
+          altText: `เอกสารประกอบ #${ticketNumber}`,
+          template: {
+            type: 'buttons',
+            title: `Ticket #${ticketNumber}`,
+            text: message.length > 60 ? message.substring(0, 57) + '...' : message,
+            actions: [
+              {
+                type: 'uri',
+                label: `📥 ดาวน์โหลด #${ticketNumber}`,
+                uri: publicUrl,
+              },
+            ],
           },
+        };
+
+        // Message 2: ปุ่มไม่อนุมัติเป็น template แยก เพื่อให้เห็นชัด
+        const rejectCard = {
+          type: 'template',
+          altText: `ไม่อนุมัติ Ticket #${ticketNumber}`,
+          template: {
+            type: 'buttons',
+            title: `ไม่อนุมัติ #${ticketNumber}`,
+            text: 'หากต้องการไม่อนุมัติ ให้กดปุ่มด้านล่าง',
+            actions: [
+              {
+                type: 'postback',
+                label: '❌ ไม่อนุมัติ',
+                data: `reject:ticket:${ticketId}:${role}`,
+                displayText: 'ไม่อนุมัติตั๋วนี้',
+              },
+            ],
+          },
+        };
+
+        const messages = [
+          downloadCard,
+          rejectCard,
           {
             type: 'text',
-            text: message + `\n\n📄 ลิงก์ PDF:\n${publicUrl}`,
-          }
+            text: message + `\n\n📄 PDF: Ticket: #${ticketNumber}\n(ใช้ปุ่มดาวน์โหลดด้านบน)`,
+          },
         ];
 
         const resp = await fetch('https://api.line.me/v2/bot/message/push', {

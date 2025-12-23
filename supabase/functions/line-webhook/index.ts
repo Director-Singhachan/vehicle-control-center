@@ -221,18 +221,15 @@ Deno.serve(async (req) => {
           const fileBuffer = await contentResponse.arrayBuffer();
 
           // หา user จาก line_user_id
-          const { data: settings, error: settingsError } = await supabase
-            .from('notification_settings')
-            .select('user_id')
-            .eq('line_user_id', lineUserId || '')
-            .maybeSingle();
-
-          if (settingsError || !settings) {
+          console.log(`[line-webhook] Looking for user with line_user_id: "${lineUserId}" for PDF file: ${fileName}`);
+          
+          if (!lineUserId) {
+            console.error('[line-webhook] lineUserId is missing from event');
             const payload = {
               replyToken: event.replyToken,
               messages: [{
                 type: 'text',
-                text: '❌ ไม่พบข้อมูลผู้ใช้ กรุณาผูกบัญชี LINE ด้วยคำสั่ง: bind your.email@company.com',
+                text: '❌ ไม่พบ LINE User ID จาก event กรุณาลองใหม่อีกครั้ง',
               }],
             };
             await fetch('https://api.line.me/v2/bot/message/reply', {
@@ -245,6 +242,65 @@ Deno.serve(async (req) => {
             });
             continue;
           }
+
+          // อาจมีข้อมูลซ้ำใน notification_settings (line_user_id เดียวหลายแถว) → เลือกแถวล่าสุด
+          const { data: settings, error: settingsError } = await supabase
+            .from('notification_settings')
+            .select('user_id, line_user_id, enable_line')
+            .eq('line_user_id', lineUserId)
+            .order('updated_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          if (settingsError) {
+            console.error('[line-webhook] Error querying notification_settings:', settingsError);
+            const payload = {
+              replyToken: event.replyToken,
+              messages: [{
+                type: 'text',
+                text: '❌ เกิดข้อผิดพลาดในการค้นหาข้อมูล กรุณาลองใหม่อีกครั้ง',
+              }],
+            };
+            await fetch('https://api.line.me/v2/bot/message/reply', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${channelAccessToken}`,
+              },
+              body: JSON.stringify(payload),
+            });
+            continue;
+          }
+
+          if (!settings) {
+            console.warn(`[line-webhook] No notification_settings found for line_user_id: "${lineUserId}"`);
+            // Debug: Check if any settings exist with this line_user_id
+            const { data: allSettings } = await supabase
+              .from('notification_settings')
+              .select('user_id, line_user_id, enable_line')
+              .not('line_user_id', 'is', null)
+              .limit(5);
+            console.log(`[line-webhook] Sample notification_settings with line_user_id:`, allSettings);
+            
+            const payload = {
+              replyToken: event.replyToken,
+              messages: [{
+                type: 'text',
+                text: '❌ ไม่พบข้อมูลผู้ใช้ กรุณาผูกบัญชี LINE อีกครั้งด้วยคำสั่ง:\n\nbind your.email@company.com',
+              }],
+            };
+            await fetch('https://api.line.me/v2/bot/message/reply', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${channelAccessToken}`,
+              },
+              body: JSON.stringify(payload),
+            });
+            continue;
+          }
+
+          console.log(`[line-webhook] Found user: user_id=${settings.user_id}, line_user_id=${settings.line_user_id?.substring(0, 10)}...`);
 
           const targetUserId = settings.user_id;
 
@@ -274,8 +330,10 @@ Deno.serve(async (req) => {
             continue;
           }
 
+          // พยายามอ่านเลขที่ตั๋วจากชื่อไฟล์ (เช่น inspector_Ticket_2512-001_copy.pdf)
+          const ticketNumberFromFile = fileName.match(/(\d{4}-\d{3})/i)?.[1] || null;
+
           // ตรวจสอบว่ามี ticket number ที่รออยู่หรือไม่ (กรณีส่งข้อความมาก่อน)
-          // ใช้ database แทน in-memory Map
           const { data: pendingTicketData } = await supabase
             .from('notification_settings')
             .select('line_pending_ticket_number')
@@ -283,23 +341,26 @@ Deno.serve(async (req) => {
             .maybeSingle();
 
           const pendingTicketNumber = (pendingTicketData as any)?.line_pending_ticket_number;
+          const effectiveTicketNumber = ticketNumberFromFile || pendingTicketNumber || null;
 
-          if (pendingTicketNumber) {
-            // มี ticket number รออยู่ → ประมวลผลทันที
-            console.log(`[line-webhook] Found pending ticket number: ${pendingTicketNumber}, processing PDF immediately`);
+          if (ticketNumberFromFile) {
+            console.log(`[line-webhook] Found ticket number in filename: ${ticketNumberFromFile}`);
+          }
 
-            // ลบ ticket number ที่รออยู่
-            await supabase
-              .from('notification_settings')
-              .update({ line_pending_ticket_number: null })
-              .eq('line_user_id', lineUserId || '');
+          if (effectiveTicketNumber) {
+            // ถ้ามี pending ticket number ให้ลบออกเพื่อป้องกันซ้ำ
+            if (pendingTicketNumber) {
+              await supabase
+                .from('notification_settings')
+                .update({ line_pending_ticket_number: null })
+                .eq('line_user_id', lineUserId || '');
+            }
 
-            // ประมวลผล PDF + Ticket Number ทันที
             // หา ticket
             const { data: tickets } = await supabase
               .from('tickets')
               .select('id, ticket_number, status')
-              .eq('ticket_number', pendingTicketNumber)
+              .eq('ticket_number', effectiveTicketNumber)
               .limit(1);
 
             if (!tickets || tickets.length === 0) {
@@ -307,7 +368,7 @@ Deno.serve(async (req) => {
                 replyToken: event.replyToken,
                 messages: [{
                   type: 'text',
-                  text: `❌ ไม่พบตั๋วหมายเลข ${pendingTicketNumber}\n\nกรุณาตรวจสอบเลขที่ตั๋วอีกครั้ง`,
+                  text: `❌ ไม่พบตั๋วหมายเลข ${effectiveTicketNumber}\n\nกรุณาตรวจสอบเลขที่ตั๋วอีกครั้ง`,
                 }],
               };
               await fetch('https://api.line.me/v2/bot/message/reply', {
@@ -323,7 +384,7 @@ Deno.serve(async (req) => {
 
             const ticket = tickets[0];
 
-            // Upload PDF to Supabase Storage (ย้ายจาก pending-pdfs ไป signed-tickets)
+            // Upload PDF ไปยัง signed-tickets
             const timestamp = Date.now();
             const storageFileName = `signed-tickets/${ticket.id}/${profile.role}_${timestamp}.pdf`;
 
@@ -359,18 +420,20 @@ Deno.serve(async (req) => {
               .from('ticket-attachments')
               .getPublicUrl(storageFileName);
 
+            const signedPdfUrl = publicUrl;
+
             // Update ticket signature URL based on user role
             const updateData: any = {};
             const role = profile.role;
 
             if (role === 'inspector') {
-              updateData.inspector_signature_url = publicUrl;
+              updateData.inspector_signature_url = signedPdfUrl;
               updateData.inspector_signed_at = new Date().toISOString();
             } else if (role === 'manager') {
-              updateData.manager_signature_url = publicUrl;
+              updateData.manager_signature_url = signedPdfUrl;
               updateData.manager_signed_at = new Date().toISOString();
             } else if (role === 'executive') {
-              updateData.executive_signature_url = publicUrl;
+              updateData.executive_signature_url = signedPdfUrl;
               updateData.executive_signed_at = new Date().toISOString();
             } else {
               const payload = {
@@ -488,10 +551,107 @@ Deno.serve(async (req) => {
               },
               body: JSON.stringify(pdfSuccessPayload),
             });
+
+            // ส่งต่อผู้อนุมัติถัดไป (ใช้ signedPdfUrl)
+            if (level && signedPdfUrl) {
+              try {
+                let nextApproverId: string | null = null;
+                let nextLevel: number | null = null;
+                let nextRole: string | null = null;
+
+                if (level === 1) {
+                  const { data: managers } = await supabase
+                    .from('profiles')
+                    .select('id')
+                    .eq('role', 'manager')
+                    .limit(1);
+                  if (managers && managers.length > 0) {
+                    nextApproverId = managers[0].id;
+                    nextLevel = 2;
+                    nextRole = 'manager';
+                  }
+                } else if (level === 2) {
+                  const { data: executives } = await supabase
+                    .from('profiles')
+                    .select('id')
+                    .eq('role', 'executive')
+                    .limit(1);
+                  if (executives && executives.length > 0) {
+                    nextApproverId = executives[0].id;
+                    nextLevel = 3;
+                    nextRole = 'executive';
+                  }
+                }
+
+                if (nextApproverId && nextLevel && nextRole) {
+                  const { data: ticketFullData } = await supabase
+                    .from('tickets_with_relations')
+                    .select('*')
+                    .eq('id', ticket.id)
+                    .maybeSingle();
+
+                  if (ticketFullData) {
+                    const levelLabels: Record<number, string> = {
+                      2: 'Level 2 (ผู้จัดการ)',
+                      3: 'Level 3 (ผู้บริหาร)',
+                    };
+
+                    const { error: notifyError } = await supabase
+                      .from('notification_events')
+                      .insert({
+                        user_id: targetUserId,
+                        channel: 'line',
+                        event_type: 'ticket_pdf_for_approval',
+                        title: `📋 ใบแจ้งซ่อมรอการอนุมัติ - ${levelLabels[nextLevel]}`,
+                        message: `📋 [ใบแจ้งซ่อมรอการอนุมัติ]\n\n` +
+                          `👤 ระดับ: ${levelLabels[nextLevel]}\n` +
+                          `🎫 Ticket: #${ticket.ticket_number}\n` +
+                          `🚗 ทะเบียนรถ: ${ticketFullData.vehicle_plate || '-'}\n` +
+                          `👤 ผู้แจ้ง: ${ticketFullData.reporter_name || '-'}\n` +
+                          `🔧 อาการ: ${ticketFullData.repair_type || '-'}\n` +
+                          `🚨 ความเร่งด่วน: ${ticketFullData.urgency || 'medium'}\n` +
+                          `✅ สถานะปัจจุบัน: อนุมัติ Level ${level} แล้ว\n\n` +
+                          `กรุณาเซ็น PDF แล้วส่งกลับมาพร้อมระบุเลขที่ตั๋ว`,
+                        payload: {
+                          ticket_id: ticket.id,
+                          ticket_number: ticket.ticket_number,
+                          approval_level: nextLevel,
+                          approval_role: nextRole,
+                          previous_level: level,
+                          pdf_url: signedPdfUrl,
+                        },
+                        target_user_id: nextApproverId,
+                        status: 'pending',
+                      });
+
+                    if (notifyError) {
+                      console.error('[line-webhook] Error creating notification event for next approver:', notifyError);
+                    } else {
+                      console.log(`[line-webhook] Created notification event for next approver (${nextRole})`);
+                      try {
+                        await fetch(`${supabaseUrl}/functions/v1/notification-worker`, {
+                          method: 'POST',
+                          headers: {
+                            'Authorization': `Bearer ${serviceKey}`,
+                            'Content-Type': 'application/json',
+                          },
+                          body: JSON.stringify({ source: 'line-webhook', event_type: 'ticket_pdf_for_approval' }),
+                        });
+                      } catch (invokeError) {
+                        console.warn('[line-webhook] Failed to trigger notification-worker:', invokeError);
+                      }
+                    }
+                  }
+                }
+              } catch (nextApproverError) {
+                console.error('[line-webhook] Error sending to next approver:', nextApproverError);
+              }
+            }
+
             continue;
           }
 
-          // ไม่มี ticket number รออยู่ → อัปโหลด PDF ไปยัง Storage ทันทีเพื่อเก็บไว้
+          // ไม่มี ticket number ในไฟล์และไม่มี pending ticket number → อัปโหลด PDF ไปยัง Storage ทันทีเพื่อเก็บไว้
           const timestamp = Date.now();
           const tempStorageFileName = `pending-pdfs/${lineUserId || 'unknown'}/${timestamp}.pdf`;
 
@@ -586,18 +746,15 @@ Deno.serve(async (req) => {
 
         try {
           // หา user จาก line_user_id
-          const { data: settings, error: settingsError } = await supabase
-            .from('notification_settings')
-            .select('user_id')
-            .eq('line_user_id', lineUserId || '')
-            .maybeSingle();
-
-          if (settingsError || !settings) {
+          console.log(`[line-webhook] Looking for user with line_user_id: "${lineUserId}" for ticket number: ${ticketNumber}`);
+          
+          if (!lineUserId) {
+            console.error('[line-webhook] lineUserId is missing from event');
             const payload = {
               replyToken: event.replyToken,
               messages: [{
                 type: 'text',
-                text: '❌ ไม่พบข้อมูลผู้ใช้ กรุณาผูกบัญชี LINE ด้วยคำสั่ง: bind your.email@company.com',
+                text: '❌ ไม่พบ LINE User ID จาก event กรุณาลองใหม่อีกครั้ง',
               }],
             };
             await fetch('https://api.line.me/v2/bot/message/reply', {
@@ -610,6 +767,54 @@ Deno.serve(async (req) => {
             });
             continue;
           }
+
+          const { data: settings, error: settingsError } = await supabase
+            .from('notification_settings')
+            .select('user_id, line_user_id, enable_line')
+            .eq('line_user_id', lineUserId)
+            .maybeSingle();
+
+          if (settingsError) {
+            console.error('[line-webhook] Error querying notification_settings:', settingsError);
+            const payload = {
+              replyToken: event.replyToken,
+              messages: [{
+                type: 'text',
+                text: '❌ เกิดข้อผิดพลาดในการค้นหาข้อมูล กรุณาลองใหม่อีกครั้ง',
+              }],
+            };
+            await fetch('https://api.line.me/v2/bot/message/reply', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${channelAccessToken}`,
+              },
+              body: JSON.stringify(payload),
+            });
+            continue;
+          }
+
+          if (!settings) {
+            console.warn(`[line-webhook] No notification_settings found for line_user_id: "${lineUserId}"`);
+            const payload = {
+              replyToken: event.replyToken,
+              messages: [{
+                type: 'text',
+                text: '❌ ไม่พบข้อมูลผู้ใช้ กรุณาผูกบัญชี LINE อีกครั้งด้วยคำสั่ง:\n\nbind your.email@company.com',
+              }],
+            };
+            await fetch('https://api.line.me/v2/bot/message/reply', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${channelAccessToken}`,
+              },
+              body: JSON.stringify(payload),
+            });
+            continue;
+          }
+
+          console.log(`[line-webhook] Found user: user_id=${settings.user_id}, line_user_id=${settings.line_user_id?.substring(0, 10)}...`);
 
           const targetUserId = settings.user_id;
 
@@ -793,6 +998,9 @@ Deno.serve(async (req) => {
             .from('ticket-attachments')
             .getPublicUrl(storageFileName);
 
+          // เก็บ publicUrl ไว้เพื่อใช้ส่งต่อไปให้ผู้อนุมัติถัดไป
+          const signedPdfUrl = publicUrl;
+
           // Update ticket signature URL based on user role
           const updateData: any = {};
           const role = profile.role;
@@ -896,7 +1104,8 @@ Deno.serve(async (req) => {
           }
 
           // ส่ง PDF ไปหาผู้อนุมัติถัดไป (ถ้าอนุมัติแล้ว)
-          if (level) {
+          // ใช้ signedPdfUrl ที่เก็บไว้จาก PDF ที่ inspector/manager เซ็นแล้ว
+          if (level && signedPdfUrl) {
             try {
               let nextApproverId: string | null = null;
               let nextLevel: number | null = null;
@@ -960,7 +1169,6 @@ Deno.serve(async (req) => {
                         `🔧 อาการ: ${ticketFullData.repair_type || '-'}\n` +
                         `🚨 ความเร่งด่วน: ${ticketFullData.urgency || 'medium'}\n` +
                         `✅ สถานะปัจจุบัน: อนุมัติ Level ${level} แล้ว\n\n` +
-                        `📄 ดาวน์โหลด PDF: ${publicUrl}\n\n` +
                         `กรุณาเซ็น PDF แล้วส่งกลับมาพร้อมระบุเลขที่ตั๋ว`,
                       payload: {
                         ticket_id: ticket.id,
@@ -968,7 +1176,7 @@ Deno.serve(async (req) => {
                         approval_level: nextLevel,
                         approval_role: nextRole,
                         previous_level: level,
-                        pdf_url: publicUrl, // เก็บ URL ของ PDF ที่อัปโหลดแล้ว
+                        pdf_url: signedPdfUrl, // เก็บ URL ของ PDF ที่เซ็นแล้ว (จาก inspector/manager) เพื่อส่งต่อไปให้ผู้อนุมัติถัดไป
                       },
                       target_user_id: nextApproverId,
                       status: 'pending',
@@ -1035,7 +1243,8 @@ Deno.serve(async (req) => {
           // (โค้ดเก่าถูกลบแล้ว ใช้ database แทน)
 
           // ส่ง PDF ไปหาผู้อนุมัติถัดไป (ถ้าอนุมัติแล้ว)
-          if (level) {
+          // ใช้ signedPdfUrl ที่เก็บไว้จาก PDF ที่ inspector/manager เซ็นแล้ว
+          if (level && signedPdfUrl) {
             try {
               let nextApproverId: string | null = null;
               let nextLevel: number | null = null;
@@ -1084,7 +1293,7 @@ Deno.serve(async (req) => {
                   };
 
                   // สร้าง notification event สำหรับผู้อนุมัติถัดไป
-                  // ใช้ PDF ที่อัปโหลดแล้ว (publicUrl) เป็น pdf_data (base64) หรือส่งลิงก์แทน
+                  // ใช้ PDF ที่อัปโหลดแล้ว (signedPdfUrl) เพื่อส่งต่อไปให้ผู้อนุมัติถัดไป
                   const { error: notifyError } = await supabase
                     .from('notification_events')
                     .insert({
@@ -1100,7 +1309,6 @@ Deno.serve(async (req) => {
                         `🔧 อาการ: ${ticketFullData.repair_type || '-'}\n` +
                         `🚨 ความเร่งด่วน: ${ticketFullData.urgency || 'medium'}\n` +
                         `✅ สถานะปัจจุบัน: อนุมัติ Level ${level} แล้ว\n\n` +
-                        `📄 ดาวน์โหลด PDF: ${publicUrl}\n\n` +
                         `กรุณาเซ็น PDF แล้วส่งกลับมาพร้อมระบุเลขที่ตั๋ว`,
                       payload: {
                         ticket_id: ticket.id,
@@ -1108,7 +1316,7 @@ Deno.serve(async (req) => {
                         approval_level: nextLevel,
                         approval_role: nextRole,
                         previous_level: level,
-                        pdf_url: publicUrl, // เก็บ URL ของ PDF ที่อัปโหลดแล้ว
+                        pdf_url: signedPdfUrl, // เก็บ URL ของ PDF ที่เซ็นแล้ว (จาก inspector/manager) เพื่อส่งต่อไปให้ผู้อนุมัติถัดไป
                       },
                       target_user_id: nextApproverId,
                       status: 'pending',
@@ -1267,7 +1475,8 @@ Deno.serve(async (req) => {
         try {
           console.log(`[line-webhook] Searching for user with email: "${email}" (cleaned)`);
 
-          // ค้นหาโปรไฟล์โดยใช้ email
+          // ค้นหา profile จาก profiles table (เนื่องจาก email อาจไม่ sync กับ auth.users)
+          // ใช้ ilike สำหรับ case-insensitive search
           const { data: profile, error: profileError } = await supabase
             .from('profiles')
             .select('id, email, full_name, role')
@@ -1279,19 +1488,29 @@ Deno.serve(async (req) => {
           }
 
           if (!profile) {
-            // Debug: Check if any profiles exist
+            // Debug: Check if any profiles exist and list some emails for debugging
             const { count: totalProfiles } = await supabase
               .from('profiles')
               .select('*', { count: 'exact', head: true });
 
-            console.warn(`[line-webhook] Profile NOT found for ${email}. Total profiles in DB: ${totalProfiles}`);
+            // Get a few sample emails for debugging (not user's email for privacy)
+            const { data: sampleProfiles } = await supabase
+              .from('profiles')
+              .select('email')
+              .limit(3);
+
+            console.warn(`[line-webhook] Profile NOT found for email: "${email}"`);
+            console.warn(`[line-webhook] Total profiles in DB: ${totalProfiles}`);
+            if (sampleProfiles && sampleProfiles.length > 0) {
+              console.warn(`[line-webhook] Sample email formats in DB: ${sampleProfiles.map(p => p.email).join(', ')}`);
+            }
 
             const payload = {
               replyToken: event.replyToken,
               messages: [
                 {
                   type: 'text',
-                  text: `❌ ไม่พบบัญชีที่ผูกกับอีเมล: ${email}\n\nกรุณาตรวจสอบว่าคุณได้ลงทะเบียนในเว็บแอปด้วยอีเมลนี้แล้ว และได้ยืนยันอีเมลในระบบเรียบร้อยแล้ว`,
+                  text: `❌ ไม่พบบัญชีที่ผูกกับอีเมล: ${email}\n\nกรุณาตรวจสอบ:\n1. อีเมลที่พิมพ์ตรงกับอีเมลที่ใช้ล็อกอินเข้าเว็บแอป\n2. คุณได้ลงทะเบียนและยืนยันอีเมลเรียบร้อยแล้ว\n3. ลองพิมพ์ email อีกครั้งโดยไม่มีช่องว่าง`,
                 },
               ],
             };
@@ -1309,11 +1528,15 @@ Deno.serve(async (req) => {
 
           console.log(`[line-webhook] Profile found: id=${profile.id}, email=${profile.email}, name=${profile.full_name}`);
 
+          const finalProfile = profile;
+
+          console.log(`[line-webhook] Final profile: id=${finalProfile.id}, email=${finalProfile.email}, name=${finalProfile.full_name}`);
+
           // อัปเดต / สร้าง notification_settings ให้มี line_user_id
           const { data: existingSettings, error: settingsCheckError } = await supabase
             .from('notification_settings')
             .select('id')
-            .eq('user_id', profile.id)
+            .eq('user_id', finalProfile.id)
             .maybeSingle();
 
           if (settingsCheckError) {
@@ -1321,7 +1544,7 @@ Deno.serve(async (req) => {
           }
 
           if (existingSettings) {
-            console.log(`[line-webhook] Updating existing notification_settings for user ${profile.id} (settings id: ${existingSettings.id})`);
+            console.log(`[line-webhook] Updating existing notification_settings for user ${finalProfile.id} (settings id: ${existingSettings.id})`);
 
             // ตรวจสอบค่าเดิมก่อนอัปเดต
             const { data: beforeUpdate } = await supabase
@@ -1367,7 +1590,7 @@ Deno.serve(async (req) => {
 
             // ตรวจสอบว่าอัปเดตสำเร็จจริงหรือไม่
             if (updatedData) {
-              console.log(`[line-webhook] Successfully updated notification_settings for user ${profile.id}`);
+              console.log(`[line-webhook] Successfully updated notification_settings for user ${finalProfile.id}`);
               console.log(`[line-webhook] Updated values: enable_line=${updatedData.enable_line}, line_user_id=${updatedData.line_user_id ? updatedData.line_user_id.substring(0, 10) + '...' : 'null'}`);
 
               // ตรวจสอบอีกครั้งด้วย query แยก (รอสักครู่เพื่อให้ database sync)
@@ -1410,11 +1633,11 @@ Deno.serve(async (req) => {
               continue;
             }
           } else {
-            console.log(`[line-webhook] Creating new notification_settings for user ${profile.id}`);
+            console.log(`[line-webhook] Creating new notification_settings for user ${finalProfile.id}`);
             const { data: insertedData, error: insertError } = await supabase
               .from('notification_settings')
               .insert({
-                user_id: profile.id,
+                user_id: finalProfile.id,
                 enable_line: true,
                 enable_telegram: false,
                 line_token: null,
@@ -1451,7 +1674,7 @@ Deno.serve(async (req) => {
             }
 
             if (insertedData) {
-              console.log(`[line-webhook] Successfully created notification_settings for user ${profile.id}`);
+              console.log(`[line-webhook] Successfully created notification_settings for user ${finalProfile.id}`);
               console.log(`[line-webhook] Created values: enable_line=${insertedData.enable_line}, line_user_id=${insertedData.line_user_id ? insertedData.line_user_id.substring(0, 10) + '...' : 'null'}`);
             } else {
               console.warn(`[line-webhook] Insert returned no data - may have been blocked by RLS`);
@@ -1465,8 +1688,8 @@ Deno.serve(async (req) => {
                 type: 'text',
                 text:
                   `✅ ผูกบัญชี LINE นี้กับผู้ใช้:\n` +
-                  `- ชื่อ: ${profile.full_name || '-'}\n` +
-                  `- อีเมล: ${profile.email || email}\n\n` +
+                  `- ชื่อ: ${finalProfile.full_name || '-'}\n` +
+                  `- อีเมล: ${finalProfile.email || email}\n\n` +
                   `ต่อจากนี้เมื่อมีตั๋ว/แจ้งเตือนที่เกี่ยวข้อง บางส่วนจะถูกส่งมาทาง LINE ด้วยได้`,
               },
             ],

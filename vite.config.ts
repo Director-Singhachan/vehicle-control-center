@@ -10,7 +10,7 @@ export default defineConfig(({ mode }) => {
       host: 'localhost',
       strictPort: false,
       open: true,
-      hmr: false,
+      hmr: true, // เปิด Hot Module Replacement เพื่ออัปเดตไฟล์อัตโนมัติ
       watch: {
         usePolling: false,
       },
@@ -39,6 +39,14 @@ export default defineConfig(({ mode }) => {
       target: 'esnext',
       commonjsOptions: {
         transformMixedEsModules: true,
+      },
+      rollupOptions: {
+        output: {
+          // เพิ่ม hash ในชื่อไฟล์เพื่อบังคับให้เบราว์เซอร์โหลดไฟล์ใหม่เมื่อมีการเปลี่ยนแปลง
+          entryFileNames: 'assets/[name].[hash].js',
+          chunkFileNames: 'assets/[name].[hash].js',
+          assetFileNames: 'assets/[name].[hash].[ext]',
+        },
       },
     },
   };

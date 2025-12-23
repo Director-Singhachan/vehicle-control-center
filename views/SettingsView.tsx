@@ -172,9 +172,9 @@ export const SettingsView: React.FC = () => {
                   <div className="flex items-center gap-2">
                     <MessageCircle className="w-5 h-5 text-green-500" />
                     <div>
-                      <p className="font-medium text-slate-900 dark:text-slate-100">LINE Notify</p>
+                      <p className="font-medium text-slate-900 dark:text-slate-100">LINE Messaging API</p>
                       <p className="text-xs text-slate-500 dark:text-slate-400">
-                        แจ้งเตือนเข้าห้องแชท LINE ที่คุณกำหนด
+                        แจ้งเตือนผ่าน LINE Bot (LINE OA)
                       </p>
                     </div>
                   </div>
@@ -195,15 +195,58 @@ export const SettingsView: React.FC = () => {
                 </div>
 
                 <div className="space-y-3">
-                  <Input
-                    label="LINE Notify Token"
-                    type="password"
-                    placeholder="ใส่ LINE Notify token"
-                    value={settings.line_token || ''}
-                    onChange={(e) => handleChange('line_token', e.target.value)}
-                    helperText="สร้าง token ได้จากหน้า LINE Notify แล้วนำมาวางที่นี่"
-                    disabled={!settings.enable_line || !isEditing}
-                  />
+                  {/* Status Display */}
+                  {settings.line_user_id ? (
+                    <div className="p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
+                      <div className="flex items-center gap-2 text-green-800 dark:text-green-200">
+                        <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                        <span className="text-sm font-medium">บัญชี LINE ผูกแล้ว</span>
+                      </div>
+                      <p className="text-xs text-green-700 dark:text-green-300 mt-1">
+                        LINE User ID: {settings.line_user_id.substring(0, 10)}...
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
+                      <div className="flex items-center gap-2 text-amber-800 dark:text-amber-200 mb-2">
+                        <div className="w-2 h-2 bg-amber-500 rounded-full"></div>
+                        <span className="text-sm font-medium">ยังไม่ได้ผูกบัญชี LINE</span>
+                      </div>
+                      <p className="text-xs text-amber-700 dark:text-amber-300 mb-2">
+                        เพื่อรับการแจ้งเตือนผ่าน LINE กรุณาทำตามขั้นตอนต่อไปนี้:
+                      </p>
+                      <ol className="text-xs text-amber-700 dark:text-amber-300 space-y-1 list-decimal list-inside">
+                        <li>เพิ่ม LINE Bot เป็นเพื่อน (หากยังไม่ได้เพิ่ม)</li>
+                        <li>เปิดแชทกับ LINE Bot แล้วส่งคำสั่ง:</li>
+                      </ol>
+                      <div className="mt-2 p-2 bg-white dark:bg-slate-800 rounded border border-amber-300 dark:border-amber-700">
+                        <code className="text-xs font-mono text-amber-900 dark:text-amber-100">
+                          bind {profile?.email || 'your.email@company.com'}
+                        </code>
+                      </div>
+                      <p className="text-xs text-amber-600 dark:text-amber-400 mt-2">
+                        ใช้ email เดียวกับที่ใช้เข้าสู่ระบบ
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Helper text when enabled but not bound */}
+                  {settings.enable_line && !settings.line_user_id && (
+                    <div className="p-2 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded">
+                      <p className="text-xs text-blue-700 dark:text-blue-300">
+                        💡 <strong>หมายเหตุ:</strong> หลังจากผูกบัญชีแล้ว ระบบจะอัปเดตอัตโนมัติ (ไม่ต้องรีเฟรชหน้า)
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Legacy LINE Notify Token (hidden but kept for backward compatibility) */}
+                  {settings.line_token && (
+                    <div className="p-2 bg-slate-100 dark:bg-slate-800 rounded">
+                      <p className="text-xs text-slate-600 dark:text-slate-400">
+                        ⚠️ LINE Notify Token ยังเก็บไว้ (ระบบใช้ LINE Messaging API แล้ว)
+                      </p>
+                    </div>
+                  )}
                 </div>
               </div>
 
