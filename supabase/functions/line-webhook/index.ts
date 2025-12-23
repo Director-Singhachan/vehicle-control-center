@@ -122,8 +122,8 @@ Deno.serve(async (req) => {
               if (settings) {
                 const level =
                   role === 'inspector' ? 1 :
-                  role === 'manager' ? 2 :
-                  role === 'executive' ? 3 : null;
+                    role === 'manager' ? 2 :
+                      role === 'executive' ? 3 : null;
 
                 if (level) {
                   // สร้าง rejection record
@@ -287,7 +287,7 @@ Deno.serve(async (req) => {
           if (pendingTicketNumber) {
             // มี ticket number รออยู่ → ประมวลผลทันที
             console.log(`[line-webhook] Found pending ticket number: ${pendingTicketNumber}, processing PDF immediately`);
-            
+
             // ลบ ticket number ที่รออยู่
             await supabase
               .from('notification_settings')
@@ -326,7 +326,7 @@ Deno.serve(async (req) => {
             // Upload PDF to Supabase Storage (ย้ายจาก pending-pdfs ไป signed-tickets)
             const timestamp = Date.now();
             const storageFileName = `signed-tickets/${ticket.id}/${profile.role}_${timestamp}.pdf`;
-            
+
             const { data: uploadData, error: uploadError } = await supabase.storage
               .from('ticket-attachments')
               .upload(storageFileName, fileBuffer, {
@@ -420,8 +420,8 @@ Deno.serve(async (req) => {
             // Auto-approve
             const level =
               role === 'inspector' ? 1 :
-              role === 'manager' ? 2 :
-              role === 'executive' ? 3 : null;
+                role === 'manager' ? 2 :
+                  role === 'executive' ? 3 : null;
 
             if (level) {
               // เช็คว่ามี approval record อยู่แล้วหรือยัง
@@ -449,9 +449,9 @@ Deno.serve(async (req) => {
 
               const nextStatus =
                 role === 'inspector' ? 'approved_inspector' :
-                role === 'manager' ? 'approved_manager' :
-                role === 'executive' ? 'ready_for_repair' :
-                null;
+                  role === 'manager' ? 'approved_manager' :
+                    role === 'executive' ? 'ready_for_repair' :
+                      null;
 
               if (nextStatus) {
                 await supabase
@@ -494,9 +494,9 @@ Deno.serve(async (req) => {
           // ไม่มี ticket number รออยู่ → อัปโหลด PDF ไปยัง Storage ทันทีเพื่อเก็บไว้
           const timestamp = Date.now();
           const tempStorageFileName = `pending-pdfs/${lineUserId || 'unknown'}/${timestamp}.pdf`;
-          
+
           console.log(`[line-webhook] No pending ticket number, uploading PDF to storage: ${tempStorageFileName}`);
-          
+
           const { data: uploadData, error: uploadError } = await supabase.storage
             .from('ticket-attachments')
             .upload(tempStorageFileName, fileBuffer, {
@@ -679,7 +679,7 @@ Deno.serve(async (req) => {
 
           // มี PDF → ดาวน์โหลดจาก Storage และประมวลผลทันที
           console.log(`[line-webhook] ✅ Found pending PDF at: ${pendingPdfPath}, downloading...`);
-          
+
           const { data: pdfFile, error: downloadError } = await supabase.storage
             .from('ticket-attachments')
             .download(pendingPdfPath);
@@ -710,7 +710,7 @@ Deno.serve(async (req) => {
           }
 
           const fileBuffer = await pdfFile.arrayBuffer();
-          
+
           // ลบ pending PDF path
           await supabase
             .from('notification_settings')
@@ -749,7 +749,7 @@ Deno.serve(async (req) => {
           // Copy PDF จาก pending-pdfs ไป signed-tickets (ย้ายไฟล์)
           const timestamp = Date.now();
           const storageFileName = `signed-tickets/${ticket.id}/${profile.role}_${timestamp}.pdf`;
-          
+
           // อัปโหลด PDF ใหม่ไปยัง signed-tickets (ใช้ fileBuffer ที่ดาวน์โหลดมา)
           const { data: uploadData, error: uploadError } = await supabase.storage
             .from('ticket-attachments')
@@ -854,8 +854,8 @@ Deno.serve(async (req) => {
           // Auto-approve
           const level =
             role === 'inspector' ? 1 :
-            role === 'manager' ? 2 :
-            role === 'executive' ? 3 : null;
+              role === 'manager' ? 2 :
+                role === 'executive' ? 3 : null;
 
           if (level) {
             // เช็คว่ามี approval record อยู่แล้วหรือยัง
@@ -863,7 +863,7 @@ Deno.serve(async (req) => {
               .from('ticket_approvals')
               .select('*')
               .eq('ticket_id', ticket.id)
-                .eq('approver_id', targetUserId)
+              .eq('approver_id', targetUserId)
               .eq('level', level)
               .eq('action', 'approved')
               .limit(1);
@@ -883,9 +883,9 @@ Deno.serve(async (req) => {
 
             const nextStatus =
               role === 'inspector' ? 'approved_inspector' :
-              role === 'manager' ? 'approved_manager' :
-              role === 'executive' ? 'ready_for_repair' :
-              null;
+                role === 'manager' ? 'approved_manager' :
+                  role === 'executive' ? 'ready_for_repair' :
+                    null;
 
             if (nextStatus) {
               await supabase
@@ -1176,10 +1176,10 @@ Deno.serve(async (req) => {
           if (lineUserId) {
             await supabase
               .from('notification_settings')
-              .update({ 
-                line_pending_pdf_path: null, 
+              .update({
+                line_pending_pdf_path: null,
                 line_pending_pdf_uploaded_at: null,
-                line_pending_ticket_number: null 
+                line_pending_ticket_number: null
               })
               .eq('line_user_id', lineUserId || '');
           }
@@ -1212,12 +1212,13 @@ Deno.serve(async (req) => {
           replyPromises.push(p);
           continue;
         }
-        
+
         // ทำความสะอาด email: ลบ space, character พิเศษ, และ trim
-        const email = emailMatch[1].trim().replace(/[\u200B-\u200D\uFEFF]/g, ''); // ลบ zero-width space และ character พิเศษ
+        const rawEmail = emailMatch[1].trim();
+        const email = rawEmail.replace(/[\s\u200B-\u200D\uFEFF]/g, ''); // ลบ space ทั้งหมดและ character พิเศษ
         const lineUserId = event.source?.userId;
-        
-        console.log(`[line-webhook] Bind command received: original="${userText}", email="${email}", lineUserId="${lineUserId}"`);
+
+        console.log(`[line-webhook] Bind command received: email="${email}" (raw="${rawEmail}"), lineUserId="${lineUserId}"`);
 
         if (!lineUserId) {
           const payload = {
@@ -1264,28 +1265,33 @@ Deno.serve(async (req) => {
         }
 
         try {
-          // หา user จาก email ในตาราง profiles
-          console.log(`[line-webhook] Searching for user with email: "${email}"`);
+          console.log(`[line-webhook] Searching for user with email: "${email}" (cleaned)`);
+
+          // ค้นหาโปรไฟล์โดยใช้ email
           const { data: profile, error: profileError } = await supabase
             .from('profiles')
-            .select('id, email, full_name')
+            .select('id, email, full_name, role')
             .ilike('email', email)
             .maybeSingle();
 
           if (profileError) {
-            console.error(`[line-webhook] Error searching for profile:`, profileError);
+            console.error('[line-webhook] Error searching profile:', profileError);
           }
 
-          if (profileError || !profile) {
-            console.log(`[line-webhook] Profile not found for email: "${email}"`);
+          if (!profile) {
+            // Debug: Check if any profiles exist
+            const { count: totalProfiles } = await supabase
+              .from('profiles')
+              .select('*', { count: 'exact', head: true });
+
+            console.warn(`[line-webhook] Profile NOT found for ${email}. Total profiles in DB: ${totalProfiles}`);
+
             const payload = {
               replyToken: event.replyToken,
               messages: [
                 {
                   type: 'text',
-                  text:
-                    '❌ ไม่พบผู้ใช้ในระบบจากอีเมลนี้\n' +
-                    'กรุณาตรวจสอบอีเมลให้ตรงกับที่ใช้ในระบบควบคุมยานพาหนะ',
+                  text: `❌ ไม่พบบัญชีที่ผูกกับอีเมล: ${email}\n\nกรุณาตรวจสอบว่าคุณได้ลงทะเบียนในเว็บแอปด้วยอีเมลนี้แล้ว และได้ยืนยันอีเมลในระบบเรียบร้อยแล้ว`,
                 },
               ],
             };
@@ -1302,7 +1308,7 @@ Deno.serve(async (req) => {
           }
 
           console.log(`[line-webhook] Profile found: id=${profile.id}, email=${profile.email}, name=${profile.full_name}`);
-          
+
           // อัปเดต / สร้าง notification_settings ให้มี line_user_id
           const { data: existingSettings, error: settingsCheckError } = await supabase
             .from('notification_settings')
@@ -1316,7 +1322,7 @@ Deno.serve(async (req) => {
 
           if (existingSettings) {
             console.log(`[line-webhook] Updating existing notification_settings for user ${profile.id} (settings id: ${existingSettings.id})`);
-            
+
             // ตรวจสอบค่าเดิมก่อนอัปเดต
             const { data: beforeUpdate } = await supabase
               .from('notification_settings')
@@ -1324,7 +1330,7 @@ Deno.serve(async (req) => {
               .eq('id', existingSettings.id)
               .single();
             console.log(`[line-webhook] Before update: enable_line=${beforeUpdate?.enable_line}, line_user_id=${beforeUpdate?.line_user_id ? 'exists' : 'null'}`);
-            
+
             // ใช้ update โดยตรง (service role key ควร bypass RLS ได้)
             const { data: updatedData, error: updateError } = await supabase
               .from('notification_settings')
@@ -1336,7 +1342,7 @@ Deno.serve(async (req) => {
               .eq('id', existingSettings.id)
               .select()
               .single();
-            
+
             if (updateError) {
               console.error(`[line-webhook] Error updating notification_settings:`, updateError);
               console.error(`[line-webhook] Error details:`, JSON.stringify(updateError, null, 2));
@@ -1358,26 +1364,26 @@ Deno.serve(async (req) => {
               replyPromises.push(p);
               continue;
             }
-            
+
             // ตรวจสอบว่าอัปเดตสำเร็จจริงหรือไม่
             if (updatedData) {
               console.log(`[line-webhook] Successfully updated notification_settings for user ${profile.id}`);
               console.log(`[line-webhook] Updated values: enable_line=${updatedData.enable_line}, line_user_id=${updatedData.line_user_id ? updatedData.line_user_id.substring(0, 10) + '...' : 'null'}`);
-              
+
               // ตรวจสอบอีกครั้งด้วย query แยก (รอสักครู่เพื่อให้ database sync)
               await new Promise(resolve => setTimeout(resolve, 500));
-              
+
               const { data: verifyData, error: verifyError } = await supabase
                 .from('notification_settings')
                 .select('enable_line, line_user_id')
                 .eq('id', existingSettings.id)
                 .single();
-              
+
               if (verifyError) {
                 console.error(`[line-webhook] Error verifying update:`, verifyError);
               } else if (verifyData) {
                 console.log(`[line-webhook] Verification: enable_line=${verifyData.enable_line}, line_user_id=${verifyData.line_user_id ? 'exists' : 'null'}`);
-                
+
                 if (!verifyData.enable_line || !verifyData.line_user_id) {
                   console.error(`[line-webhook] WARNING: Update verification failed! enable_line=${verifyData.enable_line}, line_user_id=${verifyData.line_user_id ? 'exists' : 'null'}`);
                   console.error(`[line-webhook] This may indicate RLS blocking the update. Service role key should bypass RLS.`);
@@ -1422,7 +1428,7 @@ Deno.serve(async (req) => {
               })
               .select()
               .single();
-            
+
             if (insertError) {
               console.error(`[line-webhook] Error inserting notification_settings:`, insertError);
               const payload = {
@@ -1443,7 +1449,7 @@ Deno.serve(async (req) => {
               replyPromises.push(p);
               continue;
             }
-            
+
             if (insertedData) {
               console.log(`[line-webhook] Successfully created notification_settings for user ${profile.id}`);
               console.log(`[line-webhook] Created values: enable_line=${insertedData.enable_line}, line_user_id=${insertedData.line_user_id ? insertedData.line_user_id.substring(0, 10) + '...' : 'null'}`);
