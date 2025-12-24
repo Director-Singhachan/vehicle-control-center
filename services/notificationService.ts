@@ -99,6 +99,33 @@ export const notificationService = {
     return created as NotificationSettings;
   },
 
+  // Unbind LINE (clear line_user_id and disable LINE channel)
+  unbindLine: async (): Promise<NotificationSettings> => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      throw new Error('User not authenticated');
+    }
+
+    const { data, error } = await supabase
+      .from('notification_settings')
+      .update({
+        line_user_id: null,
+        enable_line: false,
+        line_token: null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('user_id', user.id)
+      .select()
+      .single();
+
+    if (error) {
+      console.error('[notificationService] Error unbinding LINE:', error);
+      throw error;
+    }
+
+    return data as NotificationSettings;
+  },
+
   // Update current user's settings
   updateMySettings: async (
     updates: Partial<Omit<NotificationSettings, 'id' | 'user_id'>>

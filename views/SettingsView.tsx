@@ -13,6 +13,7 @@ export const SettingsView: React.FC = () => {
   const [settings, setSettings] = useState<NotificationSettings | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [unlinking, setUnlinking] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [isEditing, setIsEditing] = useState(false); // Lock/unlock state
@@ -106,6 +107,25 @@ export const SettingsView: React.FC = () => {
       setError(err.message || 'ไม่สามารถบันทึกการตั้งค่าการแจ้งเตือนได้');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleUnbindLine = async () => {
+    if (!settings) return;
+    setUnlinking(true);
+    setError(null);
+    setSuccess(false);
+    try {
+      const updated = await notificationService.unbindLine();
+      setSettings(updated);
+      setSuccess(true);
+      setIsEditing(false);
+      setTimeout(() => setSuccess(false), 3000);
+    } catch (err: any) {
+      console.error('[SettingsView] Error unbinding LINE:', err);
+      setError(err.message || 'ไม่สามารถยกเลิกการเชื่อมต่อ LINE ได้');
+    } finally {
+      setUnlinking(false);
     }
   };
 
@@ -205,6 +225,16 @@ export const SettingsView: React.FC = () => {
                       <p className="text-xs text-green-700 dark:text-green-300 mt-1">
                         LINE User ID: {settings.line_user_id.substring(0, 10)}...
                       </p>
+                      <div className="mt-3">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={handleUnbindLine}
+                          disabled={unlinking || saving || loading}
+                        >
+                          {unlinking ? 'กำลังยกเลิก...' : 'ยกเลิกการเชื่อมต่อ LINE'}
+                        </Button>
+                      </div>
                     </div>
                   ) : (
                     <div className="p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
