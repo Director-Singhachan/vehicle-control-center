@@ -542,7 +542,7 @@ Deno.serve(async (req) => {
                   `✅ อัปโหลด PDF ที่เซ็นแล้วสำเร็จ!\n\n` +
                   `ตั๋วหมายเลข: ${ticket.ticket_number}\n` +
                   `ผู้เซ็น: ${roleLabelsForPdf[role] || role}\n` +
-                  `วันที่: ${new Date().toLocaleString('th-TH')}\n\n` +
+                  `วันที่: ${new Date().toLocaleString('th-TH', { timeZone: 'Asia/Bangkok', hour12: false })}\n\n` +
                   `ระบบได้บันทึกลายเซ็นและอนุมัติอัตโนมัติแล้ว`,
               }],
             };
@@ -1240,7 +1240,7 @@ Deno.serve(async (req) => {
                 `✅ อัปโหลด PDF ที่เซ็นแล้วสำเร็จ!\n\n` +
                 `ตั๋วหมายเลข: ${ticket.ticket_number}\n` +
                 `ผู้เซ็น: ${roleLabels[role] || role}\n` +
-                `วันที่: ${new Date().toLocaleString('th-TH')}\n\n` +
+                `วันที่: ${new Date().toLocaleString('th-TH', { timeZone: 'Asia/Bangkok', hour12: false })}\n\n` +
                 `ระบบได้บันทึกลายเซ็นและอนุมัติอัตโนมัติแล้ว`,
             }],
           };
@@ -1268,7 +1268,7 @@ Deno.serve(async (req) => {
                 `✅ อัปโหลด PDF ที่เซ็นแล้วสำเร็จ!\n\n` +
                 `ตั๋วหมายเลข: ${ticket.ticket_number}\n` +
                 `ผู้เซ็น: ${roleLabelsForFinal[role] || role}\n` +
-                `วันที่: ${new Date().toLocaleString('th-TH')}\n\n` +
+                `วันที่: ${new Date().toLocaleString('th-TH', { timeZone: 'Asia/Bangkok', hour12: false })}\n\n` +
                 `ระบบได้บันทึกลายเซ็นและอนุมัติอัตโนมัติแล้ว`,
             }],
           };
