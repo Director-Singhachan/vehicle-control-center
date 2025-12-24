@@ -742,7 +742,9 @@ export const ticketService = {
           // อัปโหลด PDF ไปยัง Storage ครั้งเดียว (เพื่อใช้ร่วมกันทั้ง Telegram และ LINE)
           const pdfBuffer = Uint8Array.from(atob(pdfBase64), c => c.charCodeAt(0));
           const timestamp = Date.now();
-          const storageFileName = `ticket-pdfs/${ticketWithRelations.id}/approval_${nextRole}_${timestamp}.pdf`;
+          // ใช้เลขที่ตั๋วในชื่อไฟล์ เพื่อให้ผู้อนุมัติถัดไปเห็นชื่อไฟล์สอดคล้องกับ Ticket
+          const ticketNumberForName = fullTicket?.ticket_number || ticketWithRelations.id;
+          const storageFileName = `ticket-pdfs/${ticketWithRelations.id}/approval_${nextRole}_${ticketNumberForName}_${timestamp}.pdf`;
 
           const { data: uploadData, error: uploadError } = await supabase.storage
             .from('ticket-attachments')
