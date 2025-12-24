@@ -367,7 +367,24 @@ Deno.serve(async (req) => {
         // เช่น ticket_pdf_for_approval ที่ยิงไปหาผู้อนุมัติแบบตัวต่อตัว
 
         // Determine target user (use target_user_id if available, otherwise use user_id)
-        const targetUserId = event.target_user_id || event.user_id;
+        // สำหรับ ticket_pdf_for_approval ต้องใช้ target_user_id เท่านั้น (ผู้อนุมัติถัดไป)
+        const targetUserId = event.target_user_id || (event.event_type === 'ticket_pdf_for_approval' ? null : event.user_id);
+        
+        if (!targetUserId && event.event_type === 'ticket_pdf_for_approval') {
+          console.error(`[notification-worker] Missing target_user_id for ticket_pdf_for_approval event ${event.id}`);
+          await markEventFailed(supabase, event.id, 'Missing target_user_id for approval event');
+          failed++;
+          continue;
+        }
+        
+        if (!targetUserId) {
+          console.warn(`[notification-worker] No target user found for event ${event.id}, skipping`);
+          await markEventFailed(supabase, event.id, 'No target user found');
+          failed++;
+          continue;
+        }
+        
+        console.log(`[notification-worker] Processing ${event.event_type} for target user: ${targetUserId}`);
 
         // Get notification settings for target user
         const { data: settings, error: settingsError } = await supabase
@@ -388,7 +405,12 @@ Deno.serve(async (req) => {
           let shouldNotify = true;
           switch (event.event_type) {
             case 'ticket_pdf_for_approval':
-              shouldNotify = settings.notify_ticket_approval !== false;
+              // การอนุมัติเป็นเรื่องสำคัญ ควรส่งเสมอ (default true)
+              // เช็คเฉพาะกรณีที่ user ปิดการแจ้งเตือนชัดเจน
+              shouldNotify = settings.notify_ticket_approval !== false && 
+                            (settings.notify_ticket_approval === true || 
+                             settings.notify_ticket_approval === null || 
+                             settings.notify_ticket_approval === undefined);
               break;
             case 'ticket_created':
               shouldNotify = settings.notify_ticket_created !== false;
@@ -616,10 +638,29 @@ async function sendLineMessagingApiNotification(event: any, settings: any) {
       const ticketNumber = event.payload?.ticket_number || `#${ticketId || 'New'}`;
       const role = event.payload?.approval_role || 'inspector'; // Fallback role
 
+      console.log(`[notification-worker] Processing PDF notification for ticket ${ticketNumber}, role: ${role}, lineUserId: ${lineUserId?.substring(0, 10)}...`);
+
       let publicUrl: string | null = null;
 
       if (event.payload?.pdf_url) {
-        publicUrl = event.payload.pdf_url;
+        // ใช้ proxy endpoint สำหรับรองรับ iOS
+        const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+        // แปลง public URL เป็น storage path
+        // Format: https://{project}.supabase.co/storage/v1/object/public/ticket-attachments/{path}
+        const urlObj = new URL(event.payload.pdf_url);
+        const pathMatch = urlObj.pathname.match(/\/storage\/v1\/object\/public\/ticket-attachments\/(.+)/);
+        if (pathMatch) {
+          const storagePath = decodeURIComponent(pathMatch[1]); // Decode เพื่อให้ได้ path ที่ถูกต้อง
+          const ticketNumberForFilename = ticketNumber.replace(/#/g, '');
+          const filename = `Ticket_${ticketNumberForFilename}.pdf`;
+          // ใส่ filename เป็น path segment เพื่อให้ iOS ใช้ชื่อไฟล์ถูกต้อง
+          publicUrl = `${supabaseUrl}/functions/v1/pdf-download/${encodeURIComponent(filename)}?path=${encodeURIComponent(storagePath)}`;
+          console.log(`[notification-worker] Using proxy URL for iOS compatibility: ${publicUrl.substring(0, 80)}...`);
+        } else {
+          // Fallback to original URL if path extraction fails
+          publicUrl = event.payload.pdf_url;
+          console.warn(`[notification-worker] Could not extract storage path from URL, using original: ${event.payload.pdf_url.substring(0, 50)}...`);
+        }
       } else if (event.pdf_data) {
         const pdfBuffer = Uint8Array.from(atob(event.pdf_data), c => c.charCodeAt(0));
         const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
@@ -628,26 +669,26 @@ async function sendLineMessagingApiNotification(event: any, settings: any) {
 
         const timestamp = Date.now();
         // ใช้ชื่อไฟล์ที่มี Ticket number เพื่อให้ดาวน์โหลดแล้วมีชื่อไฟล์ที่เหมาะสม
-        // Format: Ticket_2512-023.pdf (ถ้ามี role ให้ใส่ prefix)
+        // Format: Ticket_2512-023.pdf (ไม่ใส่ role prefix)
         const ticketNumberForFilename = ticketNumber.replace(/#/g, ''); // ลบ # ออก
-        const filename = `${role}_Ticket_${ticketNumberForFilename}.pdf`;
+        const filename = `Ticket_${ticketNumberForFilename}.pdf`;
         const storageFileName = `ticket-pdfs/${ticketId || 'unknown'}/${filename}`;
 
         const { data: uploadData, error: uploadError } = await supabase.storage
           .from('ticket-attachments')
           .upload(storageFileName, pdfBuffer, {
             contentType: 'application/pdf',
-            upsert: false,
+            upsert: true, // อนุญาตให้ overwrite ไฟล์เดิมได้ (กรณีที่อัปโหลดซ้ำหรืออัปเดต)
           });
 
         if (uploadError) {
           console.error('[notification-worker] Error uploading PDF fallback:', uploadError);
         } else {
-          // Supabase Storage จะใช้ชื่อไฟล์จาก path เป็นชื่อไฟล์เมื่อดาวน์โหลด
-          const { data: { publicUrl: uploadedUrl } } = supabase.storage
-            .from('ticket-attachments')
-            .getPublicUrl(storageFileName);
-          publicUrl = uploadedUrl;
+          // ใช้ proxy endpoint สำหรับรองรับ iOS แทน public URL โดยตรง
+          const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+          // ใส่ filename เป็น path segment เพื่อให้ iOS ใช้ชื่อไฟล์ถูกต้อง
+          publicUrl = `${supabaseUrl}/functions/v1/pdf-download/${encodeURIComponent(filename)}?path=${encodeURIComponent(storageFileName)}`;
+          console.log(`[notification-worker] Using proxy URL for iOS compatibility: ${publicUrl.substring(0, 80)}...`);
         }
       }
 
@@ -694,10 +735,11 @@ async function sendLineMessagingApiNotification(event: any, settings: any) {
           rejectCard,
           {
             type: 'text',
-            text: message + `\n\n📄 PDF: Ticket: #${ticketNumber}\n(ใช้ปุ่มดาวน์โหลดด้านบน)`,
+            text: message + `\n\n📄 PDF: Ticket: #${ticketNumber}\n(ใช้ปุ่มดาวน์โหลดด้านบน)\n\n💡 หมายเหตุ: เมื่อดาวน์โหลด PDF แล้ว กรุณาเซ็นและส่งกลับมาได้เลย ไม่ต้องเปลี่ยนชื่อไฟล์ ระบบจะรู้ว่าเป็น Ticket #${ticketNumber} อัตโนมัติ`,
           },
         ];
 
+        console.log(`[notification-worker] Sending LINE message with PDF to user ${lineUserId?.substring(0, 10)}...`);
         const resp = await fetch('https://api.line.me/v2/bot/message/push', {
           method: 'POST',
           headers: {
@@ -710,8 +752,27 @@ async function sendLineMessagingApiNotification(event: any, settings: any) {
         // ตรวจสอบการตอบกลับจาก LINE เพื่อไม่ให้หลุดสถานะ sent ถ้าส่งไม่สำเร็จ
         if (!resp.ok) {
           const errorText = await resp.text();
+          console.error(`[notification-worker] LINE push failed: ${resp.status} - ${errorText}`);
           throw new Error(`LINE push error: ${resp.status} - ${errorText}`);
         }
+        console.log(`[notification-worker] Successfully sent LINE message with PDF to user ${lineUserId?.substring(0, 10)}...`);
+        
+        // เก็บ ticket number ไว้ใน notification_settings เพื่อให้ผู้ใช้ส่ง PDF กลับมาได้โดยไม่ต้องเปลี่ยนชื่อไฟล์
+        if (ticketNumber && lineUserId && settings?.user_id) {
+          const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+          const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+          const supabase = createClient(supabaseUrl, supabaseServiceKey);
+          
+          // เก็บ ticket number โดยลบ # ออก
+          const ticketNumberClean = ticketNumber.replace(/#/g, '');
+          await supabase
+            .from('notification_settings')
+            .update({ line_pending_ticket_number: ticketNumberClean })
+            .eq('line_user_id', lineUserId);
+          
+          console.log(`[notification-worker] Stored pending ticket number: ${ticketNumberClean} for user ${lineUserId?.substring(0, 10)}...`);
+        }
+        
         return;
       }
     } catch (err) {

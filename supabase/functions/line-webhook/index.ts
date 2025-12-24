@@ -330,8 +330,10 @@ Deno.serve(async (req) => {
             continue;
           }
 
-          // พยายามอ่านเลขที่ตั๋วจากชื่อไฟล์ (เช่น inspector_Ticket_2512-001_copy.pdf)
-          const ticketNumberFromFile = fileName.match(/(\d{4}-\d{3})/i)?.[1] || null;
+          // พยายามอ่านเลขที่ตั๋วจากชื่อไฟล์
+          // รองรับรูปแบบ: Ticket_2512-012.pdf, inspector_Ticket_2512-001.pdf, 2512-012.pdf, Ticket #2512-012.pdf
+          const ticketNumberFromFile = fileName.match(/(?:Ticket[_\s#]*)?(\d{4}-\d{3})/i)?.[1] || 
+                                       fileName.match(/(\d{4}-\d{3})/)?.[1] || null;
 
           // ตรวจสอบว่ามี ticket number ที่รออยู่หรือไม่ (กรณีส่งข้อความมาก่อน)
           const { data: pendingTicketData } = await supabase
@@ -385,14 +387,15 @@ Deno.serve(async (req) => {
             const ticket = tickets[0];
 
             // Upload PDF ไปยัง signed-tickets
-            const timestamp = Date.now();
-            const storageFileName = `signed-tickets/${ticket.id}/${profile.role}_${timestamp}.pdf`;
+            // ใช้ชื่อไฟล์ที่มี ticket number เพื่อให้ดาวน์โหลดแล้วมีชื่อไฟล์ที่ถูกต้อง
+            const ticketNumberForFilename = ticket.ticket_number.replace(/[#\s]/g, ''); // ลบ # และ space ออก
+            const storageFileName = `signed-tickets/${ticket.id}/Ticket_${ticketNumberForFilename}.pdf`;
 
             const { data: uploadData, error: uploadError } = await supabase.storage
               .from('ticket-attachments')
               .upload(storageFileName, fileBuffer, {
                 contentType: 'application/pdf',
-                upsert: false,
+                upsert: true, // อนุญาตให้ overwrite ไฟล์เดิมได้ (กรณีที่อัปโหลดซ้ำหรืออัปเดต)
               });
 
             if (uploadError) {
@@ -571,6 +574,8 @@ Deno.serve(async (req) => {
                     nextRole = 'manager';
                   }
                 } else if (level === 2) {
+                  // Level 2 (manager) approved → send to executive (Level 3)
+                  console.log('[line-webhook] Manager approved, looking for executive to send PDF');
                   const { data: executives } = await supabase
                     .from('profiles')
                     .select('id')
@@ -580,6 +585,9 @@ Deno.serve(async (req) => {
                     nextApproverId = executives[0].id;
                     nextLevel = 3;
                     nextRole = 'executive';
+                    console.log(`[line-webhook] Found executive: ${nextApproverId}, will send PDF for Level 3 approval`);
+                  } else {
+                    console.warn('[line-webhook] No executive found in database');
                   }
                 }
 
@@ -627,7 +635,7 @@ Deno.serve(async (req) => {
                     if (notifyError) {
                       console.error('[line-webhook] Error creating notification event for next approver:', notifyError);
                     } else {
-                      console.log(`[line-webhook] Created notification event for next approver (${nextRole})`);
+                      console.log(`[line-webhook] Created notification event for next approver (${nextRole}, user_id: ${nextApproverId}, ticket: ${ticket.ticket_number})`);
                       try {
                         await fetch(`${supabaseUrl}/functions/v1/notification-worker`, {
                           method: 'POST',
@@ -637,6 +645,7 @@ Deno.serve(async (req) => {
                           },
                           body: JSON.stringify({ source: 'line-webhook', event_type: 'ticket_pdf_for_approval' }),
                         });
+                        console.log(`[line-webhook] Triggered notification-worker for ${nextRole}`);
                       } catch (invokeError) {
                         console.warn('[line-webhook] Failed to trigger notification-worker:', invokeError);
                       }
@@ -952,15 +961,16 @@ Deno.serve(async (req) => {
           const ticket = tickets[0];
 
           // Copy PDF จาก pending-pdfs ไป signed-tickets (ย้ายไฟล์)
-          const timestamp = Date.now();
-          const storageFileName = `signed-tickets/${ticket.id}/${profile.role}_${timestamp}.pdf`;
+          // ใช้ชื่อไฟล์ที่มี ticket number เพื่อให้ดาวน์โหลดแล้วมีชื่อไฟล์ที่ถูกต้อง
+          const ticketNumberForFilename = ticket.ticket_number.replace(/[#\s]/g, ''); // ลบ # และ space ออก
+          const storageFileName = `signed-tickets/${ticket.id}/Ticket_${ticketNumberForFilename}.pdf`;
 
           // อัปโหลด PDF ใหม่ไปยัง signed-tickets (ใช้ fileBuffer ที่ดาวน์โหลดมา)
           const { data: uploadData, error: uploadError } = await supabase.storage
             .from('ticket-attachments')
             .upload(storageFileName, fileBuffer, {
               contentType: 'application/pdf',
-              upsert: false,
+              upsert: true, // อนุญาตให้ overwrite ไฟล์เดิมได้ (กรณีที่อัปโหลดซ้ำหรืออัปเดต)
             });
 
           if (uploadError) {
@@ -1125,7 +1135,8 @@ Deno.serve(async (req) => {
                   nextRole = 'manager';
                 }
               } else if (level === 2) {
-                // Level 2 approved → send to executive (Level 3)
+                // Level 2 (manager) approved → send to executive (Level 3)
+                console.log('[line-webhook] Manager approved, looking for executive to send PDF');
                 const { data: executives } = await supabase
                   .from('profiles')
                   .select('id')
@@ -1135,6 +1146,9 @@ Deno.serve(async (req) => {
                   nextApproverId = executives[0].id;
                   nextLevel = 3;
                   nextRole = 'executive';
+                  console.log(`[line-webhook] Found executive: ${nextApproverId}, will send PDF for Level 3 approval`);
+                } else {
+                  console.warn('[line-webhook] No executive found in database');
                 }
               }
               // Level 3 is final, no next approver
@@ -1186,7 +1200,7 @@ Deno.serve(async (req) => {
                   if (notifyError) {
                     console.error('[line-webhook] Error creating notification event for next approver:', notifyError);
                   } else {
-                    console.log(`[line-webhook] Created notification event for next approver (${nextRole})`);
+                    console.log(`[line-webhook] Created notification event for next approver (${nextRole}, user_id: ${nextApproverId}, ticket: ${ticket.ticket_number})`);
                     // Trigger notification-worker to process immediately
                     try {
                       await fetch(`${supabaseUrl}/functions/v1/notification-worker`, {
@@ -1197,6 +1211,7 @@ Deno.serve(async (req) => {
                         },
                         body: JSON.stringify({ source: 'line-webhook', event_type: 'ticket_pdf_for_approval' }),
                       });
+                      console.log(`[line-webhook] Triggered notification-worker for ${nextRole}`);
                     } catch (invokeError) {
                       console.warn('[line-webhook] Failed to trigger notification-worker:', invokeError);
                       // Continue anyway - cron job will pick it up
@@ -1237,118 +1252,6 @@ Deno.serve(async (req) => {
             },
             body: JSON.stringify(payload),
           });
-
-          // ลบ PDF ที่เก็บไว้
-          // PDF ถูกเก็บไว้ใน Storage แล้ว ไม่ต้องใช้ in-memory Map
-          // (โค้ดเก่าถูกลบแล้ว ใช้ database แทน)
-
-          // ส่ง PDF ไปหาผู้อนุมัติถัดไป (ถ้าอนุมัติแล้ว)
-          // ใช้ signedPdfUrl ที่เก็บไว้จาก PDF ที่ inspector/manager เซ็นแล้ว
-          if (level && signedPdfUrl) {
-            try {
-              let nextApproverId: string | null = null;
-              let nextLevel: number | null = null;
-              let nextRole: string | null = null;
-
-              // Determine next approver based on current approval level
-              if (level === 1) {
-                // Level 1 approved → send to manager (Level 2)
-                const { data: managers } = await supabase
-                  .from('profiles')
-                  .select('id')
-                  .eq('role', 'manager')
-                  .limit(1);
-                if (managers && managers.length > 0) {
-                  nextApproverId = managers[0].id;
-                  nextLevel = 2;
-                  nextRole = 'manager';
-                }
-              } else if (level === 2) {
-                // Level 2 approved → send to executive (Level 3)
-                const { data: executives } = await supabase
-                  .from('profiles')
-                  .select('id')
-                  .eq('role', 'executive')
-                  .limit(1);
-                if (executives && executives.length > 0) {
-                  nextApproverId = executives[0].id;
-                  nextLevel = 3;
-                  nextRole = 'executive';
-                }
-              }
-              // Level 3 is final, no next approver
-
-              if (nextApproverId && nextLevel && nextRole) {
-                // Get ticket data for notification
-                const { data: ticketFullData } = await supabase
-                  .from('tickets_with_relations')
-                  .select('*')
-                  .eq('id', ticket.id)
-                  .maybeSingle();
-
-                if (ticketFullData) {
-                  const levelLabels: Record<number, string> = {
-                    2: 'Level 2 (ผู้จัดการ)',
-                    3: 'Level 3 (ผู้บริหาร)',
-                  };
-
-                  // สร้าง notification event สำหรับผู้อนุมัติถัดไป
-                  // ใช้ PDF ที่อัปโหลดแล้ว (signedPdfUrl) เพื่อส่งต่อไปให้ผู้อนุมัติถัดไป
-                  const { error: notifyError } = await supabase
-                    .from('notification_events')
-                    .insert({
-                      user_id: targetUserId, // User who approved (for event tracking)
-                      channel: 'line',
-                      event_type: 'ticket_pdf_for_approval',
-                      title: `📋 ใบแจ้งซ่อมรอการอนุมัติ - ${levelLabels[nextLevel]}`,
-                      message: `📋 [ใบแจ้งซ่อมรอการอนุมัติ]\n\n` +
-                        `👤 ระดับ: ${levelLabels[nextLevel]}\n` +
-                        `🎫 Ticket: #${ticket.ticket_number}\n` +
-                        `🚗 ทะเบียนรถ: ${ticketFullData.vehicle_plate || '-'}\n` +
-                        `👤 ผู้แจ้ง: ${ticketFullData.reporter_name || '-'}\n` +
-                        `🔧 อาการ: ${ticketFullData.repair_type || '-'}\n` +
-                        `🚨 ความเร่งด่วน: ${ticketFullData.urgency || 'medium'}\n` +
-                        `✅ สถานะปัจจุบัน: อนุมัติ Level ${level} แล้ว\n\n` +
-                        `กรุณาเซ็น PDF แล้วส่งกลับมาพร้อมระบุเลขที่ตั๋ว`,
-                      payload: {
-                        ticket_id: ticket.id,
-                        ticket_number: ticket.ticket_number,
-                        approval_level: nextLevel,
-                        approval_role: nextRole,
-                        previous_level: level,
-                        pdf_url: signedPdfUrl, // เก็บ URL ของ PDF ที่เซ็นแล้ว (จาก inspector/manager) เพื่อส่งต่อไปให้ผู้อนุมัติถัดไป
-                      },
-                      target_user_id: nextApproverId,
-                      status: 'pending',
-                      // ไม่ใส่ pdf_data - ใช้ pdf_url แทน
-                    });
-
-                  if (notifyError) {
-                    console.error('[line-webhook] Error creating notification event for next approver:', notifyError);
-                  } else {
-                    console.log(`[line-webhook] Created notification event for next approver (${nextRole})`);
-                    // Trigger notification-worker to process immediately
-                    try {
-                      await fetch(`${supabaseUrl}/functions/v1/notification-worker`, {
-                        method: 'POST',
-                        headers: {
-                          'Authorization': `Bearer ${serviceKey}`,
-                          'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify({ source: 'line-webhook', event_type: 'ticket_pdf_for_approval' }),
-                      });
-                    } catch (invokeError) {
-                      console.warn('[line-webhook] Failed to trigger notification-worker:', invokeError);
-                      // Continue anyway - cron job will pick it up
-                    }
-                  }
-                }
-              }
-            } catch (nextApproverError) {
-              console.error('[line-webhook] Error sending to next approver:', nextApproverError);
-              // Don't fail the whole approval - just log the error
-            }
-          }
 
           // Send success message
           const roleLabelsForFinal: Record<string, string> = {
