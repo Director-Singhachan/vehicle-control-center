@@ -118,7 +118,7 @@ export const pdfService = {
             currentY += 10;
 
             addField('วันที่แจ้ง (Date)', new Date(ticket.created_at).toLocaleDateString('th-TH'), leftColX, currentY);
-            addField('สถานะ (Status)', ticket.status, leftColX + 40, currentY);
+            addField('สถานะ (Status)', 'รอซ่อม', leftColX + 40, currentY); // ฟิกให้เป็นสถานะรอซ่อมในไฟล์ PDF
             currentY += 15;
 
             addField('ผู้แจ้ง (Reporter)', ticket.reporter_name, leftColX, currentY);
@@ -148,72 +148,59 @@ export const pdfService = {
             doc.line(15, currentY, 195, currentY);
             currentY += 10;
 
-            // --- Repair Details Section ---
-            doc.setFontSize(14);
-            // doc.setFont('helvetica', 'bold');
-            doc.text('รายละเอียดการซ่อม (Repair Details)', 15, currentY);
-            currentY += 10;
+            // --- Repair Details + Repair Info (two-column layout) ---
+            const repairDetailsX = 15;
+            const repairInfoX = 110;
+            let repairY = currentY;
 
-            addField('ประเภทการซ่อม (Repair Type)', repairType, 15, currentY);
-            addField('ความเร่งด่วน (Urgency)', ticket.urgency, 80, currentY);
-            currentY += 15;
+            doc.setFontSize(14);
+            doc.text('รายละเอียดการซ่อม (Repair Details)', repairDetailsX, repairY);
+            doc.text('ข้อมูลการซ่อม (Repair Info)', repairInfoX, repairY);
+            repairY += 10;
+
+            // Left column: Repair Details
+            addField('ประเภทการซ่อม (Repair Type)', repairType, repairDetailsX, repairY);
+            let repairDetailsBottom = repairY + 15;
 
             doc.setFontSize(10);
             doc.setTextColor(100, 100, 100);
-            doc.text('ปัญหา/อาการ (Problem Description)', 15, currentY);
-            currentY += 6;
+            doc.text('ปัญหา/อาการ (Problem Description)', repairDetailsX, repairDetailsBottom);
+            repairDetailsBottom += 6;
 
             doc.setFontSize(12);
             doc.setTextColor(0, 0, 0);
-            // Split text to fit width
-            const splitDescription = doc.splitTextToSize(problemDescription, 180);
-            doc.text(splitDescription, 15, currentY);
-            currentY += (splitDescription.length * 7) + 5;
+            const splitDescription = doc.splitTextToSize(problemDescription, 85);
+            doc.text(splitDescription, repairDetailsX, repairDetailsBottom);
+            repairDetailsBottom += (splitDescription.length * 7) + 5;
 
-            // --- History Section (Optional) ---
-            if (ticket.last_repair_date) {
-                doc.setLineWidth(0.1);
-                doc.line(15, currentY, 195, currentY);
-                currentY += 10;
+            // Urgency under Problem Description
+            const urgencyY = repairDetailsBottom;
+            addField('ความเร่งด่วน (Urgency)', ticket.urgency, repairDetailsX, urgencyY);
+            repairDetailsBottom = urgencyY + 15;
 
-                doc.setFontSize(14);
-                // doc.setFont('helvetica', 'bold');
-                doc.text('ประวัติการซ่อมล่าสุด (Last Repair History)', 15, currentY);
-                currentY += 10;
+            // Right column: Repair Info (always show, use "-" if empty)
+            let repairInfoY = repairY;
+            const garageValue = repairGarage || '-';
+            const notesValue = repairNotes || '-';
+            const lastRepairDate = ticket.last_repair_date
+                ? new Date(ticket.last_repair_date).toLocaleDateString('th-TH')
+                : '-';
 
-                addField('วันที่ซ่อมล่าสุด', new Date(ticket.last_repair_date).toLocaleDateString('th-TH'), 15, currentY);
-                addField('อู่/ร้านที่ซ่อม', ticket.last_repair_garage, 60, currentY);
-                currentY += 15;
+            addField('อู่/ร้านที่จะเข้าซ่อม (Garage)', garageValue, repairInfoX, repairInfoY);
+            repairInfoY += 15;
+            addField('หมายเหตุ (Notes)', notesValue, repairInfoX, repairInfoY);
+            repairInfoY += 15;
+            // Align Last Repair Date with Urgency row
+            const lastRepairDateY = urgencyY;
+            addField('ประวัติการซ่อมล่าสุด (Last Repair Date)', lastRepairDate, repairInfoX, lastRepairDateY);
+            const repairInfoBottom = Math.max(repairInfoY, lastRepairDateY + 15);
 
-                doc.setFontSize(10);
-                doc.setTextColor(100, 100, 100);
-                doc.text('รายการซ่อม', 15, currentY);
-                currentY += 6;
-                doc.setFontSize(12);
-                doc.setTextColor(0, 0, 0);
-                doc.text(ticket.last_repair_description || '-', 15, currentY);
-                currentY += 15;
-            }
+            // Advance currentY below the lower column
+            currentY = Math.max(repairDetailsBottom, repairInfoBottom) + 5;
 
-            // --- Garage Section ---
-            if (repairGarage) {
-                doc.setLineWidth(0.1);
-                doc.line(15, currentY, 195, currentY);
-                currentY += 10;
+            // (History merged into Repair Info column above)
 
-                doc.setFontSize(14);
-                // doc.setFont('helvetica', 'bold');
-                doc.text('ข้อมูลการซ่อม (Repair Info)', 15, currentY);
-                currentY += 10;
-
-                addField('อู่/ร้านที่จะเข้าซ่อม (Garage)', repairGarage, 15, currentY);
-                if (repairNotes) {
-                    addField('หมายเหตุ (Notes)', repairNotes, 80, currentY);
-                }
-                currentY += 20;
-            } else {
-                currentY += 10;
-            }
+            // (ข้อมูลการซ่อมถูกแสดงในคอลัมน์ขวาด้านบนแล้ว)
 
             // --- Signatures Section ---
             // Move to bottom of page or ensure enough space
@@ -342,7 +329,7 @@ export const pdfService = {
             currentY += 10;
 
             addField('วันที่แจ้ง (Date)', new Date(ticket.created_at).toLocaleDateString('th-TH'), leftColX, currentY);
-            addField('สถานะ (Status)', ticket.status, leftColX + 40, currentY);
+            addField('สถานะ (Status)', 'รอซ่อม', leftColX + 40, currentY); // ฟิกสถานะในไฟล์ PDF
             currentY += 15;
 
             addField('ผู้แจ้ง (Reporter)', ticket.reporter_name, leftColX, currentY);
@@ -371,28 +358,49 @@ export const pdfService = {
             doc.line(15, currentY, 195, currentY);
             currentY += 10;
 
-            // --- Repair Details Section ---
+            // --- Repair Details + Repair Info (two-column layout) ---
+            const repairDetailsX = 15;
+            const repairInfoX = 110;
+            let repairY = currentY;
+
             doc.setFontSize(14);
-            doc.text('รายละเอียดการซ่อม (Repair Details)', 15, currentY);
-            currentY += 10;
+            doc.text('รายละเอียดการซ่อม (Repair Details)', repairDetailsX, repairY);
+            doc.text('ข้อมูลการซ่อม (Repair Info)', repairInfoX, repairY);
+            repairY += 10;
 
-            addField('ประเภทการซ่อม (Repair Type)', repairType, 15, currentY);
-            addField('ความเร่งด่วน (Urgency)', ticket.urgency, 80, currentY);
-            currentY += 15;
+            // Left column: Repair Details
+            addField('ประเภทการซ่อม (Repair Type)', repairType, repairDetailsX, repairY);
+            let repairDetailsBottom = repairY + 15;
 
+            // Problem Description
             doc.setFontSize(10);
             doc.setTextColor(100, 100, 100);
-            doc.text('ปัญหา/อาการ (Problem Description)', 15, currentY);
-            currentY += 6;
+            doc.text('ปัญหา/อาการ (Problem Description)', repairDetailsX, repairDetailsBottom);
+            repairDetailsBottom += 6;
 
             doc.setFontSize(12);
             doc.setTextColor(0, 0, 0);
-            // Split text to fit width
-            const splitDescription = doc.splitTextToSize(problemDescription, 180);
-            doc.text(splitDescription, 15, currentY);
-            currentY += (splitDescription.length * 7) + 5;
+            const splitDescription = doc.splitTextToSize(problemDescription, 85);
+            doc.text(splitDescription, repairDetailsX, repairDetailsBottom);
+            repairDetailsBottom += (splitDescription.length * 7) + 5;
 
-            // --- History Section (Optional) ---
+            // Urgency under Problem Description
+            addField('ความเร่งด่วน (Urgency)', ticket.urgency, repairDetailsX, repairDetailsBottom);
+            repairDetailsBottom += 15;
+
+            // Right column: Repair Info (always show, use "-" if empty)
+            let repairInfoY = repairY;
+            const garageValue = repairGarage || '-';
+            const notesValue = repairNotes || '-';
+            addField('อู่/ร้านที่จะเข้าซ่อม (Garage)', garageValue, repairInfoX, repairInfoY);
+            repairInfoY += 15;
+            addField('หมายเหตุ (Notes)', notesValue, repairInfoX, repairInfoY);
+            repairInfoY += 15;
+
+            // Advance currentY below the lower column
+            currentY = Math.max(repairDetailsBottom, repairInfoY) + 5;
+
+            // --- History Section (Optional: only show last repair date) ---
             if (ticket.last_repair_date) {
                 doc.setLineWidth(0.1);
                 doc.line(15, currentY, 195, currentY);
@@ -403,16 +411,6 @@ export const pdfService = {
                 currentY += 10;
 
                 addField('วันที่ซ่อมล่าสุด', new Date(ticket.last_repair_date).toLocaleDateString('th-TH'), 15, currentY);
-                addField('อู่/ร้านที่ซ่อม', ticket.last_repair_garage, 60, currentY);
-                currentY += 15;
-
-                doc.setFontSize(10);
-                doc.setTextColor(100, 100, 100);
-                doc.text('รายการซ่อม', 15, currentY);
-                currentY += 6;
-                doc.setFontSize(12);
-                doc.setTextColor(0, 0, 0);
-                doc.text(ticket.last_repair_description || '-', 15, currentY);
                 currentY += 15;
             }
 
