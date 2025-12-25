@@ -33,11 +33,11 @@ export const pdfService = {
             // Create new PDF document
             const doc = new jsPDF();
 
-            // Load Thai Font (Sarabun)
+            // Load Thai Font from local file to avoid CORS issues
+            const fontUrl = '/fonts/Sarabun-Regular.ttf';
             try {
-                // Using Sarabun font from Google Fonts repo
-                const fontUrl = 'https://raw.githubusercontent.com/google/fonts/main/ofl/sarabun/Sarabun-Regular.ttf';
                 const response = await fetch(fontUrl);
+                if (!response.ok) throw new Error(`Failed to fetch font: ${response.status}`);
                 const buffer = await response.arrayBuffer();
 
                 // Convert ArrayBuffer to Base64
@@ -54,7 +54,7 @@ export const pdfService = {
                 doc.addFont('Sarabun-Regular.ttf', 'Sarabun', 'normal');
                 doc.setFont('Sarabun');
             } catch (fontError) {
-                console.error('Failed to load Thai font:', fontError);
+                console.error('Failed to load Thai font:', fontError, 'url:', fontUrl);
                 // Fallback to default font if loading fails
             }
 
@@ -245,11 +245,11 @@ export const pdfService = {
             // Create new PDF document
             const doc = new jsPDF();
 
-            // Load Thai Font (Sarabun)
+            // Load Thai Font from local file to avoid CORS issues
+            const fontUrl = '/fonts/Sarabun-Regular.ttf';
             try {
-                // Using Sarabun font from Google Fonts repo
-                const fontUrl = 'https://raw.githubusercontent.com/google/fonts/main/ofl/sarabun/Sarabun-Regular.ttf';
                 const response = await fetch(fontUrl);
+                if (!response.ok) throw new Error(`Failed to fetch font: ${response.status}`);
                 const buffer = await response.arrayBuffer();
 
                 // Convert ArrayBuffer to Base64
@@ -266,7 +266,7 @@ export const pdfService = {
                 doc.addFont('Sarabun-Regular.ttf', 'Sarabun', 'normal');
                 doc.setFont('Sarabun');
             } catch (fontError) {
-                console.error('Failed to load Thai font:', fontError);
+                console.error('Failed to load Thai font:', fontError, 'url:', fontUrl);
                 // Fallback to default font if loading fails
             }
 
