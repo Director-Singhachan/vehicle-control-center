@@ -26,19 +26,28 @@ interface Ticket {
     estimated_cost?: number | null;
 }
 
+// (fixThaiScript removed due to missing PUA in font)
+
 export const pdfService = {
     generateMaintenanceTicketPDF: async (ticket: Ticket) => {
         try {
             console.log('[pdfService] generateMaintenanceTicketPDF input:', ticket);
             // Create new PDF document
             const doc = new jsPDF();
+            // Increase line height globally to avoid Thai diacritics clipping
+            doc.setLineHeightFactor(1.35);
 
-            // Load Thai Font from local file to avoid CORS issues
+            // Load Thai Font (Sarabun) Regular and Bold from local files
+            // Sarabun has better vertical space for Thai vowels and tone marks
             const fontUrl = '/fonts/Sarabun-Regular.ttf';
+            const fontBoldUrl = '/fonts/Sarabun-Bold.ttf';
             try {
                 const response = await fetch(fontUrl);
+                const responseBold = await fetch(fontBoldUrl);
                 if (!response.ok) throw new Error(`Failed to fetch font: ${response.status}`);
+                if (!responseBold.ok) throw new Error(`Failed to fetch bold font: ${responseBold.status}`);
                 const buffer = await response.arrayBuffer();
+                const bufferBold = await responseBold.arrayBuffer();
 
                 // Convert ArrayBuffer to Base64
                 let binary = '';
@@ -49,10 +58,23 @@ export const pdfService = {
                 }
                 const base64Font = window.btoa(binary);
 
-                // Add font to VFS and register
+                // Convert Bold font to Base64
+                let binaryBold = '';
+                const bytesBold = new Uint8Array(bufferBold);
+                const lenBold = bytesBold.byteLength;
+                for (let i = 0; i < lenBold; i++) {
+                    binaryBold += String.fromCharCode(bytesBold[i]);
+                }
+                const base64FontBold = window.btoa(binaryBold);
+
+                // Add fonts to VFS and register
                 doc.addFileToVFS('Sarabun-Regular.ttf', base64Font);
-                doc.addFont('Sarabun-Regular.ttf', 'Sarabun', 'normal');
-                doc.setFont('Sarabun');
+                doc.addFont('Sarabun-Regular.ttf', 'SarabunNew', 'normal');
+                doc.addFileToVFS('Sarabun-Bold.ttf', base64FontBold);
+                doc.addFont('Sarabun-Bold.ttf', 'SarabunNew', 'bold');
+
+                doc.setFont('SarabunNew');
+                doc.setLineHeightFactor(1.2);
             } catch (fontError) {
                 console.error('Failed to load Thai font:', fontError, 'url:', fontUrl);
                 // Fallback to default font if loading fails
@@ -61,10 +83,12 @@ export const pdfService = {
             // Helper to add text with label
             const addField = (label: string, value: string | null | undefined, x: number, y: number) => {
                 doc.setFontSize(10);
+                doc.setFont('SarabunNew', 'bold'); // Use Bold for labels
                 doc.setTextColor(100, 100, 100); // Gray for label
                 doc.text(label, x, y);
 
                 doc.setFontSize(12);
+                doc.setFont('SarabunNew', 'normal'); // Use Regular for values
                 doc.setTextColor(0, 0, 0); // Black for value
                 doc.text(value || '-', x, y + 6);
             };
@@ -97,23 +121,31 @@ export const pdfService = {
             // --- Header ---
             // Title
             doc.setFontSize(16);
-            doc.text('ใบแจ้งซ่อม', 105, 20, { align: 'center' });
+            doc.setFont('SarabunNew', 'bold'); // Use Bold for title
+            // ขยับขึ้นเล็กน้อยเพื่อเว้นระยะจากเส้นด้านล่าง
+            // ขยับขึ้นเล็กน้อยเพื่อเว้นระยะจากเส้นด้านล่าง
+            // ขยับขึ้นเล็กน้อยเพื่อเว้นระยะจากเส้นด้านล่าง
+            doc.text('ใบแจ้งซ่อม', 105, 22, { align: 'center', baseline: 'top' });
 
             doc.setFontSize(12);
-            doc.text(`เลขที่เอกสาร: ${ticket.ticket_number || ticket.id}`, 195, 20, { align: 'right' });
+            doc.setFont('SarabunNew', 'bold'); // Use Bold for document number label
+            doc.text(`เลขที่เอกสาร: ${ticket.ticket_number || ticket.id}`, 195, 22, { align: 'right', baseline: 'top' });
 
-            // Draw line under header
+            // Draw line under header (เหนือหัวข้อ column) เว้นระยะพอสมควร
             doc.setLineWidth(0.5);
-            doc.line(15, 30, 195, 30);
+            doc.line(15, 40, 195, 40);
 
             // --- 2-Column Layout (Top Section) ---
             const leftColX = 15;
             const rightColX = 110;
-            let currentY = 45;
+            const sectionStartY = 50; // กำหนดจุดเริ่มเดียวกันให้ทั้งซ้ายและขวา (ระยะห่างใกล้เคียงด้านล่าง)
+            let currentY = sectionStartY;
 
             // Left Column: General Info
             doc.setFontSize(14);
-            // doc.setFont('helvetica', 'bold'); // Remove hardcoded font to allow Sarabun
+            doc.setFont('SarabunNew', 'bold'); // Use Bold for section headers
+            doc.setFontSize(14);
+            doc.setFont('SarabunNew', 'bold'); // Use Bold for section headers
             doc.text('ข้อมูลทั่วไป (General Info)', leftColX, currentY);
             currentY += 10;
 
@@ -125,10 +157,12 @@ export const pdfService = {
             addField('สาขา (Branch)', ticket.branch, leftColX + 40, currentY);
             currentY += 15;
 
-            // Right Column: Vehicle Info
-            let rightY = 45;
+            // Right Column: Vehicle Info (align with left column start)
+            let rightY = sectionStartY;
             doc.setFontSize(14);
-            // doc.setFont('helvetica', 'bold');
+            doc.setFont('SarabunNew', 'bold'); // Use Bold for section headers
+            doc.setFontSize(14);
+            doc.setFont('SarabunNew', 'bold'); // Use Bold for section headers
             doc.text('ข้อมูลรถยนต์ (Vehicle Info)', rightColX, rightY);
             rightY += 10;
 
@@ -144,7 +178,7 @@ export const pdfService = {
             currentY = Math.max(currentY, rightY) + 10;
 
             // Draw separator line
-            doc.setLineWidth(0.1);
+            doc.setLineWidth(0.5);
             doc.line(15, currentY, 195, currentY);
             currentY += 10;
 
@@ -154,6 +188,9 @@ export const pdfService = {
             let repairY = currentY;
 
             doc.setFontSize(14);
+            doc.setFont('SarabunNew', 'bold'); // Use Bold for section headers
+            doc.setFontSize(14);
+            doc.setFont('SarabunNew', 'bold'); // Use Bold for section headers
             doc.text('รายละเอียดการซ่อม (Repair Details)', repairDetailsX, repairY);
             doc.text('ข้อมูลการซ่อม (Repair Info)', repairInfoX, repairY);
             repairY += 10;
@@ -162,6 +199,8 @@ export const pdfService = {
             addField('ประเภทการซ่อม (Repair Type)', repairType, repairDetailsX, repairY);
             let repairDetailsBottom = repairY + 15;
 
+            doc.setFontSize(10);
+            doc.setTextColor(100, 100, 100);
             doc.setFontSize(10);
             doc.setTextColor(100, 100, 100);
             doc.text('ปัญหา/อาการ (Problem Description)', repairDetailsX, repairDetailsBottom);
@@ -218,9 +257,14 @@ export const pdfService = {
                 doc.line(x, y, x + 50, y); // Signature line
 
                 doc.setFontSize(10);
+                doc.setFont('SarabunNew', 'bold'); // Use Bold for signature labels
+                doc.setTextColor(0, 0, 0);
+                doc.setFontSize(10);
+                doc.setFont('SarabunNew', 'bold'); // Use Bold for signature labels
                 doc.setTextColor(0, 0, 0);
                 doc.text(label, x + 25, y + 5, { align: 'center' }); // Label below line
 
+                doc.setFont('SarabunNew', 'normal'); // Use Regular for date
                 doc.text('Date: ____/____/____', x + 25, y + 12, { align: 'center' }); // Date line
             };
 
@@ -244,13 +288,20 @@ export const pdfService = {
             console.log('[pdfService] generateMaintenanceTicketPDFAsBlob input:', ticket);
             // Create new PDF document
             const doc = new jsPDF();
+            // Increase line height globally to avoid Thai diacritics clipping
+            doc.setLineHeightFactor(1.35);
 
-            // Load Thai Font from local file to avoid CORS issues
+            // Load Thai Font (Sarabun) Regular and Bold from local files
+            // Sarabun has better vertical space for Thai vowels and tone marks
             const fontUrl = '/fonts/Sarabun-Regular.ttf';
+            const fontBoldUrl = '/fonts/Sarabun-Bold.ttf';
             try {
                 const response = await fetch(fontUrl);
+                const responseBold = await fetch(fontBoldUrl);
                 if (!response.ok) throw new Error(`Failed to fetch font: ${response.status}`);
+                if (!responseBold.ok) throw new Error(`Failed to fetch bold font: ${responseBold.status}`);
                 const buffer = await response.arrayBuffer();
+                const bufferBold = await responseBold.arrayBuffer();
 
                 // Convert ArrayBuffer to Base64
                 let binary = '';
@@ -261,10 +312,23 @@ export const pdfService = {
                 }
                 const base64Font = window.btoa(binary);
 
-                // Add font to VFS and register
+                // Convert Bold font to Base64
+                let binaryBold = '';
+                const bytesBold = new Uint8Array(bufferBold);
+                const lenBold = bytesBold.byteLength;
+                for (let i = 0; i < lenBold; i++) {
+                    binaryBold += String.fromCharCode(bytesBold[i]);
+                }
+                const base64FontBold = window.btoa(binaryBold);
+
+                // Add fonts to VFS and register
                 doc.addFileToVFS('Sarabun-Regular.ttf', base64Font);
-                doc.addFont('Sarabun-Regular.ttf', 'Sarabun', 'normal');
-                doc.setFont('Sarabun');
+                doc.addFont('Sarabun-Regular.ttf', 'SarabunNew', 'normal');
+                doc.addFileToVFS('Sarabun-Bold.ttf', base64FontBold);
+                doc.addFont('Sarabun-Bold.ttf', 'SarabunNew', 'bold');
+
+                doc.setFont('SarabunNew');
+                doc.setLineHeightFactor(1.2);
             } catch (fontError) {
                 console.error('Failed to load Thai font:', fontError, 'url:', fontUrl);
                 // Fallback to default font if loading fails
@@ -273,10 +337,12 @@ export const pdfService = {
             // Helper to add text with label
             const addField = (label: string, value: string | null | undefined, x: number, y: number) => {
                 doc.setFontSize(10);
+                doc.setFont('SarabunNew', 'bold'); // Use Bold for labels
                 doc.setTextColor(100, 100, 100); // Gray for label
                 doc.text(label, x, y);
 
                 doc.setFontSize(12);
+                doc.setFont('SarabunNew', 'normal'); // Use Regular for values
                 doc.setTextColor(0, 0, 0); // Black for value
                 doc.text(value || '-', x, y + 6);
             };
@@ -364,6 +430,7 @@ export const pdfService = {
             let repairY = currentY;
 
             doc.setFontSize(14);
+            doc.setFont('SarabunNew', 'bold'); // Use Bold for section headers
             doc.text('รายละเอียดการซ่อม (Repair Details)', repairDetailsX, repairY);
             doc.text('ข้อมูลการซ่อม (Repair Info)', repairInfoX, repairY);
             repairY += 10;
@@ -372,6 +439,9 @@ export const pdfService = {
             addField('ประเภทการซ่อม (Repair Type)', repairType, repairDetailsX, repairY);
             let repairDetailsBottom = repairY + 15;
 
+            // Problem Description
+            doc.setFontSize(10);
+            doc.setTextColor(100, 100, 100);
             // Problem Description
             doc.setFontSize(10);
             doc.setTextColor(100, 100, 100);
@@ -407,6 +477,7 @@ export const pdfService = {
                 currentY += 10;
 
                 doc.setFontSize(14);
+                doc.setFontSize(14);
                 doc.text('ประวัติการซ่อมล่าสุด (Last Repair History)', 15, currentY);
                 currentY += 10;
 
@@ -420,6 +491,7 @@ export const pdfService = {
                 doc.line(15, currentY, 195, currentY);
                 currentY += 10;
 
+                doc.setFontSize(14);
                 doc.setFontSize(14);
                 doc.text('ข้อมูลการซ่อม (Repair Info)', 15, currentY);
                 currentY += 10;
@@ -449,9 +521,14 @@ export const pdfService = {
                 doc.line(x, y, x + 50, y); // Signature line
 
                 doc.setFontSize(10);
+                doc.setFont('SarabunNew', 'bold'); // Use Bold for signature labels
+                doc.setTextColor(0, 0, 0);
+                doc.setFontSize(10);
+                doc.setFont('SarabunNew', 'bold'); // Use Bold for signature labels
                 doc.setTextColor(0, 0, 0);
                 doc.text(label, x + 25, y + 5, { align: 'center' }); // Label below line
 
+                doc.setFont('SarabunNew', 'normal'); // Use Regular for date
                 doc.text('Date: ____/____/____', x + 25, y + 12, { align: 'center' }); // Date line
             };
 
@@ -498,7 +575,7 @@ export const pdfService = {
     ) => {
         try {
             console.log('[pdfService] generateDeliveryTripPDFA5 input:', trip);
-            
+
             // Create new PDF document in A5 size (148 x 210 mm)
             const doc = new jsPDF({
                 orientation: 'portrait',
@@ -602,21 +679,21 @@ export const pdfService = {
                                 const productText = `   • ${product.product_code} - ${product.product_name}`;
                                 const quantityText = item.quantity.toLocaleString();
                                 const unitText = product.unit;
-                                
+
                                 // Calculate positions
                                 const leftX = 10;
                                 const quantityX = 115; // Position for quantity (right aligned)
                                 const unitX = 138; // Position for unit (rightmost, with space from quantity)
-                                
+
                                 // Draw product info on left
                                 doc.text(productText, leftX, yPos);
-                                
+
                                 // Draw quantity on right (aligned right)
                                 doc.text(quantityText, quantityX, yPos, { align: 'right' });
-                                
+
                                 // Draw unit separately, with space from quantity
                                 doc.text(unitText, unitX, yPos, { align: 'right' });
-                                
+
                                 yPos += 4;
                             });
                         }
@@ -648,18 +725,18 @@ export const pdfService = {
 
                 // Set font before creating table
                 doc.setFont('Sarabun', 'normal');
-                
+
                 autoTable(doc, {
                     head: [['รหัส', 'ชื่อสินค้า', 'หมวดหมู่', 'จำนวน']],
                     body: tableData,
                     startY: yPos,
-                    styles: { 
-                        font: 'Sarabun', 
+                    styles: {
+                        font: 'Sarabun',
                         fontSize: 8,
                         fontStyle: 'normal'
                     },
-                    headStyles: { 
-                        fillColor: [59, 130, 246], 
+                    headStyles: {
+                        fillColor: [59, 130, 246],
                         textColor: [255, 255, 255],
                         font: 'Sarabun',
                         fontSize: 9,
