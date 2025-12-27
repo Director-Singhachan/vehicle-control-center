@@ -199,10 +199,10 @@ export const pdfService = {
             addField('ประเภทการซ่อม (Repair Type)', repairType, repairDetailsX, repairY);
             let repairDetailsBottom = repairY + 15;
 
+            // Problem Description label - use same style as addField labels (size 10, bold, gray)
             doc.setFontSize(10);
-            doc.setTextColor(100, 100, 100);
-            doc.setFontSize(10);
-            doc.setTextColor(100, 100, 100);
+            doc.setFont('SarabunNew', 'bold'); // Use Bold for labels
+            doc.setTextColor(100, 100, 100); // Gray for label (same as addField)
             doc.text('ปัญหา/อาการ (Problem Description)', repairDetailsX, repairDetailsBottom);
             repairDetailsBottom += 6;
 
@@ -439,12 +439,10 @@ export const pdfService = {
             addField('ประเภทการซ่อม (Repair Type)', repairType, repairDetailsX, repairY);
             let repairDetailsBottom = repairY + 15;
 
-            // Problem Description
+            // Problem Description label - use same style as addField labels (size 10, bold, gray)
             doc.setFontSize(10);
-            doc.setTextColor(100, 100, 100);
-            // Problem Description
-            doc.setFontSize(10);
-            doc.setTextColor(100, 100, 100);
+            doc.setFont('SarabunNew', 'bold'); // Use Bold for labels
+            doc.setTextColor(100, 100, 100); // Gray for label (same as addField)
             doc.text('ปัญหา/อาการ (Problem Description)', repairDetailsX, repairDetailsBottom);
             repairDetailsBottom += 6;
 

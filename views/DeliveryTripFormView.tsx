@@ -250,7 +250,6 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
   const vehicleInputRef = useRef<HTMLDivElement>(null);
   const storeInputRef = useRef<HTMLDivElement>(null);
   const [vehicleDropdownPosition, setVehicleDropdownPosition] = useState<{ top: number; left: number; width: number } | null>(null);
-  const [storeDropdownPosition, setStoreDropdownPosition] = useState<{ top: number; left: number; width: number } | null>(null);
 
   // Helper staff
   const [availableStaff, setAvailableStaff] = useState<Array<{ id: string; name: string }>>([]);
@@ -736,34 +735,34 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
       }
     };
 
-    const updateStorePosition = () => {
-      if (storeInputRef.current && showStoreDropdown) {
-        const rect = storeInputRef.current.getBoundingClientRect();
-        setStoreDropdownPosition({
+    const updateHelperPosition = () => {
+      if (helperInputRef.current && showHelperDropdown) {
+        const rect = helperInputRef.current.getBoundingClientRect();
+        setHelperDropdownPosition({
           top: rect.bottom + window.scrollY + 4,
           left: rect.left + window.scrollX,
           width: rect.width,
         });
       } else {
-        setStoreDropdownPosition(null);
+        setHelperDropdownPosition(null);
       }
     };
 
     updateVehiclePosition();
-    updateStorePosition();
+    updateHelperPosition();
 
     window.addEventListener('scroll', updateVehiclePosition, true);
     window.addEventListener('resize', updateVehiclePosition);
-    window.addEventListener('scroll', updateStorePosition, true);
-    window.addEventListener('resize', updateStorePosition);
+    window.addEventListener('scroll', updateHelperPosition, true);
+    window.addEventListener('resize', updateHelperPosition);
 
     return () => {
       window.removeEventListener('scroll', updateVehiclePosition, true);
       window.removeEventListener('resize', updateVehiclePosition);
-      window.removeEventListener('scroll', updateStorePosition, true);
-      window.removeEventListener('resize', updateStorePosition);
+      window.removeEventListener('scroll', updateHelperPosition, true);
+      window.removeEventListener('resize', updateHelperPosition);
     };
-  }, [showVehicleDropdown, showStoreDropdown]);
+  }, [showVehicleDropdown, showHelperDropdown]);
 
   // Close dropdowns when clicking outside
   useEffect(() => {
@@ -773,6 +772,7 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
       // Check if click is on a portal dropdown (they have data-dropdown attribute)
       const isOnVehicleDropdown = target.closest('[data-vehicle-dropdown-portal]');
       const isOnStoreDropdown = target.closest('[data-store-dropdown-portal]');
+      const isOnHelperDropdown = target.closest('[data-helper-dropdown-portal]');
 
       // Check if click is outside vehicle dropdown
       if (!isOnVehicleDropdown && !target.closest('[data-vehicle-dropdown]') && !target.closest('[data-vehicle-input]')) {
@@ -783,7 +783,12 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
       // Check if click is outside store dropdown
       if (!isOnStoreDropdown && !target.closest('[data-store-dropdown]') && !target.closest('[data-store-input]')) {
         setShowStoreDropdown(false);
-        setStoreDropdownPosition(null);
+      }
+
+      // Check if click is outside helper dropdown
+      if (!isOnHelperDropdown && !target.closest('[data-helper-dropdown]') && !target.closest('[data-helper-input]')) {
+        setShowHelperDropdown(false);
+        setHelperDropdownPosition(null);
       }
     };
 
@@ -943,6 +948,15 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
       .join(', ');
   }, [selectedStores, getStoreInfo]);
 
+  // Prevent form submission on Enter key press (except when clicking submit button)
+  const handleFormKeyDown = (e: React.KeyboardEvent<HTMLFormElement>) => {
+    // If Enter is pressed and the target is not a submit button, prevent form submission
+    if (e.key === 'Enter' && (e.target as HTMLElement).tagName !== 'BUTTON' && (e.target as HTMLElement).type !== 'submit') {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+  };
+
   // Handle form submit
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1029,7 +1043,7 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
       title={isEdit ? 'แก้ไขทริปส่งสินค้า' : 'สร้างทริปส่งสินค้า'}
       subtitle={isEdit ? 'แก้ไขข้อมูลทริปส่งสินค้า' : 'สร้างทริปส่งสินค้าใหม่'}
     >
-      <form onSubmit={handleSubmit} className="space-y-6">
+      <form onSubmit={handleSubmit} onKeyDown={handleFormKeyDown} className="space-y-6">
         {/* Basic Info */}
         <Card>
           <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-4 flex items-center gap-2">
@@ -1194,7 +1208,7 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                 พนักงานบริการ
               </label>
-              <div className="relative" ref={helperInputRef}>
+              <div className="relative" ref={helperInputRef} data-helper-dropdown>
                 <div className="flex flex-wrap gap-2 p-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 min-h-[42px]">
                   {selectedHelpers.map(helperId => {
                     const helper = availableStaff.find(s => s.id === helperId);
@@ -1217,15 +1231,48 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
                     onChange={(e) => {
                       setHelperSearch(e.target.value);
                       setShowHelperDropdown(true);
+                      // Update position immediately when typing
+                      if (helperInputRef.current) {
+                        const rect = helperInputRef.current.getBoundingClientRect();
+                        setHelperDropdownPosition({
+                          top: rect.bottom + window.scrollY + 4,
+                          left: rect.left + window.scrollX,
+                          width: rect.width,
+                        });
+                      }
                     }}
-                    onFocus={() => setShowHelperDropdown(true)}
+                    onFocus={() => {
+                      setShowHelperDropdown(true);
+                      // Update position immediately when focusing
+                      if (helperInputRef.current) {
+                        const rect = helperInputRef.current.getBoundingClientRect();
+                        setHelperDropdownPosition({
+                          top: rect.bottom + window.scrollY + 4,
+                          left: rect.left + window.scrollX,
+                          width: rect.width,
+                        });
+                      }
+                    }}
                     placeholder={selectedHelpers.length === 0 ? "ค้นหาพนักงานบริการ..." : ""}
                     className="flex-1 min-w-[120px] outline-none bg-transparent text-sm text-slate-900 dark:text-slate-100 placeholder-slate-400"
+                    data-helper-input
                   />
                 </div>
 
-                {showHelperDropdown && (
-                  <div className="absolute z-50 w-full mt-1 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                {showHelperDropdown && helperDropdownPosition && createPortal(
+                  <div
+                    data-helper-dropdown-portal
+                    className="fixed bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg shadow-xl z-[9999] max-h-60 overflow-y-auto overscroll-contain"
+                    style={{
+                      top: `${helperDropdownPosition.top}px`,
+                      left: `${helperDropdownPosition.left}px`,
+                      width: `${helperDropdownPosition.width}px`,
+                    }}
+                    onMouseDown={(e) => {
+                      // Allow scrolling by not preventing default
+                      e.stopPropagation();
+                    }}
+                  >
                     {availableStaff
                       .filter(s => !selectedHelpers.includes(s.id))
                       .filter(s => s.name.toLowerCase().includes(helperSearch.toLowerCase()))
@@ -1233,10 +1280,23 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
                         <button
                           key={staff.id}
                           type="button"
-                          onClick={() => {
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
                             setSelectedHelpers(prev => [...prev, staff.id]);
                             setHelperSearch('');
-                            setShowHelperDropdown(false);
+                            // Keep dropdown open to allow selecting more staff
+                            // Update position after selection to ensure dropdown stays visible
+                            setTimeout(() => {
+                              if (helperInputRef.current) {
+                                const rect = helperInputRef.current.getBoundingClientRect();
+                                setHelperDropdownPosition({
+                                  top: rect.bottom + window.scrollY + 4,
+                                  left: rect.left + window.scrollX,
+                                  width: rect.width,
+                                });
+                              }
+                            }, 0);
                           }}
                           className="w-full text-left px-4 py-2 hover:bg-slate-100 dark:hover:bg-slate-700 text-sm text-slate-900 dark:text-slate-100"
                         >
@@ -1244,11 +1304,12 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
                         </button>
                       ))}
                     {availableStaff.filter(s => !selectedHelpers.includes(s.id)).filter(s => s.name.toLowerCase().includes(helperSearch.toLowerCase())).length === 0 && (
-                      <div className="px-4 py-2 text-sm text-slate-500 text-center">
+                      <div className="px-4 py-2 text-sm text-slate-500 dark:text-slate-400 text-center">
                         ไม่พบพนักงาน
                       </div>
                     )}
-                  </div>
+                  </div>,
+                  document.body
                 )}
               </div>
             </div>
@@ -1327,59 +1388,51 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
                   className="w-64"
                   data-store-input
                 />
-                {showStoreDropdown && storeDropdownPosition && (
-                  createPortal(
-                    <div
-                      data-store-dropdown-portal
-                      className="fixed bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg shadow-xl z-[9999] max-h-60 overflow-y-auto overscroll-contain"
-                      style={{
-                        top: `${storeDropdownPosition.top}px`,
-                        left: `${storeDropdownPosition.left}px`,
-                        width: `${storeDropdownPosition.width}px`,
-                      }}
-                      onMouseDown={(e) => {
-                        // Allow scrolling by not preventing default
-                        e.stopPropagation();
-                      }}
-                    >
-                      {(() => {
-                        const availableStores = filteredStores.filter(store => !selectedStores.find(s => s.store_id === store.id));
-                        const totalMatches = filteredStores.length;
+                {showStoreDropdown && (
+                  <div
+                    data-store-dropdown-portal
+                    className="absolute top-full left-0 mt-1 w-64 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg shadow-xl z-[9999] max-h-60 overflow-y-auto overscroll-contain"
+                    onMouseDown={(e) => {
+                      // Allow scrolling by not preventing default
+                      e.stopPropagation();
+                    }}
+                  >
+                    {(() => {
+                      const availableStores = filteredStores.filter(store => !selectedStores.find(s => s.store_id === store.id));
+                      const totalMatches = filteredStores.length;
 
-                        return availableStores.length > 0 ? (
-                          <>
-                            {totalMatches > 100 && (
-                              <div className="px-4 py-2 text-xs text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700">
-                                แสดง {availableStores.length} จาก {totalMatches} รายการที่พบ (แสดงสูงสุด 100 รายการ)
+                      return availableStores.length > 0 ? (
+                        <>
+                          {totalMatches > 100 && (
+                            <div className="px-4 py-2 text-xs text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700">
+                              แสดง {availableStores.length} จาก {totalMatches} รายการที่พบ (แสดงสูงสุด 100 รายการ)
+                            </div>
+                          )}
+                          {availableStores.map((store) => (
+                            <button
+                              key={store.id}
+                              type="button"
+                              onMouseDown={(e) => {
+                                // Use onMouseDown to prevent dropdown from closing before click
+                                e.preventDefault();
+                                e.stopPropagation();
+                                handleAddStore(store.id);
+                              }}
+                              className="w-full text-left px-4 py-2 hover:bg-slate-100 dark:hover:bg-slate-700"
+                            >
+                              <div className="font-medium text-slate-900 dark:text-slate-100">
+                                {store.customer_code} - {store.customer_name}
                               </div>
-                            )}
-                            {availableStores.map((store) => (
-                              <button
-                                key={store.id}
-                                type="button"
-                                onMouseDown={(e) => {
-                                  // Use onMouseDown to prevent dropdown from closing before click
-                                  e.preventDefault();
-                                  e.stopPropagation();
-                                  handleAddStore(store.id);
-                                }}
-                                className="w-full text-left px-4 py-2 hover:bg-slate-100 dark:hover:bg-slate-700"
-                              >
-                                <div className="font-medium text-slate-900 dark:text-slate-100">
-                                  {store.customer_code} - {store.customer_name}
-                                </div>
-                              </button>
-                            ))}
-                          </>
-                        ) : (
-                          <div className="px-4 py-3 text-sm text-slate-500 dark:text-slate-400 text-center">
-                            {storeSearch ? (totalMatches > 0 ? 'ร้านค้านี้ถูกเลือกไปแล้ว' : 'ไม่พบร้านค้าที่ค้นหา') : 'พิมพ์เพื่อค้นหาร้านค้า'}
-                          </div>
-                        );
-                      })()}
-                    </div>,
-                    document.body
-                  )
+                            </button>
+                          ))}
+                        </>
+                      ) : (
+                        <div className="px-4 py-3 text-sm text-slate-500 dark:text-slate-400 text-center">
+                          {storeSearch ? (totalMatches > 0 ? 'ร้านค้านี้ถูกเลือกไปแล้ว' : 'ไม่พบร้านค้าที่ค้นหา') : 'พิมพ์เพื่อค้นหาร้านค้า'}
+                        </div>
+                      );
+                    })()}
+                  </div>
                 )}
               </div>
             </div>
