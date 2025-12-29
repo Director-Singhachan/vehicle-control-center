@@ -1369,5 +1369,149 @@ export const deliveryTripService = {
     return deliveryTripService.getById(tripId) as Promise<DeliveryTripWithRelations>;
   },
 
+  // Sync delivery trips status with completed trip_logs
+  // This fixes delivery trips that should be 'completed' but are still 'planned' or 'in_progress'
+  syncStatusWithTripLogs: async (): Promise<{
+    updated: number;
+    details: Array<{
+      trip_id: string;
+      trip_number: string;
+      old_status: string;
+      new_status: string;
+    }>;
+  }> => {
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (!user) {
+      throw new Error('User not authenticated');
+    }
+
+    const updatedTrips: Array<{
+      trip_id: string;
+      trip_number: string;
+      old_status: string;
+      new_status: string;
+    }> = [];
+
+    // Find delivery trips that are still 'planned' or 'in_progress'
+    // but have completed trip_logs
+    const { data: tripsToFix, error: fetchError } = await supabase
+      .from('delivery_trips')
+      .select(`
+        id,
+        trip_number,
+        vehicle_id,
+        driver_id,
+        planned_date,
+        status,
+        odometer_start,
+        odometer_end
+      `)
+      .in('status', ['planned', 'in_progress'])
+      .lte('planned_date', new Date().toISOString().split('T')[0]);
+
+    if (fetchError) {
+      console.error('[deliveryTripService] Error fetching trips to fix:', fetchError);
+      throw fetchError;
+    }
+
+    if (!tripsToFix || tripsToFix.length === 0) {
+      return { updated: 0, details: [] };
+    }
+
+    // For each trip, find matching completed trip_log
+    for (const trip of tripsToFix) {
+      const checkoutDate = new Date(trip.planned_date).toISOString().split('T')[0];
+
+      // Find completed trip_log for this vehicle and date
+      const { data: completedTripLogs, error: logError } = await supabase
+        .from('trip_logs')
+        .select('id, driver_id, odometer_start, odometer_end, checkout_time, checkin_time, status, delivery_trip_id')
+        .eq('vehicle_id', trip.vehicle_id)
+        .eq('status', 'checked_in')
+        .gte('checkout_time', `${checkoutDate}T00:00:00`)
+        .lt('checkout_time', `${checkoutDate}T23:59:59`)
+        .order('checkin_time', { ascending: false })
+        .limit(1);
+
+      if (logError) {
+        console.error(`[deliveryTripService] Error fetching trip_logs for trip ${trip.trip_number}:`, logError);
+        continue;
+      }
+
+      if (completedTripLogs && completedTripLogs.length > 0) {
+        const tripLog = completedTripLogs[0];
+
+        // Update delivery trip to completed
+        const updateData: DeliveryTripUpdate = {
+          status: 'completed',
+          odometer_end: tripLog.odometer_end || trip.odometer_end,
+          updated_at: new Date().toISOString(),
+          updated_by: user.id,
+        };
+
+        // Update driver_id if different from planned driver
+        if (tripLog.driver_id && trip.driver_id !== tripLog.driver_id) {
+          updateData.driver_id = tripLog.driver_id;
+        }
+
+        // Update odometer_start if not set
+        if (!trip.odometer_start && tripLog.odometer_start) {
+          updateData.odometer_start = tripLog.odometer_start;
+        }
+
+        const { error: updateError } = await supabase
+          .from('delivery_trips')
+          .update(updateData)
+          .eq('id', trip.id);
+
+        if (updateError) {
+          console.error(`[deliveryTripService] Error updating trip ${trip.trip_number}:`, updateError);
+          continue;
+        }
+
+        // Link trip_log to delivery_trip if not already linked
+        if (!tripLog.delivery_trip_id || tripLog.delivery_trip_id !== trip.id) {
+          const { error: linkError } = await supabase
+            .from('trip_logs')
+            .update({ delivery_trip_id: trip.id })
+            .eq('id', tripLog.id);
+
+          if (linkError) {
+            console.error(`[deliveryTripService] Error linking trip_log to delivery_trip:`, linkError);
+          }
+        }
+
+        // Update all stores' delivery_status to 'delivered'
+        const { error: storesUpdateError } = await supabase
+          .from('delivery_trip_stores')
+          .update({
+            delivery_status: 'delivered',
+            delivered_at: tripLog.checkin_time || new Date().toISOString(),
+          })
+          .eq('delivery_trip_id', trip.id)
+          .neq('delivery_status', 'delivered');
+
+        if (storesUpdateError) {
+          console.error(`[deliveryTripService] Error updating store delivery status:`, storesUpdateError);
+        }
+
+        updatedTrips.push({
+          trip_id: trip.id,
+          trip_number: trip.trip_number || 'N/A',
+          old_status: trip.status,
+          new_status: 'completed',
+        });
+
+        console.log(`[deliveryTripService] Updated trip ${trip.trip_number} from ${trip.status} to completed`);
+      }
+    }
+
+    return {
+      updated: updatedTrips.length,
+      details: updatedTrips,
+    };
+  },
+
 };
 
