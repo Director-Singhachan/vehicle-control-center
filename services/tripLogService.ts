@@ -401,14 +401,17 @@ export const tripLogService = {
       }
 
       // 2) Fallback: find active delivery trip for this vehicle on the checkout date
+      // This handles cases where the actual driver is different from the planned driver
       if (!deliveryTrip) {
         // Match by vehicle_id AND planned_date to ensure correct trip
         // Extract date from checkout_time (YYYY-MM-DD)
         const checkoutDate = new Date(trip.checkout_time).toISOString().split('T')[0];
 
+        // First, try to find by vehicle_id + planned_date + status (planned or in_progress)
+        // This will match even if driver_id is different (actual driver vs planned driver)
         const { data: deliveryTrips, error: findError } = await supabase
           .from('delivery_trips')
-          .select('id, status, odometer_start, odometer_end, trip_number, sequence_order, planned_date, created_at')
+          .select('id, status, odometer_start, odometer_end, trip_number, sequence_order, planned_date, created_at, driver_id')
           .eq('vehicle_id', trip.vehicle_id)
           .eq('planned_date', checkoutDate) // Match by date
           .in('status', ['planned', 'in_progress'])
@@ -434,7 +437,34 @@ export const tripLogService = {
           console.log('[tripLogService] No active delivery trip found for vehicle/date on checkin:', {
             vehicle_id: trip.vehicle_id,
             checkout_date: checkoutDate,
+            trip_driver_id: trip.driver_id,
           });
+          
+          // Additional fallback: Try to find delivery trip even if status is 'planned' (not yet started)
+          // This handles cases where the actual driver is different and trip wasn't linked during checkout
+          if (!deliveryTrip) {
+            const { data: fallbackTrips, error: fallbackError } = await supabase
+              .from('delivery_trips')
+              .select('id, status, odometer_start, odometer_end, trip_number, sequence_order, planned_date, created_at, driver_id')
+              .eq('vehicle_id', trip.vehicle_id)
+              .eq('planned_date', checkoutDate)
+              .eq('status', 'planned') // Only check 'planned' status as fallback
+              .order('sequence_order', { ascending: true, nullsFirst: false })
+              .order('created_at', { ascending: true })
+              .order('trip_number', { ascending: true })
+              .limit(1);
+            
+            if (!fallbackError && fallbackTrips && fallbackTrips.length > 0) {
+              deliveryTrip = fallbackTrips[0] as any;
+              console.log('[tripLogService] Found delivery trip (planned status) as fallback for checkin:', {
+                id: deliveryTrip.id,
+                trip_number: deliveryTrip.trip_number,
+                status: deliveryTrip.status,
+                planned_driver_id: deliveryTrip.driver_id,
+                actual_driver_id: trip.driver_id,
+              });
+            }
+          }
         }
       }
 
@@ -456,13 +486,26 @@ export const tripLogService = {
         });
 
         // Update delivery trip to completed and set odometer_end
+        // Also update driver_id to match the actual driver if different from planned driver
+        const updateData: any = {
+          status: 'completed',
+          odometer_end: data.odometer_end,
+          updated_at: new Date().toISOString(),
+        };
+        
+        // Update driver_id if the actual driver is different from the planned driver
+        if (trip.driver_id && deliveryTrip.driver_id && trip.driver_id !== deliveryTrip.driver_id) {
+          updateData.driver_id = trip.driver_id;
+          console.log('[tripLogService] Updating delivery trip driver_id to match actual driver:', {
+            delivery_trip_id: deliveryTrip.id,
+            planned_driver_id: deliveryTrip.driver_id,
+            actual_driver_id: trip.driver_id,
+          });
+        }
+        
         const { error: updateError } = await supabase
           .from('delivery_trips')
-          .update({
-            status: 'completed',
-            odometer_end: data.odometer_end,
-            updated_at: new Date().toISOString(),
-          })
+          .update(updateData)
           .eq('id', deliveryTrip.id);
 
         if (updateError) {
