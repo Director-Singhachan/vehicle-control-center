@@ -21,7 +21,7 @@ import { Input } from '../components/ui/Input';
 import { Card } from '../components/ui/Card';
 import { PageLayout } from '../components/layout/PageLayout';
 import { useDeliveryTrip, useVehicles, useStores, useProducts } from '../hooks';
-import { deliveryTripService, type CreateDeliveryTripData } from '../services/deliveryTripService';
+import { deliveryTripService, type CreateDeliveryTripData, type UpdateDeliveryTripData } from '../services/deliveryTripService';
 import { tripLogService } from '../services/tripLogService';
 import { ticketService } from '../services/ticketService';
 import { storeService, type Store } from '../services/storeService';
@@ -996,28 +996,46 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
     try {
       setSaving(true);
 
-      const tripData: CreateDeliveryTripData = {
-        vehicle_id: formData.vehicle_id,
-        driver_id: formData.driver_id || undefined,
-        planned_date: formData.planned_date,
-        odometer_start: formData.odometer_start ? parseInt(formData.odometer_start) : undefined,
-        notes: formData.notes || undefined,
-        helpers: selectedHelpers,
-        stores: selectedStores.map(store => ({
-          store_id: store.store_id,
-          sequence_order: store.sequence_order,
-          items: store.items.map(item => ({
-            product_id: item.product_id,
-            quantity: item.quantity,
-            notes: item.notes || undefined,
-          })),
-        })),
-      };
-
       if (isEdit && tripId) {
-        await deliveryTripService.update(tripId, tripData);
+        // For update, use UpdateDeliveryTripData
+        const updateData: UpdateDeliveryTripData = {
+          vehicle_id: formData.vehicle_id,
+          driver_id: formData.driver_id || undefined,
+          planned_date: formData.planned_date,
+          odometer_start: formData.odometer_start ? parseInt(formData.odometer_start) : undefined,
+          notes: formData.notes || undefined,
+          helpers: selectedHelpers, // Include helpers for update
+          stores: selectedStores.map(store => ({
+            store_id: store.store_id,
+            sequence_order: store.sequence_order,
+            items: store.items.map(item => ({
+              product_id: item.product_id,
+              quantity: item.quantity,
+              notes: item.notes || undefined,
+            })),
+          })),
+        };
+        await deliveryTripService.update(tripId, updateData);
       } else {
-        await deliveryTripService.create(tripData);
+        // For create, use CreateDeliveryTripData
+        const createData: CreateDeliveryTripData = {
+          vehicle_id: formData.vehicle_id,
+          driver_id: formData.driver_id || undefined,
+          planned_date: formData.planned_date,
+          odometer_start: formData.odometer_start ? parseInt(formData.odometer_start) : undefined,
+          notes: formData.notes || undefined,
+          helpers: selectedHelpers,
+          stores: selectedStores.map(store => ({
+            store_id: store.store_id,
+            sequence_order: store.sequence_order,
+            items: store.items.map(item => ({
+              product_id: item.product_id,
+              quantity: item.quantity,
+              notes: item.notes || undefined,
+            })),
+          })),
+        };
+        await deliveryTripService.create(createData);
       }
 
       setSuccess(true);

@@ -16,6 +16,8 @@ import {
   Download,
   FileText,
   Save,
+  Users,
+  BarChart3,
 } from 'lucide-react';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
@@ -62,6 +64,11 @@ export const DeliveryTripDetailView: React.FC<DeliveryTripDetailViewProps> = ({
   const [itemChangesLoading, setItemChangesLoading] = useState(false);
   const [itemChangesError, setItemChangesError] = useState<string | null>(null);
 
+  // Staff item distribution
+  const [staffDistribution, setStaffDistribution] = useState<any[]>([]);
+  const [productDistribution, setProductDistribution] = useState<any[]>([]);
+  const [distributionLoading, setDistributionLoading] = useState(false);
+
   React.useEffect(() => {
     if (trip) {
       deliveryTripService.getAggregatedProducts(trip.id).then(setAggregatedProducts);
@@ -72,6 +79,25 @@ export const DeliveryTripDetailView: React.FC<DeliveryTripDetailViewProps> = ({
       // Reset image error states when trip changes
       setVehicleImageError(false);
       setDriverImageError(false);
+      
+      // Load staff item distribution
+      setDistributionLoading(true);
+      Promise.all([
+        deliveryTripService.getStaffItemDistribution(trip.id),
+        deliveryTripService.getProductDistributionByTrip(trip.id),
+      ])
+        .then(([staffDist, productDist]) => {
+          setStaffDistribution(staffDist);
+          setProductDistribution(productDist);
+        })
+        .catch((err) => {
+          console.error('[DeliveryTripDetailView] Error loading distribution:', err);
+          setStaffDistribution([]);
+          setProductDistribution([]);
+        })
+        .finally(() => {
+          setDistributionLoading(false);
+        });
     }
   }, [trip, editingItems]);
 
@@ -396,6 +422,193 @@ export const DeliveryTripDetailView: React.FC<DeliveryTripDetailViewProps> = ({
           )}
         </div>
       </Card>
+
+      {/* Staff Item Distribution - Statistics */}
+      {!distributionLoading && staffDistribution.length > 0 && (
+        <Card className="mb-6">
+          <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-4 flex items-center gap-2">
+            <Users size={20} />
+            สถิติการยกสินค้าต่อพนักงาน
+          </h3>
+          
+          <div className="mb-4 p-3 bg-slate-50 dark:bg-slate-800/50 rounded-lg">
+            <div className="text-sm text-slate-600 dark:text-slate-400">
+              พนักงานทั้งหมด: <span className="font-semibold text-slate-900 dark:text-slate-100">{staffDistribution.length} คน</span>
+            </div>
+            <div className="text-xs text-slate-500 dark:text-slate-500 mt-1">
+              จำนวนสินค้าถูกหารด้วยจำนวนพนักงานทั้งหมด เพื่อให้ทุกคนยกเท่ากัน
+            </div>
+          </div>
+          
+          <div className="space-y-3">
+            {staffDistribution.map((staff, index) => {
+              // คำนวณค่าเฉลี่ยจากข้อมูลที่มี
+              const avgItems = staffDistribution.reduce((sum, s) => sum + s.total_items_per_staff, 0) / staffDistribution.length;
+              const diffFromAvg = staff.total_items_per_staff - avgItems;
+              const diffPercent = avgItems > 0 ? (diffFromAvg / avgItems) * 100 : 0;
+              
+              // กำหนดสีตามความแตกต่างจากค่าเฉลี่ย
+              const getStatusColor = () => {
+                if (Math.abs(diffPercent) < 1) return 'text-slate-600 dark:text-slate-400'; // ใกล้ค่าเฉลี่ย
+                if (diffPercent > 10) return 'text-red-600 dark:text-red-400'; // มากกว่าเฉลี่ยมาก
+                if (diffPercent < -10) return 'text-green-600 dark:text-green-400'; // น้อยกว่าเฉลี่ยมาก
+                if (diffPercent > 0) return 'text-orange-600 dark:text-orange-400'; // มากกว่าเฉลี่ยนิดหน่อย
+                return 'text-blue-600 dark:text-blue-400'; // น้อยกว่าเฉลี่ยนิดหน่อย
+              };
+              
+              const getStatusBadge = () => {
+                if (Math.abs(diffPercent) < 1) return { text: 'สมดุล', color: 'bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-300' };
+                if (diffPercent > 10) return { text: 'ยกมาก', color: 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300' };
+                if (diffPercent < -10) return { text: 'ยกน้อย', color: 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300' };
+                if (diffPercent > 0) return { text: 'ยกมากกว่า', color: 'bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-300' };
+                return { text: 'ยกน้อยกว่า', color: 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300' };
+              };
+              
+              const status = getStatusBadge();
+              
+              return (
+                <div
+                  key={staff.crew_id}
+                  className="border border-slate-200 dark:border-slate-700 rounded-lg p-4 hover:shadow-md transition-shadow"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3 flex-1">
+                      <div className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-lg ${
+                        staff.staff_role === 'driver'
+                          ? 'bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-400'
+                          : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
+                      }`}>
+                        {index + 1}
+                      </div>
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <div className="font-medium text-slate-900 dark:text-slate-100">
+                            {staff.staff_name}
+                          </div>
+                          {staff.staff_role === 'driver' && (
+                            <span className="text-xs px-2 py-0.5 rounded bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300">
+                              คนขับ
+                            </span>
+                          )}
+                          <span className={`text-xs px-2 py-0.5 rounded ${status.color}`}>
+                            {status.text}
+                          </span>
+                        </div>
+                        <div className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
+                          {staff.staff_code} {staff.staff_phone && `· ${staff.staff_phone}`}
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <div className="text-right ml-4">
+                      <div className={`text-3xl font-bold ${getStatusColor()}`}>
+                        {staff.total_items_per_staff.toLocaleString('th-TH', {
+                          minimumFractionDigits: 0,
+                          maximumFractionDigits: 1,
+                        })}
+                      </div>
+                      <div className="text-xs text-slate-500 dark:text-slate-400">
+                        ชิ้น/คน
+                      </div>
+                      {Math.abs(diffPercent) >= 1 && (
+                        <div className={`text-xs mt-1 ${getStatusColor()}`}>
+                          {diffPercent > 0 ? '+' : ''}{diffPercent.toFixed(1)}% จากค่าเฉลี่ย
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  
+                  {/* Progress bar showing comparison */}
+                  <div className="mt-3 pt-3 border-t border-slate-200 dark:border-slate-700">
+                    <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 mb-1">
+                      <span>เปรียบเทียบกับค่าเฉลี่ย ({avgItems.toFixed(1)} ชิ้น/คน)</span>
+                      <span>รวมทั้งหมด: {staff.total_items_to_carry.toFixed(0)} ชิ้น</span>
+                    </div>
+                    <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2">
+                      <div
+                        className={`h-2 rounded-full ${
+                          diffPercent > 10 ? 'bg-red-500' :
+                          diffPercent < -10 ? 'bg-green-500' :
+                          diffPercent > 0 ? 'bg-orange-500' :
+                          'bg-blue-500'
+                        }`}
+                        style={{
+                          width: `${Math.min(100, Math.max(0, (staff.total_items_per_staff / (avgItems * 1.5)) * 100))}%`
+                        }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </Card>
+      )}
+
+      {/* Product Distribution Summary */}
+      {!distributionLoading && productDistribution.length > 0 && (
+        <Card className="mb-6">
+          <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-4 flex items-center gap-2">
+            <BarChart3 size={20} />
+            สรุปการกระจายสินค้าตามชนิด
+          </h3>
+          
+          <div className="space-y-3">
+            {productDistribution.map((product) => (
+              <div
+                key={product.product_id}
+                className="border border-slate-200 dark:border-slate-700 rounded-lg p-4"
+              >
+                <div className="flex items-start justify-between mb-2">
+                  <div className="flex-1">
+                    <div className="font-medium text-slate-900 dark:text-slate-100">
+                      {product.product_name}
+                    </div>
+                    <div className="text-sm text-slate-500 dark:text-slate-400">
+                      {product.product_code} · {product.category} · {product.unit}
+                    </div>
+                  </div>
+                  <div className="text-right ml-4">
+                    <div className="text-lg font-bold text-enterprise-600 dark:text-enterprise-400">
+                      {product.quantity_per_staff.toLocaleString('th-TH', {
+                        minimumFractionDigits: 0,
+                        maximumFractionDigits: 2,
+                      })}
+                    </div>
+                    <div className="text-xs text-slate-500 dark:text-slate-400">
+                      {product.unit}/คน
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="grid grid-cols-3 gap-4 mt-3 pt-3 border-t border-slate-200 dark:border-slate-700 text-sm">
+                  <div>
+                    <div className="text-xs text-slate-500 dark:text-slate-400">รวมทั้งหมด</div>
+                    <div className="font-semibold text-slate-900 dark:text-slate-100">
+                      {product.total_quantity.toLocaleString('th-TH', {
+                        minimumFractionDigits: 0,
+                        maximumFractionDigits: 2,
+                      })} {product.unit}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-slate-500 dark:text-slate-400">จำนวนร้าน</div>
+                    <div className="font-semibold text-slate-900 dark:text-slate-100">
+                      {product.store_count} ร้าน
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-slate-500 dark:text-slate-400">พนักงานทั้งหมด</div>
+                    <div className="font-semibold text-slate-900 dark:text-slate-100">
+                      {product.total_staff_count} คน
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
 
       {/* Stores */}
       {editableStores && editableStores.length > 0 && (
