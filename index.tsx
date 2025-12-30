@@ -96,18 +96,37 @@ const AppContent = () => {
     return 'dashboard';
   });
 
+  // State declarations for tickets - must be before useEffect that uses them
+  const [ticketView, setTicketView] = useState<'list' | 'detail' | 'form'>('list');
+  const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
+  const isNavigatingToTicketRef = React.useRef(false);
+
+  // Track previous activeTab to detect tab changes
+  const prevActiveTabRef = React.useRef(activeTab);
+  
   // Reset ticketView to 'list' when switching to maintenance tab
   // This ensures we always start with the list view when opening maintenance tab
+  // BUT only if we're not navigating to a specific ticket
   useEffect(() => {
-    if (activeTab === 'maintenance') {
-      // Always reset to list view when switching to maintenance tab
-      // This fixes the issue where state persists from previous sessions
-      if (ticketView !== 'list') {
+    const prevTab = prevActiveTabRef.current;
+    prevActiveTabRef.current = activeTab;
+    
+    // If we're navigating to a ticket, skip the reset
+    if (isNavigatingToTicketRef.current) {
+      isNavigatingToTicketRef.current = false;
+      return;
+    }
+    
+    // Only reset if we're switching TO maintenance tab from a different tab
+    // AND we don't have a selectedTicketId (meaning we're not navigating to a specific ticket)
+    if (activeTab === 'maintenance' && prevTab !== 'maintenance') {
+      // Don't reset if we have a selectedTicketId - this means we're navigating to a specific ticket
+      if (!selectedTicketId && ticketView !== 'list') {
         console.log('[AppContent] Resetting ticketView to list (switched to maintenance tab)');
         setTicketView('list');
         setSelectedTicketId(null);
       }
-    } else {
+    } else if (activeTab !== 'maintenance' && prevTab === 'maintenance') {
       // Reset when switching away from maintenance
       if (ticketView !== 'list') {
         console.log('[AppContent] Resetting ticketView to list (switched away from maintenance)');
@@ -115,7 +134,7 @@ const AppContent = () => {
         setSelectedTicketId(null);
       }
     }
-  }, [activeTab]); // Only depend on activeTab to reset when tab changes
+  }, [activeTab, selectedTicketId, ticketView]); // Include selectedTicketId to prevent reset when navigating to ticket
 
   // Track viewport width to tailor driver experience on mobile
   useEffect(() => {
@@ -151,8 +170,7 @@ const AppContent = () => {
       setVehicleView('list');
     }
   }, [vehicleView, selectedVehicleId]);
-  const [ticketView, setTicketView] = useState<'list' | 'detail' | 'form'>('list');
-  const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
+
   const [tripLogView, setTripLogView] = useState<'list' | 'form'>('list');
   const [fuelLogView, setFuelLogView] = useState<'list' | 'form'>('list');
   const [tripLogMode, setTripLogMode] = useState<'checkout' | 'checkin'>('checkout');
@@ -600,28 +618,55 @@ const AppContent = () => {
                           key={ticket.id}
                           className="w-full text-left px-4 py-3 hover:bg-slate-50 dark:hover:bg-slate-800/70 border-b border-slate-100 dark:border-slate-800 last:border-b-0"
                           onClick={() => {
-                            setActiveTab('maintenance');
+                            // Set flag to prevent useEffect from resetting
+                            isNavigatingToTicketRef.current = true;
+                            // Set selectedTicketId and view first, then change tab
+                            // This prevents the useEffect from resetting the view
                             setSelectedTicketId(ticket.id.toString());
                             setTicketView('detail');
+                            setActiveTab('maintenance');
                             setShowNotifications(false);
                           }}
                         >
-                          <div className="flex justify-between items-center gap-2">
-                            <div className="flex-1 min-w-0">
-                              <p className="text-sm font-medium text-slate-900 dark:text-slate-100 truncate">
-                                {ticket.ticket_number || `ตั๋ว #${ticket.id}`}
-                              </p>
-                              <p className="text-xs text-slate-600 dark:text-slate-400 truncate mt-0.5">
-                                {ticket.repair_type || 'ตั๋วซ่อมบำรุง'} ·{' '}
-                                {ticket.vehicle_plate || '-'}
-                              </p>
-                              <p className="text-[11px] text-slate-500 dark:text-slate-500 mt-0.5 truncate">
-                                {ticket.problem_description || 'ไม่มีคำอธิบาย'}
-                              </p>
+                          <div className="flex items-start gap-3">
+                            {/* Vehicle Image */}
+                            {(ticket as any).vehicle_image_url ? (
+                              <div className="w-12 h-12 rounded-lg overflow-hidden bg-slate-100 dark:bg-slate-800 flex-shrink-0">
+                                <img
+                                  src={(ticket as any).vehicle_image_url}
+                                  alt={ticket.vehicle_plate || 'Vehicle'}
+                                  className="w-full h-full object-cover"
+                                  onError={(e) => {
+                                    e.currentTarget.style.display = 'none';
+                                    e.currentTarget.nextElementSibling?.classList.remove('hidden');
+                                  }}
+                                />
+                                <div className="hidden w-full h-full flex items-center justify-center bg-enterprise-100 dark:bg-enterprise-900">
+                                  <Truck className="w-5 h-5 text-enterprise-600 dark:text-enterprise-400" />
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="w-12 h-12 rounded-lg overflow-hidden bg-slate-100 dark:bg-slate-800 flex-shrink-0 flex items-center justify-center">
+                                <Truck className="w-5 h-5 text-slate-400" />
+                              </div>
+                            )}
+                            <div className="flex-1 min-w-0 flex justify-between items-start gap-2">
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-medium text-slate-900 dark:text-slate-100 truncate">
+                                  {ticket.ticket_number || `ตั๋ว #${ticket.id}`}
+                                </p>
+                                <p className="text-xs text-slate-600 dark:text-slate-400 truncate mt-0.5">
+                                  {ticket.repair_type || 'ตั๋วซ่อมบำรุง'} ·{' '}
+                                  {ticket.vehicle_plate || '-'}
+                                </p>
+                                <p className="text-[11px] text-slate-500 dark:text-slate-500 mt-0.5 truncate">
+                                  {ticket.problem_description || 'ไม่มีคำอธิบาย'}
+                                </p>
+                              </div>
+                              <span className="ml-2 inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300 flex-shrink-0">
+                                รออนุมัติ
+                              </span>
                             </div>
-                            <span className="ml-2 inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
-                              รออนุมัติ
-                            </span>
                           </div>
                         </button>
                       ))
