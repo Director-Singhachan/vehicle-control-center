@@ -541,6 +541,17 @@ export const crewService = {
             throw new Error('User not authenticated');
         }
 
+        // Delete existing logs for this trip first to allow re-calculation
+        const { error: deleteError } = await supabase
+            .from('commission_logs')
+            .delete()
+            .eq('delivery_trip_id', calculation.tripId);
+
+        if (deleteError) {
+            console.error('[crewService] Error deleting existing commission logs:', deleteError);
+            throw deleteError;
+        }
+
         // Create commission log entries for each crew member
         const logEntries = calculation.crewMembers.map(crew => ({
             delivery_trip_id: calculation.tripId,
@@ -561,12 +572,6 @@ export const crewService = {
 
         if (insertError) {
             console.error('[crewService] Error saving commission logs:', insertError);
-
-            // Check for duplicate calculation
-            if (insertError.code === '23505') {
-                throw new Error('Commission has already been calculated for this trip');
-            }
-
             throw insertError;
         }
 
@@ -672,5 +677,87 @@ export const crewService = {
         }
 
         return data || [];
+    },
+
+    /**
+     * Get trips that are completed but don't have commission logs yet
+     * @param limit - Number of records to return
+     * @returns Array of trips pending commission calculation
+     */
+    getPendingCommissionTrips: async (limit: number = 20): Promise<any[]> => {
+        // 1) Get recent completed trips
+        const { data: trips, error: tripsError } = await supabase
+            .from('delivery_trips')
+            .select(`
+                id, 
+                trip_number, 
+                status, 
+                planned_date,
+                vehicles (
+                    type,
+                    plate
+                )
+            `)
+            .eq('status', 'completed')
+            .order('planned_date', { ascending: false })
+            .limit(100);
+
+        if (tripsError) {
+            console.error('[crewService] Error fetching completed trips:', tripsError);
+            throw tripsError;
+        }
+
+        if (!trips || trips.length === 0) return [];
+
+        const tripIds = trips.map(t => t.id);
+
+        // 2) Find which ones already have logs
+        const { data: existingLogs, error: logsError } = await supabase
+            .from('commission_logs')
+            .select('delivery_trip_id')
+            .in('delivery_trip_id', tripIds);
+
+        if (logsError) {
+            console.error('[crewService] Error fetching existing commission logs:', logsError);
+            throw logsError;
+        }
+
+        const tripsWithLogs = new Set(existingLogs?.map(l => l.delivery_trip_id));
+        
+        // 3) Find which ones have crew members (Only those with crew can be calculated)
+        const { data: tripsWithCrew, error: crewError } = await supabase
+            .from('delivery_trip_crews')
+            .select('delivery_trip_id')
+            .in('delivery_trip_id', tripIds)
+            .in('status', ['active', 'replaced']);
+
+        if (crewError) {
+            console.error('[crewService] Error fetching trips with crew:', crewError);
+            throw crewError;
+        }
+
+        const tripsWithCrewSet = new Set(tripsWithCrew?.map(c => c.delivery_trip_id));
+
+        // 4) Filter: No logs AND Has crew
+        return trips
+            .filter(t => !tripsWithLogs.has(t.id) && tripsWithCrewSet.has(t.id))
+            .slice(0, limit);
+    },
+
+    /**
+     * Trigger commission calculation via Edge Function
+     * This is safer as it runs with service role and can bypass RLS issues
+     */
+    calculateCommissionViaFunction: async (tripId: string): Promise<boolean> => {
+        const { data, error } = await supabase.functions.invoke('auto-commission-worker', {
+            body: { tripId, source: 'manual_recalculate' }
+        });
+
+        if (error) {
+            console.error('[crewService] Error invoking auto-commission-worker:', error);
+            throw error;
+        }
+
+        return data?.success || false;
     },
 };
