@@ -271,12 +271,19 @@ export function useCommissionCalculation() {
         setError(null);
 
         try {
-            // Step 1: Calculate
-            const result = await crewService.calculateCommission(tripId);
-            setCalculation(result);
+            // Use Edge Function instead of client-side calculation to avoid RLS and concurrency issues
+            const success = await crewService.calculateCommissionViaFunction(tripId);
+            
+            if (!success) {
+                throw new Error('การคำนวณล้มเหลว กรุณาตรวจสอบข้อมูลทริป');
+            }
 
-            // Step 2: Save
-            const logs = await crewService.saveCommissionLogs(result);
+            // After successful calculation via function, fetch the logs to show in UI
+            const logs = await crewService.getCommissionLogsByTripId(tripId);
+            
+            // Also refresh local state if needed (optional since we return logs)
+            // But we can't easily set calculation result from logs here without more mapping
+            
             return logs;
         } catch (err) {
             const error = err instanceof Error ? err : new Error('Failed to calculate and save commission');
@@ -297,4 +304,34 @@ export function useCommissionCalculation() {
         loading,
         error,
     };
+}
+
+/**
+ * Hook to fetch trips pending commission calculation
+ */
+export function usePendingCommissionTrips() {
+    const [trips, setTrips] = useState<any[]>([]);
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState<Error | null>(null);
+
+    const fetchTrips = async () => {
+        setLoading(true);
+        setError(null);
+
+        try {
+            const data = await crewService.getPendingCommissionTrips();
+            setTrips(data);
+        } catch (err) {
+            setError(err instanceof Error ? err : new Error('Failed to fetch pending trips'));
+            console.error('[usePendingCommissionTrips] Error:', err);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        fetchTrips();
+    }, []);
+
+    return { trips, loading, error, refresh: fetchTrips };
 }

@@ -23,6 +23,8 @@ import {
   Users,
   DollarSign,
   Settings as SettingsIcon,
+  ChevronDown,
+  ChevronRight,
 } from 'lucide-react';
 import { DashboardView } from './views/DashboardView';
 import { ProfileView } from './views/ProfileView';
@@ -55,7 +57,7 @@ import { prefetchService } from './services/prefetchService';
 import { Avatar } from './components/ui/Avatar';
 import { ConfirmDialog } from './components/ui/ConfirmDialog';
 
-const SidebarItem = ({ icon: Icon, label, active, onClick, onMouseEnter, isCollapsed }: any) => (
+const SidebarItem = ({ icon: Icon, label, active, onClick, onMouseEnter, isCollapsed, hasSubmenu, isOpen }: any) => (
   <button
     onClick={onClick}
     onMouseEnter={onMouseEnter}
@@ -65,7 +67,22 @@ const SidebarItem = ({ icon: Icon, label, active, onClick, onMouseEnter, isColla
       }`}
   >
     <Icon size={isCollapsed ? 24 : 20} />
-    {!isCollapsed && <span>{label}</span>}
+    {!isCollapsed && <span className="flex-1 text-left">{label}</span>}
+    {!isCollapsed && hasSubmenu && (
+      isOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />
+    )}
+  </button>
+);
+
+const SubSidebarItem = ({ label, active, onClick, isCollapsed, isFlyout }: any) => (
+  <button
+    onClick={onClick}
+    className={`w-full flex items-center ${isFlyout ? 'px-4' : 'pl-12 pr-4'} py-2 rounded-lg transition-colors duration-200 ${active
+      ? 'text-enterprise-600 dark:text-enterprise-400 font-medium bg-enterprise-50 dark:bg-enterprise-900/20'
+      : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/30'
+      }`}
+  >
+    {!isCollapsed && <span className="text-sm whitespace-nowrap">{label}</span>}
   </button>
 );
 
@@ -175,6 +192,140 @@ const AppContent = () => {
   const [fuelLogView, setFuelLogView] = useState<'list' | 'form'>('list');
   const [tripLogMode, setTripLogMode] = useState<'checkout' | 'checkin'>('checkout');
   const [selectedTripId, setSelectedTripId] = useState<string | null>(null);
+  const [isCommissionOpen, setIsCommissionOpen] = useState(false);
+  const [isCommissionHovered, setIsCommissionHovered] = useState(false);
+  const commissionMenuRef = React.useRef<HTMLDivElement>(null);
+  const commissionTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
+  const [flyoutPosition, setFlyoutPosition] = useState({ top: 0, left: 0 });
+
+  // Settings menu state
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isSettingsHovered, setIsSettingsHovered] = useState(false);
+  const settingsMenuRef = React.useRef<HTMLDivElement>(null);
+  const settingsTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
+  const [settingsFlyoutPosition, setSettingsFlyoutPosition] = useState({ top: 0, left: 0 });
+
+  // Calculate flyout position when hovering
+  const handleCommissionMouseEnter = (e: React.MouseEvent) => {
+    // Clear any pending close timeout
+    if (commissionTimeoutRef.current) {
+      clearTimeout(commissionTimeoutRef.current);
+      commissionTimeoutRef.current = null;
+    }
+    
+    const rect = e.currentTarget.getBoundingClientRect();
+    const viewportHeight = window.innerHeight;
+    const flyoutEstimatedHeight = 200; // Estimated height of flyout menu
+    
+    // Check if flyout will overflow bottom of viewport
+    let topPosition = rect.top;
+    if (rect.top + flyoutEstimatedHeight > viewportHeight) {
+      // Position flyout so it ends at the bottom with some margin
+      topPosition = Math.max(10, viewportHeight - flyoutEstimatedHeight - 10);
+    }
+    
+    setFlyoutPosition({
+      top: topPosition,
+      left: rect.right + 8,
+    });
+    setIsCommissionHovered(true);
+  };
+
+  const handleCommissionMouseLeave = () => {
+    // Delay closing to allow mouse to move to flyout
+    commissionTimeoutRef.current = setTimeout(() => {
+      setIsCommissionHovered(false);
+    }, 150);
+  };
+
+  const handleFlyoutMouseEnter = () => {
+    // Cancel close timeout when mouse enters flyout
+    if (commissionTimeoutRef.current) {
+      clearTimeout(commissionTimeoutRef.current);
+      commissionTimeoutRef.current = null;
+    }
+    setIsCommissionHovered(true);
+  };
+
+  const handleFlyoutMouseLeave = () => {
+    // Close immediately when leaving flyout
+    setIsCommissionHovered(false);
+  };
+
+  // Settings menu handlers
+  const handleSettingsMouseEnter = (e: React.MouseEvent) => {
+    if (settingsTimeoutRef.current) {
+      clearTimeout(settingsTimeoutRef.current);
+      settingsTimeoutRef.current = null;
+    }
+    
+    const rect = e.currentTarget.getBoundingClientRect();
+    const viewportHeight = window.innerHeight;
+    const flyoutEstimatedHeight = 250; // Estimated height of flyout menu
+    
+    // Check if flyout will overflow bottom of viewport
+    let topPosition = rect.top;
+    if (rect.top + flyoutEstimatedHeight > viewportHeight) {
+      // Position flyout so it ends at the bottom with some margin
+      topPosition = Math.max(10, viewportHeight - flyoutEstimatedHeight - 10);
+    }
+    
+    setSettingsFlyoutPosition({
+      top: topPosition,
+      left: rect.right + 8,
+    });
+    setIsSettingsHovered(true);
+  };
+
+  const handleSettingsMouseLeave = () => {
+    settingsTimeoutRef.current = setTimeout(() => {
+      setIsSettingsHovered(false);
+    }, 150);
+  };
+
+  const handleSettingsFlyoutMouseEnter = () => {
+    if (settingsTimeoutRef.current) {
+      clearTimeout(settingsTimeoutRef.current);
+      settingsTimeoutRef.current = null;
+    }
+    setIsSettingsHovered(true);
+  };
+
+  const handleSettingsFlyoutMouseLeave = () => {
+    setIsSettingsHovered(false);
+  };
+
+  // Open commission menu if one of its sub-items is active
+  useEffect(() => {
+    if (activeTab === 'commission' || activeTab === 'commission-rates') {
+      setIsCommissionOpen(true);
+    } else {
+      // Close commission menu when navigating to other tabs
+      setIsCommissionOpen(false);
+    }
+  }, [activeTab]);
+
+  // Open settings menu if one of its sub-items is active
+  useEffect(() => {
+    if (activeTab === 'profile' || activeTab === 'rls-test' || activeTab === 'settings') {
+      setIsSettingsOpen(true);
+    } else {
+      // Close settings menu when navigating to other tabs
+      setIsSettingsOpen(false);
+    }
+  }, [activeTab]);
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (commissionTimeoutRef.current) {
+        clearTimeout(commissionTimeoutRef.current);
+      }
+      if (settingsTimeoutRef.current) {
+        clearTimeout(settingsTimeoutRef.current);
+      }
+    };
+  }, []);
   const [deliveryTripView, setDeliveryTripView] = useState<'list' | 'form' | 'detail'>('list');
   const [selectedDeliveryTripId, setSelectedDeliveryTripId] = useState<string | null>(null);
   const [deliveryTripReturnContext, setDeliveryTripReturnContext] = useState<'delivery-list' | 'triplogs' | 'daily-summary'>('delivery-list');
@@ -364,7 +515,7 @@ const AppContent = () => {
 
       {/* Sidebar */}
       <aside
-        className={`${sidebarWidthClass} ${sidebarTransformClass} bg-white/80 dark:bg-charcoal-900/80 backdrop-blur-md border-r border-slate-200 dark:border-slate-800/50 flex flex-col transition-all duration-300 fixed h-full z-30 ${isMobile ? 'shadow-2xl' : ''}`}
+        className={`${sidebarWidthClass} ${sidebarTransformClass} bg-white/80 dark:bg-charcoal-900/80 backdrop-blur-md border-r border-slate-200 dark:border-slate-800/50 flex flex-col transition-all duration-300 fixed h-full z-30 overflow-visible ${isMobile ? 'shadow-2xl' : ''}`}
       >
         <div className="p-6 flex items-center justify-center">
           <div className="w-10 h-10 bg-enterprise-600 dark:bg-enterprise-500 rounded-lg flex items-center justify-center shadow-lg shadow-enterprise-500/30">
@@ -377,7 +528,7 @@ const AppContent = () => {
           )}
         </div>
 
-        <div className="flex-1 px-3 space-y-1 mt-4 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-700 scrollbar-track-transparent hover:scrollbar-thumb-gray-400 dark:hover:scrollbar-thumb-gray-600">
+        <div className="flex-1 px-3 space-y-1 mt-4 overflow-y-auto overflow-x-clip scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-700 scrollbar-track-transparent hover:scrollbar-thumb-gray-400 dark:hover:scrollbar-thumb-gray-600 [&:has(.group\/menu:hover)]:overflow-x-visible">
           {!isDriver && (
             <SidebarItem
               icon={LayoutDashboard}
@@ -488,49 +639,206 @@ const AppContent = () => {
             />
           )}
 
-          {/* Commission Section */}
-          {!isDriver && isSidebarOpen && (
-            <div className="px-4 pt-4 pb-2">
-              <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                ค่าคอมมิชชั่น
-              </p>
-            </div>
-          )}
+          {/* Commission Section - kept inside main menu but allow flyout */}
           {!isDriver && (
-            <SidebarItem
-              icon={DollarSign}
-              label={isSidebarOpen ? "คำนวณค่าคอมฯ" : ""}
-              active={activeTab === 'commission'}
-              onClick={() => setActiveTab('commission')}
-              isCollapsed={!isSidebarOpen}
-            />
-          )}
-          {!isDriver && (
-            <SidebarItem
-              icon={SettingsIcon}
-              label={isSidebarOpen ? "ตั้งค่าอัตราค่าคอมฯ" : ""}
-              active={activeTab === 'commission-rates'}
-              onClick={() => setActiveTab('commission-rates')}
-              isCollapsed={!isSidebarOpen}
-            />
+            <>
+              <div 
+                ref={commissionMenuRef}
+                className="relative group/menu"
+                onMouseEnter={handleCommissionMouseEnter}
+                onMouseLeave={handleCommissionMouseLeave}
+              >
+                <SidebarItem
+                  icon={DollarSign}
+                  label={isSidebarOpen ? "ค่าคอมมิชชั่น" : ""}
+                  active={activeTab === 'commission' || activeTab === 'commission-rates'}
+                  onClick={() => {
+                    // Toggle on click for mobile or persistent view
+                    setIsCommissionOpen(!isCommissionOpen);
+                  }}
+                  isCollapsed={!isSidebarOpen}
+                  hasSubmenu={true}
+                  isOpen={isCommissionOpen || isCommissionHovered}
+                />
+
+                {/* Accordion Style Submenu - Only when sidebar is open and clicked */}
+                {isCommissionOpen && isSidebarOpen && !isCommissionHovered && (
+                  <div className="mt-1 space-y-1 ml-4 border-l-2 border-slate-100 dark:border-slate-800 animate-in fade-in slide-in-from-top-1 duration-200">
+                    <SubSidebarItem
+                      label="คำนวณค่าคอมฯ"
+                      active={activeTab === 'commission'}
+                      onClick={() => setActiveTab('commission')}
+                      isCollapsed={false}
+                    />
+                    <SubSidebarItem
+                      label="ตั้งค่าอัตราค่าคอมฯ"
+                      active={activeTab === 'commission-rates'}
+                      onClick={() => setActiveTab('commission-rates')}
+                      isCollapsed={false}
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* Flyout Submenu - Rendered using Portal (fixed position) */}
+              {isCommissionHovered && (
+                <div 
+                  className="fixed z-[100]"
+                  style={{
+                    top: `${flyoutPosition.top}px`,
+                    left: `${flyoutPosition.left}px`,
+                  }}
+                  onMouseEnter={handleFlyoutMouseEnter}
+                  onMouseLeave={handleFlyoutMouseLeave}
+                >
+                  <div className="bg-white dark:bg-charcoal-900 border border-slate-200 dark:border-slate-700 rounded-xl shadow-2xl min-w-[220px] py-2 overflow-hidden ring-1 ring-black/5 animate-in fade-in slide-in-from-left-2 duration-150">
+                    <div className="px-4 pb-2 mb-2 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                      <p className="text-[10px] font-black text-blue-500 uppercase tracking-widest">เมนูค่าคอมมิชชั่น</p>
+                      <div className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"></div>
+                    </div>
+                    <div className="px-2 space-y-1">
+                      <SubSidebarItem
+                        label="คำนวณค่าคอมฯ"
+                        active={activeTab === 'commission'}
+                        onClick={() => {
+                          setActiveTab('commission');
+                          setIsCommissionHovered(false);
+                          setIsCommissionOpen(true);
+                        }}
+                        isCollapsed={false}
+                        isFlyout={true}
+                      />
+                      <SubSidebarItem
+                        label="ตั้งค่าอัตราค่าคอมฯ"
+                        active={activeTab === 'commission-rates'}
+                        onClick={() => {
+                          setActiveTab('commission-rates');
+                          setIsCommissionHovered(false);
+                          setIsCommissionOpen(true);
+                        }}
+                        isCollapsed={false}
+                        isFlyout={true}
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </div>
 
         <div className="p-3 border-t border-slate-200 dark:border-slate-800/50 space-y-1">
-          <SidebarItem icon={User} label={isSidebarOpen ? "โปรไฟล์" : ""} active={activeTab === 'profile'} onClick={() => setActiveTab('profile')} isCollapsed={!isSidebarOpen} />
-          {(isAdmin || isManager) && (
-            <SidebarItem icon={Shield} label={isSidebarOpen ? "ทดสอบ RLS" : ""} active={activeTab === 'rls-test'} onClick={() => setActiveTab('rls-test')} isCollapsed={!isSidebarOpen} />
-          )}
-          {/* ซ่อนเมนูตั้งค่าสำหรับพนักงานขับรถ เพื่อไม่ให้ไปตั้งค่า Telegram/LINE เอง */}
-          {(!isDriver || isAdmin || isManager || isInspector || isExecutive) && (
-            <SidebarItem
-              icon={Settings}
-              label={isSidebarOpen ? "ตั้งค่า" : ""}
-              active={activeTab === 'settings'}
-              onClick={() => setActiveTab('settings')}
-              isCollapsed={!isSidebarOpen}
-            />
-          )}
+          {/* Settings Menu with Submenu */}
+          <>
+            <div 
+              ref={settingsMenuRef}
+              className="relative group/menu"
+              onMouseEnter={handleSettingsMouseEnter}
+              onMouseLeave={handleSettingsMouseLeave}
+            >
+              <SidebarItem
+                icon={Settings}
+                label={isSidebarOpen ? "ตั้งค่า" : ""}
+                active={activeTab === 'profile' || activeTab === 'rls-test' || activeTab === 'settings'}
+                onClick={() => {
+                  setIsSettingsOpen(!isSettingsOpen);
+                }}
+                isCollapsed={!isSidebarOpen}
+                hasSubmenu={true}
+                isOpen={isSettingsOpen || isSettingsHovered}
+              />
+
+              {/* Accordion Style Submenu - Only when sidebar is open and clicked */}
+              {isSettingsOpen && isSidebarOpen && !isSettingsHovered && (
+                <div className="mt-1 space-y-1 ml-4 border-l-2 border-slate-100 dark:border-slate-800 animate-in fade-in slide-in-from-top-1 duration-200">
+                  <SubSidebarItem
+                    label="โปรไฟล์"
+                    active={activeTab === 'profile'}
+                    onClick={() => setActiveTab('profile')}
+                    isCollapsed={false}
+                  />
+                  {(isAdmin || isManager) && (
+                    <SubSidebarItem
+                      label="ทดสอบ RLS"
+                      active={activeTab === 'rls-test'}
+                      onClick={() => setActiveTab('rls-test')}
+                      isCollapsed={false}
+                    />
+                  )}
+                  {/* ซ่อนเมนูตั้งค่าแจ้งเตือนสำหรับพนักงานขับรถ */}
+                  {(!isDriver || isAdmin || isManager || isInspector || isExecutive) && (
+                    <SubSidebarItem
+                      label="ตั้งค่าแจ้งเตือน"
+                      active={activeTab === 'settings'}
+                      onClick={() => setActiveTab('settings')}
+                      isCollapsed={false}
+                    />
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Flyout Submenu - Rendered using Portal (fixed position) */}
+            {isSettingsHovered && (
+              <div 
+                className="fixed z-[100]"
+                style={{
+                  top: `${settingsFlyoutPosition.top}px`,
+                  left: `${settingsFlyoutPosition.left}px`,
+                }}
+                onMouseEnter={handleSettingsFlyoutMouseEnter}
+                onMouseLeave={handleSettingsFlyoutMouseLeave}
+              >
+                <div className="bg-white dark:bg-charcoal-900 border border-slate-200 dark:border-slate-700 rounded-xl shadow-2xl min-w-[220px] py-2 overflow-hidden ring-1 ring-black/5 animate-in fade-in slide-in-from-left-2 duration-150">
+                  <div className="px-4 pb-2 mb-2 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                    <p className="text-[10px] font-black text-blue-500 uppercase tracking-widest">เมนูตั้งค่า</p>
+                    <div className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"></div>
+                  </div>
+                  <div className="px-2 space-y-1">
+                    <SubSidebarItem
+                      label="โปรไฟล์"
+                      active={activeTab === 'profile'}
+                      onClick={() => {
+                        setActiveTab('profile');
+                        setIsSettingsHovered(false);
+                        setIsSettingsOpen(true);
+                      }}
+                      isCollapsed={false}
+                      isFlyout={true}
+                    />
+                    {(isAdmin || isManager) && (
+                      <SubSidebarItem
+                        label="ทดสอบ RLS"
+                        active={activeTab === 'rls-test'}
+                        onClick={() => {
+                          setActiveTab('rls-test');
+                          setIsSettingsHovered(false);
+                          setIsSettingsOpen(true);
+                        }}
+                        isCollapsed={false}
+                        isFlyout={true}
+                      />
+                    )}
+                    {/* ซ่อนเมนูตั้งค่าแจ้งเตือนสำหรับพนักงานขับรถ */}
+                    {(!isDriver || isAdmin || isManager || isInspector || isExecutive) && (
+                      <SubSidebarItem
+                        label="ตั้งค่าแจ้งเตือน"
+                        active={activeTab === 'settings'}
+                        onClick={() => {
+                          setActiveTab('settings');
+                          setIsSettingsHovered(false);
+                          setIsSettingsOpen(true);
+                        }}
+                        isCollapsed={false}
+                        isFlyout={true}
+                      />
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+          </>
+
           <SidebarItem icon={LogOut} label={isSidebarOpen ? "ออกจากระบบ" : ""} onClick={() => {
             setShowLogoutConfirm(true);
           }} />
