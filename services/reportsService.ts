@@ -82,6 +82,43 @@ export interface StaffCommissionSummary {
   averageCommissionPerTrip: number;
 }
 
+// Staff Item Statistics
+export interface StaffItemStatistics {
+  staff_id: string;
+  staff_name: string;
+  staff_code: string | null;
+  staff_phone: string | null;
+  staff_status: string;
+  total_trips: number;
+  total_items_carried: number;
+  completed_trips: number;
+  in_progress_trips: number;
+  planned_trips: number;
+  last_trip_date: string | null;
+  first_trip_date: string | null;
+}
+
+// Staff Item Details (รายละเอียดการยกสินค้าแต่ละชนิด)
+export interface StaffItemDetail {
+  staff_id: string;
+  staff_name: string;
+  staff_code: string | null;
+  staff_phone: string | null;
+  staff_status: string;
+  delivery_trip_id: string;
+  trip_number: string;
+  planned_date: string;
+  product_id: string;
+  product_code: string;
+  product_name: string;
+  category: string;
+  unit: string;
+  total_quantity: number;
+  quantity_per_staff: number;
+  store_name: string | null;
+  store_code: string | null;
+}
+
 // Maintenance Reports
 export interface MonthlyMaintenanceReport {
   month: string;
@@ -2579,6 +2616,119 @@ export const reportsService = {
       return sorted;
     } catch (error) {
       console.error('[reportsService] getProductDeliveryHistory error:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Get staff item statistics (จำนวนสินค้าที่พนักงานแต่ละคนยก)
+   * สถิติการยกสินค้าของพนักงานแต่ละคนในช่วงเวลาที่กำหนด
+   */
+  getStaffItemStatistics: async (
+    startDate?: Date,
+    endDate?: Date
+  ): Promise<StaffItemStatistics[]> => {
+    try {
+      const { supabase } = await import('../lib/supabase');
+
+      // Format dates for SQL function
+      const formatDateForQuery = (date: Date): string => {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+      };
+
+      const startDateStr = startDate ? formatDateForQuery(startDate) : null;
+      const endDateStr = endDate ? formatDateForQuery(endDate) : null;
+
+      // Call SQL function
+      const { data, error } = await supabase.rpc('get_staff_item_statistics', {
+        start_date: startDateStr,
+        end_date: endDateStr,
+      });
+
+      if (error) {
+        console.error('[reportsService] getStaffItemStatistics error:', error);
+        throw error;
+      }
+
+      return (data || []).map((item: any) => ({
+        staff_id: item.staff_id,
+        staff_name: item.staff_name,
+        staff_code: item.staff_code,
+        staff_phone: item.staff_phone,
+        staff_status: item.staff_status,
+        total_trips: parseInt(item.total_trips || '0', 10),
+        total_items_carried: parseFloat(item.total_items_carried || '0'),
+        completed_trips: parseInt(item.completed_trips || '0', 10),
+        in_progress_trips: parseInt(item.in_progress_trips || '0', 10),
+        planned_trips: parseInt(item.planned_trips || '0', 10),
+        last_trip_date: item.last_trip_date,
+        first_trip_date: item.first_trip_date,
+      }));
+    } catch (error) {
+      console.error('[reportsService] getStaffItemStatistics error:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Get detailed staff item distribution (รายละเอียดการยกสินค้าของพนักงานแต่ละคนแบบละเอียด)
+   * แสดงว่าพนักงานแต่ละคนยกสินค้าแต่ละชนิดไปเท่าไร
+   */
+  getStaffItemDetails: async (
+    startDate?: Date,
+    endDate?: Date,
+    staffId?: string
+  ): Promise<StaffItemDetail[]> => {
+    try {
+      const { supabase } = await import('../lib/supabase');
+
+      // Format dates for SQL function
+      const formatDateForQuery = (date: Date): string => {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+      };
+
+      const startDateStr = startDate ? formatDateForQuery(startDate) : null;
+      const endDateStr = endDate ? formatDateForQuery(endDate) : null;
+
+      // Call SQL function
+      const { data, error } = await supabase.rpc('get_staff_item_details', {
+        start_date: startDateStr,
+        end_date: endDateStr,
+        staff_id_param: staffId || null,
+      });
+
+      if (error) {
+        console.error('[reportsService] getStaffItemDetails error:', error);
+        throw error;
+      }
+
+      return (data || []).map((item: any) => ({
+        staff_id: item.staff_id,
+        staff_name: item.staff_name,
+        staff_code: item.staff_code,
+        staff_phone: item.staff_phone,
+        staff_status: item.staff_status,
+        delivery_trip_id: item.delivery_trip_id,
+        trip_number: item.trip_number,
+        planned_date: item.planned_date,
+        product_id: item.product_id,
+        product_code: item.product_code,
+        product_name: item.product_name,
+        category: item.category,
+        unit: item.unit,
+        total_quantity: parseFloat(item.total_quantity || '0'),
+        quantity_per_staff: parseFloat(item.quantity_per_staff || '0'),
+        store_name: item.store_name,
+        store_code: item.store_code,
+      }));
+    } catch (error) {
+      console.error('[reportsService] getStaffItemDetails error:', error);
       throw error;
     }
   },

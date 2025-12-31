@@ -42,9 +42,13 @@ import {
   useDeliverySummaryByProduct,
   useMonthlyDeliveryReport,
   useStaffCommissionSummary,
+  useStaffItemStatistics,
+  useStaffItemDetails,
 } from '../hooks/useReports';
 import { VehicleUsageRankingChart } from '../components/VehicleUsageRankingChart';
 import { VehicleFuelConsumptionChart } from '../components/VehicleFuelConsumptionChart';
+import { StaffItemStatisticsChart } from '../components/StaffItemStatisticsChart';
+import { StaffItemDetailsCard } from '../components/StaffItemDetailsCard';
 import { useVehicles, useStores, useProducts, useProductCategories } from '../hooks';
 import {
   Chart as ChartJS,
@@ -1487,6 +1491,10 @@ const DeliveryReportsTab: React.FC<{
     effectiveStartDate,
     effectiveEndDate
   );
+  const { data: staffItemStats, loading: staffItemStatsLoading } = useStaffItemStatistics(
+    effectiveStartDate,
+    effectiveEndDate
+  );
   
   // Filter vehicle data by branch if selected
   const filteredVehicleData = React.useMemo(() => {
@@ -2295,6 +2303,49 @@ const DeliveryReportsTab: React.FC<{
             </div>
           </Card>
 
+          {/* Staff Item Statistics Chart */}
+          <Card>
+            <div className="flex justify-between items-center mb-4">
+              <div>
+                <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+                  สถิติการยกสินค้าของพนักงานแต่ละคน
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                  เปรียบเทียบจำนวนสินค้าที่พนักงานแต่ละคนยกไปในช่วงวันที่ที่เลือก
+                </p>
+              </div>
+            </div>
+
+            {staffItemStatsLoading ? (
+              <div className="text-center py-8 text-slate-400">กำลังโหลด...</div>
+            ) : staffItemStats && staffItemStats.length > 0 ? (
+              <>
+                <StaffItemStatisticsChart data={staffItemStats} isDark={isDark} />
+                
+                {/* Detailed Staff Item List */}
+                <div className="mt-6 space-y-4">
+                  <h4 className="text-md font-semibold text-slate-900 dark:text-slate-100">
+                    รายละเอียดการยกสินค้าของแต่ละคน
+                  </h4>
+                  {staffItemStats.map((staff) => (
+                    <StaffItemDetailsCard
+                      key={staff.staff_id}
+                      staff={staff}
+                      startDate={effectiveStartDate}
+                      endDate={effectiveEndDate}
+                      isDark={isDark}
+                    />
+                  ))}
+                </div>
+              </>
+            ) : (
+              <div className="text-center py-8 text-slate-400">
+                ไม่มีข้อมูลการยกสินค้าของพนักงานในช่วงวันที่นี้
+              </div>
+            )}
+          </Card>
+
+          {/* Staff Commission Summary */}
           <Card>
             <div className="flex justify-between items-center mb-4">
               <div>

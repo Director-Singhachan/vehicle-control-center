@@ -72,7 +72,8 @@ export const crewService = {
         }
 
         // Check if trip is in a valid state for crew assignment
-        if (trip.status === 'completed' || trip.status === 'cancelled') {
+        // Allow adding crew to completed trips (for retroactive assignment)
+        if (trip.status === 'cancelled') {
             throw new Error(`Cannot assign crew to ${trip.status} trip`);
         }
 

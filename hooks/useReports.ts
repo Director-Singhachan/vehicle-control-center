@@ -15,6 +15,8 @@ import type {
   CostPerKm,
   MonthlyCostTrend,
   StaffCommissionSummary,
+  StaffItemStatistics,
+  StaffItemDetail,
 } from '../services/reportsService';
 
 // Fuel Reports Hooks
@@ -687,6 +689,80 @@ export const useStaffCommissionSummary = (
 
     fetchData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dependencyKey]);
+
+  return { data, loading, error };
+};
+
+export const useStaffItemStatistics = (
+  startDate?: Date,
+  endDate?: Date
+) => {
+  const [data, setData] = useState<import('../services/reportsService').StaffItemStatistics[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<Error | null>(null);
+
+  const dependencyKey = useMemo(() => {
+    return JSON.stringify({
+      start: startDate?.getTime(),
+      end: endDate?.getTime(),
+    });
+  }, [startDate?.getTime(), endDate?.getTime()]);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        setLoading(true);
+        const result = await reportsService.getStaffItemStatistics(startDate, endDate);
+        setData(result);
+        setError(null);
+      } catch (err) {
+        setError(err as Error);
+        console.error('[useStaffItemStatistics] Error:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+  }, [dependencyKey]);
+
+  return { data, loading, error };
+};
+
+export const useStaffItemDetails = (
+  startDate?: Date,
+  endDate?: Date,
+  staffId?: string
+) => {
+  const [data, setData] = useState<StaffItemDetail[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<Error | null>(null);
+
+  const dependencyKey = useMemo(() => {
+    return JSON.stringify({
+      start: startDate?.getTime(),
+      end: endDate?.getTime(),
+      staffId,
+    });
+  }, [startDate?.getTime(), endDate?.getTime(), staffId]);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        setLoading(true);
+        const result = await reportsService.getStaffItemDetails(startDate, endDate, staffId);
+        setData(result);
+        setError(null);
+      } catch (err) {
+        setError(err as Error);
+        console.error('[useStaffItemDetails] Error:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
   }, [dependencyKey]);
 
   return { data, loading, error };

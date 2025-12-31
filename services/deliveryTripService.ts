@@ -114,6 +114,7 @@ export interface UpdateDeliveryTripData {
       notes?: string;
     }>;
   }>;
+  helpers?: string[]; // Array of service_staff IDs to add as helpers
   // Optional reason when modifying items for completed trips
   change_reason?: string;
 }
@@ -702,6 +703,78 @@ export const deliveryTripService = {
     if (updateError) {
       console.error('[deliveryTripService] Error updating trip:', updateError);
       throw updateError;
+    }
+
+    // Handle helpers (crew) assignment if provided
+    if (data.helpers !== undefined) {
+      // Get existing active crews
+      const { data: existingCrews, error: existingCrewsError } = await supabase
+        .from('delivery_trip_crews')
+        .select('id, staff_id, role, status')
+        .eq('delivery_trip_id', id)
+        .eq('status', 'active');
+
+      if (existingCrewsError) {
+        console.error('[deliveryTripService] Error loading existing crews:', existingCrewsError);
+        // Don't throw - continue without crews
+      }
+
+      const existingHelperIds = (existingCrews || [])
+        .filter(c => c.role === 'helper')
+        .map(c => c.staff_id);
+
+      // Find helpers to add (not in existing list)
+      const helpersToAdd = data.helpers.filter(helperId => !existingHelperIds.includes(helperId));
+
+      // Find helpers to remove (in existing list but not in new list)
+      const helpersToRemove = existingHelperIds.filter(helperId => !data.helpers!.includes(helperId));
+
+      // Add new helpers
+      if (helpersToAdd.length > 0) {
+        const crewData = helpersToAdd.map(staffId => ({
+          delivery_trip_id: id,
+          staff_id: staffId,
+          role: 'helper' as const,
+          status: 'active' as const,
+          start_at: new Date().toISOString(),
+          created_by: user.id,
+          updated_by: user.id,
+        }));
+
+        const { error: crewError } = await supabase
+          .from('delivery_trip_crews')
+          .insert(crewData);
+
+        if (crewError) {
+          console.error('[deliveryTripService] Error adding helpers:', crewError);
+          // Don't throw - allow trip update to continue
+          // But log the error for debugging
+        } else {
+          console.log('[deliveryTripService] Successfully added helpers:', helpersToAdd);
+        }
+      }
+
+      // Remove helpers that are no longer in the list
+      if (helpersToRemove.length > 0) {
+        const { error: removeError } = await supabase
+          .from('delivery_trip_crews')
+          .update({
+            status: 'removed',
+            end_at: new Date().toISOString(),
+            updated_by: user.id,
+          })
+          .eq('delivery_trip_id', id)
+          .in('staff_id', helpersToRemove)
+          .eq('role', 'helper')
+          .eq('status', 'active');
+
+        if (removeError) {
+          console.error('[deliveryTripService] Error removing helpers:', removeError);
+          // Don't throw - allow trip update to continue
+        } else {
+          console.log('[deliveryTripService] Successfully removed helpers:', helpersToRemove);
+        }
+      }
     }
 
     // If stores are provided, update them with audit logging
@@ -1511,6 +1584,96 @@ export const deliveryTripService = {
       updated: updatedTrips.length,
       details: updatedTrips,
     };
+  },
+
+  // Get staff item distribution for a trip
+  // คำนวณการกระจายสินค้าต่อพนักงานในแต่ละทริป (สำหรับแสดงสถิติ)
+  getStaffItemDistribution: async (tripId: string): Promise<Array<{
+    crew_id: string;
+    staff_id: string;
+    staff_code: string | null;
+    staff_name: string;
+    staff_phone: string | null;
+    staff_role: 'driver' | 'helper';
+    total_items_to_carry: number;
+    total_items_per_staff: number;
+    total_staff_count: number;
+    distinct_product_count: number;
+    distinct_store_count: number;
+  }>> => {
+    const { data, error } = await supabase
+      .from('staff_item_distribution_summary')
+      .select('*')
+      .eq('delivery_trip_id', tripId)
+      .order('staff_name');
+
+    if (error) {
+      console.error('[deliveryTripService] Error fetching staff item distribution:', error);
+      throw error;
+    }
+
+    return (data || []).map(item => ({
+      crew_id: item.crew_id,
+      staff_id: item.staff_id,
+      staff_code: item.staff_code,
+      staff_name: item.staff_name,
+      staff_phone: item.staff_phone,
+      staff_role: item.staff_role,
+      total_items_to_carry: parseFloat(item.total_items_to_carry || '0'),
+      total_items_per_staff: parseFloat(item.total_items_per_staff || '0'),
+      total_staff_count: parseFloat(item.total_staff_count || '0'),
+      distinct_product_count: parseInt(item.distinct_product_count || '0', 10),
+      distinct_store_count: parseInt(item.distinct_store_count || '0', 10),
+    }));
+  },
+
+  // Get product distribution by trip
+  // คำนวณการกระจายสินค้าตามชนิดในแต่ละทริป
+  getProductDistributionByTrip: async (tripId: string): Promise<Array<{
+    product_id: string;
+    product_code: string;
+    product_name: string;
+    category: string;
+    unit: string;
+    total_quantity: number;
+    total_staff_count: number;
+    quantity_per_staff: number;
+    store_count: number;
+    stores_detail: Array<{
+      store_id: string;
+      store_name: string | null;
+      store_code: string | null;
+      quantity: number;
+    }>;
+  }>> => {
+    const { data, error } = await supabase
+      .from('product_distribution_by_trip')
+      .select('*')
+      .eq('delivery_trip_id', tripId)
+      .order('product_name');
+
+    if (error) {
+      console.error('[deliveryTripService] Error fetching product distribution:', error);
+      throw error;
+    }
+
+    return (data || []).map(item => ({
+      product_id: item.product_id,
+      product_code: item.product_code,
+      product_name: item.product_name,
+      category: item.category,
+      unit: item.unit,
+      total_quantity: parseFloat(item.total_quantity || '0'),
+      total_staff_count: parseFloat(item.total_staff_count || '0'),
+      quantity_per_staff: parseFloat(item.quantity_per_staff || '0'),
+      store_count: parseInt(item.store_count || '0', 10),
+      stores_detail: (item.stores_detail || []) as Array<{
+        store_id: string;
+        store_name: string | null;
+        store_code: string | null;
+        quantity: number;
+      }>,
+    }));
   },
 
 };
