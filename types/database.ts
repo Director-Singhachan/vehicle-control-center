@@ -1089,6 +1089,7 @@ export interface Database {
           reporter_email: string | null;
           reporter_name: string | null;
           reporter_role: AppRole;
+          reporter_avatar_url: string | null;
         };
       };
     };
