@@ -456,13 +456,35 @@ export const reportsService = {
   getVehicleFuelComparison: async (months: number = 6): Promise<VehicleFuelComparison[]> => {
     const startDate = new Date();
     startDate.setMonth(startDate.getMonth() - months);
+    startDate.setHours(0, 0, 0, 0);
 
-    const { data, error } = await supabase
-      .from('fuel_efficiency_summary')
-      .select('*')
-      .gte('month', startDate.toISOString().split('T')[0]);
+    // Query fuel_records directly instead of using fuel_efficiency_summary view
+    // This ensures we get all fuel records even if the view doesn't have data
+    const { data: fuelRecords, error } = await supabase
+      .from('fuel_records')
+      .select(`
+        vehicle_id,
+        liters,
+        total_cost,
+        fuel_efficiency,
+        vehicle:vehicles!fuel_records_vehicle_id_fkey(
+          id,
+          plate,
+          make,
+          model
+        )
+      `)
+      .gte('filled_at', startDate.toISOString())
+      .order('filled_at', { ascending: true });
 
-    if (error) throw error;
+    if (error) {
+      console.error('[reportsService] getVehicleFuelComparison error:', error);
+      throw error;
+    }
+
+    if (!fuelRecords || fuelRecords.length === 0) {
+      return [];
+    }
 
     // Group by vehicle
     const vehicleMap = new Map<string, {
@@ -475,12 +497,17 @@ export const reportsService = {
       efficiencies: number[];
     }>();
 
-    data?.forEach(record => {
-      if (!vehicleMap.has(record.vehicle_id)) {
-        vehicleMap.set(record.vehicle_id, {
-          plate: record.plate,
-          make: record.make,
-          model: record.model,
+    fuelRecords.forEach(record => {
+      const vehicleId = record.vehicle_id;
+      const vehicle = record.vehicle as { id: string; plate: string; make: string | null; model: string | null } | null;
+      
+      if (!vehicleId || !vehicle) return;
+
+      if (!vehicleMap.has(vehicleId)) {
+        vehicleMap.set(vehicleId, {
+          plate: vehicle.plate,
+          make: vehicle.make,
+          model: vehicle.model,
           totalLiters: 0,
           totalCost: 0,
           fillCount: 0,
@@ -488,28 +515,31 @@ export const reportsService = {
         });
       }
 
-      const entry = vehicleMap.get(record.vehicle_id)!;
-      entry.totalLiters += record.total_liters || 0;
-      entry.totalCost += record.total_cost || 0;
-      entry.fillCount += record.fill_count || 0;
-      if (record.avg_efficiency) {
-        entry.efficiencies.push(record.avg_efficiency);
+      const entry = vehicleMap.get(vehicleId)!;
+      entry.totalLiters += Number(record.liters) || 0;
+      entry.totalCost += Number(record.total_cost) || 0;
+      entry.fillCount += 1;
+      if (record.fuel_efficiency) {
+        entry.efficiencies.push(Number(record.fuel_efficiency));
       }
     });
 
     // Convert to array and calculate averages
-    return Array.from(vehicleMap.entries()).map(([vehicle_id, data]) => ({
-      vehicle_id,
-      plate: data.plate,
-      make: data.make,
-      model: data.model,
-      totalLiters: data.totalLiters,
-      totalCost: data.totalCost,
-      averageEfficiency: data.efficiencies.length > 0
-        ? data.efficiencies.reduce((sum, eff) => sum + eff, 0) / data.efficiencies.length
-        : null,
-      fillCount: data.fillCount,
-    })).sort((a, b) => b.totalCost - a.totalCost);
+    return Array.from(vehicleMap.entries())
+      .map(([vehicle_id, data]) => ({
+        vehicle_id,
+        plate: data.plate,
+        make: data.make,
+        model: data.model,
+        totalLiters: data.totalLiters,
+        totalCost: data.totalCost,
+        averageEfficiency: data.efficiencies.length > 0
+          ? data.efficiencies.reduce((sum, eff) => sum + eff, 0) / data.efficiencies.length
+          : null,
+        fillCount: data.fillCount,
+      }))
+      .filter(vehicle => vehicle.totalCost > 0 || vehicle.totalLiters > 0) // Only show vehicles with fuel data
+      .sort((a, b) => b.totalCost - a.totalCost);
   },
 
   // Get fuel trend (for charts)
