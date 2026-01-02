@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { Package, Calendar, MapPin, DollarSign, User, Phone, Filter, X } from 'lucide-react';
 import { usePendingOrders } from '../hooks/useOrders';
+import { CreateTripFromOrdersView } from './CreateTripFromOrdersView';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
@@ -13,6 +14,7 @@ export function PendingOrdersView() {
   const [selectedOrders, setSelectedOrders] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState('');
   const [dateFilter, setDateFilter] = useState('');
+  const [showCreateTrip, setShowCreateTrip] = useState(false);
 
   // Filter orders
   const filteredOrders = useMemo(() => {
@@ -58,6 +60,37 @@ export function PendingOrdersView() {
       .filter((order: any) => selectedOrders.has(order.id))
       .reduce((sum: number, order: any) => sum + (order.total_amount || 0), 0);
   }, [filteredOrders, selectedOrders]);
+
+  // Get selected order objects
+  const selectedOrderObjects = useMemo(() => {
+    return filteredOrders.filter((order: any) => selectedOrders.has(order.id));
+  }, [filteredOrders, selectedOrders]);
+
+  // Handle create trip
+  const handleCreateTrip = () => {
+    if (selectedOrders.size === 0) {
+      alert('กรุณาเลือกออเดอร์อย่างน้อย 1 รายการ');
+      return;
+    }
+    setShowCreateTrip(true);
+  };
+
+  const handleTripCreated = () => {
+    setShowCreateTrip(false);
+    setSelectedOrders(new Set());
+    refetch();
+  };
+
+  // Show create trip view
+  if (showCreateTrip) {
+    return (
+      <CreateTripFromOrdersView
+        selectedOrders={selectedOrderObjects}
+        onBack={() => setShowCreateTrip(false)}
+        onSuccess={handleTripCreated}
+      />
+    );
+  }
 
   if (loading) {
     return (
@@ -134,7 +167,7 @@ export function PendingOrdersView() {
               <Button size="sm" onClick={clearSelection} variant="outline">
                 ยกเลิกการเลือก
               </Button>
-              <Button size="sm">
+              <Button size="sm" onClick={handleCreateTrip}>
                 สร้างทริปจากออเดอร์ที่เลือก
               </Button>
             </div>

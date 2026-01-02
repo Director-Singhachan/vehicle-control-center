@@ -59,6 +59,7 @@ import { CustomerTiersManagementView } from './views/CustomerTiersManagementView
 import { ProductTierPricingView } from './views/ProductTierPricingView';
 import { CreateOrderView } from './views/CreateOrderView';
 import { PendingOrdersView } from './views/PendingOrdersView';
+import { SalesTripsView } from './views/SalesTripsView';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { useAuth, usePendingTickets } from './hooks';
 import { ticketService, type TicketWithRelations } from './services/ticketService';
@@ -362,7 +363,7 @@ const AppContent = () => {
       setIsCommissionOpen(false);
     }
 
-    if (activeTab === 'create-order' || activeTab === 'pending-orders') {
+    if (activeTab === 'create-order' || activeTab === 'pending-orders' || activeTab === 'sales-trips') {
       setIsOrdersOpen(true);
     } else {
       setIsOrdersOpen(false);
@@ -854,7 +855,7 @@ const AppContent = () => {
                 <SidebarItem
                   icon={ShoppingCart}
                   label={isSidebarOpen ? "ออเดอร์" : ""}
-                  active={activeTab === 'create-order' || activeTab === 'pending-orders'}
+                  active={activeTab === 'create-order' || activeTab === 'pending-orders' || activeTab === 'sales-trips'}
                   onClick={() => {
                     setIsOrdersOpen(!isOrdersOpen);
                   }}
@@ -876,6 +877,12 @@ const AppContent = () => {
                       label="ออเดอร์รอจัดทริป"
                       active={activeTab === 'pending-orders'}
                       onClick={() => setActiveTab('pending-orders')}
+                      isCollapsed={false}
+                    />
+                    <SubSidebarItem
+                      label="ทริปของฉัน"
+                      active={activeTab === 'sales-trips'}
+                      onClick={() => setActiveTab('sales-trips')}
                       isCollapsed={false}
                     />
                   </div>
@@ -915,6 +922,17 @@ const AppContent = () => {
                         active={activeTab === 'pending-orders'}
                         onClick={() => {
                           setActiveTab('pending-orders');
+                          setIsOrdersHovered(false);
+                          setIsOrdersOpen(true);
+                        }}
+                        isCollapsed={false}
+                        isFlyout={true}
+                      />
+                      <SubSidebarItem
+                        label="ทริปของฉัน"
+                        active={activeTab === 'sales-trips'}
+                        onClick={() => {
+                          setActiveTab('sales-trips');
                           setIsOrdersHovered(false);
                           setIsOrdersOpen(true);
                         }}
@@ -1725,6 +1743,8 @@ const AppContent = () => {
             <CreateOrderView />
           ) : activeTab === 'pending-orders' ? (
             <PendingOrdersView />
+          ) : activeTab === 'sales-trips' ? (
+            <SalesTripsView />
           ) : (
             <div className="flex flex-col items-center justify-center h-[60vh] text-slate-400">
               <Wrench size={48} className="mb-4 opacity-50" />
