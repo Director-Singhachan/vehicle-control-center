@@ -25,6 +25,8 @@ import {
   Settings as SettingsIcon,
   ChevronDown,
   ChevronRight,
+  ShoppingCart,
+  ClipboardList,
 } from 'lucide-react';
 import { DashboardView } from './views/DashboardView';
 import { ProfileView } from './views/ProfileView';
@@ -55,6 +57,8 @@ import { ProductsManagementView } from './views/ProductsManagementView';
 import { WarehouseManagementView } from './views/WarehouseManagementView';
 import { CustomerTiersManagementView } from './views/CustomerTiersManagementView';
 import { ProductTierPricingView } from './views/ProductTierPricingView';
+import { CreateOrderView } from './views/CreateOrderView';
+import { PendingOrdersView } from './views/PendingOrdersView';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { useAuth, usePendingTickets } from './hooks';
 import { ticketService, type TicketWithRelations } from './services/ticketService';
@@ -200,6 +204,10 @@ const AppContent = () => {
   const [isCommissionOpen, setIsCommissionOpen] = useState(false);
   const [isCommissionHovered, setIsCommissionHovered] = useState(false);
   const commissionMenuRef = React.useRef<HTMLDivElement>(null);
+  
+  const [isOrdersOpen, setIsOrdersOpen] = useState(false);
+  const [isOrdersHovered, setIsOrdersHovered] = useState(false);
+  const ordersMenuRef = React.useRef<HTMLDivElement>(null);
   const commissionTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
   const [flyoutPosition, setFlyoutPosition] = useState({ top: 0, left: 0 });
 
@@ -257,6 +265,51 @@ const AppContent = () => {
     setIsCommissionHovered(false);
   };
 
+  // Orders menu handlers
+  const [ordersFlyoutPosition, setOrdersFlyoutPosition] = useState({ top: 0, left: 0 });
+  const ordersTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
+  
+  const handleOrdersMouseEnter = (e: React.MouseEvent) => {
+    if (ordersTimeoutRef.current) {
+      clearTimeout(ordersTimeoutRef.current);
+      ordersTimeoutRef.current = null;
+    }
+    
+    const rect = e.currentTarget.getBoundingClientRect();
+    const viewportHeight = window.innerHeight;
+    const flyoutEstimatedHeight = 150;
+    
+    let top = rect.top;
+    if (top + flyoutEstimatedHeight > viewportHeight - 10) {
+      top = Math.max(10, viewportHeight - flyoutEstimatedHeight - 10);
+    }
+    
+    setOrdersFlyoutPosition({
+      top,
+      left: rect.right + 8,
+    });
+    
+    setIsOrdersHovered(true);
+  };
+
+  const handleOrdersMouseLeave = () => {
+    ordersTimeoutRef.current = setTimeout(() => {
+      setIsOrdersHovered(false);
+    }, 150);
+  };
+
+  const handleOrdersFlyoutMouseEnter = () => {
+    if (ordersTimeoutRef.current) {
+      clearTimeout(ordersTimeoutRef.current);
+      ordersTimeoutRef.current = null;
+    }
+    setIsOrdersHovered(true);
+  };
+
+  const handleOrdersFlyoutMouseLeave = () => {
+    setIsOrdersHovered(false);
+  };
+
   // Settings menu handlers
   const handleSettingsMouseEnter = (e: React.MouseEvent) => {
     if (settingsTimeoutRef.current) {
@@ -307,6 +360,12 @@ const AppContent = () => {
     } else {
       // Close commission menu when navigating to other tabs
       setIsCommissionOpen(false);
+    }
+
+    if (activeTab === 'create-order' || activeTab === 'pending-orders') {
+      setIsOrdersOpen(true);
+    } else {
+      setIsOrdersOpen(false);
     }
   }, [activeTab]);
 
@@ -784,6 +843,88 @@ const AppContent = () => {
                   isCollapsed={!isSidebarOpen}
                 />
               </div>
+
+              {/* Orders Menu with Submenu */}
+              <div 
+                ref={ordersMenuRef}
+                className="relative group/menu"
+                onMouseEnter={handleOrdersMouseEnter}
+                onMouseLeave={handleOrdersMouseLeave}
+              >
+                <SidebarItem
+                  icon={ShoppingCart}
+                  label={isSidebarOpen ? "ออเดอร์" : ""}
+                  active={activeTab === 'create-order' || activeTab === 'pending-orders'}
+                  onClick={() => {
+                    setIsOrdersOpen(!isOrdersOpen);
+                  }}
+                  isCollapsed={!isSidebarOpen}
+                  hasSubmenu={true}
+                  isOpen={isOrdersOpen || isOrdersHovered}
+                />
+
+                {/* Accordion Style Submenu */}
+                {isOrdersOpen && isSidebarOpen && !isOrdersHovered && (
+                  <div className="mt-1 space-y-1 ml-4 border-l-2 border-slate-100 dark:border-slate-800 animate-in fade-in slide-in-from-top-1 duration-200">
+                    <SubSidebarItem
+                      label="สร้างออเดอร์"
+                      active={activeTab === 'create-order'}
+                      onClick={() => setActiveTab('create-order')}
+                      isCollapsed={false}
+                    />
+                    <SubSidebarItem
+                      label="ออเดอร์รอจัดทริป"
+                      active={activeTab === 'pending-orders'}
+                      onClick={() => setActiveTab('pending-orders')}
+                      isCollapsed={false}
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* Flyout Submenu for Orders */}
+              {isOrdersHovered && (
+                <div 
+                  className="fixed z-[100]"
+                  style={{
+                    top: `${ordersFlyoutPosition.top}px`,
+                    left: `${ordersFlyoutPosition.left}px`,
+                  }}
+                  onMouseEnter={handleOrdersFlyoutMouseEnter}
+                  onMouseLeave={handleOrdersFlyoutMouseLeave}
+                >
+                  <div className="bg-white dark:bg-charcoal-900 border border-slate-200 dark:border-slate-700 rounded-xl shadow-2xl min-w-[220px] py-2 overflow-hidden ring-1 ring-black/5 animate-in fade-in slide-in-from-left-2 duration-150">
+                    <div className="px-4 pb-2 mb-2 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                      <p className="text-[10px] font-black text-blue-500 uppercase tracking-widest">เมนูออเดอร์</p>
+                      <div className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"></div>
+                    </div>
+                    <div className="px-2 space-y-1">
+                      <SubSidebarItem
+                        label="สร้างออเดอร์"
+                        active={activeTab === 'create-order'}
+                        onClick={() => {
+                          setActiveTab('create-order');
+                          setIsOrdersHovered(false);
+                          setIsOrdersOpen(true);
+                        }}
+                        isCollapsed={false}
+                        isFlyout={true}
+                      />
+                      <SubSidebarItem
+                        label="ออเดอร์รอจัดทริป"
+                        active={activeTab === 'pending-orders'}
+                        onClick={() => {
+                          setActiveTab('pending-orders');
+                          setIsOrdersHovered(false);
+                          setIsOrdersOpen(true);
+                        }}
+                        isCollapsed={false}
+                        isFlyout={true}
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
             </>
           )}
         </div>
@@ -1580,6 +1721,10 @@ const AppContent = () => {
             <CustomerTiersManagementView />
           ) : activeTab === 'product-pricing' ? (
             <ProductTierPricingView />
+          ) : activeTab === 'create-order' ? (
+            <CreateOrderView />
+          ) : activeTab === 'pending-orders' ? (
+            <PendingOrdersView />
           ) : (
             <div className="flex flex-col items-center justify-center h-[60vh] text-slate-400">
               <Wrench size={48} className="mb-4 opacity-50" />
