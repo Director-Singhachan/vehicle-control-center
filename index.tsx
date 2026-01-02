@@ -53,6 +53,8 @@ import { CommissionRatesView } from './views/CommissionRatesView';
 import { StockDashboardView } from './views/StockDashboardView';
 import { ProductsManagementView } from './views/ProductsManagementView';
 import { WarehouseManagementView } from './views/WarehouseManagementView';
+import { CustomerTiersManagementView } from './views/CustomerTiersManagementView';
+import { ProductTierPricingView } from './views/ProductTierPricingView';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { useAuth, usePendingTickets } from './hooks';
 import { ticketService, type TicketWithRelations } from './services/ticketService';
@@ -758,6 +760,25 @@ const AppContent = () => {
                   onClick={() => {
                     if (activeTab !== 'stock-dashboard') {
                       setActiveTab('stock-dashboard');
+                    }
+                  }}
+                  isCollapsed={!isSidebarOpen}
+                />
+              </div>
+            </>
+          )}
+
+          {/* Pricing Management Section */}
+          {!isDriver && (
+            <>
+              <div className="relative group/menu">
+                <SidebarItem
+                  icon={DollarSign}
+                  label={isSidebarOpen ? "จัดการราคา" : ""}
+                  active={activeTab === 'customer-tiers' || activeTab === 'product-pricing'}
+                  onClick={() => {
+                    if (activeTab !== 'customer-tiers') {
+                      setActiveTab('customer-tiers');
                     }
                   }}
                   isCollapsed={!isSidebarOpen}
@@ -1555,6 +1576,10 @@ const AppContent = () => {
             <ProductsManagementView />
           ) : activeTab === 'warehouses' ? (
             <WarehouseManagementView />
+          ) : activeTab === 'customer-tiers' ? (
+            <CustomerTiersManagementView />
+          ) : activeTab === 'product-pricing' ? (
+            <ProductTierPricingView />
           ) : (
             <div className="flex flex-col items-center justify-center h-[60vh] text-slate-400">
               <Wrench size={48} className="mb-4 opacity-50" />
