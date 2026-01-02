@@ -209,6 +209,10 @@ const AppContent = () => {
   const [isOrdersOpen, setIsOrdersOpen] = useState(false);
   const [isOrdersHovered, setIsOrdersHovered] = useState(false);
   const ordersMenuRef = React.useRef<HTMLDivElement>(null);
+
+  const [isStockOpen, setIsStockOpen] = useState(false);
+  const [isStockHovered, setIsStockHovered] = useState(false);
+  const stockMenuRef = React.useRef<HTMLDivElement>(null);
   const commissionTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
   const [flyoutPosition, setFlyoutPosition] = useState({ top: 0, left: 0 });
 
@@ -311,6 +315,51 @@ const AppContent = () => {
     setIsOrdersHovered(false);
   };
 
+  // Stock menu handlers
+  const [stockFlyoutPosition, setStockFlyoutPosition] = useState({ top: 0, left: 0 });
+  const stockTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
+  
+  const handleStockMouseEnter = (e: React.MouseEvent) => {
+    if (stockTimeoutRef.current) {
+      clearTimeout(stockTimeoutRef.current);
+      stockTimeoutRef.current = null;
+    }
+    
+    const rect = e.currentTarget.getBoundingClientRect();
+    const viewportHeight = window.innerHeight;
+    const flyoutEstimatedHeight = 200;
+    
+    let top = rect.top;
+    if (top + flyoutEstimatedHeight > viewportHeight - 10) {
+      top = Math.max(10, viewportHeight - flyoutEstimatedHeight - 10);
+    }
+    
+    setStockFlyoutPosition({
+      top,
+      left: rect.right + 8,
+    });
+    
+    setIsStockHovered(true);
+  };
+
+  const handleStockMouseLeave = () => {
+    stockTimeoutRef.current = setTimeout(() => {
+      setIsStockHovered(false);
+    }, 150);
+  };
+
+  const handleStockFlyoutMouseEnter = () => {
+    if (stockTimeoutRef.current) {
+      clearTimeout(stockTimeoutRef.current);
+      stockTimeoutRef.current = null;
+    }
+    setIsStockHovered(true);
+  };
+
+  const handleStockFlyoutMouseLeave = () => {
+    setIsStockHovered(false);
+  };
+
   // Settings menu handlers
   const handleSettingsMouseEnter = (e: React.MouseEvent) => {
     if (settingsTimeoutRef.current) {
@@ -367,6 +416,12 @@ const AppContent = () => {
       setIsOrdersOpen(true);
     } else {
       setIsOrdersOpen(false);
+    }
+
+    if (activeTab === 'stock-dashboard' || activeTab === 'products' || activeTab === 'warehouses') {
+      setIsStockOpen(true);
+    } else {
+      setIsStockOpen(false);
     }
   }, [activeTab]);
 
@@ -791,40 +846,106 @@ const AppContent = () => {
             </>
           )}
 
-          {/* Stock Management Section */}
+          {/* Stock Management Section with Submenu */}
           {!isDriver && (
             <>
               <div 
+                ref={stockMenuRef}
                 className="relative group/menu"
-                onMouseEnter={(e) => {
-                  const rect = e.currentTarget.getBoundingClientRect();
-                  const viewportHeight = window.innerHeight;
-                  const flyoutEstimatedHeight = 250;
-                  let topPosition = rect.top;
-                  if (rect.top + flyoutEstimatedHeight > viewportHeight) {
-                    topPosition = Math.max(10, viewportHeight - flyoutEstimatedHeight - 10);
-                  }
-                  setFlyoutPosition({ top: topPosition, left: rect.right + 8 });
-                  setIsCommissionHovered(true);
-                }}
-                onMouseLeave={() => {
-                  commissionTimeoutRef.current = setTimeout(() => {
-                    setIsCommissionHovered(false);
-                  }, 150);
-                }}
+                onMouseEnter={handleStockMouseEnter}
+                onMouseLeave={handleStockMouseLeave}
               >
                 <SidebarItem
                   icon={Package}
                   label={isSidebarOpen ? "คลังสินค้า" : ""}
                   active={activeTab === 'stock-dashboard' || activeTab === 'products' || activeTab === 'warehouses'}
                   onClick={() => {
-                    if (activeTab !== 'stock-dashboard') {
-                      setActiveTab('stock-dashboard');
-                    }
+                    setIsStockOpen(!isStockOpen);
                   }}
                   isCollapsed={!isSidebarOpen}
+                  hasSubmenu={true}
+                  isOpen={isStockOpen || isStockHovered}
                 />
+
+                {/* Accordion Style Submenu */}
+                {isStockOpen && isSidebarOpen && !isStockHovered && (
+                  <div className="mt-1 space-y-1 ml-4 border-l-2 border-slate-100 dark:border-slate-800 animate-in fade-in slide-in-from-top-1 duration-200">
+                    <SubSidebarItem
+                      label="Stock Dashboard"
+                      active={activeTab === 'stock-dashboard'}
+                      onClick={() => setActiveTab('stock-dashboard')}
+                      isCollapsed={false}
+                    />
+                    <SubSidebarItem
+                      label="จัดการสินค้า"
+                      active={activeTab === 'products'}
+                      onClick={() => setActiveTab('products')}
+                      isCollapsed={false}
+                    />
+                    <SubSidebarItem
+                      label="จัดการคลัง"
+                      active={activeTab === 'warehouses'}
+                      onClick={() => setActiveTab('warehouses')}
+                      isCollapsed={false}
+                    />
+                  </div>
+                )}
               </div>
+
+              {/* Flyout Submenu for Stock */}
+              {isStockHovered && (
+                <div 
+                  className="fixed z-[100]"
+                  style={{
+                    top: `${stockFlyoutPosition.top}px`,
+                    left: `${stockFlyoutPosition.left}px`,
+                  }}
+                  onMouseEnter={handleStockFlyoutMouseEnter}
+                  onMouseLeave={handleStockFlyoutMouseLeave}
+                >
+                  <div className="bg-white dark:bg-charcoal-900 border border-slate-200 dark:border-slate-700 rounded-xl shadow-2xl min-w-[220px] py-2 overflow-hidden ring-1 ring-black/5 animate-in fade-in slide-in-from-left-2 duration-150">
+                    <div className="px-4 pb-2 mb-2 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                      <p className="text-[10px] font-black text-blue-500 uppercase tracking-widest">เมนูคลังสินค้า</p>
+                      <div className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"></div>
+                    </div>
+                    <div className="px-2 space-y-1">
+                      <SubSidebarItem
+                        label="Stock Dashboard"
+                        active={activeTab === 'stock-dashboard'}
+                        onClick={() => {
+                          setActiveTab('stock-dashboard');
+                          setIsStockHovered(false);
+                          setIsStockOpen(true);
+                        }}
+                        isCollapsed={false}
+                        isFlyout={true}
+                      />
+                      <SubSidebarItem
+                        label="จัดการสินค้า"
+                        active={activeTab === 'products'}
+                        onClick={() => {
+                          setActiveTab('products');
+                          setIsStockHovered(false);
+                          setIsStockOpen(true);
+                        }}
+                        isCollapsed={false}
+                        isFlyout={true}
+                      />
+                      <SubSidebarItem
+                        label="จัดการคลัง"
+                        active={activeTab === 'warehouses'}
+                        onClick={() => {
+                          setActiveTab('warehouses');
+                          setIsStockHovered(false);
+                          setIsStockOpen(true);
+                        }}
+                        isCollapsed={false}
+                        isFlyout={true}
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
             </>
           )}
 
