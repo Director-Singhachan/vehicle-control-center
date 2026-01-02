@@ -50,6 +50,9 @@ import { StoreDeliveryDetailView } from './views/StoreDeliveryDetailView';
 import { ServiceStaffManagementView } from './views/ServiceStaffManagementView';
 import { CommissionManagementView } from './views/CommissionManagementView';
 import { CommissionRatesView } from './views/CommissionRatesView';
+import { StockDashboardView } from './views/StockDashboardView';
+import { ProductsManagementView } from './views/ProductsManagementView';
+import { WarehouseManagementView } from './views/WarehouseManagementView';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { useAuth, usePendingTickets } from './hooks';
 import { ticketService, type TicketWithRelations } from './services/ticketService';
@@ -723,6 +726,43 @@ const AppContent = () => {
                   </div>
                 </div>
               )}
+            </>
+          )}
+
+          {/* Stock Management Section */}
+          {!isDriver && (
+            <>
+              <div 
+                className="relative group/menu"
+                onMouseEnter={(e) => {
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  const viewportHeight = window.innerHeight;
+                  const flyoutEstimatedHeight = 250;
+                  let topPosition = rect.top;
+                  if (rect.top + flyoutEstimatedHeight > viewportHeight) {
+                    topPosition = Math.max(10, viewportHeight - flyoutEstimatedHeight - 10);
+                  }
+                  setFlyoutPosition({ top: topPosition, left: rect.right + 8 });
+                  setIsCommissionHovered(true);
+                }}
+                onMouseLeave={() => {
+                  commissionTimeoutRef.current = setTimeout(() => {
+                    setIsCommissionHovered(false);
+                  }, 150);
+                }}
+              >
+                <SidebarItem
+                  icon={Package}
+                  label={isSidebarOpen ? "คลังสินค้า" : ""}
+                  active={activeTab === 'stock-dashboard' || activeTab === 'products' || activeTab === 'warehouses'}
+                  onClick={() => {
+                    if (activeTab !== 'stock-dashboard') {
+                      setActiveTab('stock-dashboard');
+                    }
+                  }}
+                  isCollapsed={!isSidebarOpen}
+                />
+              </div>
             </>
           )}
         </div>
@@ -1509,6 +1549,12 @@ const AppContent = () => {
             <CommissionManagementView />
           ) : activeTab === 'commission-rates' ? (
             <CommissionRatesView />
+          ) : activeTab === 'stock-dashboard' ? (
+            <StockDashboardView />
+          ) : activeTab === 'products' ? (
+            <ProductsManagementView />
+          ) : activeTab === 'warehouses' ? (
+            <WarehouseManagementView />
           ) : (
             <div className="flex flex-col items-center justify-center h-[60vh] text-slate-400">
               <Wrench size={48} className="mb-4 opacity-50" />
