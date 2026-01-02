@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { ArrowLeft, Truck, Users, MapPin, Calendar, Package, Save, Plus, GripVertical, X } from 'lucide-react';
 import { useVehicles } from '../hooks/useVehicles';
-import { useProfiles } from '../hooks/useProfiles';
+import { profileService } from '../services/profileService';
 import { deliveryTripService } from '../services/deliveryTripService';
 import { ordersService, orderItemsService } from '../services/ordersService';
 import { Card } from '../components/ui/Card';
@@ -34,8 +34,9 @@ interface StoreDelivery {
 export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: CreateTripFromOrdersViewProps) {
   const { user } = useAuth();
   const { vehicles, loading: vehiclesLoading } = useVehicles();
-  const { profiles: drivers, loading: driversLoading } = useProfiles({ role: 'driver' });
 
+  const [drivers, setDrivers] = useState<Array<{ id: string; full_name: string }>>([]);
+  const [driversLoading, setDriversLoading] = useState(false);
   const [selectedVehicleId, setSelectedVehicleId] = useState('');
   const [selectedDriverId, setSelectedDriverId] = useState('');
   const [tripDate, setTripDate] = useState(new Date().toISOString().split('T')[0]);
@@ -59,6 +60,25 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
       sequence: index + 1,
     }));
   });
+
+  // Fetch drivers list
+  useEffect(() => {
+    const fetchDrivers = async () => {
+      try {
+        setDriversLoading(true);
+        const profiles = await profileService.getAll();
+        const driverProfiles = profiles.filter(p => p.role === 'driver');
+        setDrivers(driverProfiles.map(p => ({ id: p.id, full_name: p.full_name || '' })));
+      } catch (err) {
+        console.error('Error fetching drivers:', err);
+        setDrivers([]);
+      } finally {
+        setDriversLoading(false);
+      }
+    };
+
+    fetchDrivers();
+  }, []);
 
   // Fetch order items for all orders
   useEffect(() => {
