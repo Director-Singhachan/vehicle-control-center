@@ -85,12 +85,25 @@ export function CreateOrderView() {
   const filteredProducts = useMemo(() => {
     if (!productSearch) return [];
     
-    return products
-      .filter((product: any) => 
-        product.product_name?.toLowerCase().includes(productSearch.toLowerCase()) ||
-        product.product_code?.toLowerCase().includes(productSearch.toLowerCase())
-      )
-      .slice(0, 10);
+    console.log('[CreateOrderView] Filtering products:', {
+      totalProducts: products?.length || 0,
+      searchQuery: productSearch,
+      sampleProducts: products?.slice(0, 3).map((p: any) => ({ 
+        code: p.product_code, 
+        name: p.product_name 
+      }))
+    });
+    
+    if (!products || products.length === 0) return [];
+    
+    const filtered = products.filter((product: any) => 
+      product.product_name?.toLowerCase().includes(productSearch.toLowerCase()) ||
+      product.product_code?.toLowerCase().includes(productSearch.toLowerCase())
+    ).slice(0, 10);
+    
+    console.log('[CreateOrderView] Filtered results:', filtered.length);
+    
+    return filtered;
   }, [products, productSearch]);
 
   // เพิ่มสินค้า
@@ -299,30 +312,57 @@ export function CreateOrderView() {
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                 <input
                   type="text"
-                  placeholder="ค้นหาสินค้า..."
+                  placeholder="ค้นหาสินค้า (ชื่อหรือรหัส)..."
                   value={productSearch}
                   onChange={(e) => setProductSearch(e.target.value)}
                   className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500"
                   disabled={!selectedStore}
                 />
 
-                {filteredProducts.length > 0 && productSearch && (
-                  <div className="absolute z-10 w-full mt-2 bg-white border border-gray-200 rounded-xl shadow-lg max-h-60 overflow-y-auto">
-                    {filteredProducts.map((product: any) => (
-                      <button
-                        key={product.id}
-                        onClick={() => handleAddProduct(product)}
-                        className="w-full p-4 text-left hover:bg-gray-50 border-b border-gray-100 last:border-b-0 flex items-center justify-between"
-                      >
-                        <div>
-                          <p className="font-medium text-gray-900">{product.product_name}</p>
-                          <p className="text-sm text-gray-500">{product.product_code}</p>
-                        </div>
-                        <p className="text-sm font-semibold text-blue-600">
-                          {new Intl.NumberFormat('th-TH').format(product.base_price)} ฿
+                {/* Loading indicator */}
+                {productsLoading && productSearch && (
+                  <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                    <LoadingSpinner size={20} />
+                  </div>
+                )}
+
+                {/* Show results if found */}
+                {productSearch && !productsLoading && (
+                  <>
+                    {filteredProducts.length > 0 ? (
+                      <div className="absolute z-10 w-full mt-2 bg-white border border-gray-200 rounded-xl shadow-lg max-h-60 overflow-y-auto">
+                        {filteredProducts.map((product: any) => (
+                          <button
+                            key={product.id}
+                            onClick={() => handleAddProduct(product)}
+                            className="w-full p-4 text-left hover:bg-gray-50 border-b border-gray-100 last:border-b-0 flex items-center justify-between"
+                          >
+                            <div>
+                              <p className="font-medium text-gray-900">{product.product_name}</p>
+                              <p className="text-sm text-gray-500">{product.product_code}</p>
+                            </div>
+                            <p className="text-sm font-semibold text-blue-600">
+                              {new Intl.NumberFormat('th-TH').format(product.base_price || 0)} ฿
+                            </p>
+                          </button>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="absolute z-10 w-full mt-2 bg-white border border-gray-200 rounded-xl shadow-lg p-4">
+                        <p className="text-sm text-gray-500 text-center">
+                          {products && products.length > 0 
+                            ? `ไม่พบสินค้าที่ค้นหา "${productSearch}"`
+                            : 'ยังไม่มีข้อมูลสินค้าในระบบ กรุณาเพิ่มสินค้าก่อน'}
                         </p>
-                      </button>
-                    ))}
+                      </div>
+                    )}
+                  </>
+                )}
+
+                {/* Debug info - remove in production */}
+                {productSearch && !productsLoading && (
+                  <div className="mt-2 text-xs text-gray-400">
+                    ข้อมูลสินค้าทั้งหมด: {products?.length || 0} รายการ
                   </div>
                 )}
               </div>
