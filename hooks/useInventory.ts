@@ -24,16 +24,49 @@ export function useProductCategories() {
   const [error, setError] = useState<Error | null>(null);
 
   const fetchCategories = async () => {
+    setLoading(true);
+    let loaded = false;
     try {
-      setLoading(true);
       const data = await productCategoryService.getAll();
-      setCategories(data);
-      setError(null);
+      if (data && data.length > 0) {
+        setCategories(data as any);
+        setError(null);
+        loaded = true;
+      }
     } catch (err) {
-      setError(err as Error);
-    } finally {
-      setLoading(false);
+      // will fallback below
+      console.warn('[useProductCategories] primary categories fetch failed, will fallback from products', err);
     }
+
+    // Fallback: derive distinct category from products table (for env without product_categories)
+    if (!loaded) {
+      try {
+        const products = await productService.getAll();
+        const unique = Array.from(
+          new Set(
+            (products || [])
+              .map((p: any) => p.category || p.category_id)
+              .filter(Boolean)
+          )
+        );
+
+        const derived = unique.map((cat: any) => ({
+          id: String(cat),
+          name: String(cat),
+          is_active: true,
+          created_at: null,
+          updated_at: null,
+        }));
+
+        setCategories(derived as any);
+        setError(null);
+        loaded = true;
+      } catch (fallbackErr) {
+        setError(fallbackErr as Error);
+      }
+    }
+
+    setLoading(false);
   };
 
   useEffect(() => {
@@ -371,10 +404,10 @@ export function useInventoryStats() {
         ]);
 
         const totalProducts = inventoryData.length;
-        const totalValue = inventoryData.reduce(
-          (sum, item) => sum + (item.quantity * item.price_per_unit),
-          0
-        );
+        const totalValue = inventoryData.reduce((sum, item) => {
+          const price = item.base_price ?? item.price_per_unit ?? 0;
+          return sum + item.quantity * price;
+        }, 0);
         const lowStockCount = inventoryData.filter(
           item => item.stock_status === 'low_stock'
         ).length;

@@ -24,13 +24,16 @@ export function StockDashboardView() {
           itemCount: 0,
         };
       }
-      acc[item.warehouse_id].totalValue += item.quantity * item.price_per_unit;
+      const price = item.base_price ?? item.price_per_unit ?? 0;
+      acc[item.warehouse_id].totalValue += item.quantity * price;
       acc[item.warehouse_id].itemCount += 1;
       return acc;
     }, {} as Record<string, any>);
 
     return Object.values(grouped);
   }, [inventory]);
+
+  const safeValue = (val: number | null | undefined) => (isFinite(val || 0) ? val || 0 : 0);
 
   // สินค้าที่มีการเคลื่อนไหวสูง (ตัวอย่าง - ควรดึงจากข้อมูลจริง)
   const topProducts = useMemo(() => {
@@ -259,7 +262,7 @@ export function StockDashboardView() {
                       <span className="text-sm text-gray-500 ml-1">{item.product_unit}</span>
                     </td>
                     <td className="py-4 px-4 text-right font-medium text-gray-900">
-                      {new Intl.NumberFormat('th-TH').format(item.quantity * item.price_per_unit)} ฿
+                      {new Intl.NumberFormat('th-TH').format(item.quantity * (item.base_price ?? item.price_per_unit ?? 0))} ฿
                     </td>
                     <td className="py-4 px-4 text-center">
                       <Badge

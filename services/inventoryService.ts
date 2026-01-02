@@ -21,14 +21,42 @@ export const productCategoryService = {
    * ดึงหมวดหมู่สินค้าทั้งหมด
    */
   async getAll() {
-    const { data, error } = await supabase
-      .from('product_categories')
-      .select('*')
-      .eq('is_active', true)
-      .order('name');
+    try {
+      const { data, error } = await supabase
+        .from('product_categories')
+        .select('*')
+        .eq('is_active', true)
+        .order('name');
 
-    if (error) throw error;
-    return data as ProductCategory[];
+      if (error) throw error;
+      return (data || []) as ProductCategory[];
+    } catch (err) {
+      // ถ้าไม่มีตาราง product_categories (404) หรือ error อื่น ให้ fallback ไปดึงหมวดหมู่จาก products (distinct)
+      console.warn('[productCategoryService.getAll] fallback to products distinct categories', err);
+      const { data: productCats, error: productError } = await supabase
+        .from('products')
+        .select('category')
+        .or('is_active.is.null,is_active.eq.true')
+        .order('category');
+
+      if (productError) {
+        console.error('[productCategoryService.getAll] fallback products error', productError);
+        return [];
+      }
+
+      const unique = Array.from(
+        new Set((productCats || []).map((p: any) => p.category).filter(Boolean))
+      );
+
+      return unique.map((cat) => ({
+        // ใช้ชื่อหมวดหมู่เป็น id ชั่วคราวเพื่อใช้กรองใน UI
+        id: cat,
+        name: cat,
+        is_active: true,
+        created_at: null,
+        updated_at: null,
+      })) as unknown as ProductCategory[];
+    }
   },
 
   /**
@@ -98,12 +126,10 @@ export const productService = {
   async getAll() {
     const { data, error } = await supabase
       .from('products')
-      .select(`
-        *,
-        category:product_categories(*)
-      `)
-      .eq('is_active', true)
-      .order('name');
+      .select('*')
+      // บางข้อมูลเก่าอาจไม่มี is_active ให้ดึงทั้งที่เป็น true หรือค่าว่าง
+      .or('is_active.is.null,is_active.eq.true')
+      .order('product_name');
 
     if (error) throw error;
     return data;
@@ -115,10 +141,7 @@ export const productService = {
   async getById(id: string) {
     const { data, error } = await supabase
       .from('products')
-      .select(`
-        *,
-        category:product_categories(*)
-      `)
+      .select('*')
       .eq('id', id)
       .single();
 
@@ -132,10 +155,7 @@ export const productService = {
   async search(query: string) {
     const { data, error } = await supabase
       .from('products')
-      .select(`
-        *,
-        category:product_categories(*)
-      `)
+      .select('*')
       .or(`name.ilike.%${query}%,sku.ilike.%${query}%`)
       .eq('is_active', true)
       .limit(20);
@@ -150,10 +170,7 @@ export const productService = {
   async getByCategory(categoryId: string) {
     const { data, error } = await supabase
       .from('products')
-      .select(`
-        *,
-        category:product_categories(*)
-      `)
+      .select('*')
       .eq('category_id', categoryId)
       .eq('is_active', true)
       .order('name');
@@ -169,10 +186,7 @@ export const productService = {
     const { data, error } = await supabase
       .from('products')
       .insert(product)
-      .select(`
-        *,
-        category:product_categories(*)
-      `)
+      .select('*')
       .single();
 
     if (error) throw error;
@@ -187,10 +201,7 @@ export const productService = {
       .from('products')
       .update(updates)
       .eq('id', id)
-      .select(`
-        *,
-        category:product_categories(*)
-      `)
+      .select('*')
       .single();
 
     if (error) throw error;
@@ -389,7 +400,7 @@ export const inventoryService = {
       .single();
 
     if (existing) {
-      // อัพเดท
+      // อัพเดท (ไม่แตะ available_quantity หากเป็น generated/trigger)
       const { data, error } = await supabase
         .from('inventory')
         .update({
@@ -405,14 +416,17 @@ export const inventoryService = {
       if (error) throw error;
       return data as Inventory;
     } else {
-      // สร้างใหม่
+      // สร้างใหม่ (ไม่กำหนด available_quantity หากคอลัมน์เป็น generated/trigger)
       const { data, error } = await supabase
         .from('inventory')
         .insert({
           warehouse_id: warehouseId,
           product_id: productId,
           quantity,
+          reserved_quantity: 0,
           updated_by: userId,
+          last_updated_at: new Date().toISOString(),
+          created_at: new Date().toISOString(),
         })
         .select()
         .single();

@@ -405,24 +405,10 @@ const AppContent = () => {
 
   // Open commission menu if one of its sub-items is active
   useEffect(() => {
-    if (activeTab === 'commission' || activeTab === 'commission-rates') {
-      setIsCommissionOpen(true);
-    } else {
-      // Close commission menu when navigating to other tabs
-      setIsCommissionOpen(false);
-    }
-
-    if (activeTab === 'create-order' || activeTab === 'pending-orders' || activeTab === 'sales-trips') {
-      setIsOrdersOpen(true);
-    } else {
-      setIsOrdersOpen(false);
-    }
-
-    if (activeTab === 'stock-dashboard' || activeTab === 'products' || activeTab === 'warehouses') {
-      setIsStockOpen(true);
-    } else {
-      setIsStockOpen(false);
-    }
+    // ปิด accordion ย่อยทั้งหมด ใช้ hover flyout อย่างเดียว
+    setIsCommissionOpen(false);
+    setIsOrdersOpen(false);
+    setIsStockOpen(false);
   }, [activeTab]);
 
   // Open settings menu if one of its sub-items is active
@@ -773,31 +759,14 @@ const AppContent = () => {
                   label={isSidebarOpen ? "ค่าคอมมิชชั่น" : ""}
                   active={activeTab === 'commission' || activeTab === 'commission-rates'}
                   onClick={() => {
-                    // Toggle on click for mobile or persistent view
-                    setIsCommissionOpen(!isCommissionOpen);
+                    if (activeTab !== 'commission') {
+                      setActiveTab('commission');
+                    }
                   }}
                   isCollapsed={!isSidebarOpen}
                   hasSubmenu={true}
-                  isOpen={isCommissionOpen || isCommissionHovered}
+                  isOpen={isCommissionHovered}
                 />
-
-                {/* Accordion Style Submenu - Only when sidebar is open and clicked */}
-                {isCommissionOpen && isSidebarOpen && !isCommissionHovered && (
-                  <div className="mt-1 space-y-1 ml-4 border-l-2 border-slate-100 dark:border-slate-800 animate-in fade-in slide-in-from-top-1 duration-200">
-                    <SubSidebarItem
-                      label="คำนวณค่าคอมฯ"
-                      active={activeTab === 'commission'}
-                      onClick={() => setActiveTab('commission')}
-                      isCollapsed={false}
-                    />
-                    <SubSidebarItem
-                      label="ตั้งค่าอัตราค่าคอมฯ"
-                      active={activeTab === 'commission-rates'}
-                      onClick={() => setActiveTab('commission-rates')}
-                      isCollapsed={false}
-                    />
-                  </div>
-                )}
               </div>
 
               {/* Flyout Submenu - Rendered using Portal (fixed position) */}
@@ -823,7 +792,6 @@ const AppContent = () => {
                         onClick={() => {
                           setActiveTab('commission');
                           setIsCommissionHovered(false);
-                          setIsCommissionOpen(true);
                         }}
                         isCollapsed={false}
                         isFlyout={true}
@@ -834,7 +802,6 @@ const AppContent = () => {
                         onClick={() => {
                           setActiveTab('commission-rates');
                           setIsCommissionHovered(false);
-                          setIsCommissionOpen(true);
                         }}
                         isCollapsed={false}
                         isFlyout={true}
@@ -860,36 +827,14 @@ const AppContent = () => {
                   label={isSidebarOpen ? "คลังสินค้า" : ""}
                   active={activeTab === 'stock-dashboard' || activeTab === 'products' || activeTab === 'warehouses'}
                   onClick={() => {
-                    setIsStockOpen(!isStockOpen);
+                    if (activeTab !== 'stock-dashboard') {
+                      setActiveTab('stock-dashboard');
+                    }
                   }}
                   isCollapsed={!isSidebarOpen}
                   hasSubmenu={true}
-                  isOpen={isStockOpen || isStockHovered}
+                  isOpen={isStockHovered}
                 />
-
-                {/* Accordion Style Submenu */}
-                {isStockOpen && isSidebarOpen && !isStockHovered && (
-                  <div className="mt-1 space-y-1 ml-4 border-l-2 border-slate-100 dark:border-slate-800 animate-in fade-in slide-in-from-top-1 duration-200">
-                    <SubSidebarItem
-                      label="Stock Dashboard"
-                      active={activeTab === 'stock-dashboard'}
-                      onClick={() => setActiveTab('stock-dashboard')}
-                      isCollapsed={false}
-                    />
-                    <SubSidebarItem
-                      label="จัดการสินค้า"
-                      active={activeTab === 'products'}
-                      onClick={() => setActiveTab('products')}
-                      isCollapsed={false}
-                    />
-                    <SubSidebarItem
-                      label="จัดการคลัง"
-                      active={activeTab === 'warehouses'}
-                      onClick={() => setActiveTab('warehouses')}
-                      isCollapsed={false}
-                    />
-                  </div>
-                )}
               </div>
 
               {/* Flyout Submenu for Stock */}
@@ -915,7 +860,6 @@ const AppContent = () => {
                         onClick={() => {
                           setActiveTab('stock-dashboard');
                           setIsStockHovered(false);
-                          setIsStockOpen(true);
                         }}
                         isCollapsed={false}
                         isFlyout={true}
@@ -926,7 +870,6 @@ const AppContent = () => {
                         onClick={() => {
                           setActiveTab('products');
                           setIsStockHovered(false);
-                          setIsStockOpen(true);
                         }}
                         isCollapsed={false}
                         isFlyout={true}
@@ -937,7 +880,6 @@ const AppContent = () => {
                         onClick={() => {
                           setActiveTab('warehouses');
                           setIsStockHovered(false);
-                          setIsStockOpen(true);
                         }}
                         isCollapsed={false}
                         isFlyout={true}
@@ -978,36 +920,14 @@ const AppContent = () => {
                   label={isSidebarOpen ? "ออเดอร์" : ""}
                   active={activeTab === 'create-order' || activeTab === 'pending-orders' || activeTab === 'sales-trips'}
                   onClick={() => {
-                    setIsOrdersOpen(!isOrdersOpen);
+                    if (activeTab !== 'create-order') {
+                      setActiveTab('create-order');
+                    }
                   }}
                   isCollapsed={!isSidebarOpen}
                   hasSubmenu={true}
-                  isOpen={isOrdersOpen || isOrdersHovered}
+                  isOpen={isOrdersHovered}
                 />
-
-                {/* Accordion Style Submenu */}
-                {isOrdersOpen && isSidebarOpen && !isOrdersHovered && (
-                  <div className="mt-1 space-y-1 ml-4 border-l-2 border-slate-100 dark:border-slate-800 animate-in fade-in slide-in-from-top-1 duration-200">
-                    <SubSidebarItem
-                      label="สร้างออเดอร์"
-                      active={activeTab === 'create-order'}
-                      onClick={() => setActiveTab('create-order')}
-                      isCollapsed={false}
-                    />
-                    <SubSidebarItem
-                      label="ออเดอร์รอจัดทริป"
-                      active={activeTab === 'pending-orders'}
-                      onClick={() => setActiveTab('pending-orders')}
-                      isCollapsed={false}
-                    />
-                    <SubSidebarItem
-                      label="ทริปของฉัน"
-                      active={activeTab === 'sales-trips'}
-                      onClick={() => setActiveTab('sales-trips')}
-                      isCollapsed={false}
-                    />
-                  </div>
-                )}
               </div>
 
               {/* Flyout Submenu for Orders */}
@@ -1033,7 +953,6 @@ const AppContent = () => {
                         onClick={() => {
                           setActiveTab('create-order');
                           setIsOrdersHovered(false);
-                          setIsOrdersOpen(true);
                         }}
                         isCollapsed={false}
                         isFlyout={true}
@@ -1044,7 +963,6 @@ const AppContent = () => {
                         onClick={() => {
                           setActiveTab('pending-orders');
                           setIsOrdersHovered(false);
-                          setIsOrdersOpen(true);
                         }}
                         isCollapsed={false}
                         isFlyout={true}
@@ -1055,7 +973,6 @@ const AppContent = () => {
                         onClick={() => {
                           setActiveTab('sales-trips');
                           setIsOrdersHovered(false);
-                          setIsOrdersOpen(true);
                         }}
                         isCollapsed={false}
                         isFlyout={true}

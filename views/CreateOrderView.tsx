@@ -198,13 +198,11 @@ export function CreateOrderView() {
     try {
       await ordersService.createWithItems(
         {
-          customer_id: selectedStore.id,
+          store_id: selectedStore.id,
           order_date: new Date().toISOString().split('T')[0],
           status: 'confirmed',
           notes: notes || null,
           delivery_address: selectedStore.address || null,
-          delivery_latitude: selectedStore.latitude || null,
-          delivery_longitude: selectedStore.longitude || null,
           created_by: user?.id,
         },
         orderItems.map(item => ({
@@ -356,6 +354,9 @@ export function CreateOrderView() {
                         </p>
                       </div>
                     )}
+                    <div className="mt-2 text-xs text-gray-500 text-right">
+                      ผลลัพธ์: {filteredProducts.length} รายการ
+                    </div>
                   </>
                 )}
 

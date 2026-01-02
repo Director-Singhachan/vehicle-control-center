@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Warehouse, Package, Plus, Edit2, Trash2, MapPin, User } from 'lucide-react';
-import { useWarehouses, useInventory } from '../hooks/useInventory';
+import { Warehouse, Package, Plus, Edit2, Trash2, MapPin, User, ArrowDownCircle } from 'lucide-react';
+import { useWarehouses, useInventory, useProducts } from '../hooks/useInventory';
 import { warehouseService, inventoryService } from '../services/inventoryService';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
@@ -10,15 +10,19 @@ import { LoadingSpinner } from '../components/ui/LoadingSpinner';
 import { Modal } from '../components/ui/Modal';
 import { useNotification } from '../hooks/useNotification';
 import type { Database } from '../types/database';
+import { useAuth } from '../hooks';
 
 type WarehouseRow = Database['public']['Tables']['warehouses']['Row'];
 
 export function WarehouseManagementView() {
   const { warehouses, loading, refetch } = useWarehouses();
+  const { products } = useProducts();
   const { showNotification } = useNotification();
+  const { user } = useAuth();
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isInventoryModalOpen, setIsInventoryModalOpen] = useState(false);
+  const [isStockInModalOpen, setIsStockInModalOpen] = useState(false);
   const [editingWarehouse, setEditingWarehouse] = useState<any>(null);
   const [selectedWarehouse, setSelectedWarehouse] = useState<any>(null);
   const [formData, setFormData] = useState<Partial<WarehouseRow>>({
@@ -28,9 +32,23 @@ export function WarehouseManagementView() {
     address: '',
   });
 
-  const { inventory: warehouseInventory, loading: inventoryLoading } = useInventory(
+  const { inventory: warehouseInventory, loading: inventoryLoading, refetch: refetchInventory } = useInventory(
     selectedWarehouse?.id
   );
+
+  const [stockInForm, setStockInForm] = useState<{
+    product_id: string;
+    quantity: number;
+    note: string;
+    ref_code: string;
+  }>({
+    product_id: '',
+    quantity: 0,
+    note: '',
+    ref_code: '',
+  });
+
+  const [productSearch, setProductSearch] = useState('');
 
   const handleOpenModal = (warehouse?: any) => {
     if (warehouse) {
@@ -64,6 +82,49 @@ export function WarehouseManagementView() {
   const handleViewInventory = (warehouse: any) => {
     setSelectedWarehouse(warehouse);
     setIsInventoryModalOpen(true);
+  };
+
+  const handleOpenStockIn = () => {
+    if (!selectedWarehouse) {
+      showNotification('warning', 'โปรดเลือกคลังสินค้าก่อน');
+      return;
+    }
+    setStockInForm({ product_id: '', quantity: 0, note: '' });
+    setIsStockInModalOpen(true);
+  };
+
+  const handleStockInSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedWarehouse) {
+      showNotification('warning', 'โปรดเลือกคลังสินค้าก่อน');
+      return;
+    }
+    if (!stockInForm.product_id) {
+      showNotification('warning', 'โปรดเลือกสินค้า');
+      return;
+    }
+    if (stockInForm.quantity <= 0) {
+      showNotification('warning', 'จำนวนต้องมากกว่า 0');
+      return;
+    }
+
+    try {
+      await inventoryService.adjustStock(
+        selectedWarehouse.id,
+        stockInForm.product_id,
+        stockInForm.quantity,
+        user?.id || 'system',
+        stockInForm.note || stockInForm.ref_code
+          ? `รับสินค้าเข้า${stockInForm.ref_code ? ` - ใบกำกับ: ${stockInForm.ref_code}` : ''}${stockInForm.note ? ` (${stockInForm.note})` : ''}`
+          : 'รับสินค้าเข้า'
+      );
+
+      showNotification('success', 'รับสินค้าเข้าเรียบร้อย');
+      setIsStockInModalOpen(false);
+      await refetchInventory();
+    } catch (error: any) {
+      showNotification('error', error.message || 'เกิดข้อผิดพลาดในการรับสินค้าเข้า');
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -355,6 +416,13 @@ export function WarehouseManagementView() {
           </div>
         ) : (
           <div className="space-y-4">
+            <div className="flex justify-end">
+              <Button onClick={handleOpenStockIn} className="flex items-center gap-2">
+                <ArrowDownCircle className="w-4 h-4" />
+                รับสินค้าเข้า
+              </Button>
+            </div>
+
             {warehouseInventory.length === 0 ? (
               <div className="text-center py-12 text-gray-500">
                 <Package className="w-16 h-16 mx-auto mb-4 opacity-50" />
@@ -420,6 +488,111 @@ export function WarehouseManagementView() {
             )}
           </div>
         )}
+      </Modal>
+
+      {/* Stock In Modal */}
+      <Modal
+        isOpen={isStockInModalOpen}
+        onClose={() => setIsStockInModalOpen(false)}
+        title={`รับสินค้าเข้า: ${selectedWarehouse?.name || ''}`}
+      >
+        <form onSubmit={handleStockInSubmit} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              สินค้า *
+            </label>
+            <div className="space-y-2">
+              <input
+                type="text"
+                value={productSearch}
+                onChange={(e) => setProductSearch(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                placeholder="พิมพ์รหัสหรือชื่อสินค้า"
+              />
+              <div className="max-h-40 overflow-y-auto border border-gray-200 rounded-lg">
+                {products
+                  .filter((p: any) => {
+                    if (!productSearch) return true;
+                    const kw = productSearch.toLowerCase();
+                    return (
+                      (p.product_code || p.sku || '').toLowerCase().includes(kw) ||
+                      (p.product_name || p.name || '').toLowerCase().includes(kw)
+                    );
+                  })
+                  .slice(0, 30)
+                  .map((p: any) => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => {
+                        setStockInForm({ ...stockInForm, product_id: p.id });
+                        setProductSearch(`${p.product_code || p.sku || ''} ${p.product_name || p.name || ''}`.trim());
+                      }}
+                      className={`w-full text-left px-3 py-2 hover:bg-gray-50 ${
+                        stockInForm.product_id === p.id ? 'bg-blue-50 text-blue-700 font-medium' : ''
+                      }`}
+                    >
+                      <div className="text-sm">{p.product_code || p.sku}</div>
+                      <div className="text-xs text-gray-500">{p.product_name || p.name}</div>
+                    </button>
+                  ))}
+                {products.length === 0 && (
+                  <div className="px-3 py-2 text-sm text-gray-500">ยังไม่มีรายการสินค้า</div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                จำนวน *
+              </label>
+              <input
+                type="number"
+                min={0}
+                step="0.01"
+                value={stockInForm.quantity}
+                onChange={(e) => setStockInForm({ ...stockInForm, quantity: parseFloat(e.target.value) || 0 })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                required
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                เลขที่เอกสาร/ใบกำกับ
+              </label>
+              <input
+                type="text"
+                value={stockInForm.ref_code}
+                onChange={(e) => setStockInForm({ ...stockInForm, ref_code: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                placeholder="เช่น INV-2026-0001"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              หมายเหตุ
+            </label>
+            <input
+              type="text"
+              value={stockInForm.note}
+              onChange={(e) => setStockInForm({ ...stockInForm, note: e.target.value })}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+              placeholder="เช่น รับเข้าจากสำนักงานใหญ่"
+            />
+          </div>
+
+          <div className="flex justify-end gap-3 pt-2">
+            <Button type="button" variant="outline" onClick={() => setIsStockInModalOpen(false)}>
+              ยกเลิก
+            </Button>
+            <Button type="submit">บันทึก</Button>
+          </div>
+        </form>
       </Modal>
     </PageLayout>
   );

@@ -2190,11 +2190,22 @@ export const reportsService = {
       }
 
       // Get trip_logs to find checkin_time for trips without delivered_at
-      const { data: tripLogs } = await supabase
-        .from('trip_logs')
-        .select('id, delivery_trip_id, checkin_time')
-        .in('delivery_trip_id', allTripIds)
-        .not('checkin_time', 'is', null);
+      let tripLogs: any[] = [];
+      try {
+        const { data: tripLogsData, error: tripLogsError } = await supabase
+          .from('trip_logs')
+          .select('id, delivery_trip_id, checkin_time')
+          .in('delivery_trip_id', allTripIds)
+          .not('checkin_time', 'is', null);
+
+        if (tripLogsError) {
+          console.warn('[reportsService] trip_logs fetch error, fallback to empty:', tripLogsError.message);
+        } else {
+          tripLogs = tripLogsData || [];
+        }
+      } catch (err: any) {
+        console.warn('[reportsService] trip_logs fetch exception, fallback to empty:', err?.message || err);
+      }
 
       const tripLogMap = new Map((tripLogs || []).map(tl => [tl.delivery_trip_id, tl]));
 

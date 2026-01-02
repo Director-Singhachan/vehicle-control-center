@@ -1,9 +1,11 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { ArrowLeft, Truck, Users, MapPin, Calendar, Package, Save, Plus, GripVertical, X } from 'lucide-react';
 import { useVehicles } from '../hooks/useVehicles';
+import { useWarehouses } from '../hooks/useInventory';
 import { profileService } from '../services/profileService';
 import { deliveryTripService } from '../services/deliveryTripService';
 import { ordersService, orderItemsService } from '../services/ordersService';
+import { inventoryService } from '../services/inventoryService';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
@@ -34,10 +36,12 @@ interface StoreDelivery {
 export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: CreateTripFromOrdersViewProps) {
   const { user } = useAuth();
   const { vehicles, loading: vehiclesLoading } = useVehicles();
+  const { warehouses, loading: warehousesLoading } = useWarehouses();
 
   const [drivers, setDrivers] = useState<Array<{ id: string; full_name: string }>>([]);
   const [driversLoading, setDriversLoading] = useState(false);
   const [selectedVehicleId, setSelectedVehicleId] = useState('');
+  const [selectedWarehouseId, setSelectedWarehouseId] = useState('');
   const [selectedDriverId, setSelectedDriverId] = useState('');
   const [tripDate, setTripDate] = useState(new Date().toISOString().split('T')[0]);
   const [notes, setNotes] = useState('');
@@ -151,6 +155,10 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
 
   // Submit
   const handleSubmit = async () => {
+    if (!selectedWarehouseId) {
+      alert('กรุณาเลือกคลังสินค้าต้นทาง');
+      return;
+    }
     if (!selectedVehicleId) {
       alert('กรุณาเลือกรถ');
       return;
@@ -183,6 +191,18 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
           })),
         };
       });
+
+      // Reserve stock per order item from selected warehouse
+      for (const delivery of storeDeliveries) {
+        const orderItems = orderItemsMap.get(delivery.order_id) || [];
+        for (const item of orderItems) {
+          await inventoryService.reserveStock(
+            selectedWarehouseId,
+            item.product_id,
+            item.quantity
+          );
+        }
+      }
 
       // Create delivery trip with all stores and items
       const trip = await deliveryTripService.create({
@@ -309,6 +329,26 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
                 <p className="text-sm text-gray-500">
                   ลากเพื่อจัดเรียงลำดับ
                 </p>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    คลังสินค้าต้นทาง *
+                  </label>
+                  <select
+                    value={selectedWarehouseId}
+                    onChange={(e) => setSelectedWarehouseId(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    disabled={warehousesLoading}
+                  >
+                    <option value="">-- เลือกคลัง --</option>
+                    {warehouses.map((w: any) => (
+                      <option key={w.id} value={w.id}>
+                        {w.code} - {w.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
 
               {storeDeliveries.length === 0 ? (
