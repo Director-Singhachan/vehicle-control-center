@@ -1,7 +1,9 @@
-import React, { useState, useMemo } from 'react';
-import { Package, Calendar, MapPin, DollarSign, User, Phone, Filter, X } from 'lucide-react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { Package, Calendar, MapPin, DollarSign, User, Phone, Filter, X, Zap, ChevronDown, ChevronRight, Eye, Box } from 'lucide-react';
 import { usePendingOrders } from '../hooks/useOrders';
+import { orderItemsService } from '../services/ordersService';
 import { CreateTripFromOrdersView } from './CreateTripFromOrdersView';
+import { DeliveryTripFormView } from './DeliveryTripFormView';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
@@ -15,6 +17,10 @@ export function PendingOrdersView() {
   const [searchQuery, setSearchQuery] = useState('');
   const [dateFilter, setDateFilter] = useState('');
   const [showCreateTrip, setShowCreateTrip] = useState(false);
+  const [showQuickCreate, setShowQuickCreate] = useState(false);
+  const [expandedOrders, setExpandedOrders] = useState<Set<string>>(new Set());
+  const [orderItems, setOrderItems] = useState<Map<string, any[]>>(new Map());
+  const [showProductsSummaryModal, setShowProductsSummaryModal] = useState(false);
 
   // Filter orders
   const filteredOrders = useMemo(() => {
@@ -66,6 +72,85 @@ export function PendingOrdersView() {
     return filteredOrders.filter((order: any) => selectedOrders.has(order.id));
   }, [filteredOrders, selectedOrders]);
 
+  // Fetch order items for selected orders
+  useEffect(() => {
+    const fetchOrderItems = async () => {
+      const itemsMap = new Map(orderItems);
+      
+      for (const orderId of Array.from(selectedOrders)) {
+        if (!itemsMap.has(orderId)) {
+          try {
+            const items = await orderItemsService.getByOrderId(orderId);
+            itemsMap.set(orderId, items || []);
+          } catch (error) {
+            console.error(`Failed to fetch items for order ${orderId}:`, error);
+            itemsMap.set(orderId, []);
+          }
+        }
+      }
+      
+      setOrderItems(itemsMap);
+    };
+
+    if (selectedOrders.size > 0) {
+      fetchOrderItems();
+    }
+  }, [selectedOrders]);
+
+  // Calculate aggregated products from selected orders
+  const aggregatedProducts = useMemo(() => {
+    const productMap = new Map<string, { 
+      product_id: string;
+      product_name: string;
+      product_code: string;
+      unit: string;
+      total_quantity: number;
+    }>();
+
+    selectedOrderObjects.forEach((order) => {
+      const items = orderItems.get(order.id) || [];
+      items.forEach((item: any) => {
+        const existing = productMap.get(item.product_id);
+        if (existing) {
+          existing.total_quantity += item.quantity;
+        } else {
+          productMap.set(item.product_id, {
+            product_id: item.product_id,
+            product_name: item.product?.product_name || 'ไม่ระบุ',
+            product_code: item.product?.product_code || '',
+            unit: item.product?.unit || 'หน่วย',
+            total_quantity: item.quantity,
+          });
+        }
+      });
+    });
+
+    return Array.from(productMap.values()).sort((a, b) => 
+      a.product_name.localeCompare(b.product_name, 'th')
+    );
+  }, [selectedOrderObjects, orderItems]);
+
+  // Toggle order details
+  const toggleOrderDetails = async (orderId: string) => {
+    const newExpanded = new Set(expandedOrders);
+    if (newExpanded.has(orderId)) {
+      newExpanded.delete(orderId);
+    } else {
+      newExpanded.add(orderId);
+      
+      // Fetch items if not already fetched
+      if (!orderItems.has(orderId)) {
+        try {
+          const items = await orderItemsService.getByOrderId(orderId);
+          setOrderItems(new Map(orderItems).set(orderId, items || []));
+        } catch (error) {
+          console.error(`Failed to fetch items for order ${orderId}:`, error);
+        }
+      }
+    }
+    setExpandedOrders(newExpanded);
+  };
+
   // Handle create trip
   const handleCreateTrip = () => {
     if (selectedOrders.size === 0) {
@@ -92,6 +177,19 @@ export function PendingOrdersView() {
     );
   }
 
+  // Show quick create trip view (manual/emergency)
+  if (showQuickCreate) {
+    return (
+      <DeliveryTripFormView
+        onSave={() => {
+          setShowQuickCreate(false);
+          refetch();
+        }}
+        onCancel={() => setShowQuickCreate(false)}
+      />
+    );
+  }
+
   if (loading) {
     return (
       <PageLayout title="ออเดอร์ที่รอจัดทริป">
@@ -114,6 +212,80 @@ export function PendingOrdersView() {
 
   return (
     <PageLayout title="ออเดอร์ที่รอจัดทริป">
+      {/* Sticky Summary Bar */}
+      {selectedOrders.size > 0 && (
+        <div className="sticky top-0 z-20 bg-gradient-to-r from-blue-600 to-blue-700 text-white shadow-lg mb-4 rounded-lg">
+          <div className="px-6 py-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-6">
+                <div className="flex items-center gap-2">
+                  <div className="bg-white/20 rounded-full p-2">
+                    <Package className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="text-xs text-blue-100">เลือกแล้ว</div>
+                    <div className="text-2xl font-bold">{selectedOrders.size}</div>
+                  </div>
+                </div>
+                <div className="h-10 w-px bg-white/30"></div>
+                <div>
+                  <div className="text-xs text-blue-100">สินค้ารวม</div>
+                  <div className="text-lg font-semibold">
+                    {aggregatedProducts.reduce((sum, p) => sum + p.total_quantity, 0)} ชิ้น
+                  </div>
+                </div>
+                <div className="h-10 w-px bg-white/30"></div>
+                <div>
+                  <div className="text-xs text-blue-100">มูลค่ารวม</div>
+                  <div className="text-lg font-semibold">
+                    ฿{selectedTotal.toLocaleString()}
+                  </div>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button 
+                  size="sm"
+                  onClick={() => setShowProductsSummaryModal(true)}
+                  className="bg-white/20 hover:bg-white/30 text-white border-white/40"
+                >
+                  <Box className="w-4 h-4 mr-1" />
+                  สรุปสินค้า
+                </Button>
+                <Button 
+                  size="sm"
+                  onClick={clearSelection}
+                  variant="outline"
+                  className="bg-white/10 hover:bg-white/20 text-white border-white/40"
+                >
+                  ยกเลิกทั้งหมด
+                </Button>
+                <Button 
+                  size="sm"
+                  onClick={handleCreateTrip}
+                  className="bg-white text-blue-600 hover:bg-blue-50 font-semibold"
+                >
+                  สร้างทริป
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Info Banner */}
+      <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+        <div className="flex items-start gap-3">
+          <Package className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" />
+          <div className="flex-1">
+            <div className="font-medium text-blue-900 mb-1">วิธีสร้างทริปจัดส่ง</div>
+            <div className="text-sm text-blue-700 space-y-1">
+              <p>• <strong>สร้างจากออเดอร์</strong>: เลือกออเดอร์จากรายการด้านล่าง → คลิก "สร้างทริป" ที่แถบด้านบน</p>
+              <p>• <strong>สร้างทริปด่วน</strong>: สำหรับกรณีฉุกเฉิน/พิเศษ → คลิกปุ่ม "สร้างทริปด่วน" ⚡</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Header with Filters */}
       <div className="mb-6 space-y-4">
         <div className="flex flex-wrap items-center gap-4">
@@ -150,29 +322,18 @@ export function PendingOrdersView() {
           <Button onClick={refetch} variant="outline">
             รีเฟรช
           </Button>
+
+          {/* Quick Create Button (always visible) */}
+          <Button 
+            onClick={() => setShowQuickCreate(true)}
+            variant="outline"
+            className="flex items-center gap-2 border-orange-300 text-orange-600 hover:bg-orange-50"
+          >
+            <Zap className="w-4 h-4" />
+            สร้างทริปด่วน
+          </Button>
         </div>
 
-        {/* Selection Summary */}
-        {selectedOrders.size > 0 && (
-          <div className="flex items-center justify-between p-4 bg-blue-50 border border-blue-200 rounded-xl">
-            <div className="flex items-center gap-4">
-              <p className="text-sm font-medium text-blue-900">
-                เลือกแล้ว {selectedOrders.size} ออเดอร์
-              </p>
-              <p className="text-sm text-blue-700">
-                ยอดรวม: {new Intl.NumberFormat('th-TH').format(selectedTotal)} ฿
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              <Button size="sm" onClick={clearSelection} variant="outline">
-                ยกเลิกการเลือก
-              </Button>
-              <Button size="sm" onClick={handleCreateTrip}>
-                สร้างทริปจากออเดอร์ที่เลือก
-              </Button>
-            </div>
-          </div>
-        )}
       </div>
 
       {/* Stats Cards */}
@@ -231,27 +392,152 @@ export function PendingOrdersView() {
           </div>
         </Card>
       ) : (
-        <div className="space-y-4">
-          {/* Select All */}
-          <div className="flex items-center gap-2 px-4">
-            <input
-              type="checkbox"
-              checked={selectedOrders.size === filteredOrders.length && filteredOrders.length > 0}
-              onChange={(e) => {
-                if (e.target.checked) {
-                  selectAll();
-                } else {
-                  clearSelection();
-                }
-              }}
-              className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-            />
-            <label className="text-sm font-medium text-gray-700">
-              เลือกทั้งหมด ({filteredOrders.length})
-            </label>
-          </div>
+        <div className="space-y-6">
+          {/* Selected Orders Section (Compact View) */}
+          {selectedOrderObjects.length > 0 && (
+            <div>
+              <div className="flex items-center justify-between mb-3 px-2">
+                <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                  <div className="w-2 h-2 bg-blue-600 rounded-full animate-pulse"></div>
+                  ออเดอร์ที่เลือกแล้ว ({selectedOrderObjects.length})
+                </h3>
+              </div>
+              <div className="space-y-2">
+                {selectedOrderObjects.map((order: any) => (
+                  <Card key={order.id} className="bg-blue-50 border-blue-200">
+                    <div className="p-4">
+                      <div className="flex items-center gap-4">
+                        <input
+                          type="checkbox"
+                          checked={true}
+                          onChange={() => toggleOrderSelection(order.id)}
+                          className="w-5 h-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                        />
+                        <div className="flex-1 grid grid-cols-4 gap-4 items-center">
+                          <div>
+                            <div className="font-mono text-sm font-semibold text-blue-700">
+                              {order.order_number}
+                            </div>
+                            <div className="text-xs text-gray-500">
+                              {new Date(order.order_date).toLocaleDateString('th-TH', {
+                                day: 'numeric',
+                                month: 'short',
+                              })}
+                            </div>
+                          </div>
+                          <div>
+                            <div className="font-medium text-gray-900">{order.customer_name}</div>
+                            <div className="text-xs text-gray-500">{order.customer_code}</div>
+                          </div>
+                          <div className="text-right">
+                            <div className="font-bold text-blue-600">
+                              ฿{order.total_amount.toLocaleString()}
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => toggleOrderDetails(order.id)}
+                              className="text-xs"
+                            >
+                              {expandedOrders.has(order.id) ? (
+                                <>
+                                  <ChevronDown className="w-3 h-3" />
+                                  ซ่อน
+                                </>
+                              ) : (
+                                <>
+                                  <ChevronRight className="w-3 h-3" />
+                                  ดู
+                                </>
+                              )}
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      {/* Order Items (Expandable) */}
+                      {expandedOrders.has(order.id) && (
+                        <div className="mt-4 pt-4 border-t border-blue-200">
+                          <h4 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                            <Package className="w-4 h-4 text-blue-600" />
+                            รายการสินค้า
+                          </h4>
+                          {orderItems.get(order.id) ? (
+                            <div className="bg-white rounded-lg p-3">
+                              <table className="w-full text-sm">
+                                <thead>
+                                  <tr className="border-b border-gray-300">
+                                    <th className="text-left py-2 px-2 font-semibold text-gray-700">รหัสสินค้า</th>
+                                    <th className="text-left py-2 px-2 font-semibold text-gray-700">ชื่อสินค้า</th>
+                                    <th className="text-right py-2 px-2 font-semibold text-gray-700">จำนวน</th>
+                                    <th className="text-left py-2 px-2 font-semibold text-gray-700">หน่วย</th>
+                                    <th className="text-right py-2 px-2 font-semibold text-gray-700">ราคา/หน่วย</th>
+                                    <th className="text-right py-2 px-2 font-semibold text-gray-700">ราคารวม</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {orderItems.get(order.id)!.map((item: any, idx: number) => (
+                                    <tr key={idx} className="border-b border-gray-200 last:border-0">
+                                      <td className="py-2 px-2 text-gray-600">{item.product?.product_code || '-'}</td>
+                                      <td className="py-2 px-2 text-gray-900">{item.product?.product_name || 'ไม่ระบุ'}</td>
+                                      <td className="py-2 px-2 text-right font-semibold text-blue-600">
+                                        {item.quantity.toLocaleString()}
+                                      </td>
+                                      <td className="py-2 px-2 text-gray-600">{item.product?.unit || '-'}</td>
+                                      <td className="py-2 px-2 text-right text-gray-700">
+                                        ฿{item.unit_price?.toLocaleString() || '0'}
+                                      </td>
+                                      <td className="py-2 px-2 text-right font-semibold text-gray-900">
+                                        ฿{((item.quantity * (item.unit_price || 0))).toLocaleString()}
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          ) : (
+                            <div className="flex items-center justify-center py-4">
+                              <LoadingSpinner size={20} />
+                              <span className="ml-2 text-sm text-gray-500">กำลังโหลด...</span>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            </div>
+          )}
 
-          {/* Order Cards */}
+          {/* All Orders Section */}
+          <div>
+            <div className="flex items-center justify-between mb-3 px-2">
+              <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                ออเดอร์ทั้งหมด ({filteredOrders.length})
+              </h3>
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={selectedOrders.size === filteredOrders.length && filteredOrders.length > 0}
+                  onChange={(e) => {
+                    if (e.target.checked) {
+                      selectAll();
+                    } else {
+                      clearSelection();
+                    }
+                  }}
+                  className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                />
+                <label className="text-sm font-medium text-gray-700">
+                  เลือกทั้งหมด
+                </label>
+              </div>
+            </div>
+
+            {/* Order Cards (Full View) */}
           {filteredOrders.map((order: any) => (
             <Card key={order.id} className={selectedOrders.has(order.id) ? 'ring-2 ring-blue-500' : ''}>
               <div className="p-6">
@@ -328,15 +614,219 @@ export function PendingOrdersView() {
                       <div className="text-xs text-gray-500">
                         สร้างโดย: {order.created_by_name}
                       </div>
-                      <Button size="sm" variant="outline">
-                        ดูรายละเอียด
+                      <Button 
+                        size="sm" 
+                        variant="outline"
+                        onClick={() => toggleOrderDetails(order.id)}
+                        className="flex items-center gap-1"
+                      >
+                        <Eye className="w-4 h-4" />
+                        {expandedOrders.has(order.id) ? 'ซ่อนรายละเอียด' : 'ดูรายละเอียด'}
+                        {expandedOrders.has(order.id) ? (
+                          <ChevronDown className="w-4 h-4" />
+                        ) : (
+                          <ChevronRight className="w-4 h-4" />
+                        )}
                       </Button>
                     </div>
+
+                    {/* Order Items (Expandable) */}
+                    {expandedOrders.has(order.id) && (
+                      <div className="mt-4 pt-4 border-t border-gray-200">
+                        <h4 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                          <Package className="w-4 h-4 text-blue-600" />
+                          รายการสินค้า
+                        </h4>
+                        {orderItems.get(order.id) ? (
+                          <div className="bg-gray-50 rounded-lg p-3">
+                            <table className="w-full text-sm">
+                              <thead>
+                                <tr className="border-b border-gray-300">
+                                  <th className="text-left py-2 px-2 font-semibold text-gray-700">รหัสสินค้า</th>
+                                  <th className="text-left py-2 px-2 font-semibold text-gray-700">ชื่อสินค้า</th>
+                                  <th className="text-right py-2 px-2 font-semibold text-gray-700">จำนวน</th>
+                                  <th className="text-left py-2 px-2 font-semibold text-gray-700">หน่วย</th>
+                                  <th className="text-right py-2 px-2 font-semibold text-gray-700">ราคา/หน่วย</th>
+                                  <th className="text-right py-2 px-2 font-semibold text-gray-700">ราคารวม</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                  {orderItems.get(order.id)!.map((item: any, idx: number) => (
+                                    <tr key={idx} className="border-b border-gray-200 last:border-0">
+                                      <td className="py-2 px-2 text-gray-600">{item.product?.product_code || '-'}</td>
+                                      <td className="py-2 px-2 text-gray-900">{item.product?.product_name || 'ไม่ระบุ'}</td>
+                                      <td className="py-2 px-2 text-right font-semibold text-blue-600">
+                                        {item.quantity.toLocaleString()}
+                                      </td>
+                                      <td className="py-2 px-2 text-gray-600">{item.product?.unit || '-'}</td>
+                                      <td className="py-2 px-2 text-right text-gray-700">
+                                        ฿{item.unit_price?.toLocaleString() || '0'}
+                                      </td>
+                                      <td className="py-2 px-2 text-right font-semibold text-gray-900">
+                                        ฿{((item.quantity * (item.unit_price || 0))).toLocaleString()}
+                                      </td>
+                                    </tr>
+                                  ))}
+                              </tbody>
+                              <tfoot>
+                                <tr className="border-t-2 border-gray-400 font-bold">
+                                  <td colSpan={5} className="py-2 px-2 text-right text-gray-900">
+                                    ยอดรวม:
+                                  </td>
+                                  <td className="py-2 px-2 text-right text-blue-600">
+                                    ฿{orderItems.get(order.id)!.reduce(
+                                      (sum: number, item: any) => sum + (item.quantity * (item.unit_price || 0)), 
+                                      0
+                                    ).toLocaleString()}
+                                  </td>
+                                </tr>
+                              </tfoot>
+                            </table>
+                          </div>
+                        ) : (
+                          <div className="flex items-center justify-center py-4">
+                            <LoadingSpinner size={20} />
+                            <span className="ml-2 text-sm text-gray-500">กำลังโหลดรายการสินค้า...</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
             </Card>
           ))}
+          </div>
+        </div>
+      )}
+
+      {/* Products Summary Modal */}
+      {showProductsSummaryModal && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <Card className="max-w-4xl w-full max-h-[80vh] overflow-hidden flex flex-col">
+            <div className="p-6 border-b border-gray-200 bg-gradient-to-r from-purple-600 to-purple-700 text-white">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-2xl font-bold flex items-center gap-2">
+                    <Box className="w-6 h-6" />
+                    สรุปสินค้ารวมทั้งหมด
+                  </h2>
+                  <p className="text-sm text-purple-100 mt-1">
+                    จาก {selectedOrders.size} ออเดอร์ที่เลือก
+                  </p>
+                </div>
+                <button
+                  onClick={() => setShowProductsSummaryModal(false)}
+                  className="p-2 hover:bg-white/20 rounded-lg transition-colors"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+            </div>
+            
+            <div className="flex-1 overflow-y-auto p-6">
+              {aggregatedProducts.length === 0 ? (
+                <div className="text-center py-12 text-gray-500">
+                  <Package className="w-16 h-16 mx-auto mb-4 opacity-30" />
+                  <p>ไม่มีรายการสินค้า</p>
+                </div>
+              ) : (
+                <div>
+                  {/* Summary Stats */}
+                  <div className="grid grid-cols-3 gap-4 mb-6">
+                    <div className="bg-purple-50 rounded-lg p-4 text-center">
+                      <div className="text-sm text-purple-600 mb-1">รายการสินค้า</div>
+                      <div className="text-3xl font-bold text-purple-900">
+                        {aggregatedProducts.length}
+                      </div>
+                    </div>
+                    <div className="bg-blue-50 rounded-lg p-4 text-center">
+                      <div className="text-sm text-blue-600 mb-1">จำนวนรวม</div>
+                      <div className="text-3xl font-bold text-blue-900">
+                        {aggregatedProducts.reduce((sum, p) => sum + p.total_quantity, 0).toLocaleString()}
+                      </div>
+                    </div>
+                    <div className="bg-green-50 rounded-lg p-4 text-center">
+                      <div className="text-sm text-green-600 mb-1">มูลค่ารวม</div>
+                      <div className="text-3xl font-bold text-green-900">
+                        ฿{selectedTotal.toLocaleString()}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Products Table */}
+                  <div className="bg-gray-50 rounded-lg overflow-hidden">
+                    <table className="w-full">
+                      <thead className="bg-purple-600 text-white sticky top-0">
+                        <tr>
+                          <th className="text-left py-3 px-4 font-semibold">#</th>
+                          <th className="text-left py-3 px-4 font-semibold">รหัสสินค้า</th>
+                          <th className="text-left py-3 px-4 font-semibold">ชื่อสินค้า</th>
+                          <th className="text-right py-3 px-4 font-semibold">จำนวนรวม</th>
+                          <th className="text-center py-3 px-4 font-semibold">หน่วย</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {aggregatedProducts.map((product, index) => (
+                          <tr 
+                            key={product.product_id} 
+                            className="border-b border-gray-200 hover:bg-purple-50 transition-colors"
+                          >
+                            <td className="py-3 px-4 text-gray-500 text-sm">{index + 1}</td>
+                            <td className="py-3 px-4">
+                              <div className="font-mono text-sm text-gray-600">
+                                {product.product_code}
+                              </div>
+                            </td>
+                            <td className="py-3 px-4">
+                              <div className="font-medium text-gray-900">{product.product_name}</div>
+                            </td>
+                            <td className="py-3 px-4 text-right">
+                              <div className="font-bold text-xl text-purple-700">
+                                {product.total_quantity.toLocaleString()}
+                              </div>
+                            </td>
+                            <td className="py-3 px-4 text-center">
+                              <Badge variant="default">{product.unit}</Badge>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Helpful Tip */}
+                  <div className="mt-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                    <div className="flex items-start gap-3">
+                      <div className="text-2xl">💡</div>
+                      <div className="flex-1">
+                        <div className="font-semibold text-yellow-900 mb-1">
+                          คำแนะนำในการเลือกรถ
+                        </div>
+                        <div className="text-sm text-yellow-800">
+                          ใช้ข้อมูลสรุปนี้ประกอบการพิจารณาเลือกรถที่มีพื้นที่เหมาะสมสำหรับจำนวนสินค้าในทริปนี้
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="p-4 border-t border-gray-200 bg-gray-50">
+              <div className="flex justify-end gap-2">
+                <Button 
+                  variant="outline"
+                  onClick={() => setShowProductsSummaryModal(false)}
+                >
+                  ปิด
+                </Button>
+                <Button onClick={handleCreateTrip}>
+                  ดำเนินการสร้างทริป
+                </Button>
+              </div>
+            </div>
+          </Card>
         </div>
       )}
     </PageLayout>

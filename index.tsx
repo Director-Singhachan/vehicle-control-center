@@ -60,6 +60,7 @@ import { ProductTierPricingView } from './views/ProductTierPricingView';
 import { InventoryReceiptsView } from './views/InventoryReceiptsView';
 import { CreateOrderView } from './views/CreateOrderView';
 import { PendingOrdersView } from './views/PendingOrdersView';
+import { TrackOrdersView } from './views/TrackOrdersView';
 import { SalesTripsView } from './views/SalesTripsView';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { useAuth, usePendingTickets } from './hooks';
@@ -214,6 +215,10 @@ const AppContent = () => {
   const [isStockOpen, setIsStockOpen] = useState(false);
   const [isStockHovered, setIsStockHovered] = useState(false);
   const stockMenuRef = React.useRef<HTMLDivElement>(null);
+
+  const [isTripsOpen, setIsTripsOpen] = useState(false);
+  const [isTripsHovered, setIsTripsHovered] = useState(false);
+  const tripsMenuRef = React.useRef<HTMLDivElement>(null);
   const commissionTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
   const [flyoutPosition, setFlyoutPosition] = useState({ top: 0, left: 0 });
 
@@ -361,6 +366,51 @@ const AppContent = () => {
     setIsStockHovered(false);
   };
 
+  // Trips menu handlers
+  const [tripsFlyoutPosition, setTripsFlyoutPosition] = useState({ top: 0, left: 0 });
+  const tripsTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
+  
+  const handleTripsMouseEnter = (e: React.MouseEvent) => {
+    if (tripsTimeoutRef.current) {
+      clearTimeout(tripsTimeoutRef.current);
+      tripsTimeoutRef.current = null;
+    }
+    
+    const rect = e.currentTarget.getBoundingClientRect();
+    const viewportHeight = window.innerHeight;
+    const flyoutEstimatedHeight = 150;
+    
+    let top = rect.top;
+    if (top + flyoutEstimatedHeight > viewportHeight - 10) {
+      top = Math.max(10, viewportHeight - flyoutEstimatedHeight - 10);
+    }
+    
+    setTripsFlyoutPosition({
+      top,
+      left: rect.right + 8,
+    });
+    
+    setIsTripsHovered(true);
+  };
+
+  const handleTripsMouseLeave = () => {
+    tripsTimeoutRef.current = setTimeout(() => {
+      setIsTripsHovered(false);
+    }, 150);
+  };
+
+  const handleTripsFlyoutMouseEnter = () => {
+    if (tripsTimeoutRef.current) {
+      clearTimeout(tripsTimeoutRef.current);
+      tripsTimeoutRef.current = null;
+    }
+    setIsTripsHovered(true);
+  };
+
+  const handleTripsFlyoutMouseLeave = () => {
+    setIsTripsHovered(false);
+  };
+
   // Settings menu handlers
   const handleSettingsMouseEnter = (e: React.MouseEvent) => {
     if (settingsTimeoutRef.current) {
@@ -410,6 +460,7 @@ const AppContent = () => {
     setIsCommissionOpen(false);
     setIsOrdersOpen(false);
     setIsStockOpen(false);
+    setIsTripsOpen(false);
   }, [activeTab]);
 
   // Open settings menu if one of its sub-items is active
@@ -724,17 +775,73 @@ const AppContent = () => {
             />
           )}
           {!isDriver && (
-            <SidebarItem
-              icon={Package}
-              label={isSidebarOpen ? "ทริปส่งสินค้า" : ""}
-              active={activeTab === 'delivery-trips'}
-              onClick={() => {
-                setActiveTab('delivery-trips');
-                setDeliveryTripView('list');
-                setSelectedDeliveryTripId(null);
+            <div 
+              ref={tripsMenuRef}
+              className="relative group/menu"
+              onMouseEnter={handleTripsMouseEnter}
+              onMouseLeave={handleTripsMouseLeave}
+            >
+              <SidebarItem
+                icon={Package}
+                label={isSidebarOpen ? "ทริปส่งสินค้า" : ""}
+                active={activeTab === 'delivery-trips' || activeTab === 'pending-orders'}
+                onClick={() => {
+                  if (activeTab !== 'delivery-trips') {
+                    setActiveTab('delivery-trips');
+                    setDeliveryTripView('list');
+                    setSelectedDeliveryTripId(null);
+                  }
+                }}
+                onMouseEnter={handleTripsMouseEnter}
+                isCollapsed={!isSidebarOpen}
+                hasSubmenu={true}
+                isOpen={isTripsHovered}
+              />
+            </div>
+          )}
+
+          {/* Flyout Submenu for Trips */}
+          {isTripsHovered && (
+            <div 
+              className="fixed z-[100]"
+              style={{
+                top: `${tripsFlyoutPosition.top}px`,
+                left: `${tripsFlyoutPosition.left}px`,
               }}
-              isCollapsed={!isSidebarOpen}
-            />
+              onMouseEnter={handleTripsFlyoutMouseEnter}
+              onMouseLeave={handleTripsFlyoutMouseLeave}
+            >
+              <div className="bg-white dark:bg-charcoal-900 border border-slate-200 dark:border-slate-700 rounded-xl shadow-2xl min-w-[220px] py-2 overflow-hidden ring-1 ring-black/5 animate-in fade-in slide-in-from-left-2 duration-150">
+                <div className="px-4 pb-2 mb-2 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                  <p className="text-[10px] font-black text-blue-500 uppercase tracking-widest">ทริปส่งสินค้า</p>
+                  <div className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"></div>
+                </div>
+                <div className="px-2 space-y-1">
+                  <SubSidebarItem
+                    label="รายการทริป"
+                    active={activeTab === 'delivery-trips'}
+                    onClick={() => {
+                      setActiveTab('delivery-trips');
+                      setDeliveryTripView('list');
+                      setSelectedDeliveryTripId(null);
+                      setIsTripsHovered(false);
+                    }}
+                    isCollapsed={false}
+                    isFlyout={true}
+                  />
+                  <SubSidebarItem
+                    label="ออเดอร์รอจัดส่ง"
+                    active={activeTab === 'pending-orders'}
+                    onClick={() => {
+                      setActiveTab('pending-orders');
+                      setIsTripsHovered(false);
+                    }}
+                    isCollapsed={false}
+                    isFlyout={true}
+                  />
+                </div>
+              </div>
+            </div>
           )}
           {!isDriver && (
             <SidebarItem
@@ -929,7 +1036,7 @@ const AppContent = () => {
                 <SidebarItem
                   icon={ShoppingCart}
                   label={isSidebarOpen ? "ออเดอร์" : ""}
-                  active={activeTab === 'create-order' || activeTab === 'pending-orders' || activeTab === 'sales-trips'}
+                  active={activeTab === 'create-order' || activeTab === 'track-orders' || activeTab === 'sales-trips'}
                   onClick={() => {
                     if (activeTab !== 'create-order') {
                       setActiveTab('create-order');
@@ -969,10 +1076,10 @@ const AppContent = () => {
                         isFlyout={true}
                       />
                       <SubSidebarItem
-                        label="ออเดอร์รอจัดทริป"
-                        active={activeTab === 'pending-orders'}
+                        label="ติดตามออเดอร์"
+                        active={activeTab === 'track-orders'}
                         onClick={() => {
-                          setActiveTab('pending-orders');
+                          setActiveTab('track-orders');
                           setIsOrdersHovered(false);
                         }}
                         isCollapsed={false}
@@ -1792,6 +1899,8 @@ const AppContent = () => {
             <ProductTierPricingView />
           ) : activeTab === 'create-order' ? (
             <CreateOrderView />
+          ) : activeTab === 'track-orders' ? (
+            <TrackOrdersView />
           ) : activeTab === 'pending-orders' ? (
             <PendingOrdersView />
           ) : activeTab === 'sales-trips' ? (

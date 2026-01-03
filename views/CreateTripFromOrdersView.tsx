@@ -54,19 +54,26 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
 
   // สร้างรายการร้านค้าจากออเดอร์ที่เลือก
   const [storeDeliveries, setStoreDeliveries] = useState<StoreDelivery[]>(() => {
-    return selectedOrders.map((order, index) => ({
-      id: `${order.id}-${index}`,
-      order_id: order.id,
-      store_id: order.customer_id,
-      store_name: order.customer_name,
-      store_code: order.customer_code,
-      address: order.delivery_address || order.customer_address || '',
-      latitude: order.delivery_latitude,
-      longitude: order.delivery_longitude,
-      order_number: order.order_number,
-      total_amount: order.total_amount,
-      sequence: index + 1,
-    }));
+    return selectedOrders.map((order, index) => {
+      // Debug log
+      if (!order.store_id) {
+        console.error('[CreateTrip] Missing store_id for order:', order);
+      }
+      
+      return {
+        id: `${order.id}-${index}`,
+        order_id: order.id,
+        store_id: order.store_id, // จาก orders table
+        store_name: order.customer_name, // จาก stores.customer_name
+        store_code: order.customer_code, // จาก stores.customer_code
+        address: order.delivery_address || order.store_address || '',
+        latitude: order.delivery_latitude,
+        longitude: order.delivery_longitude,
+        order_number: order.order_number,
+        total_amount: order.total_amount,
+        sequence: index + 1,
+      };
+    });
   });
 
   // Debug: log vehicles data

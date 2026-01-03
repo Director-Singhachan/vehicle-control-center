@@ -1,0 +1,234 @@
+import React, { useState, useMemo } from 'react';
+import { Package, Search, Filter, Clock, CheckCircle, Truck, Eye } from 'lucide-react';
+import { PageLayout } from '../components/ui/PageLayout';
+import { Card } from '../components/ui/Card';
+import { Button } from '../components/ui/Button';
+import { Badge } from '../components/ui/Badge';
+import { LoadingSpinner } from '../components/ui/LoadingSpinner';
+import { ordersService } from '../services/ordersService';
+
+interface Order {
+  id: string;
+  order_number: string;
+  customer_name: string;
+  customer_code: string;
+  total_amount: number;
+  created_at: string;
+  status: string;
+  store_id: string;
+}
+
+export function TrackOrdersView() {
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState<string>('all');
+
+  React.useEffect(() => {
+    loadOrders();
+  }, []);
+
+  const loadOrders = async () => {
+    try {
+      setLoading(true);
+      // Get all orders (not just pending)
+      const data = await ordersService.getAll();
+      setOrders(data);
+    } catch (error) {
+      console.error('Error loading orders:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const filteredOrders = useMemo(() => {
+    return orders.filter((order) => {
+      // Search filter
+      if (searchTerm) {
+        const search = searchTerm.toLowerCase();
+        if (
+          !order.order_number?.toLowerCase().includes(search) &&
+          !order.customer_name?.toLowerCase().includes(search) &&
+          !order.customer_code?.toLowerCase().includes(search)
+        ) {
+          return false;
+        }
+      }
+
+      // Status filter
+      if (statusFilter !== 'all' && order.status !== statusFilter) {
+        return false;
+      }
+
+      return true;
+    });
+  }, [orders, searchTerm, statusFilter]);
+
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case 'pending':
+        return <Badge variant="warning">รอจัดทริป</Badge>;
+      case 'assigned':
+        return <Badge variant="info">กำหนดทริปแล้ว</Badge>;
+      case 'in_transit':
+        return <Badge variant="default">กำลังจัดส่ง</Badge>;
+      case 'delivered':
+        return <Badge variant="success">จัดส่งแล้ว</Badge>;
+      case 'cancelled':
+        return <Badge variant="error">ยกเลิก</Badge>;
+      default:
+        return <Badge>{status}</Badge>;
+    }
+  };
+
+  const stats = useMemo(() => {
+    return {
+      total: filteredOrders.length,
+      pending: filteredOrders.filter((o) => o.status === 'pending').length,
+      assigned: filteredOrders.filter((o) => o.status === 'assigned').length,
+      in_transit: filteredOrders.filter((o) => o.status === 'in_transit').length,
+      delivered: filteredOrders.filter((o) => o.status === 'delivered').length,
+    };
+  }, [filteredOrders]);
+
+  return (
+    <PageLayout title="ติดตามออเดอร์">
+      {/* Filters */}
+      <Card className="mb-4">
+        <div className="p-4">
+          <div className="flex flex-col md:flex-row gap-4">
+            {/* Search */}
+            <div className="flex-1">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+                <input
+                  type="text"
+                  placeholder="ค้นหาเลขออเดอร์, ร้านค้า..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+            </div>
+
+            {/* Status Filter */}
+            <div className="w-full md:w-48">
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="all">ทุกสถานะ</option>
+                <option value="pending">รอจัดทริป</option>
+                <option value="assigned">กำหนดทริปแล้ว</option>
+                <option value="in_transit">กำลังจัดส่ง</option>
+                <option value="delivered">จัดส่งแล้ว</option>
+                <option value="cancelled">ยกเลิก</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      </Card>
+
+      {/* Stats */}
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-4">
+        <Card>
+          <div className="p-4 text-center">
+            <div className="text-2xl font-bold text-gray-900">{stats.total}</div>
+            <div className="text-sm text-gray-600">ทั้งหมด</div>
+          </div>
+        </Card>
+        <Card>
+          <div className="p-4 text-center">
+            <div className="text-2xl font-bold text-yellow-600">{stats.pending}</div>
+            <div className="text-sm text-gray-600">รอจัดทริป</div>
+          </div>
+        </Card>
+        <Card>
+          <div className="p-4 text-center">
+            <div className="text-2xl font-bold text-blue-600">{stats.assigned}</div>
+            <div className="text-sm text-gray-600">กำหนดทริปแล้ว</div>
+          </div>
+        </Card>
+        <Card>
+          <div className="p-4 text-center">
+            <div className="text-2xl font-bold text-purple-600">{stats.in_transit}</div>
+            <div className="text-sm text-gray-600">กำลังจัดส่ง</div>
+          </div>
+        </Card>
+        <Card>
+          <div className="p-4 text-center">
+            <div className="text-2xl font-bold text-green-600">{stats.delivered}</div>
+            <div className="text-sm text-gray-600">จัดส่งแล้ว</div>
+          </div>
+        </Card>
+      </div>
+
+      {/* Orders List */}
+      <Card>
+        {loading ? (
+          <div className="p-12 flex items-center justify-center">
+            <LoadingSpinner />
+          </div>
+        ) : filteredOrders.length === 0 ? (
+          <div className="p-12 text-center text-gray-500">
+            <Package className="w-12 h-12 mx-auto mb-3 opacity-50" />
+            <p>ไม่พบออเดอร์</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-gray-200 bg-gray-50">
+                  <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700">เลขออเดอร์</th>
+                  <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700">ร้านค้า</th>
+                  <th className="text-right py-3 px-4 text-sm font-semibold text-gray-700">ยอดรวม</th>
+                  <th className="text-center py-3 px-4 text-sm font-semibold text-gray-700">สถานะ</th>
+                  <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700">วันที่สร้าง</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredOrders.map((order) => (
+                  <tr key={order.id} className="border-b border-gray-100 hover:bg-gray-50">
+                    <td className="py-3 px-4 font-mono text-sm text-blue-600">{order.order_number}</td>
+                    <td className="py-3 px-4">
+                      <div className="font-medium text-gray-900">{order.customer_name}</div>
+                      <div className="text-xs text-gray-500">{order.customer_code}</div>
+                    </td>
+                    <td className="py-3 px-4 text-right font-semibold text-gray-900">
+                      ฿{order.total_amount.toLocaleString()}
+                    </td>
+                    <td className="py-3 px-4 text-center">{getStatusBadge(order.status)}</td>
+                    <td className="py-3 px-4 text-sm text-gray-600">
+                      {new Date(order.created_at).toLocaleDateString('th-TH', {
+                        year: 'numeric',
+                        month: 'short',
+                        day: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+
+      {/* Info Message */}
+      <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+        <div className="flex items-start gap-3">
+          <Clock className="w-5 h-5 text-blue-600 mt-0.5" />
+          <div>
+            <div className="font-medium text-blue-900">หมายเหตุ</div>
+            <div className="text-sm text-blue-700">
+              หน้านี้สำหรับติดตามสถานะออเดอร์เท่านั้น การสร้างทริปจัดส่งจะทำได้ที่เมนู "ทริปส่งสินค้า" เท่านั้น
+            </div>
+          </div>
+        </div>
+      </div>
+    </PageLayout>
+  );
+}
+
