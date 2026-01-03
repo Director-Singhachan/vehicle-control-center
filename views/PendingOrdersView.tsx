@@ -12,7 +12,7 @@ import { LoadingSpinner } from '../components/ui/LoadingSpinner';
 
 export function PendingOrdersView() {
   const { orders, loading, error, refetch } = usePendingOrders();
-  
+
   const [selectedOrders, setSelectedOrders] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState('');
   const [dateFilter, setDateFilter] = useState('');
@@ -27,7 +27,7 @@ export function PendingOrdersView() {
     if (!orders) return [];
 
     return orders.filter((order: any) => {
-      const matchesSearch = !searchQuery || 
+      const matchesSearch = !searchQuery ||
         order.customer_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
         order.customer_code?.toLowerCase().includes(searchQuery.toLowerCase()) ||
         order.order_number?.toLowerCase().includes(searchQuery.toLowerCase());
@@ -76,11 +76,11 @@ export function PendingOrdersView() {
   useEffect(() => {
     const fetchOrderItems = async () => {
       const itemsMap = new Map(orderItems);
-      
+
       for (const orderId of Array.from(selectedOrders)) {
         if (!itemsMap.has(orderId)) {
           try {
-            const items = await orderItemsService.getByOrderId(orderId);
+            const items = await orderItemsService.getByOrderId(orderId as string);
             itemsMap.set(orderId, items || []);
           } catch (error) {
             console.error(`Failed to fetch items for order ${orderId}:`, error);
@@ -88,7 +88,7 @@ export function PendingOrdersView() {
           }
         }
       }
-      
+
       setOrderItems(itemsMap);
     };
 
@@ -99,7 +99,7 @@ export function PendingOrdersView() {
 
   // Calculate aggregated products from selected orders
   const aggregatedProducts = useMemo(() => {
-    const productMap = new Map<string, { 
+    const productMap = new Map<string, {
       product_id: string;
       product_name: string;
       product_code: string;
@@ -125,7 +125,7 @@ export function PendingOrdersView() {
       });
     });
 
-    return Array.from(productMap.values()).sort((a, b) => 
+    return Array.from(productMap.values()).sort((a, b) =>
       a.product_name.localeCompare(b.product_name, 'th')
     );
   }, [selectedOrderObjects, orderItems]);
@@ -137,7 +137,7 @@ export function PendingOrdersView() {
       newExpanded.delete(orderId);
     } else {
       newExpanded.add(orderId);
-      
+
       // Fetch items if not already fetched
       if (!orderItems.has(orderId)) {
         try {
@@ -203,7 +203,7 @@ export function PendingOrdersView() {
   if (error) {
     return (
       <PageLayout title="ออเดอร์ที่รอจัดทริป">
-        <div className="text-center text-red-600 py-8">
+        <div className="text-center text-red-600 dark:text-red-400 py-8">
           เกิดข้อผิดพลาด: {error.message}
         </div>
       </PageLayout>
@@ -243,7 +243,7 @@ export function PendingOrdersView() {
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                <Button 
+                <Button
                   size="sm"
                   onClick={() => setShowProductsSummaryModal(true)}
                   className="bg-white/20 hover:bg-white/30 text-white border-white/40"
@@ -251,7 +251,7 @@ export function PendingOrdersView() {
                   <Box className="w-4 h-4 mr-1" />
                   สรุปสินค้า
                 </Button>
-                <Button 
+                <Button
                   size="sm"
                   onClick={clearSelection}
                   variant="outline"
@@ -259,7 +259,7 @@ export function PendingOrdersView() {
                 >
                   ยกเลิกทั้งหมด
                 </Button>
-                <Button 
+                <Button
                   size="sm"
                   onClick={handleCreateTrip}
                   className="bg-white text-blue-600 hover:bg-blue-50 font-semibold"
@@ -273,12 +273,12 @@ export function PendingOrdersView() {
       )}
 
       {/* Info Banner */}
-      <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+      <div className="mb-4 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
         <div className="flex items-start gap-3">
-          <Package className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" />
+          <Package className="w-5 h-5 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" />
           <div className="flex-1">
-            <div className="font-medium text-blue-900 mb-1">วิธีสร้างทริปจัดส่ง</div>
-            <div className="text-sm text-blue-700 space-y-1">
+            <div className="font-medium text-blue-900 dark:text-blue-100 mb-1">วิธีสร้างทริปจัดส่ง</div>
+            <div className="text-sm text-blue-700 dark:text-blue-300 space-y-1">
               <p>• <strong>สร้างจากออเดอร์</strong>: เลือกออเดอร์จากรายการด้านล่าง → คลิก "สร้างทริป" ที่แถบด้านบน</p>
               <p>• <strong>สร้างทริปด่วน</strong>: สำหรับกรณีฉุกเฉิน/พิเศษ → คลิกปุ่ม "สร้างทริปด่วน" ⚡</p>
             </div>
@@ -296,23 +296,23 @@ export function PendingOrdersView() {
               placeholder="ค้นหาออเดอร์, ร้านค้า..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+              className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-500 dark:placeholder-gray-400"
             />
           </div>
 
           {/* Date Filter */}
           <div className="flex items-center gap-2">
-            <Calendar className="w-5 h-5 text-gray-400" />
+            <Calendar className="w-5 h-5 text-gray-400 dark:text-gray-500" />
             <input
               type="date"
               value={dateFilter}
               onChange={(e) => setDateFilter(e.target.value)}
-              className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+              className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
             />
             {dateFilter && (
               <button
                 onClick={() => setDateFilter('')}
-                className="p-2 text-gray-500 hover:text-gray-700"
+                className="p-2 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -324,7 +324,7 @@ export function PendingOrdersView() {
           </Button>
 
           {/* Quick Create Button (always visible) */}
-          <Button 
+          <Button
             onClick={() => setShowQuickCreate(true)}
             variant="outline"
             className="flex items-center gap-2 border-orange-300 text-orange-600 hover:bg-orange-50"
@@ -342,8 +342,8 @@ export function PendingOrdersView() {
           <div className="p-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-600">ออเดอร์ทั้งหมด</p>
-                <p className="text-2xl font-bold text-gray-900">{orders?.length || 0}</p>
+                <p className="text-sm text-gray-600 dark:text-gray-400">ออเดอร์ทั้งหมด</p>
+                <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">{orders?.length || 0}</p>
               </div>
               <Package className="w-10 h-10 text-blue-500 opacity-50" />
             </div>
@@ -354,8 +354,8 @@ export function PendingOrdersView() {
           <div className="p-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-600">ออเดอร์ที่กรอง</p>
-                <p className="text-2xl font-bold text-gray-900">{filteredOrders.length}</p>
+                <p className="text-sm text-gray-600 dark:text-gray-400">ออเดอร์ที่กรอง</p>
+                <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">{filteredOrders.length}</p>
               </div>
               <Filter className="w-10 h-10 text-green-500 opacity-50" />
             </div>
@@ -366,11 +366,11 @@ export function PendingOrdersView() {
           <div className="p-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-600">มูลค่ารวม</p>
-                <p className="text-2xl font-bold text-gray-900">
-                  {new Intl.NumberFormat('th-TH', { 
+                <p className="text-sm text-gray-600 dark:text-gray-400">มูลค่ารวม</p>
+                <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">
+                  {new Intl.NumberFormat('th-TH', {
                     notation: 'compact',
-                    compactDisplay: 'short' 
+                    compactDisplay: 'short'
                   }).format(
                     filteredOrders.reduce((sum: number, o: any) => sum + (o.total_amount || 0), 0)
                   )} ฿
@@ -385,7 +385,7 @@ export function PendingOrdersView() {
       {/* Orders List */}
       {filteredOrders.length === 0 ? (
         <Card>
-          <div className="p-12 text-center text-gray-500">
+          <div className="p-12 text-center text-gray-500 dark:text-gray-400">
             <Package className="w-16 h-16 mx-auto mb-4 opacity-30" />
             <p className="text-lg font-medium">ไม่มีออเดอร์ที่รอจัดทริป</p>
             <p className="text-sm mt-2">ออเดอร์ทั้งหมดถูกจัดเข้าทริปแล้ว</p>
@@ -397,7 +397,7 @@ export function PendingOrdersView() {
           {selectedOrderObjects.length > 0 && (
             <div>
               <div className="flex items-center justify-between mb-3 px-2">
-                <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2">
                   <div className="w-2 h-2 bg-blue-600 rounded-full animate-pulse"></div>
                   ออเดอร์ที่เลือกแล้ว ({selectedOrderObjects.length})
                 </h3>
@@ -426,8 +426,8 @@ export function PendingOrdersView() {
                             </div>
                           </div>
                           <div>
-                            <div className="font-medium text-gray-900">{order.customer_name}</div>
-                            <div className="text-xs text-gray-500">{order.customer_code}</div>
+                            <div className="font-medium text-blue-900 dark:text-blue-100">{order.customer_name}</div>
+                            <div className="text-xs text-blue-700 dark:text-blue-300">{order.customer_code}</div>
                           </div>
                           <div className="text-right">
                             <div className="font-bold text-blue-600">
@@ -456,7 +456,7 @@ export function PendingOrdersView() {
                           </div>
                         </div>
                       </div>
-                      
+
                       {/* Order Items (Expandable) */}
                       {expandedOrders.has(order.id) && (
                         <div className="mt-4 pt-4 border-t border-blue-200">
@@ -479,17 +479,17 @@ export function PendingOrdersView() {
                                 </thead>
                                 <tbody>
                                   {orderItems.get(order.id)!.map((item: any, idx: number) => (
-                                    <tr key={idx} className="border-b border-gray-200 last:border-0">
-                                      <td className="py-2 px-2 text-gray-600">{item.product?.product_code || '-'}</td>
-                                      <td className="py-2 px-2 text-gray-900">{item.product?.product_name || 'ไม่ระบุ'}</td>
-                                      <td className="py-2 px-2 text-right font-semibold text-blue-600">
+                                    <tr key={idx} className="border-b border-gray-200 dark:border-gray-700 last:border-0">
+                                      <td className="py-2 px-2 text-gray-600 dark:text-gray-400">{item.product?.product_code || '-'}</td>
+                                      <td className="py-2 px-2 text-gray-900 dark:text-gray-100">{item.product?.product_name || 'ไม่ระบุ'}</td>
+                                      <td className="py-2 px-2 text-right font-semibold text-blue-600 dark:text-blue-400">
                                         {item.quantity.toLocaleString()}
                                       </td>
-                                      <td className="py-2 px-2 text-gray-600">{item.product?.unit || '-'}</td>
-                                      <td className="py-2 px-2 text-right text-gray-700">
+                                      <td className="py-2 px-2 text-gray-600 dark:text-gray-400">{item.product?.unit || '-'}</td>
+                                      <td className="py-2 px-2 text-right text-gray-700 dark:text-gray-300">
                                         ฿{item.unit_price?.toLocaleString() || '0'}
                                       </td>
-                                      <td className="py-2 px-2 text-right font-semibold text-gray-900">
+                                      <td className="py-2 px-2 text-right font-semibold text-gray-900 dark:text-gray-100">
                                         ฿{((item.quantity * (item.unit_price || 0))).toLocaleString()}
                                       </td>
                                     </tr>
@@ -500,7 +500,7 @@ export function PendingOrdersView() {
                           ) : (
                             <div className="flex items-center justify-center py-4">
                               <LoadingSpinner size={20} />
-                              <span className="ml-2 text-sm text-gray-500">กำลังโหลด...</span>
+                              <span className="ml-2 text-sm text-gray-500 dark:text-gray-400">กำลังโหลด...</span>
                             </div>
                           )}
                         </div>
@@ -538,119 +538,119 @@ export function PendingOrdersView() {
             </div>
 
             {/* Order Cards (Full View) */}
-          {filteredOrders.map((order: any) => (
-            <Card key={order.id} className={selectedOrders.has(order.id) ? 'ring-2 ring-blue-500' : ''}>
-              <div className="p-6">
-                <div className="flex items-start gap-4">
-                  {/* Checkbox */}
-                  <input
-                    type="checkbox"
-                    checked={selectedOrders.has(order.id)}
-                    onChange={() => toggleOrderSelection(order.id)}
-                    className="mt-1 w-5 h-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                  />
+            {filteredOrders.map((order: any) => (
+              <Card key={order.id} className={selectedOrders.has(order.id) ? 'ring-2 ring-blue-500' : ''}>
+                <div className="p-6">
+                  <div className="flex items-start gap-4">
+                    {/* Checkbox */}
+                    <input
+                      type="checkbox"
+                      checked={selectedOrders.has(order.id)}
+                      onChange={() => toggleOrderSelection(order.id)}
+                      className="mt-1 w-5 h-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                    />
 
-                  {/* Order Details */}
-                  <div className="flex-1">
-                    <div className="flex items-start justify-between mb-4">
-                      <div>
-                        <h3 className="text-lg font-semibold text-gray-900">
-                          {order.order_number}
-                        </h3>
-                        <p className="text-sm text-gray-500">
-                          {new Date(order.order_date).toLocaleDateString('th-TH', {
-                            year: 'numeric',
-                            month: 'long',
-                            day: 'numeric',
-                          })}
-                        </p>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-2xl font-bold text-blue-600">
-                          {new Intl.NumberFormat('th-TH').format(order.total_amount)} ฿
-                        </p>
-                      </div>
-                    </div>
-
-                    {/* Customer Info */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                      <div className="flex items-start gap-3">
-                        <User className="w-5 h-5 text-gray-400 mt-0.5" />
+                    {/* Order Details */}
+                    <div className="flex-1">
+                      <div className="flex items-start justify-between mb-4">
                         <div>
-                          <p className="text-sm font-medium text-gray-900">
-                            {order.customer_name}
+                          <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+                            {order.order_number}
+                          </h3>
+                          <p className="text-sm text-gray-500 dark:text-gray-400">
+                            {new Date(order.order_date).toLocaleDateString('th-TH', {
+                              year: 'numeric',
+                              month: 'long',
+                              day: 'numeric',
+                            })}
                           </p>
-                          <p className="text-xs text-gray-500">{order.customer_code}</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-2xl font-bold text-blue-600">
+                            {new Intl.NumberFormat('th-TH').format(order.total_amount)} ฿
+                          </p>
                         </div>
                       </div>
 
-                      {order.customer_phone && (
+                      {/* Customer Info */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                         <div className="flex items-start gap-3">
-                          <Phone className="w-5 h-5 text-gray-400 mt-0.5" />
-                          <p className="text-sm text-gray-700">{order.customer_phone}</p>
+                          <User className="w-5 h-5 text-gray-400 dark:text-gray-500 mt-0.5" />
+                          <div>
+                            <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                              {order.customer_name}
+                            </p>
+                            <p className="text-xs text-gray-500 dark:text-gray-400">{order.customer_code}</p>
+                          </div>
+                        </div>
+
+                        {order.customer_phone && (
+                          <div className="flex items-start gap-3">
+                            <Phone className="w-5 h-5 text-gray-400 dark:text-gray-500 mt-0.5" />
+                            <p className="text-sm text-gray-700 dark:text-gray-300">{order.customer_phone}</p>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Delivery Address */}
+                      {order.delivery_address && (
+                        <div className="flex items-start gap-3 mb-4">
+                          <MapPin className="w-5 h-5 text-gray-400 dark:text-gray-500 mt-0.5" />
+                          <p className="text-sm text-gray-700 dark:text-gray-300">{order.delivery_address}</p>
                         </div>
                       )}
-                    </div>
 
-                    {/* Delivery Address */}
-                    {order.delivery_address && (
-                      <div className="flex items-start gap-3 mb-4">
-                        <MapPin className="w-5 h-5 text-gray-400 mt-0.5" />
-                        <p className="text-sm text-gray-700">{order.delivery_address}</p>
+                      {/* Notes */}
+                      {order.notes && (
+                        <div className="mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                          <p className="text-sm text-yellow-800">
+                            <span className="font-medium">หมายเหตุ:</span> {order.notes}
+                          </p>
+                        </div>
+                      )}
+
+                      {/* Footer */}
+                      <div className="mt-4 flex items-center justify-between pt-4 border-t border-gray-200 dark:border-gray-700">
+                        <div className="text-xs text-gray-500 dark:text-gray-400">
+                          สร้างโดย: {order.created_by_name}
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => toggleOrderDetails(order.id)}
+                          className="flex items-center gap-1"
+                        >
+                          <Eye className="w-4 h-4" />
+                          {expandedOrders.has(order.id) ? 'ซ่อนรายละเอียด' : 'ดูรายละเอียด'}
+                          {expandedOrders.has(order.id) ? (
+                            <ChevronDown className="w-4 h-4" />
+                          ) : (
+                            <ChevronRight className="w-4 h-4" />
+                          )}
+                        </Button>
                       </div>
-                    )}
 
-                    {/* Notes */}
-                    {order.notes && (
-                      <div className="mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-                        <p className="text-sm text-yellow-800">
-                          <span className="font-medium">หมายเหตุ:</span> {order.notes}
-                        </p>
-                      </div>
-                    )}
-
-                    {/* Footer */}
-                    <div className="mt-4 flex items-center justify-between pt-4 border-t border-gray-200">
-                      <div className="text-xs text-gray-500">
-                        สร้างโดย: {order.created_by_name}
-                      </div>
-                      <Button 
-                        size="sm" 
-                        variant="outline"
-                        onClick={() => toggleOrderDetails(order.id)}
-                        className="flex items-center gap-1"
-                      >
-                        <Eye className="w-4 h-4" />
-                        {expandedOrders.has(order.id) ? 'ซ่อนรายละเอียด' : 'ดูรายละเอียด'}
-                        {expandedOrders.has(order.id) ? (
-                          <ChevronDown className="w-4 h-4" />
-                        ) : (
-                          <ChevronRight className="w-4 h-4" />
-                        )}
-                      </Button>
-                    </div>
-
-                    {/* Order Items (Expandable) */}
-                    {expandedOrders.has(order.id) && (
-                      <div className="mt-4 pt-4 border-t border-gray-200">
-                        <h4 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
-                          <Package className="w-4 h-4 text-blue-600" />
-                          รายการสินค้า
-                        </h4>
-                        {orderItems.get(order.id) ? (
-                          <div className="bg-gray-50 rounded-lg p-3">
-                            <table className="w-full text-sm">
-                              <thead>
-                                <tr className="border-b border-gray-300">
-                                  <th className="text-left py-2 px-2 font-semibold text-gray-700">รหัสสินค้า</th>
-                                  <th className="text-left py-2 px-2 font-semibold text-gray-700">ชื่อสินค้า</th>
-                                  <th className="text-right py-2 px-2 font-semibold text-gray-700">จำนวน</th>
-                                  <th className="text-left py-2 px-2 font-semibold text-gray-700">หน่วย</th>
-                                  <th className="text-right py-2 px-2 font-semibold text-gray-700">ราคา/หน่วย</th>
-                                  <th className="text-right py-2 px-2 font-semibold text-gray-700">ราคารวม</th>
-                                </tr>
-                              </thead>
-                              <tbody>
+                      {/* Order Items (Expandable) */}
+                      {expandedOrders.has(order.id) && (
+                        <div className="mt-4 pt-4 border-t border-gray-200">
+                          <h4 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                            <Package className="w-4 h-4 text-blue-600" />
+                            รายการสินค้า
+                          </h4>
+                          {orderItems.get(order.id) ? (
+                            <div className="bg-gray-50 rounded-lg p-3">
+                              <table className="w-full text-sm">
+                                <thead>
+                                  <tr className="border-b border-gray-300">
+                                    <th className="text-left py-2 px-2 font-semibold text-gray-700">รหัสสินค้า</th>
+                                    <th className="text-left py-2 px-2 font-semibold text-gray-700">ชื่อสินค้า</th>
+                                    <th className="text-right py-2 px-2 font-semibold text-gray-700">จำนวน</th>
+                                    <th className="text-left py-2 px-2 font-semibold text-gray-700">หน่วย</th>
+                                    <th className="text-right py-2 px-2 font-semibold text-gray-700">ราคา/หน่วย</th>
+                                    <th className="text-right py-2 px-2 font-semibold text-gray-700">ราคารวม</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
                                   {orderItems.get(order.id)!.map((item: any, idx: number) => (
                                     <tr key={idx} className="border-b border-gray-200 last:border-0">
                                       <td className="py-2 px-2 text-gray-600">{item.product?.product_code || '-'}</td>
@@ -667,35 +667,35 @@ export function PendingOrdersView() {
                                       </td>
                                     </tr>
                                   ))}
-                              </tbody>
-                              <tfoot>
-                                <tr className="border-t-2 border-gray-400 font-bold">
-                                  <td colSpan={5} className="py-2 px-2 text-right text-gray-900">
-                                    ยอดรวม:
-                                  </td>
-                                  <td className="py-2 px-2 text-right text-blue-600">
-                                    ฿{orderItems.get(order.id)!.reduce(
-                                      (sum: number, item: any) => sum + (item.quantity * (item.unit_price || 0)), 
-                                      0
-                                    ).toLocaleString()}
-                                  </td>
-                                </tr>
-                              </tfoot>
-                            </table>
-                          </div>
-                        ) : (
-                          <div className="flex items-center justify-center py-4">
-                            <LoadingSpinner size={20} />
-                            <span className="ml-2 text-sm text-gray-500">กำลังโหลดรายการสินค้า...</span>
-                          </div>
-                        )}
-                      </div>
-                    )}
+                                </tbody>
+                                <tfoot>
+                                  <tr className="border-t-2 border-gray-400 font-bold">
+                                    <td colSpan={5} className="py-2 px-2 text-right text-gray-900">
+                                      ยอดรวม:
+                                    </td>
+                                    <td className="py-2 px-2 text-right text-blue-600">
+                                      ฿{orderItems.get(order.id)!.reduce(
+                                        (sum: number, item: any) => sum + (item.quantity * (item.unit_price || 0)),
+                                        0
+                                      ).toLocaleString()}
+                                    </td>
+                                  </tr>
+                                </tfoot>
+                              </table>
+                            </div>
+                          ) : (
+                            <div className="flex items-center justify-center py-4">
+                              <LoadingSpinner size={20} />
+                              <span className="ml-2 text-sm text-gray-500 dark:text-gray-400">กำลังโหลดรายการสินค้า...</span>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
-            </Card>
-          ))}
+              </Card>
+            ))}
           </div>
         </div>
       )}
@@ -723,10 +723,10 @@ export function PendingOrdersView() {
                 </button>
               </div>
             </div>
-            
+
             <div className="flex-1 overflow-y-auto p-6">
               {aggregatedProducts.length === 0 ? (
-                <div className="text-center py-12 text-gray-500">
+                <div className="text-center py-12 text-gray-500 dark:text-gray-400">
                   <Package className="w-16 h-16 mx-auto mb-4 opacity-30" />
                   <p>ไม่มีรายการสินค้า</p>
                 </div>
@@ -755,7 +755,7 @@ export function PendingOrdersView() {
                   </div>
 
                   {/* Products Table */}
-                  <div className="bg-gray-50 rounded-lg overflow-hidden">
+                  <div className="bg-gray-50 dark:bg-gray-800 rounded-lg overflow-hidden">
                     <table className="w-full">
                       <thead className="bg-purple-600 text-white sticky top-0">
                         <tr>
@@ -768,21 +768,21 @@ export function PendingOrdersView() {
                       </thead>
                       <tbody>
                         {aggregatedProducts.map((product, index) => (
-                          <tr 
-                            key={product.product_id} 
-                            className="border-b border-gray-200 hover:bg-purple-50 transition-colors"
+                          <tr
+                            key={product.product_id}
+                            className="border-b border-gray-200 dark:border-gray-700 hover:bg-purple-50 dark:hover:bg-purple-900/20 transition-colors"
                           >
-                            <td className="py-3 px-4 text-gray-500 text-sm">{index + 1}</td>
+                            <td className="py-3 px-4 text-gray-500 dark:text-gray-400 text-sm">{index + 1}</td>
                             <td className="py-3 px-4">
-                              <div className="font-mono text-sm text-gray-600">
+                              <div className="font-mono text-sm text-gray-600 dark:text-gray-400">
                                 {product.product_code}
                               </div>
                             </td>
                             <td className="py-3 px-4">
-                              <div className="font-medium text-gray-900">{product.product_name}</div>
+                              <div className="font-medium text-gray-900 dark:text-gray-100">{product.product_name}</div>
                             </td>
                             <td className="py-3 px-4 text-right">
-                              <div className="font-bold text-xl text-purple-700">
+                              <div className="font-bold text-xl text-purple-700 dark:text-purple-400">
                                 {product.total_quantity.toLocaleString()}
                               </div>
                             </td>
@@ -813,9 +813,9 @@ export function PendingOrdersView() {
               )}
             </div>
 
-            <div className="p-4 border-t border-gray-200 bg-gray-50">
+            <div className="p-4 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
               <div className="flex justify-end gap-2">
-                <Button 
+                <Button
                   variant="outline"
                   onClick={() => setShowProductsSummaryModal(false)}
                 >
