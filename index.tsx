@@ -74,8 +74,8 @@ const SidebarItem = ({ icon: Icon, label, active, onClick, onMouseEnter, isColla
     onClick={onClick}
     onMouseEnter={onMouseEnter}
     className={`w-full flex items-center ${isCollapsed ? 'justify-center' : 'space-x-3'} px-4 py-3 rounded-lg transition-colors duration-200 ${active
-      ? 'bg-enterprise-50 text-enterprise-600 dark:bg-enterprise-900/30 dark:text-enterprise-400 font-medium'
-      : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/50'
+      ? 'bg-enterprise-50 text-enterprise-600 dark:bg-blue-900/30 dark:text-blue-400 font-medium'
+      : 'text-slate-600 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700/50'
       }`}
   >
     <Icon size={isCollapsed ? 24 : 20} />
@@ -90,8 +90,8 @@ const SubSidebarItem = ({ label, active, onClick, isCollapsed, isFlyout }: any) 
   <button
     onClick={onClick}
     className={`w-full flex items-center ${isFlyout ? 'px-4' : 'pl-12 pr-4'} py-2 rounded-lg transition-colors duration-200 ${active
-      ? 'text-enterprise-600 dark:text-enterprise-400 font-medium bg-enterprise-50 dark:bg-enterprise-900/20'
-      : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/30'
+      ? 'text-enterprise-600 dark:text-blue-400 font-medium bg-enterprise-50 dark:bg-blue-900/30'
+      : 'text-slate-600 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700/50'
       }`}
   >
     {!isCollapsed && <span className="text-sm whitespace-nowrap">{label}</span>}
@@ -288,11 +288,14 @@ const AppContent = () => {
     
     const rect = e.currentTarget.getBoundingClientRect();
     const viewportHeight = window.innerHeight;
-    const flyoutEstimatedHeight = 150;
-    
+    // Estimate flyout height (menu + padding). Keep conservative to reduce upward shift.
+    const flyoutEstimatedHeight = 320;
+    // Start aligned to trigger top
     let top = rect.top;
-    if (top + flyoutEstimatedHeight > viewportHeight - 10) {
-      top = Math.max(10, viewportHeight - flyoutEstimatedHeight - 10);
+    // If it would overflow bottom, shift up just enough
+    const overflow = top + flyoutEstimatedHeight - (viewportHeight - 12);
+    if (overflow > 0) {
+      top = Math.max(12, top - overflow);
     }
     
     setOrdersFlyoutPosition({
@@ -888,9 +891,9 @@ const AppContent = () => {
                   onMouseEnter={handleFlyoutMouseEnter}
                   onMouseLeave={handleFlyoutMouseLeave}
                 >
-                  <div className="bg-white dark:bg-charcoal-900 border border-slate-200 dark:border-slate-700 rounded-xl shadow-2xl min-w-[220px] py-2 overflow-hidden ring-1 ring-black/5 animate-in fade-in slide-in-from-left-2 duration-150">
-                    <div className="px-4 pb-2 mb-2 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
-                      <p className="text-[10px] font-black text-blue-500 uppercase tracking-widest">เมนูค่าคอมมิชชั่น</p>
+                  <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-xl shadow-2xl dark:shadow-black/50 min-w-[220px] py-2 overflow-hidden ring-1 ring-black/5 dark:ring-white/10 animate-in fade-in slide-in-from-left-2 duration-150">
+                    <div className="px-4 pb-2 mb-2 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between">
+                      <p className="text-[10px] font-black text-blue-500 dark:text-blue-400 uppercase tracking-widest">เมนูค่าคอมมิชชั่น</p>
                       <div className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"></div>
                     </div>
                     <div className="px-2 space-y-1">
@@ -933,7 +936,7 @@ const AppContent = () => {
                 <SidebarItem
                   icon={Package}
                   label={isSidebarOpen ? "คลังสินค้า" : ""}
-                  active={activeTab === 'stock-dashboard' || activeTab === 'products' || activeTab === 'warehouses' || activeTab === 'inventory-receipts'}
+                  active={activeTab === 'stock-dashboard' || activeTab === 'warehouses' || activeTab === 'inventory-receipts'}
                   onClick={() => {
                     if (activeTab !== 'stock-dashboard') {
                       setActiveTab('stock-dashboard');
@@ -956,9 +959,9 @@ const AppContent = () => {
                   onMouseEnter={handleStockFlyoutMouseEnter}
                   onMouseLeave={handleStockFlyoutMouseLeave}
                 >
-                  <div className="bg-white dark:bg-charcoal-900 border border-slate-200 dark:border-slate-700 rounded-xl shadow-2xl min-w-[220px] py-2 overflow-hidden ring-1 ring-black/5 animate-in fade-in slide-in-from-left-2 duration-150">
-                    <div className="px-4 pb-2 mb-2 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
-                      <p className="text-[10px] font-black text-blue-500 uppercase tracking-widest">เมนูคลังสินค้า</p>
+                  <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-xl shadow-2xl dark:shadow-black/50 min-w-[220px] py-2 overflow-hidden ring-1 ring-black/5 dark:ring-white/10 animate-in fade-in slide-in-from-left-2 duration-150">
+                    <div className="px-4 pb-2 mb-2 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between">
+                      <p className="text-[10px] font-black text-blue-500 dark:text-blue-400 uppercase tracking-widest">เมนูคลังสินค้า</p>
                       <div className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"></div>
                     </div>
                     <div className="px-2 space-y-1">
@@ -967,16 +970,6 @@ const AppContent = () => {
                         active={activeTab === 'stock-dashboard'}
                         onClick={() => {
                           setActiveTab('stock-dashboard');
-                          setIsStockHovered(false);
-                        }}
-                        isCollapsed={false}
-                        isFlyout={true}
-                      />
-                      <SubSidebarItem
-                        label="จัดการสินค้า"
-                        active={activeTab === 'products'}
-                        onClick={() => {
-                          setActiveTab('products');
                           setIsStockHovered(false);
                         }}
                         isCollapsed={false}
@@ -1009,24 +1002,9 @@ const AppContent = () => {
             </>
           )}
 
-          {/* Pricing Management Section */}
+          {/* Orders Menu with Submenu (Sales) */}
           {!isDriver && (
             <>
-              <div className="relative group/menu">
-                <SidebarItem
-                  icon={DollarSign}
-                  label={isSidebarOpen ? "จัดการราคา" : ""}
-                  active={activeTab === 'customer-tiers' || activeTab === 'product-pricing'}
-                  onClick={() => {
-                    if (activeTab !== 'customer-tiers') {
-                      setActiveTab('customer-tiers');
-                    }
-                  }}
-                  isCollapsed={!isSidebarOpen}
-                />
-              </div>
-
-              {/* Orders Menu with Submenu */}
               <div 
                 ref={ordersMenuRef}
                 className="relative group/menu"
@@ -1035,8 +1013,15 @@ const AppContent = () => {
               >
                 <SidebarItem
                   icon={ShoppingCart}
-                  label={isSidebarOpen ? "ออเดอร์" : ""}
-                  active={activeTab === 'create-order' || activeTab === 'track-orders' || activeTab === 'sales-trips'}
+                  label={isSidebarOpen ? "ฝ่ายขาย" : ""}
+                  active={
+                    activeTab === 'create-order' ||
+                    activeTab === 'track-orders' ||
+                    activeTab === 'sales-trips' ||
+                    activeTab === 'products' ||
+                    activeTab === 'product-pricing' ||
+                    activeTab === 'customer-tiers'
+                  }
                   onClick={() => {
                     if (activeTab !== 'create-order') {
                       setActiveTab('create-order');
@@ -1059,9 +1044,9 @@ const AppContent = () => {
                   onMouseEnter={handleOrdersFlyoutMouseEnter}
                   onMouseLeave={handleOrdersFlyoutMouseLeave}
                 >
-                  <div className="bg-white dark:bg-charcoal-900 border border-slate-200 dark:border-slate-700 rounded-xl shadow-2xl min-w-[220px] py-2 overflow-hidden ring-1 ring-black/5 animate-in fade-in slide-in-from-left-2 duration-150">
-                    <div className="px-4 pb-2 mb-2 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
-                      <p className="text-[10px] font-black text-blue-500 uppercase tracking-widest">เมนูออเดอร์</p>
+                  <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-xl shadow-2xl dark:shadow-black/50 min-w-[220px] py-2 ring-1 ring-black/5 dark:ring-white/10 animate-in fade-in slide-in-from-left-2 duration-150 max-h-[70vh] overflow-y-auto">
+                    <div className="px-4 pb-2 mb-2 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between">
+                      <p className="text-[10px] font-black text-blue-500 dark:text-blue-400 uppercase tracking-widest">เมนูฝ่ายขาย</p>
                       <div className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"></div>
                     </div>
                     <div className="px-2 space-y-1">
@@ -1070,6 +1055,36 @@ const AppContent = () => {
                         active={activeTab === 'create-order'}
                         onClick={() => {
                           setActiveTab('create-order');
+                          setIsOrdersHovered(false);
+                        }}
+                        isCollapsed={false}
+                        isFlyout={true}
+                      />
+                      <SubSidebarItem
+                        label="จัดการสินค้า / ราคา"
+                        active={activeTab === 'products'}
+                        onClick={() => {
+                          setActiveTab('products');
+                          setIsOrdersHovered(false);
+                        }}
+                        isCollapsed={false}
+                        isFlyout={true}
+                      />
+                      <SubSidebarItem
+                        label="กำหนดราคาตามลูกค้า"
+                        active={activeTab === 'product-pricing'}
+                        onClick={() => {
+                          setActiveTab('product-pricing');
+                          setIsOrdersHovered(false);
+                        }}
+                        isCollapsed={false}
+                        isFlyout={true}
+                      />
+                      <SubSidebarItem
+                        label="ระดับลูกค้า"
+                        active={activeTab === 'customer-tiers'}
+                        onClick={() => {
+                          setActiveTab('customer-tiers');
                           setIsOrdersHovered(false);
                         }}
                         isCollapsed={false}
@@ -1165,9 +1180,9 @@ const AppContent = () => {
                 onMouseEnter={handleSettingsFlyoutMouseEnter}
                 onMouseLeave={handleSettingsFlyoutMouseLeave}
               >
-                <div className="bg-white dark:bg-charcoal-900 border border-slate-200 dark:border-slate-700 rounded-xl shadow-2xl min-w-[220px] py-2 overflow-hidden ring-1 ring-black/5 animate-in fade-in slide-in-from-left-2 duration-150">
-                  <div className="px-4 pb-2 mb-2 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
-                    <p className="text-[10px] font-black text-blue-500 uppercase tracking-widest">เมนูตั้งค่า</p>
+                <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-xl shadow-2xl dark:shadow-black/50 min-w-[220px] py-2 overflow-hidden ring-1 ring-black/5 dark:ring-white/10 animate-in fade-in slide-in-from-left-2 duration-150">
+                  <div className="px-4 pb-2 mb-2 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between">
+                    <p className="text-[10px] font-black text-blue-500 dark:text-blue-400 uppercase tracking-widest">เมนูตั้งค่า</p>
                     <div className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"></div>
                   </div>
                   <div className="px-2 space-y-1">

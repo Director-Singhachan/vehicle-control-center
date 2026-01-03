@@ -93,6 +93,50 @@ import type { Database } from '../types/database';
   - Card Title: `text-base font-medium`
   - Body: `text-sm` or `text-base`
 
+### Z-Index Layers (CRITICAL - Follow Strictly)
+Use consistent z-index values to prevent layering issues:
+- **z-0**: Base content (default)
+- **z-10**: Elevated content (cards, tooltips)
+- **z-20**: Sticky headers
+- **z-30**: Fixed sidebars
+- **z-40**: Overlays, backdrops
+- **z-50**: Dropdowns, autocomplete, popovers (⚠️ MUST be higher than cards)
+- **z-[60]**: Modals, dialogs
+- **z-[70]**: Toasts, notifications
+- **z-[100]**: Flyout menus (sidebar submenus)
+
+**Common Patterns:**
+```tsx
+// ✅ Dropdown/Autocomplete (must be above cards)
+<div className="absolute z-50 w-full mt-2 bg-white dark:bg-slate-800 ...">
+
+// ✅ Modal backdrop
+<div className="fixed inset-0 z-40 bg-black/50">
+
+// ✅ Modal content
+<div className="fixed inset-0 z-[60] flex items-center justify-center">
+
+// ✅ Flyout submenu
+<div className="fixed z-[100] ...">
+
+// ❌ Wrong - Dropdown too low
+<div className="absolute z-10 ..."> {/* Will go behind cards */}
+```
+
+**Stacking Context Issue:**
+Components with `backdrop-blur`, `opacity`, or `transform` create NEW stacking contexts.
+Child z-index cannot escape parent's stacking context!
+
+```tsx
+// ❌ Wrong: z-50 on dropdown won't work
+<Card> {/* Has backdrop-blur, creates stacking context at z-0 */}
+  <div className="absolute z-50"> {/* Can't go above other Cards! */}
+  
+// ✅ Correct: Add z-index to Card itself when dropdown is open
+<Card className={`${hasDropdown ? 'relative z-50' : ''}`}>
+  <div className="absolute z-50"> {/* Now works! */}
+```
+
 ### Dark Mode
 - **ALWAYS** support dark mode using `dark:` prefix
 - Test both light and dark modes
@@ -106,13 +150,125 @@ import type { Database } from '../types/database';
 
 ### Component Styling
 ```tsx
-// ✅ Good: Use Tailwind classes
-<div className="p-6 bg-white dark:bg-charcoal-900 rounded-xl border border-slate-200 dark:border-slate-700">
+// ✅ Good: Use Tailwind classes with dark mode
+<div className="p-6 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-600">
   <h2 className="text-2xl font-bold text-slate-900 dark:text-white">Title</h2>
 </div>
 
 // ❌ Bad: Inline styles
 <div style={{ padding: '24px', backgroundColor: 'white' }}>
+```
+
+### Input Fields & Forms (MUST Follow)
+**ALWAYS** include these dark mode classes for inputs:
+```tsx
+// ✅ Text Input
+<input
+  className="w-full px-3 py-2 
+    border border-gray-300 dark:border-slate-600 
+    rounded-lg 
+    bg-white dark:bg-slate-800 
+    text-gray-900 dark:text-white 
+    placeholder-gray-400 dark:placeholder-gray-500 
+    focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400
+    disabled:opacity-50 disabled:cursor-not-allowed"
+/>
+
+// ✅ Textarea
+<textarea
+  className="w-full px-3 py-2 
+    border border-gray-300 dark:border-slate-600 
+    rounded-lg 
+    bg-white dark:bg-slate-800 
+    text-gray-900 dark:text-white 
+    placeholder-gray-400 dark:placeholder-gray-500"
+/>
+
+// ✅ Select/Dropdown Results
+<div className="absolute z-50 w-full mt-2 
+  bg-white dark:bg-slate-800 
+  border border-gray-200 dark:border-slate-600 
+  rounded-xl 
+  shadow-lg dark:shadow-black/50">
+  <button className="w-full p-4 text-left 
+    hover:bg-gray-50 dark:hover:bg-slate-700/50 
+    border-b border-gray-100 dark:border-slate-700">
+    <p className="text-gray-900 dark:text-white">Item</p>
+    <p className="text-gray-500 dark:text-gray-400">Detail</p>
+  </button>
+</div>
+
+// ❌ Wrong: Missing dark mode classes
+<input className="border rounded px-3 py-2" />
+```
+
+### Number Inputs Best Practices
+**CRITICAL**: Prevent auto-fill and unwanted default values:
+```tsx
+// ✅ Correct: Allow empty state, no default values
+const [quantity, setQuantity] = useState<string | number>(''); // Start empty
+
+<input
+  type="number"
+  value={quantity === '' ? '' : quantity}
+  onChange={(e) => setQuantity(e.target.value)} // Keep as string
+  placeholder="จำนวน"
+  min="0"
+  className="..."
+/>
+
+// When calculating, convert to number
+const total = (Number(quantity) || 0) * price;
+
+// When submitting, validate
+if (Number(quantity) <= 0) {
+  alert('กรุณาใส่จำนวนที่มากกว่า 0');
+  return;
+}
+
+// ❌ Wrong: Default value causes issues
+const [quantity, setQuantity] = useState(1); // Auto-fills with 1
+onChange={(e) => setQuantity(parseInt(e.target.value) || 1)} // Can't clear
+```
+
+### Dropdown/Autocomplete Click Outside Handler
+**ALWAYS** implement click-outside to close dropdowns:
+```tsx
+import React, { useRef, useEffect } from 'react';
+
+// 1. Create ref for dropdown container
+const dropdownRef = useRef<HTMLDivElement>(null);
+
+// 2. Add click outside handler
+useEffect(() => {
+  const handleClickOutside = (event: MouseEvent) => {
+    if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+      // Close dropdown
+      setShowDropdown(false);
+      // or clear search: setSearch('');
+    }
+  };
+
+  document.addEventListener('mousedown', handleClickOutside);
+  return () => {
+    document.removeEventListener('mousedown', handleClickOutside);
+  };
+}, [showDropdown]); // Add dependencies
+
+// 3. Attach ref to container (not just dropdown!)
+<div className="relative" ref={dropdownRef}>
+  <input ... />
+  {showDropdown && (
+    <div className="absolute z-50 ...">
+      {/* Dropdown content */}
+    </div>
+  )}
+</div>
+
+// ❌ Wrong: Ref on dropdown only
+<div className="relative">
+  <input ... />
+  <div ref={dropdownRef} className="absolute z-50 ..."> {/* Wrong! */}
 ```
 
 ## Component Guidelines

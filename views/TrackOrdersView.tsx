@@ -126,13 +126,13 @@ export function TrackOrdersView() {
             {/* Search */}
             <div className="flex-1">
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 dark:text-gray-500 w-5 h-5" />
                 <input
                   type="text"
                   placeholder="ค้นหาเลขออเดอร์, ร้านค้า..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
                 />
               </div>
             </div>
@@ -142,7 +142,7 @@ export function TrackOrdersView() {
               <select
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                className="w-full px-4 py-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
               >
                 <option value="all">ทุกสถานะ</option>
                 <option value="pending">รอจัดทริป</option>
@@ -160,32 +160,32 @@ export function TrackOrdersView() {
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-4">
         <Card>
           <div className="p-4 text-center">
-            <div className="text-2xl font-bold text-gray-900">{stats.total}</div>
-            <div className="text-sm text-gray-600">ทั้งหมด</div>
+            <div className="text-2xl font-bold text-gray-900 dark:text-white">{stats.total}</div>
+            <div className="text-sm text-gray-600 dark:text-gray-400">ทั้งหมด</div>
           </div>
         </Card>
         <Card>
           <div className="p-4 text-center">
-            <div className="text-2xl font-bold text-yellow-600">{stats.pending}</div>
-            <div className="text-sm text-gray-600">รอจัดทริป</div>
+            <div className="text-2xl font-bold text-yellow-600 dark:text-yellow-400">{stats.pending}</div>
+            <div className="text-sm text-gray-600 dark:text-gray-400">รอจัดทริป</div>
           </div>
         </Card>
         <Card>
           <div className="p-4 text-center">
-            <div className="text-2xl font-bold text-blue-600">{stats.assigned}</div>
-            <div className="text-sm text-gray-600">กำหนดทริปแล้ว</div>
+            <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">{stats.assigned}</div>
+            <div className="text-sm text-gray-600 dark:text-gray-400">กำหนดทริปแล้ว</div>
           </div>
         </Card>
         <Card>
           <div className="p-4 text-center">
-            <div className="text-2xl font-bold text-purple-600">{stats.in_transit}</div>
-            <div className="text-sm text-gray-600">กำลังจัดส่ง</div>
+            <div className="text-2xl font-bold text-purple-600 dark:text-purple-400">{stats.in_transit}</div>
+            <div className="text-sm text-gray-600 dark:text-gray-400">กำลังจัดส่ง</div>
           </div>
         </Card>
         <Card>
           <div className="p-4 text-center">
-            <div className="text-2xl font-bold text-green-600">{stats.delivered}</div>
-            <div className="text-sm text-gray-600">จัดส่งแล้ว</div>
+            <div className="text-2xl font-bold text-green-600 dark:text-green-400">{stats.delivered}</div>
+            <div className="text-sm text-gray-600 dark:text-gray-400">จัดส่งแล้ว</div>
           </div>
         </Card>
       </div>
@@ -197,7 +197,7 @@ export function TrackOrdersView() {
             <LoadingSpinner />
           </div>
         ) : filteredOrders.length === 0 ? (
-          <div className="p-12 text-center text-gray-500">
+          <div className="p-12 text-center text-gray-500 dark:text-gray-400">
             <Package className="w-12 h-12 mx-auto mb-3 opacity-50" />
             <p>ไม่พบออเดอร์</p>
           </div>
@@ -205,28 +205,28 @@ export function TrackOrdersView() {
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
-                <tr className="border-b border-gray-200 bg-gray-50">
-                  <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700">เลขออเดอร์</th>
-                  <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700">ร้านค้า</th>
-                  <th className="text-right py-3 px-4 text-sm font-semibold text-gray-700">ยอดรวม</th>
-                  <th className="text-center py-3 px-4 text-sm font-semibold text-gray-700">สถานะ</th>
-                  <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700">วันที่สร้าง</th>
-                  <th className="text-center py-3 px-4 text-sm font-semibold text-gray-700">ดูรายละเอียด</th>
+                <tr className="border-b border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800/50">
+                  <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700 dark:text-gray-300">เลขออเดอร์</th>
+                  <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700 dark:text-gray-300">ร้านค้า</th>
+                  <th className="text-right py-3 px-4 text-sm font-semibold text-gray-700 dark:text-gray-300">ยอดรวม</th>
+                  <th className="text-center py-3 px-4 text-sm font-semibold text-gray-700 dark:text-gray-300">สถานะ</th>
+                  <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700 dark:text-gray-300">วันที่สร้าง</th>
+                  <th className="text-center py-3 px-4 text-sm font-semibold text-gray-700 dark:text-gray-300">ดูรายละเอียด</th>
                 </tr>
               </thead>
               <tbody>
                 {filteredOrders.map((order) => (
-                  <tr key={order.id} className="border-b border-gray-100 hover:bg-gray-50">
-                    <td className="py-3 px-4 font-mono text-sm text-blue-600">{order.order_number}</td>
+                  <tr key={order.id} className="border-b border-gray-100 dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-700/50">
+                    <td className="py-3 px-4 font-mono text-sm text-blue-600 dark:text-blue-400">{order.order_number}</td>
                     <td className="py-3 px-4">
-                      <div className="font-medium text-gray-900">{order.customer_name}</div>
-                      <div className="text-xs text-gray-500">{order.customer_code}</div>
+                      <div className="font-medium text-gray-900 dark:text-white">{order.customer_name}</div>
+                      <div className="text-xs text-gray-500 dark:text-gray-400">{order.customer_code}</div>
                     </td>
-                    <td className="py-3 px-4 text-right font-semibold text-gray-900">
+                    <td className="py-3 px-4 text-right font-semibold text-gray-900 dark:text-white">
                       ฿{order.total_amount.toLocaleString()}
                     </td>
                     <td className="py-3 px-4 text-center">{getStatusBadge(order.status)}</td>
-                    <td className="py-3 px-4 text-sm text-gray-600">
+                    <td className="py-3 px-4 text-sm text-gray-600 dark:text-gray-400">
                       {new Date(order.created_at).toLocaleDateString('th-TH', {
                         year: 'numeric',
                         month: 'short',
@@ -261,20 +261,20 @@ export function TrackOrdersView() {
             <LoadingSpinner />
           </div>
         ) : detailError ? (
-          <div className="text-red-600">{detailError}</div>
+          <div className="text-red-600 dark:text-red-400">{detailError}</div>
         ) : detailOrder ? (
           <div className="space-y-4">
             <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
               <div>
-                <div className="text-sm text-gray-500">ร้านค้า</div>
-                <div className="text-lg font-semibold text-gray-900">
+                <div className="text-sm text-gray-500 dark:text-gray-400">ร้านค้า</div>
+                <div className="text-lg font-semibold text-gray-900 dark:text-white">
                   {detailOrder.customer_name}
                 </div>
-                <div className="text-sm text-gray-500">{detailOrder.customer_code}</div>
+                <div className="text-sm text-gray-500 dark:text-gray-400">{detailOrder.customer_code}</div>
               </div>
               <div className="flex items-center gap-3 flex-wrap">
                 {getStatusBadge(detailOrder.status)}
-                <div className="text-sm text-gray-600">
+                <div className="text-sm text-gray-600 dark:text-gray-400">
                   วันที่สร้าง:{' '}
                   {new Date(detailOrder.created_at).toLocaleDateString('th-TH', {
                     year: 'numeric',
@@ -284,51 +284,51 @@ export function TrackOrdersView() {
                     minute: '2-digit',
                   })}
                 </div>
-                <div className="text-sm font-semibold text-gray-900">
+                <div className="text-sm font-semibold text-gray-900 dark:text-white">
                   ยอดรวม ฿{detailOrder.total_amount?.toLocaleString()}
                 </div>
               </div>
             </div>
 
-            <div className="border border-gray-200 rounded-lg overflow-hidden">
+            <div className="border border-gray-200 dark:border-slate-700 rounded-lg overflow-hidden">
               <table className="w-full">
-                <thead className="bg-gray-50">
+                <thead className="bg-gray-50 dark:bg-slate-800/50">
                   <tr>
-                    <th className="text-left py-2 px-3 text-sm font-semibold text-gray-700">สินค้า</th>
-                    <th className="text-right py-2 px-3 text-sm font-semibold text-gray-700">จำนวน</th>
-                    <th className="text-right py-2 px-3 text-sm font-semibold text-gray-700">ราคาต่อหน่วย</th>
-                    <th className="text-right py-2 px-3 text-sm font-semibold text-gray-700">ส่วนลด (%)</th>
-                    <th className="text-right py-2 px-3 text-sm font-semibold text-gray-700">รวมบรรทัด</th>
+                    <th className="text-left py-2 px-3 text-sm font-semibold text-gray-700 dark:text-gray-300">สินค้า</th>
+                    <th className="text-right py-2 px-3 text-sm font-semibold text-gray-700 dark:text-gray-300">จำนวน</th>
+                    <th className="text-right py-2 px-3 text-sm font-semibold text-gray-700 dark:text-gray-300">ราคาต่อหน่วย</th>
+                    <th className="text-right py-2 px-3 text-sm font-semibold text-gray-700 dark:text-gray-300">ส่วนลด (%)</th>
+                    <th className="text-right py-2 px-3 text-sm font-semibold text-gray-700 dark:text-gray-300">รวมบรรทัด</th>
                   </tr>
                 </thead>
                 <tbody>
                   {detailItems.length === 0 ? (
                     <tr>
-                      <td colSpan={5} className="text-center py-4 text-gray-500">
+                      <td colSpan={5} className="text-center py-4 text-gray-500 dark:text-gray-400">
                         ไม่มีรายการสินค้า
                       </td>
                     </tr>
                   ) : (
                     detailItems.map((item: any) => (
-                      <tr key={item.id} className="border-t border-gray-100">
+                      <tr key={item.id} className="border-t border-gray-100 dark:border-slate-700">
                         <td className="py-2 px-3">
-                          <div className="font-medium text-gray-900">
+                          <div className="font-medium text-gray-900 dark:text-white">
                             {item.product?.product_name || 'ไม่ระบุชื่อสินค้า'}
                           </div>
-                          <div className="text-xs text-gray-500">
+                          <div className="text-xs text-gray-500 dark:text-gray-400">
                             {item.product?.product_code || '-'}
                           </div>
                         </td>
-                        <td className="py-2 px-3 text-right text-gray-900">
+                        <td className="py-2 px-3 text-right text-gray-900 dark:text-white">
                           {item.quantity?.toLocaleString()} {item.product?.unit || ''}
                         </td>
-                        <td className="py-2 px-3 text-right text-gray-900">
+                        <td className="py-2 px-3 text-right text-gray-900 dark:text-white">
                           ฿{item.unit_price?.toLocaleString()}
                         </td>
-                        <td className="py-2 px-3 text-right text-gray-900">
+                        <td className="py-2 px-3 text-right text-gray-900 dark:text-white">
                           {item.discount_percent || 0}%
                         </td>
-                        <td className="py-2 px-3 text-right font-semibold text-gray-900">
+                        <td className="py-2 px-3 text-right font-semibold text-gray-900 dark:text-white">
                           ฿{item.line_total?.toLocaleString()}
                         </td>
                       </tr>
@@ -342,12 +342,12 @@ export function TrackOrdersView() {
       </Modal>
 
       {/* Info Message */}
-      <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+      <div className="mt-4 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
         <div className="flex items-start gap-3">
-          <Clock className="w-5 h-5 text-blue-600 mt-0.5" />
+          <Clock className="w-5 h-5 text-blue-600 dark:text-blue-400 mt-0.5" />
           <div>
-            <div className="font-medium text-blue-900">หมายเหตุ</div>
-            <div className="text-sm text-blue-700">
+            <div className="font-medium text-blue-900 dark:text-blue-300">หมายเหตุ</div>
+            <div className="text-sm text-blue-700 dark:text-blue-300">
               หน้านี้สำหรับติดตามสถานะออเดอร์เท่านั้น การสร้างทริปจัดส่งจะทำได้ที่เมนู "ทริปส่งสินค้า" เท่านั้น
             </div>
           </div>

@@ -48,7 +48,7 @@ export function SalesTripsView() {
   if (error) {
     return (
       <PageLayout title="ทริปของฉัน">
-        <div className="text-center text-red-600 py-8">
+        <div className="text-center text-red-600 dark:text-red-400 py-8">
           เกิดข้อผิดพลาด: {error.message}
         </div>
       </PageLayout>
@@ -60,12 +60,12 @@ export function SalesTripsView() {
       {/* Date Filter */}
       <div className="mb-6 flex items-center gap-4">
         <div className="flex items-center gap-2">
-          <Calendar className="w-5 h-5 text-gray-400" />
+          <Calendar className="w-5 h-5 text-gray-400 dark:text-gray-500" />
           <input
             type="date"
             value={dateFilter}
             onChange={(e) => setDateFilter(e.target.value)}
-            className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+            className="px-4 py-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
           />
         </div>
         <Button onClick={refetch} variant="outline">
@@ -79,8 +79,8 @@ export function SalesTripsView() {
           <div className="p-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-600">ทริปทั้งหมด</p>
-                <p className="text-2xl font-bold text-gray-900">{myTrips.length}</p>
+                <p className="text-sm text-gray-600 dark:text-gray-400">ทริปทั้งหมด</p>
+                <p className="text-2xl font-bold text-gray-900 dark:text-white">{myTrips.length}</p>
               </div>
               <Truck className="w-10 h-10 text-blue-500 opacity-50" />
             </div>
@@ -91,8 +91,8 @@ export function SalesTripsView() {
           <div className="p-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-600">กำลังดำเนินการ</p>
-                <p className="text-2xl font-bold text-yellow-600">
+                <p className="text-sm text-gray-600 dark:text-gray-400">กำลังดำเนินการ</p>
+                <p className="text-2xl font-bold text-yellow-600 dark:text-yellow-400">
                   {myTrips.filter((t: any) => t.status === 'in_progress').length}
                 </p>
               </div>
@@ -105,8 +105,8 @@ export function SalesTripsView() {
           <div className="p-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-600">เสร็จสิ้น</p>
-                <p className="text-2xl font-bold text-green-600">
+                <p className="text-sm text-gray-600 dark:text-gray-400">เสร็จสิ้น</p>
+                <p className="text-2xl font-bold text-green-600 dark:text-green-400">
                   {myTrips.filter((t: any) => t.status === 'completed').length}
                 </p>
               </div>
@@ -119,8 +119,8 @@ export function SalesTripsView() {
           <div className="p-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-600">จุดส่งทั้งหมด</p>
-                <p className="text-2xl font-bold text-purple-600">
+                <p className="text-sm text-gray-600 dark:text-gray-400">จุดส่งทั้งหมด</p>
+                <p className="text-2xl font-bold text-purple-600 dark:text-purple-400">
                   {myTrips.reduce((sum: number, t: any) => sum + (t.stores?.length || 0), 0)}
                 </p>
               </div>
@@ -133,7 +133,7 @@ export function SalesTripsView() {
       {/* Trips List */}
       {myTrips.length === 0 ? (
         <Card>
-          <div className="p-12 text-center text-gray-500">
+          <div className="p-12 text-center text-gray-500 dark:text-gray-400">
             <Truck className="w-16 h-16 mx-auto mb-4 opacity-30" />
             <p className="text-lg font-medium">ไม่มีทริปในวันที่เลือก</p>
             <p className="text-sm mt-2">เลือกวันอื่นเพื่อดูทริปของคุณ</p>
@@ -145,10 +145,10 @@ export function SalesTripsView() {
             <Card key={trip.id}>
               <div className="p-6">
                 {/* Trip Header */}
-                <div className="flex items-start justify-between mb-4 pb-4 border-b border-gray-200">
+                <div className="flex items-start justify-between mb-4 pb-4 border-b border-gray-200 dark:border-slate-700">
                   <div>
                     <div className="flex items-center gap-3 mb-2">
-                      <h3 className="text-xl font-semibold text-gray-900">
+                      <h3 className="text-xl font-semibold text-gray-900 dark:text-white">
                         {trip.trip_number || `ทริป #${trip.sequence_order}`}
                       </h3>
                       <Badge
@@ -165,7 +165,7 @@ export function SalesTripsView() {
                          'รอดำเนินการ'}
                       </Badge>
                     </div>
-                    <div className="flex items-center gap-4 text-sm text-gray-600 flex-wrap">
+                    <div className="flex items-center gap-4 text-sm text-gray-600 dark:text-gray-400 flex-wrap">
                       <div className="flex items-center gap-1">
                         <Truck className="w-4 h-4" />
                         <span>{trip.vehicle?.plate || 'ไม่ระบุ'}</span>
@@ -190,7 +190,7 @@ export function SalesTripsView() {
                       </div>
                     </div>
                     {trip.crews && trip.crews.length > 0 && (
-                      <div className="flex items-center gap-2 text-sm text-gray-600 mt-2">
+                      <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400 mt-2">
                         <User className="w-4 h-4" />
                         <span>พนักงานบริการ:</span>
                         <div className="flex gap-2 flex-wrap">
@@ -208,7 +208,7 @@ export function SalesTripsView() {
                 {/* Store Deliveries */}
                 {trip.stores && trip.stores.length > 0 && (
                   <div className="space-y-3">
-                    <h4 className="font-semibold text-gray-900 mb-3">
+                    <h4 className="font-semibold text-gray-900 dark:text-white mb-3">
                       รายการจัดส่ง (เรียงตามลำดับ)
                     </h4>
                     {trip.stores
@@ -216,17 +216,17 @@ export function SalesTripsView() {
                       .map((store: any, index: number) => (
                         <div
                           key={store.id}
-                          className="flex items-start gap-4 p-4 bg-gray-50 rounded-xl"
+                          className="flex items-start gap-4 p-4 bg-gray-50 dark:bg-slate-800/50 rounded-xl"
                         >
                           {/* Sequence Number */}
-                          <div className="flex-shrink-0 w-8 h-8 rounded-full bg-blue-500 text-white flex items-center justify-center font-bold text-sm">
+                          <div className="flex-shrink-0 w-8 h-8 rounded-full bg-blue-500 dark:bg-blue-600 text-white flex items-center justify-center font-bold text-sm">
                             {store.sequence_order || index + 1}
                           </div>
 
                           {/* Store Info */}
                           <div className="flex-1">
                             <div className="flex items-center gap-2 mb-1">
-                              <p className="font-semibold text-gray-900">
+                              <p className="font-semibold text-gray-900 dark:text-white">
                                 {store.store?.customer_name}
                               </p>
                               <Badge variant="info" className="text-xs">
@@ -241,14 +241,14 @@ export function SalesTripsView() {
                             </div>
                             
                             {store.store?.address && (
-                              <div className="flex items-start gap-2 text-sm text-gray-600 mb-2">
+                              <div className="flex items-start gap-2 text-sm text-gray-600 dark:text-gray-400 mb-2">
                                 <MapPin className="w-4 h-4 mt-0.5 flex-shrink-0" />
                                 <p>{store.store.address}</p>
                               </div>
                             )}
 
                             {store.store?.phone && (
-                              <div className="flex items-center gap-2 text-sm text-gray-600">
+                              <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
                                 <Phone className="w-4 h-4" />
                                 <p>{store.store.phone}</p>
                               </div>
@@ -256,19 +256,19 @@ export function SalesTripsView() {
 
                             {/* Items Summary */}
                             {store.items && store.items.length > 0 && (
-                              <div className="mt-3 p-3 bg-white rounded-lg border border-gray-200">
-                                <p className="text-xs font-semibold text-gray-700 mb-2">
+                              <div className="mt-3 p-3 bg-white dark:bg-slate-900/50 rounded-lg border border-gray-200 dark:border-slate-700">
+                                <p className="text-xs font-semibold text-gray-700 dark:text-gray-300 mb-2">
                                   รายการสินค้า ({store.items.length} รายการ)
                                 </p>
                                 <div className="space-y-1">
                                   {store.items.slice(0, 3).map((item: any) => (
-                                    <div key={item.id} className="flex items-center justify-between text-xs text-gray-600">
+                                    <div key={item.id} className="flex items-center justify-between text-xs text-gray-600 dark:text-gray-400">
                                       <span>{item.product?.product_name}</span>
                                       <span className="font-medium">{item.quantity} {item.product?.unit}</span>
                                     </div>
                                   ))}
                                   {store.items.length > 3 && (
-                                    <p className="text-xs text-gray-500 italic">
+                                    <p className="text-xs text-gray-500 dark:text-gray-400 italic">
                                       และอีก {store.items.length - 3} รายการ...
                                     </p>
                                   )}
@@ -295,8 +295,8 @@ export function SalesTripsView() {
 
                 {/* Trip Notes */}
                 {trip.notes && (
-                  <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-                    <p className="text-sm text-yellow-800">
+                  <div className="mt-4 p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
+                    <p className="text-sm text-yellow-800 dark:text-yellow-300">
                       <span className="font-medium">หมายเหตุ:</span> {trip.notes}
                     </p>
                   </div>

@@ -218,12 +218,12 @@ export function WarehouseManagementView() {
               {/* Header */}
               <div className="flex items-start justify-between mb-4">
                 <div className="flex items-center gap-3">
-                  <div className="p-3 bg-blue-100 rounded-xl">
-                    <Warehouse className="w-6 h-6 text-blue-600" />
+                  <div className="p-3 bg-blue-100 dark:bg-blue-900/30 rounded-xl">
+                    <Warehouse className="w-6 h-6 text-blue-600 dark:text-blue-400" />
                   </div>
                   <div>
-                    <h3 className="font-semibold text-gray-900 text-lg">{warehouse.name}</h3>
-                    <p className="text-sm text-gray-500">{warehouse.code}</p>
+                    <h3 className="font-semibold text-gray-900 dark:text-white text-lg">{warehouse.name}</h3>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">{warehouse.code}</p>
                   </div>
                 </div>
                 <Badge className={getTypeBadgeColor(warehouse.type)}>
@@ -234,21 +234,21 @@ export function WarehouseManagementView() {
               {/* Details */}
               <div className="space-y-3 mb-4">
                 {warehouse.address && (
-                  <div className="flex items-start gap-2 text-sm text-gray-600">
+                  <div className="flex items-start gap-2 text-sm text-gray-600 dark:text-gray-400">
                     <MapPin className="w-4 h-4 mt-0.5 flex-shrink-0" />
                     <span className="line-clamp-2">{warehouse.address}</span>
                   </div>
                 )}
 
                 {warehouse.manager && (
-                  <div className="flex items-center gap-2 text-sm text-gray-600">
+                  <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
                     <User className="w-4 h-4 flex-shrink-0" />
                     <span>{warehouse.manager.full_name}</span>
                   </div>
                 )}
 
                 {warehouse.capacity_m3 && (
-                  <div className="flex items-center gap-2 text-sm text-gray-600">
+                  <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
                     <Package className="w-4 h-4 flex-shrink-0" />
                     <span>ความจุ: {warehouse.capacity_m3} ลบ.ม.</span>
                   </div>
@@ -256,7 +256,7 @@ export function WarehouseManagementView() {
               </div>
 
               {/* Actions */}
-              <div className="flex gap-2 pt-4 border-t border-gray-200">
+              <div className="flex gap-2 pt-4 border-t border-gray-200 dark:border-slate-700">
                 <Button
                   size="sm"
                   variant="outline"
@@ -268,14 +268,14 @@ export function WarehouseManagementView() {
                 </Button>
                 <button
                   onClick={() => handleOpenModal(warehouse)}
-                  className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                  className="p-2 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors"
                   title="แก้ไข"
                 >
                   <Edit2 className="w-4 h-4" />
                 </button>
                 <button
                   onClick={() => handleDelete(warehouse.id, warehouse.name)}
-                  className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                  className="p-2 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
                   title="ลบ"
                 >
                   <Trash2 className="w-4 h-4" />
@@ -288,7 +288,7 @@ export function WarehouseManagementView() {
 
       {warehouses.length === 0 && (
         <Card>
-          <div className="text-center py-16 text-gray-500">
+          <div className="text-center py-16 text-gray-500 dark:text-gray-400">
             <Warehouse className="w-16 h-16 mx-auto mb-4 opacity-50" />
             <p className="text-lg font-medium">ยังไม่มีคลังสินค้า</p>
             <p className="text-sm mt-1">เริ่มต้นโดยเพิ่มคลังสินค้าใหม่</p>
@@ -305,27 +305,27 @@ export function WarehouseManagementView() {
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 รหัสคลัง <span className="text-red-500">*</span>
               </label>
               <input
                 type="text"
                 value={formData.code}
                 onChange={(e) => setFormData({ ...formData, code: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
                 placeholder="WH-001"
                 required
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 ประเภท <span className="text-red-500">*</span>
               </label>
               <select
                 value={formData.type}
                 onChange={(e) => setFormData({ ...formData, type: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
                 required
               >
                 <option value="main">คลังหลัก</option>
@@ -336,33 +336,33 @@ export function WarehouseManagementView() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
               ชื่อคลัง <span className="text-red-500">*</span>
             </label>
             <input
               type="text"
               value={formData.name}
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
               required
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
               ที่อยู่
             </label>
             <textarea
               value={formData.address}
               onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
               rows={3}
             />
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 ละติจูด
               </label>
               <input
@@ -370,13 +370,13 @@ export function WarehouseManagementView() {
                 step="0.000001"
                 value={formData.latitude || ''}
                 onChange={(e) => setFormData({ ...formData, latitude: parseFloat(e.target.value) || null })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
                 placeholder="13.736717"
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 ลองจิจูด
               </label>
               <input
@@ -384,14 +384,14 @@ export function WarehouseManagementView() {
                 step="0.000001"
                 value={formData.longitude || ''}
                 onChange={(e) => setFormData({ ...formData, longitude: parseFloat(e.target.value) || null })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
                 placeholder="100.523186"
               />
             </div>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
               ความจุ (ลูกบาศก์เมตร)
             </label>
             <input
@@ -399,11 +399,11 @@ export function WarehouseManagementView() {
               step="0.01"
               value={formData.capacity_m3 || ''}
               onChange={(e) => setFormData({ ...formData, capacity_m3: parseFloat(e.target.value) || null })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
             />
           </div>
 
-          <div className="flex gap-3 justify-end pt-4 border-t">
+          <div className="flex gap-3 justify-end pt-4 border-t dark:border-slate-700">
             <Button type="button" onClick={handleCloseModal} variant="outline">
               ยกเลิก
             </Button>
@@ -435,7 +435,7 @@ export function WarehouseManagementView() {
             </div>
 
             {warehouseInventory.length === 0 ? (
-              <div className="text-center py-12 text-gray-500">
+              <div className="text-center py-12 text-gray-500 dark:text-gray-400">
                 <Package className="w-16 h-16 mx-auto mb-4 opacity-50" />
                 <p>ยังไม่มีสต็อกในคลังนี้</p>
               </div>
@@ -443,18 +443,18 @@ export function WarehouseManagementView() {
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead>
-                    <tr className="border-b border-gray-200">
-                      <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700">สินค้า</th>
-                      <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700">รหัสสินค้า</th>
-                      <th className="text-right py-3 px-4 text-sm font-semibold text-gray-700">คงเหลือ</th>
-                      <th className="text-right py-3 px-4 text-sm font-semibold text-gray-700">จอง</th>
-                      <th className="text-right py-3 px-4 text-sm font-semibold text-gray-700">พร้อมใช้</th>
-                      <th className="text-center py-3 px-4 text-sm font-semibold text-gray-700">สถานะ</th>
+                    <tr className="border-b border-gray-200 dark:border-slate-700">
+                      <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700 dark:text-gray-300">สินค้า</th>
+                      <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700 dark:text-gray-300">รหัสสินค้า</th>
+                      <th className="text-right py-3 px-4 text-sm font-semibold text-gray-700 dark:text-gray-300">คงเหลือ</th>
+                      <th className="text-right py-3 px-4 text-sm font-semibold text-gray-700 dark:text-gray-300">จอง</th>
+                      <th className="text-right py-3 px-4 text-sm font-semibold text-gray-700 dark:text-gray-300">พร้อมใช้</th>
+                      <th className="text-center py-3 px-4 text-sm font-semibold text-gray-700 dark:text-gray-300">สถานะ</th>
                     </tr>
                   </thead>
                   <tbody>
                     {warehouseInventory.map((item) => (
-                      <tr key={item.id} className="border-b border-gray-100 hover:bg-gray-50">
+                      <tr key={item.id} className="border-b border-gray-100 dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-700/50">
                         <td className="py-3 px-4">
                           <div className="flex items-center gap-2">
                             {item.category_color && (
@@ -463,21 +463,21 @@ export function WarehouseManagementView() {
                                 style={{ backgroundColor: item.category_color }}
                               />
                             )}
-                            <span className="font-medium text-gray-900">
+                            <span className="font-medium text-gray-900 dark:text-white">
                               {item.product_name}
                             </span>
                           </div>
                         </td>
-                        <td className="py-3 px-4 text-sm text-gray-600">
+                        <td className="py-3 px-4 text-sm text-gray-600 dark:text-gray-400">
                           {item.product_code || item.product_sku || '-'}
                         </td>
-                        <td className="py-3 px-4 text-right font-semibold text-gray-900">
+                        <td className="py-3 px-4 text-right font-semibold text-gray-900 dark:text-white">
                           {item.quantity} {item.product_unit}
                         </td>
-                        <td className="py-3 px-4 text-right text-sm text-gray-600">
+                        <td className="py-3 px-4 text-right text-sm text-gray-600 dark:text-gray-400">
                           {item.reserved_quantity}
                         </td>
-                        <td className="py-3 px-4 text-right font-semibold text-green-600">
+                        <td className="py-3 px-4 text-right font-semibold text-green-600 dark:text-green-400">
                           {item.available_quantity}
                         </td>
                         <td className="py-3 px-4 text-center">
@@ -513,7 +513,7 @@ export function WarehouseManagementView() {
       >
         <form onSubmit={handleStockInSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
               สินค้า *
             </label>
             <div className="space-y-2">
@@ -521,10 +521,10 @@ export function WarehouseManagementView() {
                 type="text"
                 value={productSearch}
                 onChange={(e) => setProductSearch(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
                 placeholder="พิมพ์รหัสหรือชื่อสินค้า"
               />
-              <div className="max-h-40 overflow-y-auto border border-gray-200 rounded-lg">
+              <div className="max-h-40 overflow-y-auto border border-gray-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800">
                 {products
                   .filter((p: any) => {
                     if (!productSearch) return true;
@@ -543,15 +543,15 @@ export function WarehouseManagementView() {
                         setStockInForm({ ...stockInForm, product_id: p.id });
                         setProductSearch(`${p.product_code || ''} ${p.product_name || ''}`.trim());
                       }}
-                      className={`w-full text-left px-3 py-2 hover:bg-gray-50 ${stockInForm.product_id === p.id ? 'bg-blue-50 text-blue-700 font-medium' : ''
+                      className={`w-full text-left px-3 py-2 hover:bg-gray-50 dark:hover:bg-slate-700/50 ${stockInForm.product_id === p.id ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 font-medium' : 'text-gray-900 dark:text-white'
                         }`}
                     >
                       <div className="text-sm">{p.product_code}</div>
-                      <div className="text-xs text-gray-500">{p.product_name}</div>
+                      <div className="text-xs text-gray-500 dark:text-gray-400">{p.product_name}</div>
                     </button>
                   ))}
                 {products.length === 0 && (
-                  <div className="px-3 py-2 text-sm text-gray-500">ยังไม่มีรายการสินค้า</div>
+                  <div className="px-3 py-2 text-sm text-gray-500 dark:text-gray-400">ยังไม่มีรายการสินค้า</div>
                 )}
               </div>
             </div>
@@ -559,7 +559,7 @@ export function WarehouseManagementView() {
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 จำนวน *
               </label>
               <input
@@ -568,34 +568,34 @@ export function WarehouseManagementView() {
                 step="0.01"
                 value={stockInForm.quantity}
                 onChange={(e) => setStockInForm({ ...stockInForm, quantity: parseFloat(e.target.value) || 0 })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
                 required
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 เลขที่เอกสาร/ใบกำกับ
               </label>
               <input
                 type="text"
                 value={stockInForm.ref_code}
                 onChange={(e) => setStockInForm({ ...stockInForm, ref_code: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
                 placeholder="เช่น INV-2026-0001"
               />
             </div>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
               หมายเหตุ
             </label>
             <input
               type="text"
               value={stockInForm.note}
               onChange={(e) => setStockInForm({ ...stockInForm, note: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
               placeholder="เช่น รับเข้าจากสำนักงานใหญ่"
             />
           </div>

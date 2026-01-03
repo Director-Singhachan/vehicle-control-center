@@ -156,12 +156,12 @@ export const CommissionManagementView: React.FC = () => {
             )}
 
             {/* Tabs */}
-            <div className="flex bg-slate-100 p-1 rounded-xl mb-8 w-fit">
+            <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-xl mb-8 w-fit">
                 <button
                     className={`px-6 py-2 rounded-lg font-semibold text-sm transition-all duration-200 ${
                         activeTab === 'calculate'
-                            ? 'bg-white text-blue-600 shadow-sm'
-                            : 'text-slate-500 hover:text-slate-700'
+                            ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm'
+                            : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'
                     }`}
                     onClick={() => setActiveTab('calculate')}
                 >
@@ -173,8 +173,8 @@ export const CommissionManagementView: React.FC = () => {
                 <button
                     className={`px-6 py-2 rounded-lg font-semibold text-sm transition-all duration-200 ${
                         activeTab === 'summary'
-                            ? 'bg-white text-blue-600 shadow-sm'
-                            : 'text-slate-500 hover:text-slate-700'
+                            ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm'
+                            : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'
                     }`}
                     onClick={() => setActiveTab('summary')}
                 >
@@ -190,9 +190,9 @@ export const CommissionManagementView: React.FC = () => {
                     {/* Left side: Search & Results */}
                     <div className="lg:col-span-3 space-y-8">
                         {/* Search Section */}
-                        <Card className="p-8 border-none shadow-md bg-white overflow-hidden relative">
+                        <Card className="p-8 border-none shadow-md bg-white dark:bg-slate-800 overflow-hidden relative">
                             <div className="absolute top-0 left-0 w-2 h-full bg-blue-500"></div>
-                            <h3 className="text-xl font-bold mb-6 flex items-center gap-3 text-slate-800">
+                            <h3 className="text-xl font-bold mb-6 flex items-center gap-3 text-slate-800 dark:text-white">
                                 <Search className="text-blue-500" size={24} />
                                 ค้นหาทริปที่ต้องการคำนวณ
                             </h3>
@@ -205,9 +205,9 @@ export const CommissionManagementView: React.FC = () => {
                                         value={searchTripNumber}
                                         onChange={(e) => setSearchTripNumber(e.target.value)}
                                         onKeyPress={(e) => e.key === 'Enter' && handleSearchTrip()}
-                                        className="pl-10 h-12 text-lg border-slate-200 focus:border-blue-500 focus:ring-blue-500 rounded-xl"
+                                        className="pl-10 h-12 text-lg border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:border-blue-500 dark:focus:border-blue-400 focus:ring-blue-500 dark:focus:ring-blue-400 rounded-xl"
                                     />
-                                    <Search className="absolute left-3 top-3.5 text-slate-400" size={20} />
+                                    <Search className="absolute left-3 top-3.5 text-slate-400 dark:text-slate-500" size={20} />
                                 </div>
                                 <Button 
                                     onClick={() => handleSearchTrip()} 
@@ -220,16 +220,16 @@ export const CommissionManagementView: React.FC = () => {
 
                         {/* Calculate Section */}
                         {tripId ? (
-                            <Card className="p-8 border-none shadow-md bg-white animate-in fade-in slide-in-from-bottom-4 duration-500">
-                                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8 border-b border-slate-100 pb-6">
+                            <Card className="p-8 border-none shadow-md bg-white dark:bg-slate-800 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8 border-b border-slate-100 dark:border-slate-700 pb-6">
                                     <div>
-                                        <h3 className="text-2xl font-black text-slate-800 flex items-center gap-3">
-                                            <div className="p-2 bg-blue-50 rounded-lg text-blue-600">
+                                        <h3 className="text-2xl font-black text-slate-800 dark:text-white flex items-center gap-3">
+                                            <div className="p-2 bg-blue-50 dark:bg-blue-900/30 rounded-lg text-blue-600 dark:text-blue-400">
                                                 <Calculator size={24} />
                                             </div>
-                                            ทริปเลขที่: <span className="text-blue-600">{searchTripNumber}</span>
+                                            ทริปเลขที่: <span className="text-blue-600 dark:text-blue-400">{searchTripNumber}</span>
                                         </h3>
-                                        <p className="text-slate-500 mt-1">ตรวจสอบข้อมูลความถูกต้องก่อนทำการบันทึกค่าคอมมิชชั่น</p>
+                                        <p className="text-slate-500 dark:text-slate-400 mt-1">ตรวจสอบข้อมูลความถูกต้องก่อนทำการบันทึกค่าคอมมิชชั่น</p>
                                     </div>
                                     <Button
                                         onClick={handleCalculate}
@@ -242,11 +242,11 @@ export const CommissionManagementView: React.FC = () => {
                                 </div>
 
                                 {calculationError && (
-                                    <div className="mb-8 p-4 bg-red-50 border border-red-100 rounded-2xl flex items-start gap-3">
-                                        <AlertCircle className="text-red-500 mt-0.5" size={20} />
+                                    <div className="mb-8 p-4 bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800 rounded-2xl flex items-start gap-3">
+                                        <AlertCircle className="text-red-500 dark:text-red-400 mt-0.5" size={20} />
                                         <div>
-                                            <p className="font-bold text-red-800">เกิดข้อผิดพลาดในการคำนวณ</p>
-                                            <p className="text-sm text-red-600">{calculationError.message}</p>
+                                            <p className="font-bold text-red-800 dark:text-red-300">เกิดข้อผิดพลาดในการคำนวณ</p>
+                                            <p className="text-sm text-red-600 dark:text-red-400">{calculationError.message}</p>
                                         </div>
                                     </div>
                                 )}
@@ -254,17 +254,17 @@ export const CommissionManagementView: React.FC = () => {
                                 {calculation && (
                                     <div className="space-y-8">
                                         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                                            <div className="p-6 bg-slate-50 rounded-2xl border border-slate-100 group hover:bg-white hover:shadow-md transition-all">
-                                                <p className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-2">ประเภทรถ</p>
-                                                <p className="text-2xl font-black text-slate-800">{calculation.vehicleType || '-'}</p>
+                                            <div className="p-6 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-700 group hover:bg-white dark:hover:bg-slate-800 hover:shadow-md transition-all">
+                                                <p className="text-sm font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">ประเภทรถ</p>
+                                                <p className="text-2xl font-black text-slate-800 dark:text-white">{calculation.vehicleType || '-'}</p>
                                             </div>
-                                            <div className="p-6 bg-slate-50 rounded-2xl border border-slate-100 group hover:bg-white hover:shadow-md transition-all">
-                                                <p className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-2">จำนวนสินค้า</p>
-                                                <p className="text-2xl font-black text-slate-800">{calculation.totalItemsDelivered.toLocaleString()} <span className="text-sm font-normal text-slate-500 ml-1">ชิ้น</span></p>
+                                            <div className="p-6 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-700 group hover:bg-white dark:hover:bg-slate-800 hover:shadow-md transition-all">
+                                                <p className="text-sm font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">จำนวนสินค้า</p>
+                                                <p className="text-2xl font-black text-slate-800 dark:text-white">{calculation.totalItemsDelivered.toLocaleString()} <span className="text-sm font-normal text-slate-500 dark:text-slate-400 ml-1">ชิ้น</span></p>
                                             </div>
-                                            <div className="p-6 bg-slate-50 rounded-2xl border border-slate-100 group hover:bg-white hover:shadow-md transition-all">
-                                                <p className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-2">อัตราต่อชิ้น</p>
-                                                <p className="text-2xl font-black text-blue-600">{formatCurrency(calculation.rateApplied)}</p>
+                                            <div className="p-6 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-700 group hover:bg-white dark:hover:bg-slate-800 hover:shadow-md transition-all">
+                                                <p className="text-sm font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">อัตราต่อชิ้น</p>
+                                                <p className="text-2xl font-black text-blue-600 dark:text-blue-400">{formatCurrency(calculation.rateApplied)}</p>
                                             </div>
                                         </div>
 
@@ -277,7 +277,7 @@ export const CommissionManagementView: React.FC = () => {
                                         </div>
 
                                         <div>
-                                            <h4 className="text-xl font-bold mb-6 text-slate-800 flex items-center gap-2">
+                                            <h4 className="text-xl font-bold mb-6 text-slate-800 dark:text-white flex items-center gap-2">
                                                 <Users size={22} className="text-blue-500" />
                                                 การแบ่งสัดส่วนพนักงาน
                                             </h4>
@@ -285,23 +285,23 @@ export const CommissionManagementView: React.FC = () => {
                                                 {calculation.crewMembers.map((crew, index) => (
                                                     <div
                                                         key={index}
-                                                        className="p-6 bg-white border border-slate-100 rounded-2xl shadow-sm hover:shadow-md hover:border-blue-100 transition-all flex items-center justify-between group"
+                                                        className="p-6 bg-white dark:bg-slate-900/50 border border-slate-100 dark:border-slate-700 rounded-2xl shadow-sm hover:shadow-md hover:border-blue-100 dark:hover:border-blue-800 transition-all flex items-center justify-between group"
                                                     >
                                                         <div className="flex items-center gap-4">
-                                                            <div className={`p-3 rounded-xl ${crew.role === 'driver' ? 'bg-orange-50 text-orange-600' : 'bg-blue-50 text-blue-600'}`}>
+                                                            <div className={`p-3 rounded-xl ${crew.role === 'driver' ? 'bg-orange-50 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400' : 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'}`}>
                                                                 <Users size={24} />
                                                             </div>
                                                             <div>
-                                                                <p className="font-black text-slate-800 text-lg">{crew.staffName}</p>
-                                                                <p className="text-sm font-bold text-slate-500 flex items-center gap-1">
+                                                                <p className="font-black text-slate-800 dark:text-white text-lg">{crew.staffName}</p>
+                                                                <p className="text-sm font-bold text-slate-500 dark:text-slate-400 flex items-center gap-1">
                                                                     {crew.role === 'driver' ? 'คนขับรถ' : 'พนักงานบริการ'} 
                                                                     <span className="mx-1">•</span>
-                                                                    <span className="text-blue-600">{crew.workPercentage.toFixed(1)}%</span>
+                                                                    <span className="text-blue-600 dark:text-blue-400">{crew.workPercentage.toFixed(1)}%</span>
                                                                 </p>
                                                             </div>
                                                         </div>
                                                         <div className="text-right">
-                                                            <p className="text-2xl font-black text-green-600">
+                                                            <p className="text-2xl font-black text-green-600 dark:text-green-400">
                                                                 {formatCurrency(crew.commissionAmount)}
                                                             </p>
                                                         </div>
@@ -314,16 +314,16 @@ export const CommissionManagementView: React.FC = () => {
 
                                 {/* Logs for current trip */}
                                 {logs.length > 0 && (
-                                    <div className="mt-10 pt-8 border-t border-slate-100">
-                                        <h4 className="font-bold text-lg mb-4 flex items-center gap-2 text-slate-700">
+                                    <div className="mt-10 pt-8 border-t border-slate-100 dark:border-slate-700">
+                                        <h4 className="font-bold text-lg mb-4 flex items-center gap-2 text-slate-700 dark:text-slate-300">
                                             <CheckCircle2 size={20} className="text-green-500" />
                                             ประวัติการบันทึกล่าสุด
                                         </h4>
                                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                                             {logs.map((log) => (
-                                                <div key={log.id} className="text-sm flex justify-between items-center p-3 bg-slate-50 border border-slate-100 rounded-xl">
-                                                    <span className="text-slate-600 font-medium">รหัส: {log.staff_id.substring(0, 8)}...</span>
-                                                    <span className="font-bold text-green-700">{formatCurrency(log.actual_commission)}</span>
+                                                <div key={log.id} className="text-sm flex justify-between items-center p-3 bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-700 rounded-xl">
+                                                    <span className="text-slate-600 dark:text-slate-400 font-medium">รหัส: {log.staff_id.substring(0, 8)}...</span>
+                                                    <span className="font-bold text-green-700 dark:text-green-400">{formatCurrency(log.actual_commission)}</span>
                                                 </div>
                                             ))}
                                         </div>
@@ -331,25 +331,25 @@ export const CommissionManagementView: React.FC = () => {
                                 )}
                             </Card>
                         ) : (
-                            <div className="py-20 text-center bg-slate-50 border-2 border-dashed border-slate-200 rounded-3xl">
-                                <div className="p-4 bg-white rounded-full shadow-sm inline-block mb-4">
-                                    <Search size={48} className="text-slate-300" />
+                            <div className="py-20 text-center bg-slate-50 dark:bg-slate-800/50 border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-3xl">
+                                <div className="p-4 bg-white dark:bg-slate-900 rounded-full shadow-sm inline-block mb-4">
+                                    <Search size={48} className="text-slate-300 dark:text-slate-600" />
                                 </div>
-                                <h3 className="text-xl font-bold text-slate-500">กรุณาเลือกทริปจากรายการด้านขวา หรือค้นหาเลขทริป</h3>
-                                <p className="text-slate-400 mt-2">เพื่อเริ่มการตรวจสอบและคำนวณค่าคอมมิชชั่น</p>
+                                <h3 className="text-xl font-bold text-slate-500 dark:text-slate-400">กรุณาเลือกทริปจากรายการด้านขวา หรือค้นหาเลขทริป</h3>
+                                <p className="text-slate-400 dark:text-slate-500 mt-2">เพื่อเริ่มการตรวจสอบและคำนวณค่าคอมมิชชั่น</p>
                             </div>
                         )}
                     </div>
 
                     {/* Right side: Pending Trips */}
                     <div className="space-y-8">
-                        <Card className="p-6 border-none shadow-xl bg-white sticky top-24">
+                        <Card className="p-6 border-none shadow-xl bg-white dark:bg-slate-800 sticky top-24">
                             <div className="flex items-center justify-between mb-6">
-                                <h3 className="text-xl font-bold flex items-center gap-2 text-slate-800">
+                                <h3 className="text-xl font-bold flex items-center gap-2 text-slate-800 dark:text-white">
                                     <List className="text-blue-500" size={24} />
                                     ค้างคำนวณ
                                     {pendingTrips.length > 0 && (
-                                        <span className="ml-1 bg-red-100 text-red-600 text-xs px-2 py-0.5 rounded-full font-black animate-pulse">
+                                        <span className="ml-1 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 text-xs px-2 py-0.5 rounded-full font-black animate-pulse">
                                             {pendingTrips.length}
                                         </span>
                                     )}
@@ -357,7 +357,7 @@ export const CommissionManagementView: React.FC = () => {
                                 <button 
                                     onClick={refreshPending} 
                                     disabled={loadingPending}
-                                    className="p-2 hover:bg-slate-50 rounded-lg text-slate-400 hover:text-blue-500 transition-colors"
+                                    className="p-2 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-lg text-slate-400 dark:text-slate-500 hover:text-blue-500 dark:hover:text-blue-400 transition-colors"
                                 >
                                     <Loader2 className={loadingPending ? 'animate-spin' : ''} size={20} />
                                 </button>
@@ -366,13 +366,13 @@ export const CommissionManagementView: React.FC = () => {
                             <div className="max-h-[calc(100vh-350px)] overflow-y-auto pr-2 space-y-3 custom-scrollbar">
                                 {loadingPending ? (
                                     <div className="space-y-3">
-                                        {[1,2,3].map(i => <div key={i} className="h-20 bg-slate-50 animate-pulse rounded-xl"></div>)}
+                                        {[1,2,3].map(i => <div key={i} className="h-20 bg-slate-50 dark:bg-slate-800/50 animate-pulse rounded-xl"></div>)}
                                     </div>
                                 ) : pendingTrips.length === 0 ? (
-                                    <div className="text-center py-12 px-4 border-2 border-dashed border-slate-100 rounded-2xl">
-                                        <CheckCircle2 className="mx-auto mb-3 text-slate-200" size={40} />
-                                        <p className="text-slate-400 font-bold text-sm">ไม่มีทริปค้างคำนวณ</p>
-                                        <p className="text-slate-300 text-xs mt-1">เก่งมาก! จัดการครบหมดแล้ว</p>
+                                    <div className="text-center py-12 px-4 border-2 border-dashed border-slate-100 dark:border-slate-700 rounded-2xl">
+                                        <CheckCircle2 className="mx-auto mb-3 text-slate-200 dark:text-slate-700" size={40} />
+                                        <p className="text-slate-400 dark:text-slate-500 font-bold text-sm">ไม่มีทริปค้างคำนวณ</p>
+                                        <p className="text-slate-300 dark:text-slate-600 text-xs mt-1">เก่งมาก! จัดการครบหมดแล้ว</p>
                                     </div>
                                 ) : (
                                     pendingTrips.map((trip) => (
@@ -380,21 +380,21 @@ export const CommissionManagementView: React.FC = () => {
                                             key={trip.id}
                                             className={`p-4 border-2 transition-all cursor-pointer rounded-2xl group relative ${
                                                 tripId === trip.id 
-                                                    ? 'border-blue-500 bg-blue-50' 
-                                                    : 'border-slate-50 bg-slate-50 hover:border-blue-200 hover:bg-white hover:shadow-md'
+                                                    ? 'border-blue-500 dark:border-blue-600 bg-blue-50 dark:bg-blue-900/20' 
+                                                    : 'border-slate-50 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 hover:border-blue-200 dark:hover:border-blue-800 hover:bg-white dark:hover:bg-slate-800 hover:shadow-md'
                                             }`}
                                             onClick={() => handleSearchTrip(trip.trip_number)}
                                         >
                                             <div className="flex justify-between items-start mb-2">
-                                                <span className={`font-black text-lg ${tripId === trip.id ? 'text-blue-700' : 'text-slate-800'}`}>
+                                                <span className={`font-black text-lg ${tripId === trip.id ? 'text-blue-700 dark:text-blue-400' : 'text-slate-800 dark:text-white'}`}>
                                                     {trip.trip_number}
                                                 </span>
-                                                <span className="text-[10px] font-black uppercase text-slate-400 bg-white px-2 py-0.5 rounded-full shadow-sm border border-slate-100">
+                                                <span className="text-[10px] font-black uppercase text-slate-400 dark:text-slate-500 bg-white dark:bg-slate-900 px-2 py-0.5 rounded-full shadow-sm border border-slate-100 dark:border-slate-700">
                                                     {new Date(trip.planned_date).toLocaleDateString('th-TH', { day: '2-digit', month: '2-digit' })}
                                                 </span>
                                             </div>
                                             <div className="flex justify-between items-center mt-3">
-                                                <div className="flex items-center gap-1 text-slate-500 text-xs font-bold">
+                                                <div className="flex items-center gap-1 text-slate-500 dark:text-slate-400 text-xs font-bold">
                                                     <div className="w-2 h-2 rounded-full bg-blue-400"></div>
                                                     {trip.vehicles?.plate || 'ไม่ระบุรถ'}
                                                 </div>
@@ -402,7 +402,7 @@ export const CommissionManagementView: React.FC = () => {
                                                     className={`p-1.5 rounded-lg transition-all ${
                                                         tripId === trip.id 
                                                             ? 'bg-blue-600 text-white' 
-                                                            : 'bg-white text-blue-600 opacity-0 group-hover:opacity-100 shadow-sm border border-blue-100'
+                                                            : 'bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 opacity-0 group-hover:opacity-100 shadow-sm border border-blue-100 dark:border-blue-800'
                                                     }`}
                                                     onClick={(e) => {
                                                         e.stopPropagation();
@@ -418,7 +418,7 @@ export const CommissionManagementView: React.FC = () => {
                                 )}
                             </div>
                             {pendingTrips.length > 0 && (
-                                <p className="text-[10px] text-slate-400 mt-4 text-center font-bold">แสดงเฉพาะ 20 ทริปล่าสุด</p>
+                                <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-4 text-center font-bold">แสดงเฉพาะ 20 ทริปล่าสุด</p>
                             )}
                         </Card>
                     </div>
@@ -426,31 +426,31 @@ export const CommissionManagementView: React.FC = () => {
             ) : (
                 /* Summary Tab Content */
                 <div className="space-y-8 animate-in fade-in duration-500">
-                    <Card className="p-8 border-none shadow-xl bg-white">
-                        <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6 mb-10 pb-8 border-b border-slate-100">
+                    <Card className="p-8 border-none shadow-xl bg-white dark:bg-slate-800">
+                        <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6 mb-10 pb-8 border-b border-slate-100 dark:border-slate-700">
                             <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-6 max-w-2xl">
                                 <div>
-                                    <label className="block text-sm font-black text-slate-700 mb-2 uppercase tracking-wider">ช่วงวันที่เริ่มต้น</label>
+                                    <label className="block text-sm font-black text-slate-700 dark:text-slate-300 mb-2 uppercase tracking-wider">ช่วงวันที่เริ่มต้น</label>
                                     <div className="relative">
                                         <Input
                                             type="date"
                                             value={startDate.toISOString().split('T')[0]}
                                             onChange={(e) => setStartDate(new Date(e.target.value))}
-                                            className="h-12 pl-10 rounded-xl border-slate-200 focus:ring-blue-500"
+                                            className="h-12 pl-10 rounded-xl border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 text-gray-900 dark:text-white focus:ring-blue-500 dark:focus:ring-blue-400"
                                         />
-                                        <Calendar className="absolute left-3 top-3 text-slate-400" size={20} />
+                                        <Calendar className="absolute left-3 top-3 text-slate-400 dark:text-slate-500" size={20} />
                                     </div>
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-black text-slate-700 mb-2 uppercase tracking-wider">วันที่สิ้นสุด</label>
+                                    <label className="block text-sm font-black text-slate-700 dark:text-slate-300 mb-2 uppercase tracking-wider">วันที่สิ้นสุด</label>
                                     <div className="relative">
                                         <Input
                                             type="date"
                                             value={endDate.toISOString().split('T')[0]}
                                             onChange={(e) => setEndDate(new Date(e.target.value))}
-                                            className="h-12 pl-10 rounded-xl border-slate-200 focus:ring-blue-500"
+                                            className="h-12 pl-10 rounded-xl border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 text-gray-900 dark:text-white focus:ring-blue-500 dark:focus:ring-blue-400"
                                         />
-                                        <Calendar className="absolute left-3 top-3 text-slate-400" size={20} />
+                                        <Calendar className="absolute left-3 top-3 text-slate-400 dark:text-slate-500" size={20} />
                                     </div>
                                 </div>
                             </div>
@@ -467,66 +467,66 @@ export const CommissionManagementView: React.FC = () => {
                         {loadingSummary ? (
                             <div className="flex flex-col items-center justify-center py-24 space-y-4">
                                 <Loader2 className="animate-spin text-blue-500" size={48} />
-                                <p className="text-slate-500 font-bold">กำลังรวบรวมข้อมูลค่าคอมมิชชั่น...</p>
+                                <p className="text-slate-500 dark:text-slate-400 font-bold">กำลังรวบรวมข้อมูลค่าคอมมิชชั่น...</p>
                             </div>
                         ) : summaryError ? (
-                            <div className="text-center py-20 px-6 bg-red-50 rounded-3xl">
+                            <div className="text-center py-20 px-6 bg-red-50 dark:bg-red-900/20 rounded-3xl">
                                 <AlertCircle className="mx-auto mb-4 text-red-500" size={48} />
-                                <h4 className="text-xl font-black text-red-800">เกิดข้อผิดพลาดในการโหลดข้อมูล</h4>
-                                <p className="text-red-600 mt-2">กรุณาลองใหม่อีกครั้ง หรือติดต่อผู้ดูแลระบบ</p>
+                                <h4 className="text-xl font-black text-red-800 dark:text-red-300">เกิดข้อผิดพลาดในการโหลดข้อมูล</h4>
+                                <p className="text-red-600 dark:text-red-400 mt-2">กรุณาลองใหม่อีกครั้ง หรือติดต่อผู้ดูแลระบบ</p>
                             </div>
                         ) : !summaryData || summaryData.length === 0 ? (
-                            <div className="text-center py-24 px-6 bg-slate-50 rounded-3xl border-2 border-dashed border-slate-200">
-                                <Calendar className="mx-auto mb-4 text-slate-300" size={60} />
-                                <h4 className="text-xl font-bold text-slate-500">ไม่พบข้อมูลในช่วงที่เลือก</h4>
-                                <p className="text-slate-400 mt-2">ลองเลือกช่วงวันที่ใหม่เพื่อให้ครอบคลุมทริปที่มีการคำนวณแล้ว</p>
+                            <div className="text-center py-24 px-6 bg-slate-50 dark:bg-slate-800/50 rounded-3xl border-2 border-dashed border-slate-200 dark:border-slate-700">
+                                <Calendar className="mx-auto mb-4 text-slate-300 dark:text-slate-600" size={60} />
+                                <h4 className="text-xl font-bold text-slate-500 dark:text-slate-400">ไม่พบข้อมูลในช่วงที่เลือก</h4>
+                                <p className="text-slate-400 dark:text-slate-500 mt-2">ลองเลือกช่วงวันที่ใหม่เพื่อให้ครอบคลุมทริปที่มีการคำนวณแล้ว</p>
                             </div>
                         ) : (
-                            <div className="overflow-hidden rounded-2xl border border-slate-100">
+                            <div className="overflow-hidden rounded-2xl border border-slate-100 dark:border-slate-700">
                                 <table className="w-full text-left border-collapse">
                                     <thead>
-                                        <tr className="bg-slate-900 text-white">
+                                        <tr className="bg-slate-900 dark:bg-slate-950 text-white">
                                             <th className="px-8 py-5 font-black uppercase text-xs tracking-widest">ชื่อพนักงาน</th>
                                             <th className="px-8 py-5 font-black uppercase text-xs tracking-widest text-center">จำนวนทริป</th>
                                             <th className="px-8 py-5 font-black uppercase text-xs tracking-widest text-right">ยอดรวมค่าคอมฯ</th>
                                             <th className="px-8 py-5 font-black uppercase text-xs tracking-widest text-right">ค่าเฉลี่ยต่อทริป</th>
                                         </tr>
                                     </thead>
-                                    <tbody className="divide-y divide-slate-100 bg-white">
+                                    <tbody className="divide-y divide-slate-100 dark:divide-slate-700 bg-white dark:bg-slate-900">
                                         {summaryData.map((staff) => (
-                                            <tr key={staff.staff_id} className="hover:bg-blue-50 transition-colors group">
+                                            <tr key={staff.staff_id} className="hover:bg-blue-50 dark:hover:bg-slate-800/50 transition-colors group">
                                                 <td className="px-8 py-5">
                                                     <div className="flex items-center gap-3">
-                                                        <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center font-black text-slate-500 group-hover:bg-blue-600 group-hover:text-white transition-all">
+                                                        <div className="w-10 h-10 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center font-black text-slate-500 dark:text-slate-400 group-hover:bg-blue-600 dark:group-hover:bg-blue-600 group-hover:text-white transition-all">
                                                             {staff.staff_name.charAt(0)}
                                                         </div>
-                                                        <span className="font-black text-slate-800 text-lg">{staff.staff_name}</span>
+                                                        <span className="font-black text-slate-800 dark:text-white text-lg">{staff.staff_name}</span>
                                                     </div>
                                                 </td>
                                                 <td className="px-8 py-5 text-center">
-                                                    <span className="inline-block px-3 py-1 bg-slate-100 rounded-full font-black text-slate-600">
+                                                    <span className="inline-block px-3 py-1 bg-slate-100 dark:bg-slate-800 rounded-full font-black text-slate-600 dark:text-slate-300">
                                                         {staff.totalTrips} ทริป
                                                     </span>
                                                 </td>
-                                                <td className="px-8 py-5 text-right font-black text-2xl text-green-600">
+                                                <td className="px-8 py-5 text-right font-black text-2xl text-green-600 dark:text-green-400">
                                                     {formatCurrency(staff.totalActualCommission)}
                                                 </td>
-                                                <td className="px-8 py-5 text-right text-slate-500 font-bold">
+                                                <td className="px-8 py-5 text-right text-slate-500 dark:text-slate-400 font-bold">
                                                     {formatCurrency(staff.averageCommissionPerTrip)}
                                                 </td>
                                             </tr>
                                         ))}
                                     </tbody>
-                                    <tfoot className="bg-slate-50 font-black border-t-2 border-slate-200">
+                                    <tfoot className="bg-slate-50 dark:bg-slate-800/50 font-black border-t-2 border-slate-200 dark:border-slate-700">
                                         <tr>
-                                            <td className="px-8 py-6 text-xl text-slate-800">สรุปยอดรวมทั้งสิ้น</td>
+                                            <td className="px-8 py-6 text-xl text-slate-800 dark:text-white">สรุปยอดรวมทั้งสิ้น</td>
                                             <td className="px-8 py-6 text-center text-xl">
-                                                {summaryData.reduce((sum, s) => sum + s.totalTrips, 0)} <span className="text-sm font-bold text-slate-400 uppercase">ทริป</span>
+                                                {summaryData.reduce((sum, s) => sum + s.totalTrips, 0)} <span className="text-sm font-bold text-slate-400 dark:text-slate-500 uppercase">ทริป</span>
                                             </td>
-                                            <td className="px-8 py-6 text-right text-3xl text-green-700">
+                                            <td className="px-8 py-6 text-right text-3xl text-green-700 dark:text-green-400">
                                                 {formatCurrency(summaryData.reduce((sum, s) => sum + s.totalActualCommission, 0))}
                                             </td>
-                                            <td className="px-8 py-6 text-right text-slate-500">
+                                            <td className="px-8 py-6 text-right text-slate-500 dark:text-slate-400">
                                                 {formatCurrency(
                                                     summaryData.reduce((sum, s) => sum + s.totalActualCommission, 0) / 
                                                     (summaryData.reduce((sum, s) => sum + s.totalTrips, 0) || 1)

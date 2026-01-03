@@ -20,14 +20,14 @@ export function CustomerTiersManagementView() {
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingTier, setEditingTier] = useState<any>(null);
-  const [formData, setFormData] = useState<Partial<CustomerTierInsert>>({
+  const [formData, setFormData] = useState<Partial<CustomerTierInsert & { discount_percent: number | string; min_order_amount: number | string; display_order: number | string }>>({
     tier_code: '',
     tier_name: '',
     description: '',
-    discount_percent: 0,
-    min_order_amount: 0,
+    discount_percent: '',
+    min_order_amount: '',
     color: '#3B82F6',
-    display_order: 0,
+    display_order: '',
   });
 
   const handleOpenModal = (tier?: any) => {
@@ -37,10 +37,10 @@ export function CustomerTiersManagementView() {
         tier_code: tier.tier_code,
         tier_name: tier.tier_name,
         description: tier.description || '',
-        discount_percent: tier.discount_percent,
-        min_order_amount: tier.min_order_amount,
+        discount_percent: tier.discount_percent || '',
+        min_order_amount: tier.min_order_amount || '',
         color: tier.color,
-        display_order: tier.display_order,
+        display_order: tier.display_order || '',
       });
     } else {
       setEditingTier(null);
@@ -48,10 +48,10 @@ export function CustomerTiersManagementView() {
         tier_code: '',
         tier_name: '',
         description: '',
-        discount_percent: 0,
-        min_order_amount: 0,
+        discount_percent: '',
+        min_order_amount: '',
         color: '#3B82F6',
-        display_order: tiers.length,
+        display_order: '',
       });
     }
     setIsModalOpen(true);
@@ -65,12 +65,20 @@ export function CustomerTiersManagementView() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
+    // Convert string values to numbers
+    const payload = {
+      ...formData,
+      discount_percent: Number(formData.discount_percent) || 0,
+      min_order_amount: Number(formData.min_order_amount) || 0,
+      display_order: Number(formData.display_order) || 0,
+    };
+
     try {
       if (editingTier) {
-        await customerTierService.update(editingTier.id, formData);
+        await customerTierService.update(editingTier.id, payload);
         showNotification('success', 'อัพเดทระดับลูกค้าเรียบร้อย');
       } else {
-        await customerTierService.create(formData as CustomerTierInsert);
+        await customerTierService.create(payload as CustomerTierInsert);
         showNotification('success', 'เพิ่มระดับลูกค้าเรียบร้อย');
       }
       
@@ -112,7 +120,7 @@ export function CustomerTiersManagementView() {
     <PageLayout title="จัดการระดับลูกค้า">
       {/* Header Actions */}
       <div className="flex justify-between items-center mb-6">
-        <p className="text-gray-600">กำหนดระดับลูกค้าและส่วนลดสำหรับแต่ละระดับ</p>
+        <p className="text-gray-600 dark:text-gray-400">กำหนดระดับลูกค้าและส่วนลดสำหรับแต่ละระดับ</p>
         <Button onClick={() => handleOpenModal()} className="flex items-center gap-2">
           <Plus className="w-5 h-5" />
           <span>เพิ่มระดับลูกค้า</span>
@@ -140,8 +148,8 @@ export function CustomerTiersManagementView() {
                     <Award className="w-6 h-6" style={{ color: tier.color }} />
                   </div>
                   <div>
-                    <h3 className="font-semibold text-gray-900 text-lg">{tier.tier_name}</h3>
-                    <p className="text-sm text-gray-500">รหัส: {tier.tier_code}</p>
+                    <h3 className="font-semibold text-gray-900 dark:text-white text-lg">{tier.tier_name}</h3>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">รหัส: {tier.tier_code}</p>
                   </div>
                 </div>
               </div>
@@ -149,27 +157,27 @@ export function CustomerTiersManagementView() {
               {/* Details */}
               <div className="space-y-3 mb-4">
                 {tier.description && (
-                  <p className="text-sm text-gray-600">{tier.description}</p>
+                  <p className="text-sm text-gray-600 dark:text-gray-400">{tier.description}</p>
                 )}
 
-                <div className="flex items-center justify-between py-2 border-t border-gray-100">
-                  <span className="text-sm text-gray-600">ส่วนลด:</span>
-                  <span className="font-semibold text-green-600">
+                <div className="flex items-center justify-between py-2 border-t border-gray-100 dark:border-slate-700">
+                  <span className="text-sm text-gray-600 dark:text-gray-400">ส่วนลด:</span>
+                  <span className="font-semibold text-green-600 dark:text-green-400">
                     {tier.discount_percent}%
                   </span>
                 </div>
 
                 {tier.min_order_amount > 0 && (
-                  <div className="flex items-center justify-between py-2 border-t border-gray-100">
-                    <span className="text-sm text-gray-600">ยอดขั้นต่ำ:</span>
-                    <span className="font-semibold text-gray-900">
+                  <div className="flex items-center justify-between py-2 border-t border-gray-100 dark:border-slate-700">
+                    <span className="text-sm text-gray-600 dark:text-gray-400">ยอดขั้นต่ำ:</span>
+                    <span className="font-semibold text-gray-900 dark:text-white">
                       {new Intl.NumberFormat('th-TH').format(tier.min_order_amount)} ฿
                     </span>
                   </div>
                 )}
 
-                <div className="flex items-center justify-between py-2 border-t border-gray-100">
-                  <span className="text-sm text-gray-600">จำนวนลูกค้า:</span>
+                <div className="flex items-center justify-between py-2 border-t border-gray-100 dark:border-slate-700">
+                  <span className="text-sm text-gray-600 dark:text-gray-400">จำนวนลูกค้า:</span>
                   <Badge variant="info">
                     {getCustomerCount(tier.id)} ราย
                   </Badge>
@@ -177,7 +185,7 @@ export function CustomerTiersManagementView() {
               </div>
 
               {/* Actions */}
-              <div className="flex gap-2 pt-4 border-t border-gray-200">
+              <div className="flex gap-2 pt-4 border-t border-gray-200 dark:border-slate-700">
                 <Button
                   size="sm"
                   variant="outline"
@@ -189,7 +197,7 @@ export function CustomerTiersManagementView() {
                 </Button>
                 <button
                   onClick={() => handleDelete(tier.id, tier.tier_name)}
-                  className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                  className="p-2 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
                   title="ลบ"
                 >
                   <Trash2 className="w-4 h-4" />
@@ -202,7 +210,7 @@ export function CustomerTiersManagementView() {
 
       {tiers.length === 0 && (
         <Card>
-          <div className="text-center py-16 text-gray-500">
+          <div className="text-center py-16 text-gray-500 dark:text-gray-400">
             <Users className="w-16 h-16 mx-auto mb-4 opacity-50" />
             <p className="text-lg font-medium">ยังไม่มีระดับลูกค้า</p>
             <p className="text-sm mt-1">เริ่มต้นโดยเพิ่มระดับลูกค้าใหม่</p>
@@ -219,14 +227,14 @@ export function CustomerTiersManagementView() {
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 รหัสระดับ <span className="text-red-500">*</span>
               </label>
               <input
                 type="text"
                 value={formData.tier_code}
                 onChange={(e) => setFormData({ ...formData, tier_code: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 disabled:opacity-50"
                 placeholder="A, B, C, D"
                 required
                 disabled={!!editingTier}
@@ -234,40 +242,40 @@ export function CustomerTiersManagementView() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 สี
               </label>
               <input
                 type="color"
                 value={formData.color}
                 onChange={(e) => setFormData({ ...formData, color: e.target.value })}
-                className="w-full h-10 px-2 border border-gray-300 rounded-lg"
+                className="w-full h-10 px-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800"
               />
             </div>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
               ชื่อระดับ <span className="text-red-500">*</span>
             </label>
             <input
               type="text"
               value={formData.tier_name}
               onChange={(e) => setFormData({ ...formData, tier_name: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
               placeholder="เช่น ลูกค้า VIP, ลูกค้าทอง"
               required
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
               คำอธิบาย
             </label>
             <textarea
               value={formData.description}
               onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
               rows={3}
               placeholder="รายละเอียดเกี่ยวกับระดับนี้"
             />
@@ -275,50 +283,53 @@ export function CustomerTiersManagementView() {
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 ส่วนลด (%)
               </label>
               <input
                 type="number"
                 step="0.01"
-                value={formData.discount_percent}
-                onChange={(e) => setFormData({ ...formData, discount_percent: parseFloat(e.target.value) || 0 })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                value={formData.discount_percent === '' ? '' : formData.discount_percent}
+                onChange={(e) => setFormData({ ...formData, discount_percent: e.target.value as any })}
+                className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
                 min="0"
                 max="100"
+                placeholder="%"
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 ยอดสั่งซื้อขั้นต่ำ (฿)
               </label>
               <input
                 type="number"
                 step="0.01"
-                value={formData.min_order_amount}
-                onChange={(e) => setFormData({ ...formData, min_order_amount: parseFloat(e.target.value) || 0 })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                value={formData.min_order_amount === '' ? '' : formData.min_order_amount}
+                onChange={(e) => setFormData({ ...formData, min_order_amount: e.target.value as any })}
+                className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
                 min="0"
+                placeholder="฿"
               />
             </div>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
               ลำดับการแสดงผล
             </label>
             <input
               type="number"
-              value={formData.display_order}
-              onChange={(e) => setFormData({ ...formData, display_order: parseInt(e.target.value) || 0 })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+              value={formData.display_order === '' ? '' : formData.display_order}
+              onChange={(e) => setFormData({ ...formData, display_order: e.target.value as any })}
+              className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
               min="0"
+              placeholder="ลำดับ"
             />
-            <p className="text-xs text-gray-500 mt-1">ตัวเลขน้อยจะแสดงก่อน</p>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">ตัวเลขน้อยจะแสดงก่อน</p>
           </div>
 
-          <div className="flex gap-3 justify-end pt-4 border-t">
+          <div className="flex gap-3 justify-end pt-4 border-t dark:border-slate-700">
             <Button type="button" onClick={handleCloseModal} variant="outline">
               ยกเลิก
             </Button>

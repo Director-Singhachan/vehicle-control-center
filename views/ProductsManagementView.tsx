@@ -29,20 +29,20 @@ export function ProductsManagementView() {
     description: string;
     category: string;
     unit: string;
-    base_price: number;
-    cost_per_unit: number;
+    base_price: string;
+    cost_per_unit: string;
     barcode: string;
-    min_stock_level?: number;
+    min_stock_level?: string;
   }>({
     product_code: '',
     product_name: '',
     description: '',
     category: '',
     unit: 'ชิ้น',
-    base_price: 0,
-    cost_per_unit: 0,
+    base_price: '',
+    cost_per_unit: '',
     barcode: '',
-    min_stock_level: 0,
+    min_stock_level: '',
   });
 
   // กรองสินค้า (รองรับรหัสสินค้า product_code และชื่อสินค้า product_name)
@@ -72,10 +72,12 @@ export function ProductsManagementView() {
         description: product.description || '',
         category: product.category?.id || product.category || '',
         unit: product.unit || '',
-        base_price: product.base_price || product.price_per_unit || 0,
-        cost_per_unit: product.cost_per_unit || 0,
+        base_price: product.base_price?.toString() || product.price_per_unit?.toString() || '',
+        cost_per_unit: product.cost_per_unit?.toString() || '',
         barcode: product.barcode || '',
-        min_stock_level: product.min_stock_level ?? 0,
+        min_stock_level: product.min_stock_level !== undefined && product.min_stock_level !== null
+          ? product.min_stock_level.toString()
+          : '',
       });
     } else {
       setEditingProduct(null);
@@ -85,10 +87,10 @@ export function ProductsManagementView() {
         description: '',
         category: '',
         unit: 'ชิ้น',
-        base_price: 0,
-        cost_per_unit: 0,
+        base_price: '',
+        cost_per_unit: '',
         barcode: '',
-        min_stock_level: 0,
+        min_stock_level: '',
       });
     }
     setIsModalOpen(true);
@@ -103,15 +105,22 @@ export function ProductsManagementView() {
     e.preventDefault();
 
     try {
+      const toNumberOrNull = (v: string | undefined) => {
+        if (v === undefined || v === '') return null;
+        const n = Number(v);
+        return isNaN(n) ? null : n;
+      };
+
       const payload: Partial<ProductInsert> = {
         product_code: formData.product_code,
         product_name: formData.product_name,
         description: formData.description || null,
         category: formData.category || null,
         unit: formData.unit || null,
-        base_price: formData.base_price ?? 0,
-        cost_per_unit: formData.cost_per_unit ?? 0,
+        base_price: toNumberOrNull(formData.base_price),
+        cost_per_unit: toNumberOrNull(formData.cost_per_unit),
         barcode: formData.barcode || null,
+        min_stock_level: toNumberOrNull(formData.min_stock_level),
       };
 
       if (editingProduct) {
@@ -157,23 +166,23 @@ export function ProductsManagementView() {
       <div className="flex flex-col sm:flex-row gap-4 mb-6">
         {/* Search */}
         <div className="flex-1 relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 dark:text-gray-500" />
           <input
             type="text"
             placeholder="ค้นหาสินค้า (ชื่อหรือรหัสสินค้า)..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            className="w-full pl-10 pr-4 py-2.5 border border-gray-300 dark:border-slate-600 rounded-xl bg-white dark:bg-slate-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-transparent"
           />
         </div>
 
         {/* Category Filter */}
         <div className="relative">
-          <Filter className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+          <Filter className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 dark:text-gray-500" />
           <select
             value={selectedCategory}
             onChange={(e) => setSelectedCategory(e.target.value)}
-            className="pl-10 pr-8 py-2.5 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent appearance-none bg-white"
+            className="pl-10 pr-8 py-2.5 border border-gray-300 dark:border-slate-600 rounded-xl bg-white dark:bg-slate-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-transparent appearance-none"
           >
             <option value="all">ทุกหมวดหมู่</option>
             {categories.map((cat) => (
@@ -196,29 +205,29 @@ export function ProductsManagementView() {
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
-              <tr className="border-b border-gray-200 bg-gray-50">
-                <th className="text-left py-4 px-6 text-sm font-semibold text-gray-700">รหัสสินค้า</th>
-                <th className="text-left py-4 px-6 text-sm font-semibold text-gray-700">สินค้า</th>
-                <th className="text-left py-4 px-6 text-sm font-semibold text-gray-700">หมวดหมู่</th>
-                <th className="text-right py-4 px-6 text-sm font-semibold text-gray-700">ราคาขาย</th>
-                <th className="text-right py-4 px-6 text-sm font-semibold text-gray-700">ทุน</th>
-                <th className="text-center py-4 px-6 text-sm font-semibold text-gray-700">หน่วย</th>
-                <th className="text-right py-4 px-6 text-sm font-semibold text-gray-700">สต็อกต่ำสุด</th>
-                <th className="text-center py-4 px-6 text-sm font-semibold text-gray-700">การกระทำ</th>
+              <tr className="border-b border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800/50">
+                <th className="text-left py-4 px-6 text-sm font-semibold text-gray-700 dark:text-gray-300">รหัสสินค้า</th>
+                <th className="text-left py-4 px-6 text-sm font-semibold text-gray-700 dark:text-gray-300">สินค้า</th>
+                <th className="text-left py-4 px-6 text-sm font-semibold text-gray-700 dark:text-gray-300">หมวดหมู่</th>
+                <th className="text-right py-4 px-6 text-sm font-semibold text-gray-700 dark:text-gray-300">ราคาขาย</th>
+                <th className="text-right py-4 px-6 text-sm font-semibold text-gray-700 dark:text-gray-300">ทุน</th>
+                <th className="text-center py-4 px-6 text-sm font-semibold text-gray-700 dark:text-gray-300">หน่วย</th>
+                <th className="text-right py-4 px-6 text-sm font-semibold text-gray-700 dark:text-gray-300">สต็อกต่ำสุด</th>
+                <th className="text-center py-4 px-6 text-sm font-semibold text-gray-700 dark:text-gray-300">การกระทำ</th>
               </tr>
             </thead>
             <tbody>
               {filteredProducts.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="py-6 px-6 text-center text-gray-500">
+                  <td colSpan={8} className="py-6 px-6 text-center text-gray-500 dark:text-gray-400">
                     ไม่พบสินค้าที่ค้นหา (ทั้งหมด {products.length} รายการ)
                   </td>
                 </tr>
               )}
               {filteredProducts.map((product: any) => (
-                <tr key={product.id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
+                <tr key={product.id} className="border-b border-gray-100 dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors">
                   <td className="py-4 px-6">
-                    <code className="text-sm font-mono bg-gray-100 px-2 py-1 rounded">
+                    <code className="text-sm font-mono bg-gray-100 dark:bg-slate-800 text-gray-900 dark:text-white px-2 py-1 rounded">
                       {product.product_code}
                     </code>
                   </td>
@@ -231,42 +240,42 @@ export function ProductsManagementView() {
                         />
                       )}
                       <div>
-                        <p className="font-medium text-gray-900">{product.product_name}</p>
+                        <p className="font-medium text-gray-900 dark:text-white">{product.product_name}</p>
                         {product.description && (
-                          <p className="text-sm text-gray-500 line-clamp-1">{product.description}</p>
+                          <p className="text-sm text-gray-500 dark:text-gray-400 line-clamp-1">{product.description}</p>
                         )}
                       </div>
                     </div>
                   </td>
                   <td className="py-4 px-6">
-                  <div className="text-sm text-gray-700">
+                  <div className="text-sm text-gray-700 dark:text-gray-300">
                     {product.category?.name || product.category || '-'}
                   </div>
                   </td>
-                  <td className="py-4 px-6 text-right font-medium text-gray-900">
+                  <td className="py-4 px-6 text-right font-medium text-gray-900 dark:text-white">
                     {new Intl.NumberFormat('th-TH').format(product.base_price || product.price_per_unit || 0)} ฿
                   </td>
-                  <td className="py-4 px-6 text-right text-gray-600">
+                  <td className="py-4 px-6 text-right text-gray-600 dark:text-gray-400">
                     {new Intl.NumberFormat('th-TH').format(product.cost_per_unit || 0)} ฿
                   </td>
-                  <td className="py-4 px-6 text-center text-sm text-gray-600">
+                  <td className="py-4 px-6 text-center text-sm text-gray-600 dark:text-gray-400">
                     {product.unit}
                   </td>
-                  <td className="py-4 px-6 text-right text-sm text-gray-600">
+                  <td className="py-4 px-6 text-right text-sm text-gray-600 dark:text-gray-400">
                     {product.min_stock_level ?? 0}
                   </td>
                   <td className="py-4 px-6">
                     <div className="flex items-center justify-center gap-2">
                       <button
                         onClick={() => handleOpenModal(product)}
-                        className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                        className="p-2 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors"
                         title="แก้ไข"
                       >
                         <Edit2 className="w-4 h-4" />
                       </button>
                       <button
                         onClick={() => handleDelete(product.id, product.product_name)}
-                        className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                        className="p-2 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
                         title="ลบ"
                       >
                         <Trash2 className="w-4 h-4" />
@@ -279,7 +288,7 @@ export function ProductsManagementView() {
           </table>
 
           {filteredProducts.length === 0 && (
-            <div className="text-center py-16 text-gray-500">
+            <div className="text-center py-16 text-gray-500 dark:text-gray-400">
               <Package className="w-16 h-16 mx-auto mb-4 opacity-50" />
               <p className="text-lg font-medium">ไม่พบสินค้า</p>
               <p className="text-sm mt-1">ลองค้นหาด้วยคำอื่นหรือเพิ่มสินค้าใหม่</p>
@@ -297,26 +306,26 @@ export function ProductsManagementView() {
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 รหัสสินค้า <span className="text-red-500">*</span>
               </label>
               <input
                 type="text"
                 value={formData.product_code}
                 onChange={(e) => setFormData({ ...formData, product_code: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
                 required
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 หมวดหมู่
               </label>
               <select
                 value={formData.category}
                 onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
               >
                 <option value="">-- เลือกหมวดหมู่ --</option>
                 {categories.map((cat) => (
@@ -329,97 +338,100 @@ export function ProductsManagementView() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
               ชื่อสินค้า <span className="text-red-500">*</span>
             </label>
             <input
               type="text"
               value={formData.product_name}
               onChange={(e) => setFormData({ ...formData, product_name: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
               required
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
               คำอธิบาย
             </label>
             <textarea
               value={formData.description}
               onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
               rows={3}
             />
           </div>
 
           <div className="grid grid-cols-3 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 หน่วย
               </label>
               <input
                 type="text"
                 value={formData.unit}
                 onChange={(e) => setFormData({ ...formData, unit: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 ราคาขาย (฿)
               </label>
               <input
                 type="number"
                 step="0.01"
                 value={formData.base_price}
-                onChange={(e) => setFormData({ ...formData, base_price: parseFloat(e.target.value) || 0 })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                onChange={(e) => setFormData({ ...formData, base_price: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
+                placeholder="เช่น 25.00"
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 ทุน (฿)
               </label>
               <input
                 type="number"
                 step="0.01"
                 value={formData.cost_per_unit}
-                onChange={(e) => setFormData({ ...formData, cost_per_unit: parseFloat(e.target.value) || 0 })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                onChange={(e) => setFormData({ ...formData, cost_per_unit: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
+                placeholder="เช่น 18.50"
               />
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 Barcode
               </label>
               <input
                 type="text"
                 value={formData.barcode}
                 onChange={(e) => setFormData({ ...formData, barcode: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 สต็อกต่ำสุด
               </label>
               <input
                 type="number"
                 value={formData.min_stock_level}
-                onChange={(e) => setFormData({ ...formData, min_stock_level: parseInt(e.target.value) || 0 })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                onChange={(e) => setFormData({ ...formData, min_stock_level: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
+                placeholder="ใส่ตัวเลข หรือเว้นว่าง"
               />
             </div>
           </div>
 
-          <div className="flex gap-3 justify-end pt-4 border-t">
+          <div className="flex gap-3 justify-end pt-4 border-t dark:border-slate-700">
             <Button type="button" onClick={handleCloseModal} variant="outline">
               ยกเลิก
             </Button>
