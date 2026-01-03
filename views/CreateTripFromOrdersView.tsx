@@ -381,7 +381,7 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
                       <div className="flex-1">
                         <div className="flex items-center gap-2 mb-1">
                           <p className="font-semibold text-gray-900">{delivery.store_name}</p>
-                          <Badge variant="outline" className="text-xs">
+                          <Badge variant="info" className="text-xs">
                             {delivery.order_number}
                           </Badge>
                         </div>

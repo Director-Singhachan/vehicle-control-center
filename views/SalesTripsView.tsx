@@ -210,7 +210,7 @@ export function SalesTripsView() {
                               <p className="font-semibold text-gray-900">
                                 {store.store?.customer_name}
                               </p>
-                              <Badge variant="outline" className="text-xs">
+                              <Badge variant="info" className="text-xs">
                                 {store.store?.customer_code}
                               </Badge>
                               {store.status === 'delivered' && (

@@ -211,8 +211,8 @@ export function TripItemsManagementView({ tripId, tripStatus = 'pending', onUpda
                 <tr key={item.id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
                   <td className="py-3 px-4">
                     <div>
-                      <p className="font-medium text-gray-900">{item.product?.name}</p>
-                      <p className="text-sm text-gray-500">{item.product?.sku}</p>
+                      <p className="font-medium text-gray-900">{item.product?.product_name}</p>
+                      <p className="text-sm text-gray-500">{item.product?.product_code}</p>
                     </div>
                   </td>
                   <td className="py-3 px-4 text-right font-medium text-gray-900">
@@ -247,7 +247,7 @@ export function TripItemsManagementView({ tripId, tripStatus = 'pending', onUpda
                           <Edit2 className="w-4 h-4" />
                         </button>
                         <button
-                          onClick={() => handleDelete(item.id, item.product?.name)}
+                          onClick={() => handleDelete(item.id, item.product?.product_name)}
                           className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                           title="ลบ"
                         >
@@ -297,7 +297,7 @@ export function TripItemsManagementView({ tripId, tripStatus = 'pending', onUpda
                 <option value="">-- เลือกสินค้า --</option>
                 {products.map((product: any) => (
                   <option key={product.id} value={product.id}>
-                    {product.name} ({product.sku})
+                    {product.product_name} ({product.product_code})
                   </option>
                 ))}
               </select>

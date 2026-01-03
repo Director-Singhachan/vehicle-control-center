@@ -394,7 +394,7 @@ export const inventoryService = {
     // ตรวจสอบว่ามี inventory record อยู่แล้วหรือไม่
     const { data: existing } = await supabase
       .from('inventory')
-      .select('*')
+      .select('id, warehouse_id, product_id, quantity, reserved_quantity, created_at, last_updated_at, updated_by')
       .eq('warehouse_id', warehouseId)
       .eq('product_id', productId)
       .single();
@@ -410,7 +410,7 @@ export const inventoryService = {
         })
         .eq('warehouse_id', warehouseId)
         .eq('product_id', productId)
-        .select()
+        .select('id, warehouse_id, product_id, quantity, reserved_quantity, created_at, last_updated_at, updated_by')
         .single();
 
       if (error) throw error;
@@ -428,7 +428,7 @@ export const inventoryService = {
           last_updated_at: new Date().toISOString(),
           created_at: new Date().toISOString(),
         })
-        .select()
+        .select('id, warehouse_id, product_id, quantity, reserved_quantity, created_at, last_updated_at, updated_by')
         .single();
 
       if (error) throw error;
@@ -446,10 +446,9 @@ export const inventoryService = {
     userId: string,
     note?: string
   ) {
-    // ดึงข้อมูลสต็อกปัจจุบัน
     const { data: current } = await supabase
       .from('inventory')
-      .select('*')
+      .select('id, warehouse_id, product_id, quantity, reserved_quantity, created_at, last_updated_at, updated_by')
       .eq('warehouse_id', warehouseId)
       .eq('product_id', productId)
       .single();
@@ -461,19 +460,21 @@ export const inventoryService = {
       throw new Error('จำนวนสต็อกไม่เพียงพอ');
     }
 
-    // อัพเดทสต็อก
     await this.updateQuantity(warehouseId, productId, newQty, userId);
 
-    // บันทึกประวัติ
-    await this.recordTransaction({
-      warehouse_id: warehouseId,
-      product_id: productId,
-      transaction_type: adjustment > 0 ? 'in' : 'out',
-      quantity: Math.abs(adjustment),
-      reference_type: 'adjust',
-      note,
-      created_by: userId,
-    });
+    try {
+      await this.recordTransaction({
+        warehouse_id: warehouseId,
+        product_id: productId,
+        transaction_type: adjustment > 0 ? 'in' : 'out',
+        quantity: Math.abs(adjustment),
+        reference_type: 'adjust',
+        note,
+        created_by: userId,
+      });
+    } catch (err) {
+      console.warn('[inventoryService.adjustStock] skip recordTransaction', err);
+    }
   },
 
   /**
@@ -486,28 +487,20 @@ export const inventoryService = {
   ) {
     const { data: current } = await supabase
       .from('inventory')
-      .select('*')
+      .select('id, warehouse_id, product_id, quantity, reserved_quantity, created_at, last_updated_at, updated_by')
       .eq('warehouse_id', warehouseId)
       .eq('product_id', productId)
       .single();
 
-    if (!current || current.available_quantity < quantity) {
+    const currentQty = current?.quantity || 0;
+    const newQty = currentQty - quantity;
+
+    if (newQty < 0) {
       throw new Error('สต็อกไม่เพียงพอสำหรับการจอง');
     }
 
-    const { data, error } = await supabase
-      .from('inventory')
-      .update({
-        reserved_quantity: current.reserved_quantity + quantity,
-        last_updated_at: new Date().toISOString(),
-      })
-      .eq('warehouse_id', warehouseId)
-      .eq('product_id', productId)
-      .select()
-      .single();
-
-    if (error) throw error;
-    return data as Inventory;
+    await this.updateQuantity(warehouseId, productId, newQty, 'reserve');
+    return current as Inventory;
   },
 
   /**
@@ -520,7 +513,7 @@ export const inventoryService = {
   ) {
     const { data: current } = await supabase
       .from('inventory')
-      .select('*')
+      .select('id, warehouse_id, product_id, quantity, reserved_quantity, created_at, last_updated_at, updated_by')
       .eq('warehouse_id', warehouseId)
       .eq('product_id', productId)
       .single();
@@ -535,7 +528,7 @@ export const inventoryService = {
       })
       .eq('warehouse_id', warehouseId)
       .eq('product_id', productId)
-      .select()
+      .select('id, warehouse_id, product_id, quantity, reserved_quantity, created_at, last_updated_at, updated_by')
       .single();
 
     if (error) throw error;
@@ -572,7 +565,7 @@ export const inventoryService = {
       .select(`
         *,
         warehouse:warehouses(code, name),
-        product:products(sku, name, unit),
+        product:products(product_code, product_name, unit),
         creator:profiles(full_name, email)
       `)
       .order('created_at', { ascending: false });

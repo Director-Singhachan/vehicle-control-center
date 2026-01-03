@@ -51,9 +51,7 @@ export function ProductsManagementView() {
     return products.filter((product: any) => {
       const matchesSearch =
         product.product_name?.toLowerCase().includes(keyword) ||
-        product.product_code?.toLowerCase().includes(keyword) ||
-        product.name?.toLowerCase().includes(keyword) || // เผื่อข้อมูลเก่า
-        product.sku?.toLowerCase().includes(keyword);    // เผื่อข้อมูลเก่า
+        product.product_code?.toLowerCase().includes(keyword);
 
       const matchesCategory =
         selectedCategory === 'all' ||
@@ -69,8 +67,8 @@ export function ProductsManagementView() {
     if (product) {
       setEditingProduct(product);
       setFormData({
-        product_code: product.product_code || product.sku || '',
-        product_name: product.product_name || product.name || '',
+        product_code: product.product_code || '',
+        product_name: product.product_name || '',
         description: product.description || '',
         category: product.category?.id || product.category || '',
         unit: product.unit || '',
@@ -221,7 +219,7 @@ export function ProductsManagementView() {
                 <tr key={product.id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
                   <td className="py-4 px-6">
                     <code className="text-sm font-mono bg-gray-100 px-2 py-1 rounded">
-                      {product.product_code || product.sku}
+                      {product.product_code}
                     </code>
                   </td>
                   <td className="py-4 px-6">
@@ -233,7 +231,7 @@ export function ProductsManagementView() {
                         />
                       )}
                       <div>
-                        <p className="font-medium text-gray-900">{product.product_name || product.name}</p>
+                        <p className="font-medium text-gray-900">{product.product_name}</p>
                         {product.description && (
                           <p className="text-sm text-gray-500 line-clamp-1">{product.description}</p>
                         )}
@@ -267,7 +265,7 @@ export function ProductsManagementView() {
                         <Edit2 className="w-4 h-4" />
                       </button>
                       <button
-                        onClick={() => handleDelete(product.id, product.product_name || product.name)}
+                        onClick={() => handleDelete(product.id, product.product_name)}
                         className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                         title="ลบ"
                       >

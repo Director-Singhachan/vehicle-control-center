@@ -1024,8 +1024,6 @@ export interface Database {
           created_at?: string;
         };
       };
-    };
-    Views: {
       vehicle_dashboard: {
         Row: {
           id: string;
@@ -1459,6 +1457,8 @@ export interface Database {
           updated_at?: string;
         };
       };
+    };
+    Views: {
       inventory_with_details: {
         Row: {
           id: string;

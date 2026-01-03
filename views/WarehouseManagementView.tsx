@@ -9,10 +9,22 @@ import { PageLayout } from '../components/ui/PageLayout';
 import { LoadingSpinner } from '../components/ui/LoadingSpinner';
 import { Modal } from '../components/ui/Modal';
 import { useNotification } from '../hooks/useNotification';
-import type { Database } from '../types/database';
 import { useAuth } from '../hooks';
 
-type WarehouseRow = Database['public']['Tables']['warehouses']['Row'];
+interface WarehouseRow {
+  id: string;
+  code: string;
+  name: string;
+  type: string;
+  address: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  manager_id: string | null;
+  capacity_m3: number | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
 
 export function WarehouseManagementView() {
   const { warehouses, loading, refetch } = useWarehouses();
@@ -89,7 +101,7 @@ export function WarehouseManagementView() {
       showNotification('warning', 'โปรดเลือกคลังสินค้าก่อน');
       return;
     }
-    setStockInForm({ product_id: '', quantity: 0, note: '' });
+    setStockInForm({ product_id: '', quantity: 0, note: '', ref_code: '' });
     setIsStockInModalOpen(true);
   };
 
@@ -434,7 +446,7 @@ export function WarehouseManagementView() {
                   <thead>
                     <tr className="border-b border-gray-200">
                       <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700">สินค้า</th>
-                      <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700">SKU</th>
+                      <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700">รหัสสินค้า</th>
                       <th className="text-right py-3 px-4 text-sm font-semibold text-gray-700">คงเหลือ</th>
                       <th className="text-right py-3 px-4 text-sm font-semibold text-gray-700">จอง</th>
                       <th className="text-right py-3 px-4 text-sm font-semibold text-gray-700">พร้อมใช้</th>
@@ -452,10 +464,14 @@ export function WarehouseManagementView() {
                                 style={{ backgroundColor: item.category_color }}
                               />
                             )}
-                            <span className="font-medium text-gray-900">{item.product_name}</span>
+                            <span className="font-medium text-gray-900">
+                              {item.product_name}
+                            </span>
                           </div>
                         </td>
-                        <td className="py-3 px-4 text-sm text-gray-600">{item.product_sku}</td>
+                        <td className="py-3 px-4 text-sm text-gray-600">
+                          {item.product_code || item.product_sku || '-'}
+                        </td>
                         <td className="py-3 px-4 text-right font-semibold text-gray-900">
                           {item.quantity} {item.product_unit}
                         </td>
@@ -515,8 +531,8 @@ export function WarehouseManagementView() {
                     if (!productSearch) return true;
                     const kw = productSearch.toLowerCase();
                     return (
-                      (p.product_code || p.sku || '').toLowerCase().includes(kw) ||
-                      (p.product_name || p.name || '').toLowerCase().includes(kw)
+                      (p.product_code || '').toLowerCase().includes(kw) ||
+                      (p.product_name || '').toLowerCase().includes(kw)
                     );
                   })
                   .slice(0, 30)
@@ -526,14 +542,14 @@ export function WarehouseManagementView() {
                       type="button"
                       onClick={() => {
                         setStockInForm({ ...stockInForm, product_id: p.id });
-                        setProductSearch(`${p.product_code || p.sku || ''} ${p.product_name || p.name || ''}`.trim());
+                        setProductSearch(`${p.product_code || ''} ${p.product_name || ''}`.trim());
                       }}
                       className={`w-full text-left px-3 py-2 hover:bg-gray-50 ${
                         stockInForm.product_id === p.id ? 'bg-blue-50 text-blue-700 font-medium' : ''
                       }`}
                     >
-                      <div className="text-sm">{p.product_code || p.sku}</div>
-                      <div className="text-xs text-gray-500">{p.product_name || p.name}</div>
+                      <div className="text-sm">{p.product_code}</div>
+                      <div className="text-xs text-gray-500">{p.product_name}</div>
                     </button>
                   ))}
                 {products.length === 0 && (

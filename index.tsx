@@ -57,6 +57,7 @@ import { ProductsManagementView } from './views/ProductsManagementView';
 import { WarehouseManagementView } from './views/WarehouseManagementView';
 import { CustomerTiersManagementView } from './views/CustomerTiersManagementView';
 import { ProductTierPricingView } from './views/ProductTierPricingView';
+import { InventoryReceiptsView } from './views/InventoryReceiptsView';
 import { CreateOrderView } from './views/CreateOrderView';
 import { PendingOrdersView } from './views/PendingOrdersView';
 import { SalesTripsView } from './views/SalesTripsView';
@@ -825,7 +826,7 @@ const AppContent = () => {
                 <SidebarItem
                   icon={Package}
                   label={isSidebarOpen ? "คลังสินค้า" : ""}
-                  active={activeTab === 'stock-dashboard' || activeTab === 'products' || activeTab === 'warehouses'}
+                  active={activeTab === 'stock-dashboard' || activeTab === 'products' || activeTab === 'warehouses' || activeTab === 'inventory-receipts'}
                   onClick={() => {
                     if (activeTab !== 'stock-dashboard') {
                       setActiveTab('stock-dashboard');
@@ -879,6 +880,16 @@ const AppContent = () => {
                         active={activeTab === 'warehouses'}
                         onClick={() => {
                           setActiveTab('warehouses');
+                          setIsStockHovered(false);
+                        }}
+                        isCollapsed={false}
+                        isFlyout={true}
+                      />
+                      <SubSidebarItem
+                        label="ประวัติรับสินค้า"
+                        active={activeTab === 'inventory-receipts'}
+                        onClick={() => {
+                          setActiveTab('inventory-receipts');
                           setIsStockHovered(false);
                         }}
                         isCollapsed={false}
@@ -1773,6 +1784,8 @@ const AppContent = () => {
             <ProductsManagementView />
           ) : activeTab === 'warehouses' ? (
             <WarehouseManagementView />
+          ) : activeTab === 'inventory-receipts' ? (
+            <InventoryReceiptsView />
           ) : activeTab === 'customer-tiers' ? (
             <CustomerTiersManagementView />
           ) : activeTab === 'product-pricing' ? (
