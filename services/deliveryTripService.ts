@@ -281,6 +281,39 @@ export const deliveryTripService = {
       storeMap = new Map((stores || []).map(s => [s.id, s]));
     }
 
+    // In FULL mode only, fetch crews for trips
+    let tripCrewsMap = new Map<string, DeliveryTripCrewWithDetails[]>();
+    if (!lite && tripIds.length > 0) {
+      const { data: tripCrews } = await supabase
+        .from('delivery_trip_crews')
+        .select('*')
+        .in('delivery_trip_id', tripIds)
+        .eq('status', 'active')
+        .order('created_at', { ascending: true });
+
+      // Fetch service staff for crews
+      if (tripCrews && tripCrews.length > 0) {
+        const crewStaffIds = [...new Set(tripCrews.map(c => c.staff_id).filter(Boolean))];
+        const { data: staffList } = crewStaffIds.length > 0 ? await supabase
+          .from('service_staff')
+          .select('id, name, employee_code, phone')
+          .in('id', crewStaffIds) : { data: [] };
+
+        const staffMap = new Map((staffList || []).map(s => [s.id, s]));
+
+        // Group by trip_id
+        tripCrews.forEach(crew => {
+          if (!tripCrewsMap.has(crew.delivery_trip_id)) {
+            tripCrewsMap.set(crew.delivery_trip_id, []);
+          }
+          tripCrewsMap.get(crew.delivery_trip_id)!.push({
+            ...crew,
+            staff: staffMap.get(crew.staff_id),
+          });
+        });
+      }
+    }
+
     // Combine data
     const combinedTrips = trips.map(trip => {
       const tripStoresForTrip = tripStoresMap.get(trip.id) || [];
@@ -296,6 +329,7 @@ export const deliveryTripService = {
         vehicle: vehicleMap.get(trip.vehicle_id),
         driver: driverMap.get(trip.driver_id),
         stores: storesWithDetails,
+        crews: tripCrewsMap.get(trip.id) || [],
       };
     }) as DeliveryTripWithRelations[];
 

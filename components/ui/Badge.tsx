@@ -1,8 +1,8 @@
 import React from 'react';
 
-type BadgeVariant = 'default' | 'success' | 'warning' | 'error' | 'info';
+export type BadgeVariant = 'default' | 'success' | 'warning' | 'error' | 'info';
 
-interface BadgeProps {
+export interface BadgeProps extends Omit<React.HTMLAttributes<HTMLSpanElement>, 'className' | 'style'> {
   children: React.ReactNode;
   variant?: BadgeVariant;
   className?: string;
@@ -17,11 +17,12 @@ const variantStyles: Record<BadgeVariant, string> = {
   info: 'bg-blue-100 text-blue-700',
 };
 
-export function Badge({ children, variant = 'default', className = '', style }: BadgeProps) {
+export function Badge({ children, variant = 'default', className = '', style, ...rest }: BadgeProps) {
   return (
     <span
       className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${variantStyles[variant]} ${className}`}
       style={style}
+      {...rest}
     >
       {children}
     </span>

@@ -1086,7 +1086,7 @@ const AppContent = () => {
                         isFlyout={true}
                       />
                       <SubSidebarItem
-                        label="ทริปของฉัน"
+                        label="ออกใบแจ้งหนี้"
                         active={activeTab === 'sales-trips'}
                         onClick={() => {
                           setActiveTab('sales-trips');

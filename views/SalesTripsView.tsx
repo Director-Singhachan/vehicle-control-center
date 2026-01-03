@@ -12,21 +12,23 @@ export function SalesTripsView() {
   const { user } = useAuth();
   const [dateFilter, setDateFilter] = useState(new Date().toISOString().split('T')[0]);
   
-  // Fetch trips for current user (sales person)
+  // Fetch trips with full details for invoicing
   const { trips, loading, error, refetch } = useDeliveryTrips({
     planned_date_from: dateFilter,
     planned_date_to: dateFilter,
+    lite: false, // Fetch full store details
   });
 
-  // Filter trips that have current user as crew member
+  // Show all trips that are ready for invoicing
+  // Sales can create invoices for any trip (not just assigned to them)
   const myTrips = useMemo(() => {
-    if (!trips || !user) return [];
+    if (!trips) return [];
     
+    // Show trips that have stores/orders (ready for invoicing)
     return trips.filter((trip: any) => {
-      // Check if user is in crews
-      return trip.crews?.some((crew: any) => crew.profile_id === user.id);
+      return trip.stores && trip.stores.length > 0;
     });
-  }, [trips, user]);
+  }, [trips]);
 
   const handlePrintInvoice = (tripId: string, storeId: string) => {
     // TODO: Implement invoice printing
@@ -54,7 +56,7 @@ export function SalesTripsView() {
   }
 
   return (
-    <PageLayout title="ทริปของฉัน - ออกใบแจ้งหนี้">
+    <PageLayout title="ออกใบแจ้งหนี้ - ทริปส่งสินค้า">
       {/* Date Filter */}
       <div className="mb-6 flex items-center gap-4">
         <div className="flex items-center gap-2">
@@ -163,10 +165,14 @@ export function SalesTripsView() {
                          'รอดำเนินการ'}
                       </Badge>
                     </div>
-                    <div className="flex items-center gap-4 text-sm text-gray-600">
+                    <div className="flex items-center gap-4 text-sm text-gray-600 flex-wrap">
                       <div className="flex items-center gap-1">
                         <Truck className="w-4 h-4" />
-                        <span>{trip.vehicle?.plate}</span>
+                        <span>{trip.vehicle?.plate || 'ไม่ระบุ'}</span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <User className="w-4 h-4" />
+                        <span>คนขับ: {trip.driver?.full_name || 'ไม่ระบุ'}</span>
                       </div>
                       <div className="flex items-center gap-1">
                         <Calendar className="w-4 h-4" />
@@ -183,6 +189,19 @@ export function SalesTripsView() {
                         <span>{trip.stores?.length || 0} จุดส่ง</span>
                       </div>
                     </div>
+                    {trip.crews && trip.crews.length > 0 && (
+                      <div className="flex items-center gap-2 text-sm text-gray-600 mt-2">
+                        <User className="w-4 h-4" />
+                        <span>พนักงานบริการ:</span>
+                        <div className="flex gap-2 flex-wrap">
+                          {trip.crews.map((crew: any) => (
+                            <Badge key={crew.id} variant="info">
+                              {crew.staff?.name || 'ไม่ระบุชื่อ'}
+                            </Badge>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
 

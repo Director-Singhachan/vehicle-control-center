@@ -5,7 +5,8 @@ import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
 import { LoadingSpinner } from '../components/ui/LoadingSpinner';
-import { ordersService } from '../services/ordersService';
+import { ordersService, orderItemsService } from '../services/ordersService';
+import { Modal } from '../components/ui/Modal';
 
 interface Order {
   id: string;
@@ -23,6 +24,10 @@ export function TrackOrdersView() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [detailOrder, setDetailOrder] = useState<any | null>(null);
+  const [detailItems, setDetailItems] = useState<any[]>([]);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState<string | null>(null);
 
   React.useEffect(() => {
     loadOrders();
@@ -90,6 +95,27 @@ export function TrackOrdersView() {
       delivered: filteredOrders.filter((o) => o.status === 'delivered').length,
     };
   }, [filteredOrders]);
+
+  const openDetail = async (order: any) => {
+    try {
+      setDetailOrder(order);
+      setDetailLoading(true);
+      setDetailError(null);
+      const items = await orderItemsService.getByOrderId(order.id);
+      setDetailItems(items);
+    } catch (err: any) {
+      console.error('Error loading order items:', err);
+      setDetailError(err?.message || 'ไม่สามารถโหลดรายการสินค้าได้');
+    } finally {
+      setDetailLoading(false);
+    }
+  };
+
+  const closeDetail = () => {
+    setDetailOrder(null);
+    setDetailItems([]);
+    setDetailError(null);
+  };
 
   return (
     <PageLayout title="ติดตามออเดอร์">
@@ -185,6 +211,7 @@ export function TrackOrdersView() {
                   <th className="text-right py-3 px-4 text-sm font-semibold text-gray-700">ยอดรวม</th>
                   <th className="text-center py-3 px-4 text-sm font-semibold text-gray-700">สถานะ</th>
                   <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700">วันที่สร้าง</th>
+                  <th className="text-center py-3 px-4 text-sm font-semibold text-gray-700">ดูรายละเอียด</th>
                 </tr>
               </thead>
               <tbody>
@@ -208,6 +235,12 @@ export function TrackOrdersView() {
                         minute: '2-digit',
                       })}
                     </td>
+                  <td className="py-3 px-4 text-center">
+                    <Button size="sm" variant="outline" onClick={() => openDetail(order)}>
+                      <Eye className="w-4 h-4 mr-1" />
+                      ดู
+                    </Button>
+                  </td>
                   </tr>
                 ))}
               </tbody>
@@ -215,6 +248,98 @@ export function TrackOrdersView() {
           </div>
         )}
       </Card>
+
+      {/* Order Detail Modal */}
+      <Modal
+        isOpen={!!detailOrder}
+        onClose={closeDetail}
+        title={`รายละเอียดออเดอร์ ${detailOrder?.order_number || ''}`}
+        size="large"
+      >
+        {detailLoading ? (
+          <div className="flex items-center justify-center py-12">
+            <LoadingSpinner />
+          </div>
+        ) : detailError ? (
+          <div className="text-red-600">{detailError}</div>
+        ) : detailOrder ? (
+          <div className="space-y-4">
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+              <div>
+                <div className="text-sm text-gray-500">ร้านค้า</div>
+                <div className="text-lg font-semibold text-gray-900">
+                  {detailOrder.customer_name}
+                </div>
+                <div className="text-sm text-gray-500">{detailOrder.customer_code}</div>
+              </div>
+              <div className="flex items-center gap-3 flex-wrap">
+                {getStatusBadge(detailOrder.status)}
+                <div className="text-sm text-gray-600">
+                  วันที่สร้าง:{' '}
+                  {new Date(detailOrder.created_at).toLocaleDateString('th-TH', {
+                    year: 'numeric',
+                    month: 'short',
+                    day: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  })}
+                </div>
+                <div className="text-sm font-semibold text-gray-900">
+                  ยอดรวม ฿{detailOrder.total_amount?.toLocaleString()}
+                </div>
+              </div>
+            </div>
+
+            <div className="border border-gray-200 rounded-lg overflow-hidden">
+              <table className="w-full">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="text-left py-2 px-3 text-sm font-semibold text-gray-700">สินค้า</th>
+                    <th className="text-right py-2 px-3 text-sm font-semibold text-gray-700">จำนวน</th>
+                    <th className="text-right py-2 px-3 text-sm font-semibold text-gray-700">ราคาต่อหน่วย</th>
+                    <th className="text-right py-2 px-3 text-sm font-semibold text-gray-700">ส่วนลด (%)</th>
+                    <th className="text-right py-2 px-3 text-sm font-semibold text-gray-700">รวมบรรทัด</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {detailItems.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="text-center py-4 text-gray-500">
+                        ไม่มีรายการสินค้า
+                      </td>
+                    </tr>
+                  ) : (
+                    detailItems.map((item: any) => (
+                      <tr key={item.id} className="border-t border-gray-100">
+                        <td className="py-2 px-3">
+                          <div className="font-medium text-gray-900">
+                            {item.product?.product_name || 'ไม่ระบุชื่อสินค้า'}
+                          </div>
+                          <div className="text-xs text-gray-500">
+                            {item.product?.product_code || '-'}
+                          </div>
+                        </td>
+                        <td className="py-2 px-3 text-right text-gray-900">
+                          {item.quantity?.toLocaleString()} {item.product?.unit || ''}
+                        </td>
+                        <td className="py-2 px-3 text-right text-gray-900">
+                          ฿{item.unit_price?.toLocaleString()}
+                        </td>
+                        <td className="py-2 px-3 text-right text-gray-900">
+                          {item.discount_percent || 0}%
+                        </td>
+                        <td className="py-2 px-3 text-right font-semibold text-gray-900">
+                          ฿{item.line_total?.toLocaleString()}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        ) : null}
+      </Modal>
 
       {/* Info Message */}
       <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
