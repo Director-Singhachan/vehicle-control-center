@@ -394,13 +394,13 @@ export const inventoryService = {
     // ตรวจสอบว่ามี inventory record อยู่แล้วหรือไม่
     const { data: existing } = await supabase
       .from('inventory')
-      .select('id, warehouse_id, product_id, quantity, reserved_quantity, created_at, last_updated_at, updated_by')
+      .select('id, warehouse_id, product_id, quantity, reserved_quantity')
       .eq('warehouse_id', warehouseId)
       .eq('product_id', productId)
       .single();
 
     if (existing) {
-      // อัพเดท (ไม่แตะ available_quantity หากเป็น generated/trigger)
+      // อัพเดท
       const { data, error } = await supabase
         .from('inventory')
         .update({
@@ -410,13 +410,13 @@ export const inventoryService = {
         })
         .eq('warehouse_id', warehouseId)
         .eq('product_id', productId)
-        .select('id, warehouse_id, product_id, quantity, reserved_quantity, created_at, last_updated_at, updated_by')
+        .select('id, warehouse_id, product_id, quantity, reserved_quantity')
         .single();
 
       if (error) throw error;
       return data as Inventory;
     } else {
-      // สร้างใหม่ (ไม่กำหนด available_quantity หากคอลัมน์เป็น generated/trigger)
+      // สร้างใหม่ (ไม่ส่ง last_updated_at เพราะ trigger จัดการให้)
       const { data, error } = await supabase
         .from('inventory')
         .insert({
@@ -425,10 +425,8 @@ export const inventoryService = {
           quantity,
           reserved_quantity: 0,
           updated_by: userId,
-          last_updated_at: new Date().toISOString(),
-          created_at: new Date().toISOString(),
         })
-        .select('id, warehouse_id, product_id, quantity, reserved_quantity, created_at, last_updated_at, updated_by')
+        .select('id, warehouse_id, product_id, quantity, reserved_quantity')
         .single();
 
       if (error) throw error;
@@ -444,11 +442,12 @@ export const inventoryService = {
     productId: string,
     adjustment: number,
     userId: string,
-    note?: string
+    note?: string,
+    ref_code?: string
   ) {
     const { data: current } = await supabase
       .from('inventory')
-      .select('id, warehouse_id, product_id, quantity, reserved_quantity, created_at, last_updated_at, updated_by')
+      .select('id, warehouse_id, product_id, quantity, reserved_quantity')
       .eq('warehouse_id', warehouseId)
       .eq('product_id', productId)
       .single();
@@ -462,19 +461,17 @@ export const inventoryService = {
 
     await this.updateQuantity(warehouseId, productId, newQty, userId);
 
-    try {
-      await this.recordTransaction({
-        warehouse_id: warehouseId,
-        product_id: productId,
-        transaction_type: adjustment > 0 ? 'in' : 'out',
-        quantity: Math.abs(adjustment),
-        reference_type: 'adjust',
-        note,
-        created_by: userId,
-      });
-    } catch (err) {
-      console.warn('[inventoryService.adjustStock] skip recordTransaction', err);
-    }
+    // บันทึกประวัติการเคลื่อนไหว
+    await this.recordTransaction({
+      warehouse_id: warehouseId,
+      product_id: productId,
+      transaction_type: adjustment > 0 ? 'in' : 'out',
+      quantity: Math.abs(adjustment),
+      reference_type: 'adjust',
+      note,
+      ref_code,
+      created_by: userId,
+    });
   },
 
   /**
@@ -487,7 +484,7 @@ export const inventoryService = {
   ) {
     const { data: current } = await supabase
       .from('inventory')
-      .select('id, warehouse_id, product_id, quantity, reserved_quantity, created_at, last_updated_at, updated_by')
+      .select('id, warehouse_id, product_id, quantity, reserved_quantity')
       .eq('warehouse_id', warehouseId)
       .eq('product_id', productId)
       .single();
@@ -499,8 +496,20 @@ export const inventoryService = {
       throw new Error('สต็อกไม่เพียงพอสำหรับการจอง');
     }
 
-    await this.updateQuantity(warehouseId, productId, newQty, 'reserve');
-    return current as Inventory;
+    // Update inventory directly (reduce quantity, keep reserved_quantity unchanged)
+    const { data, error } = await supabase
+      .from('inventory')
+      .update({
+        quantity: newQty,
+        last_updated_at: new Date().toISOString(),
+      })
+      .eq('warehouse_id', warehouseId)
+      .eq('product_id', productId)
+      .select('id, warehouse_id, product_id, quantity, reserved_quantity')
+      .single();
+
+    if (error) throw error;
+    return data as Inventory;
   },
 
   /**
@@ -513,7 +522,7 @@ export const inventoryService = {
   ) {
     const { data: current } = await supabase
       .from('inventory')
-      .select('id, warehouse_id, product_id, quantity, reserved_quantity, created_at, last_updated_at, updated_by')
+      .select('id, warehouse_id, product_id, quantity, reserved_quantity')
       .eq('warehouse_id', warehouseId)
       .eq('product_id', productId)
       .single();
@@ -528,7 +537,7 @@ export const inventoryService = {
       })
       .eq('warehouse_id', warehouseId)
       .eq('product_id', productId)
-      .select('id, warehouse_id, product_id, quantity, reserved_quantity, created_at, last_updated_at, updated_by')
+      .select('id, warehouse_id, product_id, quantity, reserved_quantity')
       .single();
 
     if (error) throw error;
@@ -563,10 +572,20 @@ export const inventoryService = {
     let query = supabase
       .from('inventory_transactions')
       .select(`
-        *,
+        id,
+        warehouse_id,
+        product_id,
+        transaction_type,
+        quantity,
+        note,
+        ref_code,
+        reference_type,
+        reference_id,
+        created_by,
+        created_at,
         warehouse:warehouses(code, name),
         product:products(product_code, product_name, unit),
-        creator:profiles(full_name, email)
+        creator:profiles!created_by(full_name, email)
       `)
       .order('created_at', { ascending: false });
 
@@ -577,14 +596,19 @@ export const inventoryService = {
       query = query.eq('product_id', filters.productId);
     }
     if (filters?.startDate) {
-      query = query.gte('created_at', filters.startDate);
+      // เพิ่ม T00:00:00Z เพื่อให้เป็น timestamp ที่สมบูรณ์
+      query = query.gte('created_at', `${filters.startDate}T00:00:00Z`);
     }
     if (filters?.endDate) {
-      query = query.lte('created_at', filters.endDate);
+      // เพิ่ม T23:59:59Z เพื่อให้รวมทั้งวัน
+      query = query.lte('created_at', `${filters.endDate}T23:59:59Z`);
     }
 
     const { data, error } = await query;
-    if (error) throw error;
+    if (error) {
+      console.error('[getTransactions] error:', error);
+      throw error;
+    }
     return data;
   },
 };

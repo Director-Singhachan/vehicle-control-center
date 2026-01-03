@@ -775,7 +775,7 @@ export interface Database {
           updated_by?: string | null;
         };
       };
-      delivery_trip_      price_change_history: {
+      price_change_history: {
         Row: {
           id: string;
           product_id: string;
@@ -1384,6 +1384,7 @@ export interface Database {
           quantity: number;
           reference_type: string | null;
           reference_id: string | null;
+          ref_code: string | null;
           note: string | null;
           created_by: string | null;
           created_at: string;
@@ -1396,6 +1397,7 @@ export interface Database {
           quantity: number;
           reference_type?: string | null;
           reference_id?: string | null;
+          ref_code?: string | null;
           note?: string | null;
           created_by?: string | null;
           created_at?: string;
@@ -1408,6 +1410,7 @@ export interface Database {
           quantity?: number;
           reference_type?: string | null;
           reference_id?: string | null;
+          ref_code?: string | null;
           note?: string | null;
           created_by?: string | null;
           created_at?: string;

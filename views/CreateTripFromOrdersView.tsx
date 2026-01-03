@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { ArrowLeft, Truck, Users, MapPin, Calendar, Package, Save, Plus, GripVertical, X } from 'lucide-react';
+import { ArrowLeft, Truck, Users, MapPin, Calendar, Package, Save, Plus, GripVertical, X, Search, Building2 } from 'lucide-react';
 import { useVehicles } from '../hooks/useVehicles';
 import { useWarehouses } from '../hooks/useInventory';
 import { profileService } from '../services/profileService';
@@ -47,6 +47,10 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
   const [notes, setNotes] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [orderItemsMap, setOrderItemsMap] = useState<Map<string, any[]>>(new Map());
+  
+  // Vehicle filtering
+  const [selectedBranch, setSelectedBranch] = useState('');
+  const [vehicleSearch, setVehicleSearch] = useState('');
 
   // สร้างรายการร้านค้าจากออเดอร์ที่เลือก
   const [storeDeliveries, setStoreDeliveries] = useState<StoreDelivery[]>(() => {
@@ -64,6 +68,12 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
       sequence: index + 1,
     }));
   });
+
+  // Debug: log vehicles data
+  useEffect(() => {
+    console.log('[CreateTrip] vehicles:', vehicles);
+    console.log('[CreateTrip] vehiclesLoading:', vehiclesLoading);
+  }, [vehicles, vehiclesLoading]);
 
   // Fetch drivers list
   useEffect(() => {
@@ -104,6 +114,43 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
 
     fetchOrderItems();
   }, [selectedOrders]);
+
+  // Get unique branches from vehicles
+  const branches = useMemo(() => {
+    if (!vehicles || vehicles.length === 0) return [];
+    const uniqueBranches = new Set<string>();
+    vehicles.forEach((v: any) => {
+      if (v.branch) {
+        uniqueBranches.add(v.branch);
+      }
+    });
+    return Array.from(uniqueBranches).sort();
+  }, [vehicles]);
+
+  // Filter vehicles by branch and search
+  const filteredVehicles = useMemo(() => {
+    if (!vehicles) return [];
+    
+    let filtered = vehicles;
+    
+    // Filter by branch
+    if (selectedBranch) {
+      filtered = filtered.filter((v: any) => v.branch === selectedBranch);
+    }
+    
+    // Filter by search term (plate, make, model)
+    if (vehicleSearch) {
+      const search = vehicleSearch.toLowerCase();
+      filtered = filtered.filter((v: any) => {
+        const plate = (v.plate || '').toLowerCase();
+        const make = (v.make || '').toLowerCase();
+        const model = (v.model || '').toLowerCase();
+        return plate.includes(search) || make.includes(search) || model.includes(search);
+      });
+    }
+    
+    return filtered;
+  }, [vehicles, selectedBranch, vehicleSearch]);
 
   // Drag & Drop handlers
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
@@ -247,21 +294,74 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
               
               <div className="space-y-4">
                 {/* Vehicle Selection */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                <div className="space-y-3">
+                  <label className="block text-sm font-medium text-gray-700">
                     <Truck className="w-4 h-4 inline mr-1" />
                     เลือกรถ *
                   </label>
+                  
+                  {/* Branch Filter */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs text-gray-600 mb-1">
+                        <Building2 className="w-3 h-3 inline mr-1" />
+                        สาขา
+                      </label>
+                      <select
+                        value={selectedBranch}
+                        onChange={(e) => {
+                          setSelectedBranch(e.target.value);
+                          setSelectedVehicleId(''); // Reset vehicle selection
+                        }}
+                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                        disabled={vehiclesLoading}
+                      >
+                        <option value="">ทุกสาขา</option>
+                        {branches.map((branch) => (
+                          <option key={branch} value={branch}>
+                            {branch}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    
+                    {/* Vehicle Search */}
+                    <div>
+                      <label className="block text-xs text-gray-600 mb-1">
+                        <Search className="w-3 h-3 inline mr-1" />
+                        ค้นหา (ทะเบียน/ยี่ห้อ/รุ่น)
+                      </label>
+                      <input
+                        type="text"
+                        value={vehicleSearch}
+                        onChange={(e) => {
+                          setVehicleSearch(e.target.value);
+                          setSelectedVehicleId(''); // Reset vehicle selection
+                        }}
+                        placeholder="พิมพ์เพื่อค้นหา..."
+                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                        disabled={vehiclesLoading}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Vehicle Dropdown */}
                   <select
                     value={selectedVehicleId}
                     onChange={(e) => setSelectedVehicleId(e.target.value)}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                     disabled={vehiclesLoading}
                   >
-                    <option value="">-- เลือกรถ --</option>
-                    {vehicles?.filter((v: any) => v.is_active).map((vehicle: any) => (
+                    <option value="">
+                      {vehiclesLoading 
+                        ? 'กำลังโหลด...' 
+                        : filteredVehicles.length === 0 
+                          ? 'ไม่พบรถที่ตรงกับเงื่อนไข' 
+                          : `-- เลือกรถ (${filteredVehicles.length} คัน) --`}
+                    </option>
+                    {filteredVehicles.map((vehicle: any) => (
                       <option key={vehicle.id} value={vehicle.id}>
-                        {vehicle.plate} - {vehicle.make} {vehicle.model}
+                        {vehicle.plate} {vehicle.make ? `- ${vehicle.make}` : ''} {vehicle.model || ''} {vehicle.branch ? `[${vehicle.branch}]` : ''}
                       </option>
                     ))}
                   </select>

@@ -126,9 +126,8 @@ export function WarehouseManagementView() {
         stockInForm.product_id,
         stockInForm.quantity,
         user?.id || 'system',
-        stockInForm.note || stockInForm.ref_code
-          ? `รับสินค้าเข้า${stockInForm.ref_code ? ` - ใบกำกับ: ${stockInForm.ref_code}` : ''}${stockInForm.note ? ` (${stockInForm.note})` : ''}`
-          : 'รับสินค้าเข้า'
+        stockInForm.note || undefined,
+        stockInForm.ref_code || undefined
       );
 
       showNotification('success', 'รับสินค้าเข้าเรียบร้อย');
@@ -150,7 +149,7 @@ export function WarehouseManagementView() {
         await warehouseService.create(formData as Omit<WarehouseRow, 'id' | 'created_at' | 'updated_at'>);
         showNotification('success', 'เพิ่มคลังสินค้าเรียบร้อย');
       }
-      
+
       refetch();
       handleCloseModal();
     } catch (error: any) {
@@ -214,7 +213,7 @@ export function WarehouseManagementView() {
           <Card key={warehouse.id} className="relative overflow-hidden hover:shadow-lg transition-shadow">
             {/* Background Decoration */}
             <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-blue-500/5 to-transparent rounded-bl-full" />
-            
+
             <div className="relative p-6">
               {/* Header */}
               <div className="flex items-start justify-between mb-4">
@@ -459,7 +458,7 @@ export function WarehouseManagementView() {
                         <td className="py-3 px-4">
                           <div className="flex items-center gap-2">
                             {item.category_color && (
-                              <div 
+                              <div
                                 className="w-3 h-3 rounded-full"
                                 style={{ backgroundColor: item.category_color }}
                               />
@@ -485,14 +484,14 @@ export function WarehouseManagementView() {
                           <Badge
                             variant={
                               item.stock_status === 'out_of_stock' ? 'error' :
-                              item.stock_status === 'low_stock' ? 'warning' :
-                              'success'
+                                item.stock_status === 'low_stock' ? 'warning' :
+                                  'success'
                             }
                           >
                             {
                               item.stock_status === 'out_of_stock' ? 'หมด' :
-                              item.stock_status === 'low_stock' ? 'ต่ำ' :
-                              'ปกติ'
+                                item.stock_status === 'low_stock' ? 'ต่ำ' :
+                                  'ปกติ'
                             }
                           </Badge>
                         </td>
@@ -544,9 +543,8 @@ export function WarehouseManagementView() {
                         setStockInForm({ ...stockInForm, product_id: p.id });
                         setProductSearch(`${p.product_code || ''} ${p.product_name || ''}`.trim());
                       }}
-                      className={`w-full text-left px-3 py-2 hover:bg-gray-50 ${
-                        stockInForm.product_id === p.id ? 'bg-blue-50 text-blue-700 font-medium' : ''
-                      }`}
+                      className={`w-full text-left px-3 py-2 hover:bg-gray-50 ${stockInForm.product_id === p.id ? 'bg-blue-50 text-blue-700 font-medium' : ''
+                        }`}
                     >
                       <div className="text-sm">{p.product_code}</div>
                       <div className="text-xs text-gray-500">{p.product_name}</div>
