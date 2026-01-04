@@ -262,7 +262,7 @@ export function PendingOrdersView() {
                 <Button
                   size="sm"
                   onClick={handleCreateTrip}
-                  className="bg-white text-blue-600 hover:bg-blue-50 font-semibold"
+                  className="bg-white/20 hover:bg-white/30 text-white border-white/40 font-semibold"
                 >
                   สร้างทริป
                 </Button>
