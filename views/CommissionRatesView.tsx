@@ -205,21 +205,21 @@ export const CommissionRatesView: React.FC = () => {
             {/* Form Modal */}
             {showForm && (
                 <Card className="mb-6 p-6">
-                    <h3 className="text-lg font-semibold mb-4">
+                    <h3 className="text-lg font-semibold mb-4 dark:text-white">
                         {editingRate ? 'แก้ไขอัตราค่าคอมมิชชั่น' : 'เพิ่มอัตราค่าคอมมิชชั่นใหม่'}
                     </h3>
 
                     {error && (
-                        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2">
-                            <AlertCircle className="text-red-600 flex-shrink-0 mt-0.5" size={20} />
-                            <p className="text-sm text-red-800">{error}</p>
+                        <div className="mb-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg flex items-start gap-2">
+                            <AlertCircle className="text-red-600 dark:text-red-400 flex-shrink-0 mt-0.5" size={20} />
+                            <p className="text-sm text-red-800 dark:text-red-300">{error}</p>
                         </div>
                     )}
 
                     <form onSubmit={handleSubmit}>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                             <div className="md:col-span-2">
-                                <label className="block text-sm font-medium text-gray-700 mb-1">
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                                     ชื่ออัตราค่าคอมมิชชั่น <span className="text-red-500">*</span>
                                 </label>
                                 <Input
@@ -232,7 +232,7 @@ export const CommissionRatesView: React.FC = () => {
                             </div>
 
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                                     ประเภทรถ
                                 </label>
                                 <Input
@@ -241,11 +241,11 @@ export const CommissionRatesView: React.FC = () => {
                                     onChange={(e) => setFormData({ ...formData, vehicle_type: e.target.value })}
                                     placeholder="เช่น 4-wheel, 6-wheel, 10-wheel"
                                 />
-                                <p className="text-xs text-gray-500 mt-1">เว้นว่างถ้าใช้กับทุกประเภทรถ</p>
+                                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">เว้นว่างถ้าใช้กับทุกประเภทรถ</p>
                             </div>
 
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                                     ประเภทบริการ
                                 </label>
                                 <Input
@@ -254,11 +254,11 @@ export const CommissionRatesView: React.FC = () => {
                                     onChange={(e) => setFormData({ ...formData, service_type: e.target.value })}
                                     placeholder="เช่น standard, express, special"
                                 />
-                                <p className="text-xs text-gray-500 mt-1">เว้นว่างถ้าใช้กับทุกประเภทบริการ</p>
+                                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">เว้นว่างถ้าใช้กับทุกประเภทบริการ</p>
                             </div>
 
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                                     อัตราค่าคอมมิชชั่น (บาท/ชิ้น) <span className="text-red-500">*</span>
                                 </label>
                                 <Input
@@ -273,13 +273,13 @@ export const CommissionRatesView: React.FC = () => {
                             </div>
 
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                                     สถานะ
                                 </label>
                                 <select
                                     value={formData.is_active ? 'true' : 'false'}
                                     onChange={(e) => setFormData({ ...formData, is_active: e.target.value === 'true' })}
-                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                    className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-transparent"
                                 >
                                     <option value="true">ใช้งาน</option>
                                     <option value="false">ไม่ใช้งาน</option>
@@ -287,7 +287,7 @@ export const CommissionRatesView: React.FC = () => {
                             </div>
 
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                                     เริ่มใช้งานตั้งแต่ <span className="text-red-500">*</span>
                                 </label>
                                 <Input
@@ -299,7 +299,7 @@ export const CommissionRatesView: React.FC = () => {
                             </div>
 
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                                     สิ้นสุดการใช้งาน
                                 </label>
                                 <Input
@@ -308,11 +308,11 @@ export const CommissionRatesView: React.FC = () => {
                                     onChange={(e) => setFormData({ ...formData, effective_until: e.target.value })}
                                     placeholder="เว้นว่างถ้าไม่มีวันสิ้นสุด"
                                 />
-                                <p className="text-xs text-gray-500 mt-1">เว้นว่างถ้าไม่มีวันสิ้นสุด</p>
+                                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">เว้นว่างถ้าไม่มีวันสิ้นสุด</p>
                             </div>
 
                             <div className="md:col-span-2">
-                                <label className="block text-sm font-medium text-gray-700 mb-1">
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                                     หมายเหตุ
                                 </label>
                                 <textarea
@@ -320,7 +320,7 @@ export const CommissionRatesView: React.FC = () => {
                                     onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
                                     placeholder="หมายเหตุเพิ่มเติม..."
                                     rows={3}
-                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                    className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-transparent"
                                 />
                             </div>
                         </div>
@@ -346,12 +346,12 @@ export const CommissionRatesView: React.FC = () => {
             {loading ? (
                 <div className="text-center py-12">
                     <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-                    <p className="mt-2 text-gray-600">กำลังโหลด...</p>
+                    <p className="mt-2 text-gray-600 dark:text-gray-400">กำลังโหลด...</p>
                 </div>
             ) : rates.length === 0 ? (
                 <Card className="p-12 text-center">
-                    <DollarSign className="mx-auto text-gray-400 mb-4" size={48} />
-                    <p className="text-gray-600">ยังไม่มีอัตราค่าคอมมิชชั่นในระบบ</p>
+                    <DollarSign className="mx-auto text-gray-400 dark:text-gray-500 mb-4" size={48} />
+                    <p className="text-gray-600 dark:text-gray-400">ยังไม่มีอัตราค่าคอมมิชชั่นในระบบ</p>
                     <Button
                         onClick={() => setShowForm(true)}
                         className="mt-4"
@@ -365,16 +365,16 @@ export const CommissionRatesView: React.FC = () => {
                         <Card key={rate.id} className="p-4 hover:shadow-lg transition-shadow">
                             <div className="flex items-start justify-between mb-3">
                                 <div className="flex-1">
-                                    <h3 className="font-semibold text-lg">{rate.rate_name}</h3>
+                                    <h3 className="font-semibold text-lg dark:text-white">{rate.rate_name}</h3>
                                     <div className="mt-2 space-y-1">
                                         {rate.vehicle_type && (
-                                            <div className="flex items-center gap-2 text-sm text-gray-600">
+                                            <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
                                                 <Truck size={14} />
                                                 <span>รถ: {rate.vehicle_type}</span>
                                             </div>
                                         )}
                                         {rate.service_type && (
-                                            <div className="flex items-center gap-2 text-sm text-gray-600">
+                                            <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
                                                 <span className="text-xs">🎯</span>
                                                 <span>บริการ: {rate.service_type}</span>
                                             </div>
@@ -382,21 +382,21 @@ export const CommissionRatesView: React.FC = () => {
                                     </div>
                                 </div>
                                 <span className={`px-2 py-1 rounded-full text-xs font-medium ${rate.is_active
-                                        ? 'bg-green-100 text-green-800'
-                                        : 'bg-gray-100 text-gray-800'
+                                        ? 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300'
+                                        : 'bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-300'
                                     }`}>
                                     {rate.is_active ? 'ใช้งาน' : 'ไม่ใช้งาน'}
                                 </span>
                             </div>
 
-                            <div className="mb-4 p-3 bg-blue-50 rounded-lg">
-                                <p className="text-sm text-gray-600 mb-1">อัตราค่าคอมมิชชั่น</p>
-                                <p className="text-2xl font-bold text-blue-600">
-                                    {formatCurrency(rate.rate_per_unit)}<span className="text-sm font-normal text-gray-600">/ชิ้น</span>
+                            <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+                                <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">อัตราค่าคอมมิชชั่น</p>
+                                <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">
+                                    {formatCurrency(rate.rate_per_unit)}<span className="text-sm font-normal text-gray-600 dark:text-gray-400">/ชิ้น</span>
                                 </p>
                             </div>
 
-                            <div className="space-y-1 mb-4 text-sm text-gray-600">
+                            <div className="space-y-1 mb-4 text-sm text-gray-600 dark:text-gray-400">
                                 <div className="flex items-center gap-2">
                                     <Calendar size={14} />
                                     <span>เริ่ม: {new Date(rate.effective_from).toLocaleDateString('th-TH')}</span>
@@ -408,11 +408,11 @@ export const CommissionRatesView: React.FC = () => {
                                     </div>
                                 )}
                                 {rate.notes && (
-                                    <p className="text-xs text-gray-500 italic mt-2">{rate.notes}</p>
+                                    <p className="text-xs text-gray-500 dark:text-gray-400 italic mt-2">{rate.notes}</p>
                                 )}
                             </div>
 
-                            <div className="flex gap-2 pt-3 border-t">
+                            <div className="flex gap-2 pt-3 border-t dark:border-slate-700">
                                 <Button
                                     variant="outline"
                                     size="sm"
@@ -426,7 +426,7 @@ export const CommissionRatesView: React.FC = () => {
                                     variant="outline"
                                     size="sm"
                                     onClick={() => handleDelete(rate.id, rate.rate_name)}
-                                    className="flex items-center justify-center gap-1 text-red-600 hover:bg-red-50"
+                                    className="flex items-center justify-center gap-1 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20"
                                 >
                                     <Trash2 size={16} />
                                     ลบ
@@ -439,7 +439,7 @@ export const CommissionRatesView: React.FC = () => {
 
             {/* Summary */}
             {!loading && rates.length > 0 && (
-                <div className="mt-6 text-sm text-gray-600 text-center">
+                <div className="mt-6 text-sm text-gray-600 dark:text-gray-400 text-center">
                     ทั้งหมด {rates.length} อัตรา
                     {' • '}
                     ใช้งาน: {rates.filter(r => r.is_active).length}

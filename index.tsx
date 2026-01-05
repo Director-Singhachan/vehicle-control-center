@@ -25,6 +25,8 @@ import {
   Settings as SettingsIcon,
   ChevronDown,
   ChevronRight,
+  ShoppingCart,
+  ClipboardList,
 } from 'lucide-react';
 import { DashboardView } from './views/DashboardView';
 import { ProfileView } from './views/ProfileView';
@@ -50,6 +52,16 @@ import { StoreDeliveryDetailView } from './views/StoreDeliveryDetailView';
 import { ServiceStaffManagementView } from './views/ServiceStaffManagementView';
 import { CommissionManagementView } from './views/CommissionManagementView';
 import { CommissionRatesView } from './views/CommissionRatesView';
+import { StockDashboardView } from './views/StockDashboardView';
+import { ProductsManagementView } from './views/ProductsManagementView';
+import { WarehouseManagementView } from './views/WarehouseManagementView';
+import { CustomerTiersManagementView } from './views/CustomerTiersManagementView';
+import { ProductTierPricingView } from './views/ProductTierPricingView';
+import { InventoryReceiptsView } from './views/InventoryReceiptsView';
+import { CreateOrderView } from './views/CreateOrderView';
+import { PendingOrdersView } from './views/PendingOrdersView';
+import { TrackOrdersView } from './views/TrackOrdersView';
+import { SalesTripsView } from './views/SalesTripsView';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { useAuth, usePendingTickets } from './hooks';
 import { ticketService, type TicketWithRelations } from './services/ticketService';
@@ -62,8 +74,8 @@ const SidebarItem = ({ icon: Icon, label, active, onClick, onMouseEnter, isColla
     onClick={onClick}
     onMouseEnter={onMouseEnter}
     className={`w-full flex items-center ${isCollapsed ? 'justify-center' : 'space-x-3'} px-4 py-3 rounded-lg transition-colors duration-200 ${active
-      ? 'bg-enterprise-50 text-enterprise-600 dark:bg-enterprise-900/30 dark:text-enterprise-400 font-medium'
-      : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/50'
+      ? 'bg-enterprise-50 text-enterprise-600 dark:bg-blue-900/30 dark:text-blue-400 font-medium'
+      : 'text-slate-600 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700/50'
       }`}
   >
     <Icon size={isCollapsed ? 24 : 20} />
@@ -78,8 +90,8 @@ const SubSidebarItem = ({ label, active, onClick, isCollapsed, isFlyout }: any) 
   <button
     onClick={onClick}
     className={`w-full flex items-center ${isFlyout ? 'px-4' : 'pl-12 pr-4'} py-2 rounded-lg transition-colors duration-200 ${active
-      ? 'text-enterprise-600 dark:text-enterprise-400 font-medium bg-enterprise-50 dark:bg-enterprise-900/20'
-      : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/30'
+      ? 'text-enterprise-600 dark:text-blue-400 font-medium bg-enterprise-50 dark:bg-blue-900/30'
+      : 'text-slate-600 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700/50'
       }`}
   >
     {!isCollapsed && <span className="text-sm whitespace-nowrap">{label}</span>}
@@ -195,6 +207,18 @@ const AppContent = () => {
   const [isCommissionOpen, setIsCommissionOpen] = useState(false);
   const [isCommissionHovered, setIsCommissionHovered] = useState(false);
   const commissionMenuRef = React.useRef<HTMLDivElement>(null);
+  
+  const [isOrdersOpen, setIsOrdersOpen] = useState(false);
+  const [isOrdersHovered, setIsOrdersHovered] = useState(false);
+  const ordersMenuRef = React.useRef<HTMLDivElement>(null);
+
+  const [isStockOpen, setIsStockOpen] = useState(false);
+  const [isStockHovered, setIsStockHovered] = useState(false);
+  const stockMenuRef = React.useRef<HTMLDivElement>(null);
+
+  const [isTripsOpen, setIsTripsOpen] = useState(false);
+  const [isTripsHovered, setIsTripsHovered] = useState(false);
+  const tripsMenuRef = React.useRef<HTMLDivElement>(null);
   const commissionTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
   const [flyoutPosition, setFlyoutPosition] = useState({ top: 0, left: 0 });
 
@@ -252,6 +276,144 @@ const AppContent = () => {
     setIsCommissionHovered(false);
   };
 
+  // Orders menu handlers
+  const [ordersFlyoutPosition, setOrdersFlyoutPosition] = useState({ top: 0, left: 0 });
+  const ordersTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
+  
+  const handleOrdersMouseEnter = (e: React.MouseEvent) => {
+    if (ordersTimeoutRef.current) {
+      clearTimeout(ordersTimeoutRef.current);
+      ordersTimeoutRef.current = null;
+    }
+    
+    const rect = e.currentTarget.getBoundingClientRect();
+    const viewportHeight = window.innerHeight;
+    // Estimate flyout height (menu + padding). Keep conservative to reduce upward shift.
+    const flyoutEstimatedHeight = 320;
+    // Start aligned to trigger top
+    let top = rect.top;
+    // If it would overflow bottom, shift up just enough
+    const overflow = top + flyoutEstimatedHeight - (viewportHeight - 12);
+    if (overflow > 0) {
+      top = Math.max(12, top - overflow);
+    }
+    
+    setOrdersFlyoutPosition({
+      top,
+      left: rect.right + 8,
+    });
+    
+    setIsOrdersHovered(true);
+  };
+
+  const handleOrdersMouseLeave = () => {
+    ordersTimeoutRef.current = setTimeout(() => {
+      setIsOrdersHovered(false);
+    }, 150);
+  };
+
+  const handleOrdersFlyoutMouseEnter = () => {
+    if (ordersTimeoutRef.current) {
+      clearTimeout(ordersTimeoutRef.current);
+      ordersTimeoutRef.current = null;
+    }
+    setIsOrdersHovered(true);
+  };
+
+  const handleOrdersFlyoutMouseLeave = () => {
+    setIsOrdersHovered(false);
+  };
+
+  // Stock menu handlers
+  const [stockFlyoutPosition, setStockFlyoutPosition] = useState({ top: 0, left: 0 });
+  const stockTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
+  
+  const handleStockMouseEnter = (e: React.MouseEvent) => {
+    if (stockTimeoutRef.current) {
+      clearTimeout(stockTimeoutRef.current);
+      stockTimeoutRef.current = null;
+    }
+    
+    const rect = e.currentTarget.getBoundingClientRect();
+    const viewportHeight = window.innerHeight;
+    const flyoutEstimatedHeight = 200;
+    
+    let top = rect.top;
+    if (top + flyoutEstimatedHeight > viewportHeight - 10) {
+      top = Math.max(10, viewportHeight - flyoutEstimatedHeight - 10);
+    }
+    
+    setStockFlyoutPosition({
+      top,
+      left: rect.right + 8,
+    });
+    
+    setIsStockHovered(true);
+  };
+
+  const handleStockMouseLeave = () => {
+    stockTimeoutRef.current = setTimeout(() => {
+      setIsStockHovered(false);
+    }, 150);
+  };
+
+  const handleStockFlyoutMouseEnter = () => {
+    if (stockTimeoutRef.current) {
+      clearTimeout(stockTimeoutRef.current);
+      stockTimeoutRef.current = null;
+    }
+    setIsStockHovered(true);
+  };
+
+  const handleStockFlyoutMouseLeave = () => {
+    setIsStockHovered(false);
+  };
+
+  // Trips menu handlers
+  const [tripsFlyoutPosition, setTripsFlyoutPosition] = useState({ top: 0, left: 0 });
+  const tripsTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
+  
+  const handleTripsMouseEnter = (e: React.MouseEvent) => {
+    if (tripsTimeoutRef.current) {
+      clearTimeout(tripsTimeoutRef.current);
+      tripsTimeoutRef.current = null;
+    }
+    
+    const rect = e.currentTarget.getBoundingClientRect();
+    const viewportHeight = window.innerHeight;
+    const flyoutEstimatedHeight = 150;
+    
+    let top = rect.top;
+    if (top + flyoutEstimatedHeight > viewportHeight - 10) {
+      top = Math.max(10, viewportHeight - flyoutEstimatedHeight - 10);
+    }
+    
+    setTripsFlyoutPosition({
+      top,
+      left: rect.right + 8,
+    });
+    
+    setIsTripsHovered(true);
+  };
+
+  const handleTripsMouseLeave = () => {
+    tripsTimeoutRef.current = setTimeout(() => {
+      setIsTripsHovered(false);
+    }, 150);
+  };
+
+  const handleTripsFlyoutMouseEnter = () => {
+    if (tripsTimeoutRef.current) {
+      clearTimeout(tripsTimeoutRef.current);
+      tripsTimeoutRef.current = null;
+    }
+    setIsTripsHovered(true);
+  };
+
+  const handleTripsFlyoutMouseLeave = () => {
+    setIsTripsHovered(false);
+  };
+
   // Settings menu handlers
   const handleSettingsMouseEnter = (e: React.MouseEvent) => {
     if (settingsTimeoutRef.current) {
@@ -297,12 +459,11 @@ const AppContent = () => {
 
   // Open commission menu if one of its sub-items is active
   useEffect(() => {
-    if (activeTab === 'commission' || activeTab === 'commission-rates') {
-      setIsCommissionOpen(true);
-    } else {
-      // Close commission menu when navigating to other tabs
-      setIsCommissionOpen(false);
-    }
+    // ปิด accordion ย่อยทั้งหมด ใช้ hover flyout อย่างเดียว
+    setIsCommissionOpen(false);
+    setIsOrdersOpen(false);
+    setIsStockOpen(false);
+    setIsTripsOpen(false);
   }, [activeTab]);
 
   // Open settings menu if one of its sub-items is active
@@ -617,17 +778,73 @@ const AppContent = () => {
             />
           )}
           {!isDriver && (
-            <SidebarItem
-              icon={Package}
-              label={isSidebarOpen ? "ทริปส่งสินค้า" : ""}
-              active={activeTab === 'delivery-trips'}
-              onClick={() => {
-                setActiveTab('delivery-trips');
-                setDeliveryTripView('list');
-                setSelectedDeliveryTripId(null);
+            <div 
+              ref={tripsMenuRef}
+              className="relative group/menu"
+              onMouseEnter={handleTripsMouseEnter}
+              onMouseLeave={handleTripsMouseLeave}
+            >
+              <SidebarItem
+                icon={Package}
+                label={isSidebarOpen ? "ทริปส่งสินค้า" : ""}
+                active={activeTab === 'delivery-trips' || activeTab === 'pending-orders'}
+                onClick={() => {
+                  if (activeTab !== 'delivery-trips') {
+                    setActiveTab('delivery-trips');
+                    setDeliveryTripView('list');
+                    setSelectedDeliveryTripId(null);
+                  }
+                }}
+                onMouseEnter={handleTripsMouseEnter}
+                isCollapsed={!isSidebarOpen}
+                hasSubmenu={true}
+                isOpen={isTripsHovered}
+              />
+            </div>
+          )}
+
+          {/* Flyout Submenu for Trips */}
+          {isTripsHovered && (
+            <div 
+              className="fixed z-[100]"
+              style={{
+                top: `${tripsFlyoutPosition.top}px`,
+                left: `${tripsFlyoutPosition.left}px`,
               }}
-              isCollapsed={!isSidebarOpen}
-            />
+              onMouseEnter={handleTripsFlyoutMouseEnter}
+              onMouseLeave={handleTripsFlyoutMouseLeave}
+            >
+              <div className="bg-white dark:bg-charcoal-900 border border-slate-200 dark:border-slate-700 rounded-xl shadow-2xl min-w-[220px] py-2 overflow-hidden ring-1 ring-black/5 animate-in fade-in slide-in-from-left-2 duration-150">
+                <div className="px-4 pb-2 mb-2 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                  <p className="text-[10px] font-black text-blue-500 uppercase tracking-widest">ทริปส่งสินค้า</p>
+                  <div className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"></div>
+                </div>
+                <div className="px-2 space-y-1">
+                  <SubSidebarItem
+                    label="รายการทริป"
+                    active={activeTab === 'delivery-trips'}
+                    onClick={() => {
+                      setActiveTab('delivery-trips');
+                      setDeliveryTripView('list');
+                      setSelectedDeliveryTripId(null);
+                      setIsTripsHovered(false);
+                    }}
+                    isCollapsed={false}
+                    isFlyout={true}
+                  />
+                  <SubSidebarItem
+                    label="ออเดอร์รอจัดส่ง"
+                    active={activeTab === 'pending-orders'}
+                    onClick={() => {
+                      setActiveTab('pending-orders');
+                      setIsTripsHovered(false);
+                    }}
+                    isCollapsed={false}
+                    isFlyout={true}
+                  />
+                </div>
+              </div>
+            </div>
           )}
           {!isDriver && (
             <SidebarItem
@@ -653,31 +870,14 @@ const AppContent = () => {
                   label={isSidebarOpen ? "ค่าคอมมิชชั่น" : ""}
                   active={activeTab === 'commission' || activeTab === 'commission-rates'}
                   onClick={() => {
-                    // Toggle on click for mobile or persistent view
-                    setIsCommissionOpen(!isCommissionOpen);
+                    if (activeTab !== 'commission') {
+                      setActiveTab('commission');
+                    }
                   }}
                   isCollapsed={!isSidebarOpen}
                   hasSubmenu={true}
-                  isOpen={isCommissionOpen || isCommissionHovered}
+                  isOpen={isCommissionHovered}
                 />
-
-                {/* Accordion Style Submenu - Only when sidebar is open and clicked */}
-                {isCommissionOpen && isSidebarOpen && !isCommissionHovered && (
-                  <div className="mt-1 space-y-1 ml-4 border-l-2 border-slate-100 dark:border-slate-800 animate-in fade-in slide-in-from-top-1 duration-200">
-                    <SubSidebarItem
-                      label="คำนวณค่าคอมฯ"
-                      active={activeTab === 'commission'}
-                      onClick={() => setActiveTab('commission')}
-                      isCollapsed={false}
-                    />
-                    <SubSidebarItem
-                      label="ตั้งค่าอัตราค่าคอมฯ"
-                      active={activeTab === 'commission-rates'}
-                      onClick={() => setActiveTab('commission-rates')}
-                      isCollapsed={false}
-                    />
-                  </div>
-                )}
               </div>
 
               {/* Flyout Submenu - Rendered using Portal (fixed position) */}
@@ -691,9 +891,9 @@ const AppContent = () => {
                   onMouseEnter={handleFlyoutMouseEnter}
                   onMouseLeave={handleFlyoutMouseLeave}
                 >
-                  <div className="bg-white dark:bg-charcoal-900 border border-slate-200 dark:border-slate-700 rounded-xl shadow-2xl min-w-[220px] py-2 overflow-hidden ring-1 ring-black/5 animate-in fade-in slide-in-from-left-2 duration-150">
-                    <div className="px-4 pb-2 mb-2 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
-                      <p className="text-[10px] font-black text-blue-500 uppercase tracking-widest">เมนูค่าคอมมิชชั่น</p>
+                  <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-xl shadow-2xl dark:shadow-black/50 min-w-[220px] py-2 overflow-hidden ring-1 ring-black/5 dark:ring-white/10 animate-in fade-in slide-in-from-left-2 duration-150">
+                    <div className="px-4 pb-2 mb-2 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between">
+                      <p className="text-[10px] font-black text-blue-500 dark:text-blue-400 uppercase tracking-widest">เมนูค่าคอมมิชชั่น</p>
                       <div className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"></div>
                     </div>
                     <div className="px-2 space-y-1">
@@ -703,7 +903,6 @@ const AppContent = () => {
                         onClick={() => {
                           setActiveTab('commission');
                           setIsCommissionHovered(false);
-                          setIsCommissionOpen(true);
                         }}
                         isCollapsed={false}
                         isFlyout={true}
@@ -714,7 +913,199 @@ const AppContent = () => {
                         onClick={() => {
                           setActiveTab('commission-rates');
                           setIsCommissionHovered(false);
-                          setIsCommissionOpen(true);
+                        }}
+                        isCollapsed={false}
+                        isFlyout={true}
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+
+          {/* Stock Management Section with Submenu */}
+          {!isDriver && (
+            <>
+              <div 
+                ref={stockMenuRef}
+                className="relative group/menu"
+                onMouseEnter={handleStockMouseEnter}
+                onMouseLeave={handleStockMouseLeave}
+              >
+                <SidebarItem
+                  icon={Package}
+                  label={isSidebarOpen ? "คลังสินค้า" : ""}
+                  active={activeTab === 'stock-dashboard' || activeTab === 'warehouses' || activeTab === 'inventory-receipts'}
+                  onClick={() => {
+                    if (activeTab !== 'stock-dashboard') {
+                      setActiveTab('stock-dashboard');
+                    }
+                  }}
+                  isCollapsed={!isSidebarOpen}
+                  hasSubmenu={true}
+                  isOpen={isStockHovered}
+                />
+              </div>
+
+              {/* Flyout Submenu for Stock */}
+              {isStockHovered && (
+                <div 
+                  className="fixed z-[100]"
+                  style={{
+                    top: `${stockFlyoutPosition.top}px`,
+                    left: `${stockFlyoutPosition.left}px`,
+                  }}
+                  onMouseEnter={handleStockFlyoutMouseEnter}
+                  onMouseLeave={handleStockFlyoutMouseLeave}
+                >
+                  <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-xl shadow-2xl dark:shadow-black/50 min-w-[220px] py-2 overflow-hidden ring-1 ring-black/5 dark:ring-white/10 animate-in fade-in slide-in-from-left-2 duration-150">
+                    <div className="px-4 pb-2 mb-2 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between">
+                      <p className="text-[10px] font-black text-blue-500 dark:text-blue-400 uppercase tracking-widest">เมนูคลังสินค้า</p>
+                      <div className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"></div>
+                    </div>
+                    <div className="px-2 space-y-1">
+                      <SubSidebarItem
+                        label="Stock Dashboard"
+                        active={activeTab === 'stock-dashboard'}
+                        onClick={() => {
+                          setActiveTab('stock-dashboard');
+                          setIsStockHovered(false);
+                        }}
+                        isCollapsed={false}
+                        isFlyout={true}
+                      />
+                      <SubSidebarItem
+                        label="จัดการคลัง"
+                        active={activeTab === 'warehouses'}
+                        onClick={() => {
+                          setActiveTab('warehouses');
+                          setIsStockHovered(false);
+                        }}
+                        isCollapsed={false}
+                        isFlyout={true}
+                      />
+                      <SubSidebarItem
+                        label="ประวัติรับสินค้า"
+                        active={activeTab === 'inventory-receipts'}
+                        onClick={() => {
+                          setActiveTab('inventory-receipts');
+                          setIsStockHovered(false);
+                        }}
+                        isCollapsed={false}
+                        isFlyout={true}
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+
+          {/* Orders Menu with Submenu (Sales) */}
+          {!isDriver && (
+            <>
+              <div 
+                ref={ordersMenuRef}
+                className="relative group/menu"
+                onMouseEnter={handleOrdersMouseEnter}
+                onMouseLeave={handleOrdersMouseLeave}
+              >
+                <SidebarItem
+                  icon={ShoppingCart}
+                  label={isSidebarOpen ? "ฝ่ายขาย" : ""}
+                  active={
+                    activeTab === 'create-order' ||
+                    activeTab === 'track-orders' ||
+                    activeTab === 'sales-trips' ||
+                    activeTab === 'products' ||
+                    activeTab === 'product-pricing' ||
+                    activeTab === 'customer-tiers'
+                  }
+                  onClick={() => {
+                    if (activeTab !== 'create-order') {
+                      setActiveTab('create-order');
+                    }
+                  }}
+                  isCollapsed={!isSidebarOpen}
+                  hasSubmenu={true}
+                  isOpen={isOrdersHovered}
+                />
+              </div>
+
+              {/* Flyout Submenu for Orders */}
+              {isOrdersHovered && (
+                <div 
+                  className="fixed z-[100]"
+                  style={{
+                    top: `${ordersFlyoutPosition.top}px`,
+                    left: `${ordersFlyoutPosition.left}px`,
+                  }}
+                  onMouseEnter={handleOrdersFlyoutMouseEnter}
+                  onMouseLeave={handleOrdersFlyoutMouseLeave}
+                >
+                  <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-xl shadow-2xl dark:shadow-black/50 min-w-[220px] py-2 ring-1 ring-black/5 dark:ring-white/10 animate-in fade-in slide-in-from-left-2 duration-150 max-h-[70vh] overflow-y-auto">
+                    <div className="px-4 pb-2 mb-2 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between">
+                      <p className="text-[10px] font-black text-blue-500 dark:text-blue-400 uppercase tracking-widest">เมนูฝ่ายขาย</p>
+                      <div className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"></div>
+                    </div>
+                    <div className="px-2 space-y-1">
+                      <SubSidebarItem
+                        label="สร้างออเดอร์"
+                        active={activeTab === 'create-order'}
+                        onClick={() => {
+                          setActiveTab('create-order');
+                          setIsOrdersHovered(false);
+                        }}
+                        isCollapsed={false}
+                        isFlyout={true}
+                      />
+                      <SubSidebarItem
+                        label="จัดการสินค้า / ราคา"
+                        active={activeTab === 'products'}
+                        onClick={() => {
+                          setActiveTab('products');
+                          setIsOrdersHovered(false);
+                        }}
+                        isCollapsed={false}
+                        isFlyout={true}
+                      />
+                      <SubSidebarItem
+                        label="กำหนดราคาตามลูกค้า"
+                        active={activeTab === 'product-pricing'}
+                        onClick={() => {
+                          setActiveTab('product-pricing');
+                          setIsOrdersHovered(false);
+                        }}
+                        isCollapsed={false}
+                        isFlyout={true}
+                      />
+                      <SubSidebarItem
+                        label="ระดับลูกค้า"
+                        active={activeTab === 'customer-tiers'}
+                        onClick={() => {
+                          setActiveTab('customer-tiers');
+                          setIsOrdersHovered(false);
+                        }}
+                        isCollapsed={false}
+                        isFlyout={true}
+                      />
+                      <SubSidebarItem
+                        label="ติดตามออเดอร์"
+                        active={activeTab === 'track-orders'}
+                        onClick={() => {
+                          setActiveTab('track-orders');
+                          setIsOrdersHovered(false);
+                        }}
+                        isCollapsed={false}
+                        isFlyout={true}
+                      />
+                      <SubSidebarItem
+                        label="ออกใบแจ้งหนี้"
+                        active={activeTab === 'sales-trips'}
+                        onClick={() => {
+                          setActiveTab('sales-trips');
+                          setIsOrdersHovered(false);
                         }}
                         isCollapsed={false}
                         isFlyout={true}
@@ -789,9 +1180,9 @@ const AppContent = () => {
                 onMouseEnter={handleSettingsFlyoutMouseEnter}
                 onMouseLeave={handleSettingsFlyoutMouseLeave}
               >
-                <div className="bg-white dark:bg-charcoal-900 border border-slate-200 dark:border-slate-700 rounded-xl shadow-2xl min-w-[220px] py-2 overflow-hidden ring-1 ring-black/5 animate-in fade-in slide-in-from-left-2 duration-150">
-                  <div className="px-4 pb-2 mb-2 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
-                    <p className="text-[10px] font-black text-blue-500 uppercase tracking-widest">เมนูตั้งค่า</p>
+                <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-xl shadow-2xl dark:shadow-black/50 min-w-[220px] py-2 overflow-hidden ring-1 ring-black/5 dark:ring-white/10 animate-in fade-in slide-in-from-left-2 duration-150">
+                  <div className="px-4 pb-2 mb-2 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between">
+                    <p className="text-[10px] font-black text-blue-500 dark:text-blue-400 uppercase tracking-widest">เมนูตั้งค่า</p>
                     <div className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"></div>
                   </div>
                   <div className="px-2 space-y-1">
@@ -1509,6 +1900,26 @@ const AppContent = () => {
             <CommissionManagementView />
           ) : activeTab === 'commission-rates' ? (
             <CommissionRatesView />
+          ) : activeTab === 'stock-dashboard' ? (
+            <StockDashboardView />
+          ) : activeTab === 'products' ? (
+            <ProductsManagementView />
+          ) : activeTab === 'warehouses' ? (
+            <WarehouseManagementView />
+          ) : activeTab === 'inventory-receipts' ? (
+            <InventoryReceiptsView />
+          ) : activeTab === 'customer-tiers' ? (
+            <CustomerTiersManagementView />
+          ) : activeTab === 'product-pricing' ? (
+            <ProductTierPricingView />
+          ) : activeTab === 'create-order' ? (
+            <CreateOrderView />
+          ) : activeTab === 'track-orders' ? (
+            <TrackOrdersView />
+          ) : activeTab === 'pending-orders' ? (
+            <PendingOrdersView />
+          ) : activeTab === 'sales-trips' ? (
+            <SalesTripsView />
           ) : (
             <div className="flex flex-col items-center justify-center h-[60vh] text-slate-400">
               <Wrench size={48} className="mb-4 opacity-50" />

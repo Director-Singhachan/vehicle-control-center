@@ -775,7 +775,42 @@ export interface Database {
           updated_by?: string | null;
         };
       };
-      delivery_trip_stores: {
+      price_change_history: {
+        Row: {
+          id: string;
+          product_id: string;
+          tier_id: string | null;
+          old_price: number | null;
+          new_price: number;
+          change_reason: string | null;
+          effective_date: string;
+          changed_by: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          product_id: string;
+          tier_id?: string | null;
+          old_price?: number | null;
+          new_price: number;
+          change_reason?: string | null;
+          effective_date: string;
+          changed_by?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          product_id?: string;
+          tier_id?: string | null;
+          old_price?: number | null;
+          new_price?: number;
+          change_reason?: string | null;
+          effective_date?: string;
+          changed_by?: string | null;
+          created_at?: string;
+        };
+      };
+      stores: {
         Row: {
           id: string;
           delivery_trip_id: string;
@@ -989,8 +1024,6 @@ export interface Database {
           created_at?: string;
         };
       };
-    };
-    Views: {
       vehicle_dashboard: {
         Row: {
           id: string;
@@ -1089,6 +1122,367 @@ export interface Database {
           reporter_email: string | null;
           reporter_name: string | null;
           reporter_role: AppRole;
+          reporter_avatar_url: string | null;
+        };
+      };
+      product_categories: {
+        Row: {
+          id: string;
+          name: string;
+          description: string | null;
+          color: string;
+          icon: string | null;
+          is_active: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          name: string;
+          description?: string | null;
+          color?: string;
+          icon?: string | null;
+          is_active?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          name?: string;
+          description?: string | null;
+          color?: string;
+          icon?: string | null;
+          is_active?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+      };
+      products: {
+        Row: {
+          id: string;
+          category: string;
+          product_code: string;
+          product_name: string;
+          unit: string;
+          description: string | null;
+          base_price: number;
+          cost_per_unit: number;
+          weight_kg: number | null;
+          volume_liter: number | null;
+          image_url: string | null;
+          barcode: string | null;
+          is_active: boolean;
+          created_at: string;
+          updated_at: string;
+          created_by: string | null;
+          updated_by: string | null;
+        };
+        Insert: {
+          id?: string;
+          category: string;
+          product_code: string;
+          product_name: string;
+          unit: string;
+          description?: string | null;
+          base_price?: number;
+          cost_per_unit?: number;
+          weight_kg?: number | null;
+          volume_liter?: number | null;
+          image_url?: string | null;
+          barcode?: string | null;
+          is_active?: boolean;
+          created_at?: string;
+          updated_at?: string;
+          created_by?: string | null;
+          updated_by?: string | null;
+        };
+        Update: {
+          id?: string;
+          category?: string;
+          product_code?: string;
+          product_name?: string;
+          unit?: string;
+          description?: string | null;
+          base_price?: number;
+          cost_per_unit?: number;
+          weight_kg?: number | null;
+          volume_liter?: number | null;
+          image_url?: string | null;
+          barcode?: string | null;
+          is_active?: boolean;
+          created_at?: string;
+          updated_at?: string;
+          created_by?: string | null;
+          updated_by?: string | null;
+        };
+      };
+      customer_tiers: {
+        Row: {
+          id: string;
+          tier_code: string;
+          tier_name: string;
+          description: string | null;
+          discount_percent: number;
+          min_order_amount: number;
+          color: string;
+          display_order: number;
+          is_active: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          tier_code: string;
+          tier_name: string;
+          description?: string | null;
+          discount_percent?: number;
+          min_order_amount?: number;
+          color?: string;
+          display_order?: number;
+          is_active?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          tier_code?: string;
+          tier_name?: string;
+          description?: string | null;
+          discount_percent?: number;
+          min_order_amount?: number;
+          color?: string;
+          display_order?: number;
+          is_active?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+      };
+      product_tier_prices: {
+        Row: {
+          id: string;
+          product_id: string;
+          tier_id: string;
+          price: number;
+          min_quantity: number;
+          effective_from: string | null;
+          effective_to: string | null;
+          is_active: boolean;
+          created_at: string;
+          updated_at: string;
+          created_by: string | null;
+        };
+        Insert: {
+          id?: string;
+          product_id: string;
+          tier_id: string;
+          price: number;
+          min_quantity?: number;
+          effective_from?: string | null;
+          effective_to?: string | null;
+          is_active?: boolean;
+          created_at?: string;
+          updated_at?: string;
+          created_by?: string | null;
+        };
+        Update: {
+          id?: string;
+          product_id?: string;
+          tier_id?: string;
+          price?: number;
+          min_quantity?: number;
+          effective_from?: string | null;
+          effective_to?: string | null;
+          is_active?: boolean;
+          created_at?: string;
+          updated_at?: string;
+          created_by?: string | null;
+        };
+      };
+      warehouses: {
+        Row: {
+          id: string;
+          code: string;
+          name: string;
+          type: string;
+          address: string | null;
+          latitude: number | null;
+          longitude: number | null;
+          manager_id: string | null;
+          capacity_m3: number | null;
+          is_active: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          code: string;
+          name: string;
+          type?: string;
+          address?: string | null;
+          latitude?: number | null;
+          longitude?: number | null;
+          manager_id?: string | null;
+          capacity_m3?: number | null;
+          is_active?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          code?: string;
+          name?: string;
+          type?: string;
+          address?: string | null;
+          latitude?: number | null;
+          longitude?: number | null;
+          manager_id?: string | null;
+          capacity_m3?: number | null;
+          is_active?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+      };
+      inventory: {
+        Row: {
+          id: string;
+          warehouse_id: string;
+          product_id: string;
+          quantity: number;
+          reserved_quantity: number;
+          available_quantity: number;
+          last_updated_at: string;
+          updated_by: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          warehouse_id: string;
+          product_id: string;
+          quantity?: number;
+          reserved_quantity?: number;
+          last_updated_at?: string;
+          updated_by?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          warehouse_id?: string;
+          product_id?: string;
+          quantity?: number;
+          reserved_quantity?: number;
+          last_updated_at?: string;
+          updated_by?: string | null;
+          created_at?: string;
+        };
+      };
+      inventory_transactions: {
+        Row: {
+          id: string;
+          warehouse_id: string;
+          product_id: string;
+          transaction_type: string;
+          quantity: number;
+          reference_type: string | null;
+          reference_id: string | null;
+          ref_code: string | null;
+          note: string | null;
+          created_by: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          warehouse_id: string;
+          product_id: string;
+          transaction_type: string;
+          quantity: number;
+          reference_type?: string | null;
+          reference_id?: string | null;
+          ref_code?: string | null;
+          note?: string | null;
+          created_by?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          warehouse_id?: string;
+          product_id?: string;
+          transaction_type?: string;
+          quantity?: number;
+          reference_type?: string | null;
+          reference_id?: string | null;
+          ref_code?: string | null;
+          note?: string | null;
+          created_by?: string | null;
+          created_at?: string;
+        };
+      };
+      trip_items: {
+        Row: {
+          id: string;
+          trip_id: string;
+          product_id: string;
+          planned_quantity: number;
+          loaded_quantity: number;
+          delivered_quantity: number;
+          returned_quantity: number;
+          damaged_quantity: number;
+          unit_price: number | null;
+          note: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          trip_id: string;
+          product_id: string;
+          planned_quantity: number;
+          loaded_quantity?: number;
+          delivered_quantity?: number;
+          returned_quantity?: number;
+          damaged_quantity?: number;
+          unit_price?: number | null;
+          note?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          trip_id?: string;
+          product_id?: string;
+          planned_quantity?: number;
+          loaded_quantity?: number;
+          delivered_quantity?: number;
+          returned_quantity?: number;
+          damaged_quantity?: number;
+          unit_price?: number | null;
+          note?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+      };
+    };
+    Views: {
+      inventory_with_details: {
+        Row: {
+          id: string;
+          warehouse_id: string;
+          warehouse_code: string;
+          warehouse_name: string;
+          warehouse_type: string;
+          product_id: string;
+          product_sku: string;
+          product_name: string;
+          product_unit: string;
+          price_per_unit: number;
+          category_name: string | null;
+          category_color: string | null;
+          quantity: number;
+          reserved_quantity: number;
+          available_quantity: number;
+          min_stock_level: number;
+          stock_status: string;
+          last_updated_at: string;
+          created_at: string;
         };
       };
     };
