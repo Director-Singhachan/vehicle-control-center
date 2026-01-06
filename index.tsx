@@ -27,6 +27,7 @@ import {
   ChevronRight,
   ShoppingCart,
   ClipboardList,
+  Boxes,
 } from 'lucide-react';
 import { DashboardView } from './views/DashboardView';
 import { ProfileView } from './views/ProfileView';
@@ -934,7 +935,7 @@ const AppContent = () => {
                 onMouseLeave={handleStockMouseLeave}
               >
                 <SidebarItem
-                  icon={Package}
+                  icon={Boxes}
                   label={isSidebarOpen ? "คลังสินค้า" : ""}
                   active={activeTab === 'stock-dashboard' || activeTab === 'warehouses' || activeTab === 'inventory-receipts'}
                   onClick={() => {
