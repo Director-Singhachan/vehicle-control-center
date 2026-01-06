@@ -1,5 +1,6 @@
 // Trip Log List View - Display trip history
 import React, { useState, useMemo, useEffect } from 'react';
+import * as XLSX from 'xlsx';
 import {
   Truck,
   Gauge,
@@ -97,9 +98,73 @@ export const TripLogListView: React.FC<TripLogListViewProps> = ({
     return `${h} ชม. ${m} นาที`;
   };
 
-  const handleExport = () => {
-    // TODO: Implement Excel export
-    alert('ฟีเจอร์ Export to Excel กำลังพัฒนา');
+  const handleExport = async () => {
+    try {
+      const { data } = await tripLogService.getTripHistory({
+        ...filters,
+        limit: 10000, // Fetch all records (up to 10000)
+        offset: 0,
+        search: searchTerm || undefined,
+      });
+
+      // Filter by branch if needed (client-side matching the view logic)
+      let exportData = data;
+      if (filters.branch && !filters.vehicle_id) {
+        exportData = data.filter(trip => {
+          const vehicle = vehicles.find(v => v.id === trip.vehicle_id);
+          return vehicle?.branch === filters.branch;
+        });
+      }
+
+      // Format data for Excel
+      const excelRows = exportData.map(trip => {
+        const vehicle = vehicles.find(v => v.id === trip.vehicle_id);
+
+        // Calculate duration components
+        let durationStr = 'N/A';
+        if (trip.duration_hours) {
+          const h = Math.floor(trip.duration_hours);
+          const m = Math.floor((trip.duration_hours - h) * 60);
+          durationStr = `${h} ชม. ${m} นาที`;
+        }
+
+        return {
+          'วันที่ออก': new Date(trip.checkout_time).toLocaleDateString('th-TH'),
+          'เวลาออก': new Date(trip.checkout_time).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }),
+          'วันที่กลับ': trip.checkin_time ? new Date(trip.checkin_time).toLocaleDateString('th-TH') : '-',
+          'เวลากลับ': trip.checkin_time ? new Date(trip.checkin_time).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) : '-',
+          'ทะเบียนรถ': trip.vehicle?.plate || 'N/A',
+          'ยี่ห้อ/รุ่น': `${trip.vehicle?.make || ''} ${trip.vehicle?.model || ''}`.trim(),
+          'สาขา': vehicle?.branch || 'N/A',
+          'คนขับ': trip.driver?.full_name || 'N/A',
+          'สถานะ': trip.status === 'checked_in' ? 'กลับแล้ว' : (trip.status === 'cancelled' ? 'ยกเลิก' : 'ออกไปแล้ว'),
+          'ปลายทาง': trip.destination || '-',
+          'เส้นทาง': trip.route || '-',
+          'เลขไมล์ออก (km)': trip.odometer_start ? trip.odometer_start.toLocaleString() : '-',
+          'เลขไมล์กลับ (km)': trip.odometer_end ? trip.odometer_end.toLocaleString() : '-',
+          'ระยะทาง (km)': trip.distance_km ? trip.distance_km.toLocaleString() : '-',
+          'ระบุระยะทางเอง': trip.manual_distance_km ? 'ใช่' : 'ไม่',
+          'ระยะเวลา': durationStr,
+          'หมายเหตุ': trip.notes || '-',
+          'เลขที่ทริปส่งของ': trip.delivery_trip?.trip_number || '-'
+        };
+      });
+
+      // Create workbook and worksheet
+      const wb = XLSX.utils.book_new();
+      const ws = XLSX.utils.json_to_sheet(excelRows);
+
+      // Add worksheet to workbook
+      XLSX.utils.book_append_sheet(wb, ws, "Trip History");
+
+      // Generate Excel file
+      const fileName = `trip_history_${new Date().toISOString().split('T')[0]}.xlsx`;
+      XLSX.writeFile(wb, fileName);
+
+    } catch (error) {
+      console.error('Export failed:', error);
+      alert('เกิดข้อผิดพลาดในการ Export Excel: ' + (error instanceof Error ? error.message : 'Unknown error'));
+    }
   };
 
   // Get unique branches from vehicles
@@ -637,8 +702,8 @@ export const TripLogListView: React.FC<TripLogListViewProps> = ({
                               key={page}
                               onClick={() => setCurrentPage(page)}
                               className={`px-3 py-1 rounded-lg text-sm font-medium transition-colors ${currentPage === page
-                                  ? 'bg-enterprise-600 text-white'
-                                  : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+                                ? 'bg-enterprise-600 text-white'
+                                : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
                                 }`}
                             >
                               {page.toLocaleString('th-TH')}
