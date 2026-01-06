@@ -19,8 +19,30 @@ export const StaffItemDetailsCard: React.FC<StaffItemDetailsCardProps> = ({
   isDark = false,
 }) => {
   const [isExpanded, setIsExpanded] = useState(false);
+
+  /* Performance Optimization: Limit detailed history to 30 days by default */
+  const [showFullHistory, setShowFullHistory] = useState(false);
+
+  // Calculate duration in days
+  const durationInDays = React.useMemo(() => {
+    const diffTime = Math.abs(endDate.getTime() - startDate.getTime());
+    return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  }, [startDate, endDate]);
+
+  const isLongPeriod = durationInDays > 31;
+
+  // Determine effective start date for details fetching
+  const detailsStartDate = React.useMemo(() => {
+    if (!isLongPeriod || showFullHistory) {
+      return startDate;
+    }
+    const limitDate = new Date(endDate);
+    limitDate.setDate(limitDate.getDate() - 30);
+    return limitDate > startDate ? limitDate : startDate;
+  }, [startDate, endDate, isLongPeriod, showFullHistory]);
+
   const { data: details, loading } = useStaffItemDetails(
-    startDate,
+    detailsStartDate,
     endDate,
     isExpanded ? staff.staff_id : undefined
   );
@@ -28,7 +50,7 @@ export const StaffItemDetailsCard: React.FC<StaffItemDetailsCardProps> = ({
   // Group details by product
   const productGroups = React.useMemo(() => {
     if (!details || details.length === 0) return [];
-    
+
     const groups = new Map<string, {
       product_id: string;
       product_code: string;
@@ -71,7 +93,7 @@ export const StaffItemDetailsCard: React.FC<StaffItemDetailsCardProps> = ({
       });
     });
 
-    return Array.from(groups.values()).sort((a, b) => 
+    return Array.from(groups.values()).sort((a, b) =>
       b.total_quantity_per_staff - a.total_quantity_per_staff
     );
   }, [details]);
@@ -117,6 +139,27 @@ export const StaffItemDetailsCard: React.FC<StaffItemDetailsCardProps> = ({
 
       {isExpanded && (
         <div className="border-t border-slate-200 dark:border-slate-700 p-4">
+          {/* Performance warning banner */}
+          {isLongPeriod && !showFullHistory && (
+            <div className="mb-4 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700/50 rounded-lg flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+              <div className="text-sm text-amber-800 dark:text-amber-200">
+                <span className="font-medium">แสดงข้อมูลเฉพาะ 30 วันล่าสุด</span> เพื่อความรวดเร็วในการแสดงผล
+                <span className="opacity-75 block sm:inline sm:ml-1 text-xs sm:text-sm">
+                  (เลือกช่วงเวลาทั้งหมด {durationInDays} วัน)
+                </span>
+              </div>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowFullHistory(true);
+                }}
+                className="whitespace-nowrap text-xs px-3 py-1.5 bg-amber-100 hover:bg-amber-200 dark:bg-amber-800 dark:hover:bg-amber-700 text-amber-900 dark:text-white rounded-md transition-colors font-medium border border-amber-200 dark:border-amber-700"
+              >
+                โหลดข้อมูลทั้งหมด
+              </button>
+            </div>
+          )}
+
           {loading ? (
             <div className="text-center py-4 text-slate-400">กำลังโหลดรายละเอียด...</div>
           ) : productGroups.length > 0 ? (
@@ -150,7 +193,7 @@ export const StaffItemDetailsCard: React.FC<StaffItemDetailsCardProps> = ({
                       </div>
                     </div>
                   </div>
-                  
+
                   {/* Trip Details */}
                   {product.trips.length > 0 && (
                     <div className="mt-2 pt-2 border-t border-slate-200 dark:border-slate-700">
