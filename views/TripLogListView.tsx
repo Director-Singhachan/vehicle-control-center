@@ -51,7 +51,8 @@ export const TripLogListView: React.FC<TripLogListViewProps> = ({
     branch?: string;
   }>({});
 
-  const [searchTerm, setSearchTerm] = useState('');
+  const [searchInput, setSearchInput] = useState(''); // User input (updates immediately)
+  const [searchTerm, setSearchTerm] = useState(''); // Debounced search term (used for query)
   const [currentPage, setCurrentPage] = useState(1);
   const [pageInput, setPageInput] = useState('');
   const itemsPerPage = 20;
@@ -59,6 +60,15 @@ export const TripLogListView: React.FC<TripLogListViewProps> = ({
   const [cancelTripId, setCancelTripId] = useState<string | null>(null);
   const [cancelReason, setCancelReason] = useState('');
   const [isCancelling, setIsCancelling] = useState(false);
+
+  // Debounce search input (wait 500ms after user stops typing)
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setSearchTerm(searchInput);
+    }, 500); // 500ms delay
+
+    return () => clearTimeout(timer);
+  }, [searchInput]);
 
   // Calculate pagination
   const offset = (currentPage - 1) * itemsPerPage;
@@ -68,7 +78,7 @@ export const TripLogListView: React.FC<TripLogListViewProps> = ({
     ...filters,
     limit: itemsPerPage,
     offset: offset,
-    search: searchTerm || undefined,
+    search: searchTerm || undefined, // Use debounced search term
   });
 
   // Pagination (using server-side count)
@@ -79,7 +89,7 @@ export const TripLogListView: React.FC<TripLogListViewProps> = ({
   // Reset to page 1 when filters or search change
   useEffect(() => {
     setCurrentPage(1);
-  }, [filters, searchTerm]);
+  }, [filters, searchTerm]); // Use debounced searchTerm, not searchInput
 
   const formatDate = (date: string) => {
     return new Date(date).toLocaleString('th-TH', {
@@ -335,9 +345,9 @@ export const TripLogListView: React.FC<TripLogListViewProps> = ({
           <div>
             <Input
               label="ค้นหา"
-              placeholder="ค้นหาจากป้ายทะเบียน, ชื่อคนขับ, ปลายทาง..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="ค้นหาจากป้ายทะเบียน, ชื่อคนขับ, รหัสทริป, ปลายทาง..."
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
               icon={<Search size={18} />}
             />
           </div>
