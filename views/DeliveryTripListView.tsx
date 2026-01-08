@@ -53,7 +53,8 @@ export const DeliveryTripListView: React.FC<DeliveryTripListViewProps> = ({
     }
   };
 
-  const [searchTerm, setSearchTerm] = useState<string>(() => getInitialState('searchTerm', ''));
+  const [searchInput, setSearchInput] = useState<string>(() => getInitialState('searchInput', '')); // User input (immediate)
+  const [searchTerm, setSearchTerm] = useState<string>(''); // Debounced search term (for query)
   const [statusFilter, setStatusFilter] = useState<string[] | 'all'>(() => getInitialState('statusFilter', 'all'));
   const [vehicleFilter, setVehicleFilter] = useState<string>(() => getInitialState('vehicleFilter', ''));
   const [dateFrom, setDateFrom] = useState<string>(() => getInitialState('dateFrom', ''));
@@ -64,10 +65,19 @@ export const DeliveryTripListView: React.FC<DeliveryTripListViewProps> = ({
 
   const itemsPerPage = 20;
 
+  // Debounce search input (wait 500ms after user stops typing)
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setSearchTerm(searchInput);
+    }, 500); // 500ms delay
+
+    return () => clearTimeout(timer);
+  }, [searchInput]);
+
   // Persist state to sessionStorage whenever it changes
   useEffect(() => {
     try {
-      sessionStorage.setItem('deliveryTrips_searchTerm', JSON.stringify(searchTerm));
+      sessionStorage.setItem('deliveryTrips_searchInput', JSON.stringify(searchInput));
       sessionStorage.setItem('deliveryTrips_statusFilter', JSON.stringify(statusFilter));
       sessionStorage.setItem('deliveryTrips_vehicleFilter', JSON.stringify(vehicleFilter));
       sessionStorage.setItem('deliveryTrips_dateFrom', JSON.stringify(dateFrom));
@@ -78,7 +88,7 @@ export const DeliveryTripListView: React.FC<DeliveryTripListViewProps> = ({
     } catch (e) {
       console.error('Error saving state to sessionStorage:', e);
     }
-  }, [searchTerm, statusFilter, vehicleFilter, dateFrom, dateTo, showFilters, onlyChanged, currentPage]);
+  }, [searchInput, statusFilter, vehicleFilter, dateFrom, dateTo, showFilters, onlyChanged, currentPage]);
 
   const [cancelTripId, setCancelTripId] = useState<string | null>(null);
   const [cancelReason, setCancelReason] = useState('');
@@ -91,6 +101,7 @@ export const DeliveryTripListView: React.FC<DeliveryTripListViewProps> = ({
     planned_date_from: dateFrom || undefined,
     planned_date_to: dateTo || undefined,
     has_item_changes: onlyChanged ? true : undefined,
+    search: searchTerm || undefined, // Pass search term to hook for database-level filtering
     autoFetch: true,
     page: currentPage,
     pageSize: itemsPerPage,
@@ -117,24 +128,15 @@ export const DeliveryTripListView: React.FC<DeliveryTripListViewProps> = ({
     };
   }, []); // Empty dependency array - only run once on mount
 
-  // Filter trips by search term (client-side, within current page)
-  const filteredTrips = trips.filter(trip => {
-    if (!searchTerm) return true;
-    const search = searchTerm.toLowerCase();
-    return (
-      trip.trip_number?.toLowerCase().includes(search) ||
-      trip.vehicle?.plate?.toLowerCase().includes(search) ||
-      trip.driver?.full_name?.toLowerCase().includes(search) ||
-      trip.notes?.toLowerCase().includes(search)
-    );
-  });
+  // Use trips directly - filtering is now done at database level
+  const filteredTrips = trips;
 
   // Pagination (server-side for total, client-side search mayลดจำนวนในหน้านั้น)
   const totalPages = Math.ceil((total || 0) / itemsPerPage) || 1;
 
   // Clear filters function
   const clearFilters = () => {
-    setSearchTerm('');
+    setSearchInput(''); // Clear input (will trigger debounce to clear searchTerm)
     setStatusFilter('all');
     setVehicleFilter('');
     setDateFrom('');
@@ -232,7 +234,7 @@ export const DeliveryTripListView: React.FC<DeliveryTripListViewProps> = ({
             ตัวกรอง
           </h3>
           <div className="flex items-center gap-4">
-            {(statusFilter !== 'all' || vehicleFilter || dateFrom || dateTo || onlyChanged || searchTerm) && (
+            {(statusFilter !== 'all' || vehicleFilter || dateFrom || dateTo || onlyChanged || searchInput) && (
               <button
                 onClick={clearFilters}
                 className="text-sm text-red-600 dark:text-red-400 hover:underline flex items-center gap-1"
@@ -330,8 +332,8 @@ export const DeliveryTripListView: React.FC<DeliveryTripListViewProps> = ({
           <Input
             label="ค้นหา"
             placeholder="ค้นหาจากรหัสทริป, ป้ายทะเบียน, ชื่อคนขับ..."
-            value={searchTerm}
-            onChange={(e) => handleFilterChange(setSearchTerm, e.target.value)}
+            value={searchInput}
+            onChange={(e) => handleFilterChange(setSearchInput, e.target.value)}
             icon={<Search size={18} />}
           />
         </div>
@@ -360,7 +362,7 @@ export const DeliveryTripListView: React.FC<DeliveryTripListViewProps> = ({
         <Card className="p-12 text-center">
           <Package className="mx-auto mb-4 text-slate-400" size={48} />
           <p className="text-slate-600 dark:text-slate-400">
-            {searchTerm || statusFilter !== 'all' || vehicleFilter || dateFrom || dateTo
+            {searchInput || statusFilter !== 'all' || vehicleFilter || dateFrom || dateTo
               ? 'ไม่พบข้อมูลที่ค้นหา'
               : 'ยังไม่มีทริปส่งสินค้า'}
           </p>

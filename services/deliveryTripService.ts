@@ -146,6 +146,7 @@ export const deliveryTripService = {
     planned_date_from?: string;
     planned_date_to?: string;
     has_item_changes?: boolean;
+    search?: string; // Search term for trip_number, notes
     page?: number;
     pageSize?: number;
     lite?: boolean;
@@ -173,8 +174,7 @@ export const deliveryTripService = {
         )
         .order('planned_date', { ascending: sortAscending })
         .order('created_at', { ascending: sortAscending })
-        .order('sequence_order', { ascending: true })
-        .range(from, to);
+        .order('sequence_order', { ascending: true });
 
       if (filters?.status && filters.status.length > 0) {
         query = query.in('status', filters.status);
@@ -194,6 +194,18 @@ export const deliveryTripService = {
       if (typeof filters?.has_item_changes === 'boolean') {
         query = query.eq('has_item_changes', filters.has_item_changes);
       }
+
+      // Database-level text search
+      if (filters?.search) {
+        const searchPattern = `%${filters.search}%`;
+        // Search in delivery_trips table fields
+        query = query.or(
+          `trip_number.ilike.${searchPattern},notes.ilike.${searchPattern}`
+        );
+      }
+
+      // Apply pagination AFTER all filters
+      query = query.range(from, to);
 
       const result = await query;
       if (result.error) {

@@ -8,6 +8,7 @@ export interface UseDeliveryTripsOptions {
   driver_id?: string;
   planned_date_from?: string;
   planned_date_to?: string;
+  search?: string;
   autoFetch?: boolean;
   has_item_changes?: boolean;
   page?: number;
@@ -41,6 +42,7 @@ export const useDeliveryTrips = (options: UseDeliveryTripsOptions = { autoFetch:
         planned_date_from: options.planned_date_from,
         planned_date_to: options.planned_date_to,
         has_item_changes: options.has_item_changes,
+        search: options.search,
         page,
         pageSize,
         lite: options.lite !== false, // Default to true (lite mode) if not specified
@@ -72,6 +74,7 @@ export const useDeliveryTrips = (options: UseDeliveryTripsOptions = { autoFetch:
     options.planned_date_from,
     options.planned_date_to,
     options.has_item_changes,
+    options.search,
     options.page,
     options.pageSize,
     options.lite,
@@ -91,6 +94,7 @@ export const useDeliveryTrips = (options: UseDeliveryTripsOptions = { autoFetch:
         planned_date_from: options.planned_date_from,
         planned_date_to: options.planned_date_to,
         has_item_changes: options.has_item_changes,
+        search: options.search,
         page,
         pageSize: options.pageSize || 20,
         lite: options.lite !== false,
@@ -106,6 +110,7 @@ export const useDeliveryTrips = (options: UseDeliveryTripsOptions = { autoFetch:
     options.planned_date_from,
     options.planned_date_to,
     options.has_item_changes,
+    options.search,
     options.pageSize,
     options.lite,
   ]);

@@ -370,21 +370,22 @@ export const tripLogService = {
       // ========================================
       let deliveryTrip:
         | {
-            id: string;
-            status: string;
-            odometer_start: number | null;
-            odometer_end: number | null;
-            trip_number: string | null;
-            sequence_order: number | null;
-            planned_date: string | null;
-          }
+          id: string;
+          status: string;
+          odometer_start: number | null;
+          odometer_end: number | null;
+          trip_number: string | null;
+          sequence_order: number | null;
+          planned_date: string | null;
+          driver_id: string | null;
+        }
         | null = null;
 
       // 1) Use existing link if present
       if (trip.delivery_trip_id) {
         const { data: linkedTrip, error: linkedError } = await supabase
           .from('delivery_trips')
-          .select('id, status, odometer_start, odometer_end, trip_number, sequence_order, planned_date')
+          .select('id, status, odometer_start, odometer_end, trip_number, sequence_order, planned_date, driver_id')
           .eq('id', trip.delivery_trip_id)
           .maybeSingle();
 
@@ -439,7 +440,7 @@ export const tripLogService = {
             checkout_date: checkoutDate,
             trip_driver_id: trip.driver_id,
           });
-          
+
           // Additional fallback: Try to find delivery trip even if status is 'planned' (not yet started)
           // This handles cases where the actual driver is different and trip wasn't linked during checkout
           if (!deliveryTrip) {
@@ -453,7 +454,7 @@ export const tripLogService = {
               .order('created_at', { ascending: true })
               .order('trip_number', { ascending: true })
               .limit(1);
-            
+
             if (!fallbackError && fallbackTrips && fallbackTrips.length > 0) {
               deliveryTrip = fallbackTrips[0] as any;
               console.log('[tripLogService] Found delivery trip (planned status) as fallback for checkin:', {
@@ -492,7 +493,7 @@ export const tripLogService = {
           odometer_end: data.odometer_end,
           updated_at: new Date().toISOString(),
         };
-        
+
         // Update driver_id if the actual driver is different from the planned driver
         if (trip.driver_id && deliveryTrip.driver_id && trip.driver_id !== deliveryTrip.driver_id) {
           updateData.driver_id = trip.driver_id;
@@ -502,7 +503,7 @@ export const tripLogService = {
             actual_driver_id: trip.driver_id,
           });
         }
-        
+
         const { error: updateError } = await supabase
           .from('delivery_trips')
           .update(updateData)
@@ -755,6 +756,23 @@ export const tripLogService = {
     const limit = filters?.limit || 100;
     const offset = filters?.offset || 0;
 
+    // ========================================
+    // Pre-search: Find delivery_trip_ids that match search term
+    // ========================================
+    let matchingDeliveryTripIds: string[] | null = null;
+    if (filters?.search) {
+      const searchPattern = `%${filters.search}%`;
+      const { data: matchingTrips } = await supabase
+        .from('delivery_trips')
+        .select('id')
+        .ilike('trip_number', searchPattern);
+
+      if (matchingTrips && matchingTrips.length > 0) {
+        matchingDeliveryTripIds = matchingTrips.map(t => t.id);
+        console.log('[tripLogService] Found matching delivery trips:', matchingDeliveryTripIds.length);
+      }
+    }
+
     let query = supabase
       .from('trip_logs')
       .select(`
@@ -763,8 +781,7 @@ export const tripLogService = {
         driver:profiles(full_name, email, avatar_url),
         delivery_trip:delivery_trips(id, trip_number, status)
       `, { count: 'exact' })
-      .order('checkout_time', { ascending: false })
-      .range(offset, offset + limit - 1);
+      .order('checkout_time', { ascending: false });
 
     if (filters?.vehicle_id) {
       query = query.eq('vehicle_id', filters.vehicle_id);
@@ -786,18 +803,30 @@ export const tripLogService = {
       query = query.eq('status', filters.status);
     }
 
-    // Database-level text search using ILIKE
-    // Search in fields that are directly in trip_logs table (destination, route, notes)
-    // Note: For searching across relations (vehicle.plate, driver.full_name), 
-    // Supabase doesn't easily support ILIKE on joined relations in a single query.
-    // We'll search trip_logs fields at DB level, then filter relations client-side on the limited results
+    // Database-level text search
+    // Search in trip_logs table fields AND delivery_trip_id (from pre-search)
     if (filters?.search) {
       const searchPattern = `%${filters.search}%`;
-      // Search in trip_logs table fields using OR operator
-      query = query.or(
-        `destination.ilike.${searchPattern},route.ilike.${searchPattern},notes.ilike.${searchPattern}`
-      );
+
+      // Build OR conditions for database-level search
+      const orConditions: string[] = [
+        `destination.ilike.${searchPattern}`,
+        `route.ilike.${searchPattern}`,
+        `notes.ilike.${searchPattern}`,
+      ];
+
+      // Add delivery_trip_id filter if we found matching trip numbers
+      if (matchingDeliveryTripIds && matchingDeliveryTripIds.length > 0) {
+        // Supabase OR syntax: field.in.(value1,value2,...)
+        orConditions.push(`delivery_trip_id.in.(${matchingDeliveryTripIds.join(',')})`);
+      }
+
+      console.log('[tripLogService] Search OR conditions:', orConditions.join(','));
+      query = query.or(orConditions.join(','));
     }
+
+    // Apply pagination AFTER all filters
+    query = query.range(offset, offset + limit - 1);
 
     const { data, error, count } = await query;
 
@@ -808,27 +837,24 @@ export const tripLogService = {
 
     let results = (data || []) as TripLogWithRelations[];
 
-    // Apply additional text search filter for related fields (vehicle plate, driver name)
-    // This filters the already-limited results from database (much faster than filtering all records)
-    // Note: This is a hybrid approach - DB filters trip_logs fields, client filters relations
-    // For better performance with relations, consider using a database function or view
+    // Apply additional client-side text search filter for related fields (vehicle plate, driver name)
+    // that cannot be easily filtered at database level
     if (filters?.search) {
       const searchLower = filters.search.toLowerCase();
       results = results.filter(trip =>
         trip.vehicle?.plate?.toLowerCase().includes(searchLower) ||
         trip.driver?.full_name?.toLowerCase().includes(searchLower) ||
-        // Note: destination, route, notes are already filtered at DB level,
-        // but we keep them here for consistency in case the DB filter didn't catch everything
+        // delivery_trip.trip_number is already filtered at DB level, but keep for safety
+        trip.delivery_trip?.trip_number?.toLowerCase().includes(searchLower) ||
+        // destination, route, notes are already filtered at DB level
         trip.destination?.toLowerCase().includes(searchLower) ||
         trip.route?.toLowerCase().includes(searchLower)
       );
-      // Adjust count for client-side filtering (approximate)
-      // In a production system, you'd want to get accurate count from DB with all filters
     }
 
     return {
       data: results,
-      count: count || 0, // Note: count may not be accurate if client-side filtering is applied
+      count: count || 0, // Note: count may not be fully accurate with client-side filtering
     };
   },
 
