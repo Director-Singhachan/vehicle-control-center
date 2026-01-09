@@ -1046,85 +1046,6 @@ export interface Database {
           maintenance_cost_last_30_days: number | null;
         };
       };
-      fuel_efficiency_summary: {
-        Row: {
-          vehicle_id: string;
-          plate: string;
-          make: string | null;
-          model: string | null;
-          month: string;
-          fill_count: number;
-          total_liters: number | null;
-          total_cost: number | null;
-          avg_efficiency: number | null;
-          min_efficiency: number | null;
-          max_efficiency: number | null;
-        };
-      };
-      vehicle_usage_summary: {
-        Row: {
-          vehicle_id: string;
-          plate: string;
-          make: string | null;
-          model: string | null;
-          month: string;
-          trip_count: number;
-          total_distance: number | null;
-          avg_distance: number | null;
-          total_hours: number | null;
-          avg_hours: number | null;
-        };
-      };
-      vehicle_usage_daily: {
-        Row: {
-          day: string;
-          active_vehicles: number;
-          total_trips: number;
-          total_distance: number | null;
-          avg_distance: number | null;
-          total_hours: number | null;
-        };
-      };
-      vehicles_with_status: {
-        Row: {
-          id: string;
-          plate: string;
-          make: string | null;
-          model: string | null;
-          type: string | null;
-          branch: string | null;
-          lat: number | null;
-          lng: number | null;
-          created_at: string;
-          status: string;
-          trips_last_30_days: number;
-          last_fuel_efficiency: number | null;
-        };
-      };
-      tickets_with_relations: {
-        Row: {
-          id: number;
-          created_at: string;
-          reporter_id: string;
-          vehicle_id: string;
-          odometer: number | null;
-          urgency: UrgencyLevel;
-          repair_type: string | null;
-          problem_description: string | null;
-          status: TicketStatus;
-          image_urls: Json;
-          vehicle_plate: string;
-          make: string | null;
-          model: string | null;
-          vehicle_type: string | null;
-          branch: string | null;
-          vehicle_image_url: string | null;
-          reporter_email: string | null;
-          reporter_name: string | null;
-          reporter_role: AppRole;
-          reporter_avatar_url: string | null;
-        };
-      };
       product_categories: {
         Row: {
           id: string;
@@ -1462,6 +1383,85 @@ export interface Database {
       };
     };
     Views: {
+      fuel_efficiency_summary: {
+        Row: {
+          vehicle_id: string;
+          plate: string;
+          make: string | null;
+          model: string | null;
+          month: string;
+          fill_count: number;
+          total_liters: number | null;
+          total_cost: number | null;
+          avg_efficiency: number | null;
+          min_efficiency: number | null;
+          max_efficiency: number | null;
+        };
+      };
+      vehicle_usage_summary: {
+        Row: {
+          vehicle_id: string;
+          plate: string;
+          make: string | null;
+          model: string | null;
+          month: string;
+          trip_count: number;
+          total_distance: number | null;
+          avg_distance: number | null;
+          total_hours: number | null;
+          avg_hours: number | null;
+        };
+      };
+      vehicle_usage_daily: {
+        Row: {
+          day: string;
+          active_vehicles: number;
+          total_trips: number;
+          total_distance: number | null;
+          avg_distance: number | null;
+          total_hours: number | null;
+        };
+      };
+      vehicles_with_status: {
+        Row: {
+          id: string;
+          plate: string;
+          make: string | null;
+          model: string | null;
+          type: string | null;
+          branch: string | null;
+          lat: number | null;
+          lng: number | null;
+          created_at: string;
+          status: string;
+          trips_last_30_days: number;
+          last_fuel_efficiency: number | null;
+        };
+      };
+      tickets_with_relations: {
+        Row: {
+          id: number;
+          created_at: string;
+          reporter_id: string;
+          vehicle_id: string;
+          odometer: number | null;
+          urgency: UrgencyLevel;
+          repair_type: string | null;
+          problem_description: string | null;
+          status: TicketStatus;
+          image_urls: Json;
+          vehicle_plate: string;
+          make: string | null;
+          model: string | null;
+          vehicle_type: string | null;
+          branch: string | null;
+          vehicle_image_url: string | null;
+          reporter_email: string | null;
+          reporter_name: string | null;
+          reporter_role: AppRole;
+          reporter_avatar_url: string | null;
+        };
+      };
       inventory_with_details: {
         Row: {
           id: string;
