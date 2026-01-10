@@ -391,15 +391,29 @@ export const reportsService = {
   // ========== Fuel Reports ==========
 
   // Get monthly fuel report
-  getMonthlyFuelReport: async (months: number = 6): Promise<MonthlyFuelReport[]> => {
-    const startDate = new Date();
-    startDate.setMonth(startDate.getMonth() - months);
+  getMonthlyFuelReport: async (months: number = 6, startDate?: Date, endDate?: Date, branch?: string): Promise<MonthlyFuelReport[]> => {
+    let queryStartDate: Date;
+    if (startDate) {
+      queryStartDate = startDate;
+    } else {
+      queryStartDate = new Date();
+      queryStartDate.setMonth(queryStartDate.getMonth() - months);
+    }
 
-    const { data, error } = await supabase
+    let query = supabase
       .from('fuel_efficiency_summary')
       .select('*')
-      .gte('month', startDate.toISOString().split('T')[0])
-      .order('month', { ascending: true });
+      .gte('month', queryStartDate.toISOString().split('T')[0]);
+
+    if (endDate) {
+      query = query.lte('month', endDate.toISOString().split('T')[0]);
+    }
+
+    if (branch) {
+      query = query.eq('branch', branch);
+    }
+
+    const { data, error } = await query.order('month', { ascending: true });
 
     if (error) throw error;
 
@@ -453,28 +467,44 @@ export const reportsService = {
   },
 
   // Get vehicle fuel cost comparison
-  getVehicleFuelComparison: async (months: number = 6): Promise<VehicleFuelComparison[]> => {
-    const startDate = new Date();
-    startDate.setMonth(startDate.getMonth() - months);
-    startDate.setHours(0, 0, 0, 0);
+  getVehicleFuelComparison: async (months: number = 6, startDate?: Date, endDate?: Date, branch?: string): Promise<VehicleFuelComparison[]> => {
+    let queryStartDate: Date;
+    if (startDate) {
+      queryStartDate = startDate;
+    } else {
+      queryStartDate = new Date();
+      queryStartDate.setMonth(queryStartDate.getMonth() - months);
+      queryStartDate.setHours(0, 0, 0, 0);
+    }
 
     // Query fuel_records directly instead of using fuel_efficiency_summary view
     // This ensures we get all fuel records even if the view doesn't have data
-    const { data: fuelRecords, error } = await supabase
+    let query = supabase
       .from('fuel_records')
       .select(`
         vehicle_id,
         liters,
         total_cost,
         fuel_efficiency,
-        vehicle:vehicles!fuel_records_vehicle_id_fkey(
+        vehicle:vehicles!inner(
           id,
           plate,
           make,
-          model
+          model,
+          branch
         )
       `)
-      .gte('filled_at', startDate.toISOString())
+      .gte('filled_at', queryStartDate.toISOString());
+
+    if (endDate) {
+      query = query.lte('filled_at', endDate.toISOString());
+    }
+
+    if (branch) {
+      query = query.eq('vehicle.branch', branch);
+    }
+
+    const { data: fuelRecords, error } = await query
       .order('filled_at', { ascending: true });
 
     if (error) {
@@ -500,7 +530,7 @@ export const reportsService = {
     fuelRecords.forEach(record => {
       const vehicleId = record.vehicle_id;
       const vehicle = record.vehicle as { id: string; plate: string; make: string | null; model: string | null } | null;
-      
+
       if (!vehicleId || !vehicle) return;
 
       if (!vehicleMap.has(vehicleId)) {
@@ -543,8 +573,8 @@ export const reportsService = {
   },
 
   // Get fuel trend (for charts)
-  getFuelTrend: async (months: number = 6): Promise<FuelTrend> => {
-    const report = await reportsService.getMonthlyFuelReport(months);
+  getFuelTrend: async (months: number = 6, startDate?: Date, endDate?: Date, branch?: string): Promise<FuelTrend> => {
+    const report = await reportsService.getMonthlyFuelReport(months, startDate, endDate, branch);
 
     return {
       labels: report.map(r => r.monthLabel),

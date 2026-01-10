@@ -101,11 +101,21 @@ export const FuelLogListView: React.FC<FuelLogListViewProps> = ({
   const { stats } = useFuelStats(filters);
 
   // Fetch chart data (use 6 months for comparison)
-  const { data: vehicleFuelComparison, loading: comparisonLoading } = useVehicleFuelComparison(6);
-  const { data: fuelTrend, loading: trendLoading } = useFuelTrend(6);
-  
+  const chartOptions = useMemo(() => ({
+    startDate: filters.start_date ? new Date(filters.start_date) : undefined,
+    endDate: filters.end_date ? new Date(filters.end_date) : undefined,
+    branch: filters.branch,
+  }), [filters.start_date, filters.end_date, filters.branch]);
+
+  const { data: vehicleFuelComparison, loading: comparisonLoading } = useVehicleFuelComparison(6, chartOptions);
+  const { data: fuelTrend, loading: trendLoading } = useFuelTrend(6, chartOptions);
+
   // Fetch vehicle efficiency comparison
-  const { comparison: vehicleEfficiency, loading: efficiencyLoading } = useVehicleEfficiencyComparison(6);
+  const { comparison: vehicleEfficiency, loading: efficiencyLoading } = useVehicleEfficiencyComparison(6, {
+    startDate: filters.start_date,
+    endDate: filters.end_date,
+    branch: filters.branch,
+  });
 
   // Debug logging
   useEffect(() => {
@@ -192,26 +202,13 @@ export const FuelLogListView: React.FC<FuelLogListViewProps> = ({
     return filteredVehicles.map(v => v.id);
   }, [filteredVehicles, filters.branch, filters.vehicle_id]);
 
-  // Filter fuel logs by branch if branch filter is active but no specific vehicle is selected
-  const displayedFuelLogs = useMemo(() => {
-    if (!filters.branch || filters.vehicle_id) return fuelLogs;
-    // Filter by vehicle branch
-    return fuelLogs.filter(record => {
-      const vehicle = vehicles.find(v => v.id === record.vehicle_id);
-      return vehicle?.branch === filters.branch;
-    });
-  }, [fuelLogs, vehicles, filters.branch, filters.vehicle_id]);
-
-  // Adjust total count if filtering by branch
-  const displayedTotalCount = useMemo(() => {
-    if (!filters.branch || filters.vehicle_id) return totalCount;
-    return displayedFuelLogs.length;
-  }, [totalCount, displayedFuelLogs, filters.branch, filters.vehicle_id]);
+  const displayedFuelLogs = fuelLogs;
+  const displayedTotalCount = totalCount;
 
   return (
-      <PageLayout
-        title="ประวัติการเติมน้ำมัน"
-        subtitle={loading ? 'กำลังโหลด...' : `ทั้งหมด ${displayedTotalCount.toLocaleString('th-TH')} รายการ${totalPages > 1 ? ` (หน้า ${currentPage}/${totalPages})` : ''}`}
+    <PageLayout
+      title="ประวัติการเติมน้ำมัน"
+      subtitle={loading ? 'กำลังโหลด...' : `ทั้งหมด ${displayedTotalCount.toLocaleString('th-TH')} รายการ${totalPages > 1 ? ` (หน้า ${currentPage}/${totalPages})` : ''}`}
       actions={
         <div className="flex gap-2">
           {onCreate && (
@@ -339,7 +336,6 @@ export const FuelLogListView: React.FC<FuelLogListViewProps> = ({
                         },
                         grid: {
                           color: '#e2e8f0',
-                          borderDash: [4, 4],
                         },
                         ticks: { color: '#64748b' },
                       },
@@ -405,7 +401,7 @@ export const FuelLogListView: React.FC<FuelLogListViewProps> = ({
                         borderColor: '#e2e8f0',
                         borderWidth: 1,
                         callbacks: {
-                          label: function(context) {
+                          label: function (context) {
                             const vehicle = vehicleFuelComparison[context.dataIndex];
                             return [
                               `ค่าใช้จ่าย: ฿${vehicle.totalCost.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
@@ -419,7 +415,7 @@ export const FuelLogListView: React.FC<FuelLogListViewProps> = ({
                     scales: {
                       x: {
                         grid: { display: false },
-                        ticks: { 
+                        ticks: {
                           color: '#64748b',
                           maxRotation: 45,
                           minRotation: 45,
@@ -428,11 +424,10 @@ export const FuelLogListView: React.FC<FuelLogListViewProps> = ({
                       y: {
                         grid: {
                           color: '#e2e8f0',
-                          borderDash: [4, 4],
                         },
-                        ticks: { 
+                        ticks: {
                           color: '#64748b',
-                          callback: function(value) {
+                          callback: function (value) {
                             return '฿' + Number(value).toLocaleString('th-TH');
                           },
                         },
@@ -483,11 +478,10 @@ export const FuelLogListView: React.FC<FuelLogListViewProps> = ({
                   </thead>
                   <tbody>
                     {vehicleEfficiency.map((vehicle, index) => (
-                      <tr 
-                        key={vehicle.vehicle_id} 
-                        className={`border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50 ${
-                          index === 0 ? 'bg-green-50 dark:bg-green-900/10' : ''
-                        }`}
+                      <tr
+                        key={vehicle.vehicle_id}
+                        className={`border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50 ${index === 0 ? 'bg-green-50 dark:bg-green-900/10' : ''
+                          }`}
                       >
                         <td className="py-3 px-4">
                           {index === 0 ? (
@@ -515,12 +509,11 @@ export const FuelLogListView: React.FC<FuelLogListViewProps> = ({
                           {vehicle.make && vehicle.model ? `${vehicle.make} ${vehicle.model}` : '-'}
                         </td>
                         <td className="py-3 px-4 text-right">
-                          <span className={`font-bold text-lg ${
-                            index === 0 ? 'text-green-600 dark:text-green-400' :
+                          <span className={`font-bold text-lg ${index === 0 ? 'text-green-600 dark:text-green-400' :
                             index === 1 ? 'text-blue-600 dark:text-blue-400' :
-                            index === 2 ? 'text-yellow-600 dark:text-yellow-400' :
-                            'text-slate-900 dark:text-slate-100'
-                          }`}>
+                              index === 2 ? 'text-yellow-600 dark:text-yellow-400' :
+                                'text-slate-900 dark:text-slate-100'
+                            }`}>
                             {vehicle.average_efficiency ? vehicle.average_efficiency.toFixed(2) : '-'}
                           </span>
                           <span className="text-sm text-slate-500 dark:text-slate-400 ml-1">km/L</span>
@@ -667,8 +660,8 @@ export const FuelLogListView: React.FC<FuelLogListViewProps> = ({
               {Object.keys(filters).length > 0
                 ? 'ลองเปลี่ยนเงื่อนไขการค้นหา'
                 : onCreate
-                ? 'เริ่มต้นด้วยการบันทึกการเติมน้ำมัน'
-                : 'ยังไม่มีข้อมูลการเติมน้ำมัน'}
+                  ? 'เริ่มต้นด้วยการบันทึกการเติมน้ำมัน'
+                  : 'ยังไม่มีข้อมูลการเติมน้ำมัน'}
             </p>
           </Card>
         ) : (
@@ -700,9 +693,8 @@ export const FuelLogListView: React.FC<FuelLogListViewProps> = ({
                             />
                           ) : null}
                           <div
-                            className={`p-2 bg-enterprise-100 dark:bg-enterprise-900 rounded-lg ${
-                              (record as any).vehicle?.image_url ? 'hidden' : ''
-                            }`}
+                            className={`p-2 bg-enterprise-100 dark:bg-enterprise-900 rounded-lg ${(record as any).vehicle?.image_url ? 'hidden' : ''
+                              }`}
                           >
                             <Droplet className="w-5 h-5 text-enterprise-600 dark:text-enterprise-400" />
                           </div>
@@ -951,11 +943,10 @@ export const FuelLogListView: React.FC<FuelLogListViewProps> = ({
                             <button
                               key={page}
                               onClick={() => setCurrentPage(page)}
-                              className={`px-3 py-1 rounded-lg text-sm font-medium transition-colors ${
-                                currentPage === page
-                                  ? 'bg-enterprise-600 text-white'
-                                  : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
-                              }`}
+                              className={`px-3 py-1 rounded-lg text-sm font-medium transition-colors ${currentPage === page
+                                ? 'bg-enterprise-600 text-white'
+                                : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+                                }`}
                             >
                               {page.toLocaleString('th-TH')}
                             </button>

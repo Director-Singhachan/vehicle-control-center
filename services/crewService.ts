@@ -748,9 +748,9 @@ export const crewService = {
      * Trigger commission calculation via Edge Function
      * This is safer as it runs with service role and can bypass RLS issues
      */
-    calculateCommissionViaFunction: async (tripId: string): Promise<boolean> => {
+    calculateCommissionViaFunction: async (tripId: string): Promise<{ success: boolean; reason?: string; message?: string }> => {
         const { data, error } = await supabase.functions.invoke('auto-commission-worker', {
-            body: { tripId, source: 'manual_recalculate' }
+            body: { trip_id: tripId, source: 'manual_recalculate' }
         });
 
         if (error) {
@@ -758,6 +758,11 @@ export const crewService = {
             throw error;
         }
 
-        return data?.success || false;
+        // Return full response object including reason and message for better error handling
+        return {
+            success: data?.success || false,
+            reason: data?.reason,
+            message: data?.message || data?.error
+        };
     },
 };

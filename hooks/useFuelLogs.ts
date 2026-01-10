@@ -70,6 +70,7 @@ export const useFuelStats = (filters?: {
   vehicle_id?: string;
   start_date?: string;
   end_date?: string;
+  branch?: string;
 }) => {
   const [stats, setStats] = useState<{
     totalCost: number;
@@ -223,9 +224,9 @@ export const useMonthlyFuelCosts = (months: number = 12) => {
   };
 };
 
-export const useVehicleEfficiencyComparison = (months: number = 6) => {
+export const useVehicleEfficiencyComparison = (months: number = 6, options?: { startDate?: string; endDate?: string; branch?: string }) => {
   const cache = useDataCacheStore();
-  const cacheKey = createCacheKey('vehicle-efficiency-comparison', months);
+  const cacheKey = createCacheKey('vehicle-efficiency-comparison', { months, ...options });
 
   const cached = cache.get<Array<{
     vehicle_id: string;
@@ -259,7 +260,14 @@ export const useVehicleEfficiencyComparison = (months: number = 6) => {
     setLoading(true);
     setError(null);
     try {
-      const result = await fuelService.getVehicleEfficiencyComparison(months);
+      const start = options?.startDate ? new Date(options.startDate) : undefined;
+      const end = options?.endDate ? new Date(options.endDate) : undefined;
+      const result = await fuelService.getVehicleEfficiencyComparison({
+        months,
+        startDate: start,
+        endDate: end,
+        branch: options?.branch
+      });
       setComparison(result);
       // Cache for 5 minutes
       cache.set(cacheKey, result, 5 * 60 * 1000);
@@ -272,7 +280,7 @@ export const useVehicleEfficiencyComparison = (months: number = 6) => {
 
   useEffect(() => {
     fetchComparison();
-  }, [months]);
+  }, [months, options?.startDate, options?.endDate, options?.branch]);
 
   return {
     comparison,

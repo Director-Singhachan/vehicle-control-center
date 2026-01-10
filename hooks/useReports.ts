@@ -46,7 +46,7 @@ export const useMonthlyFuelReport = (months: number = 6) => {
   return { data, loading, error };
 };
 
-export const useVehicleFuelComparison = (months: number = 6) => {
+export const useVehicleFuelComparison = (months: number = 6, options?: { startDate?: Date; endDate?: Date; branch?: string }) => {
   const [data, setData] = useState<VehicleFuelComparison[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
@@ -55,7 +55,7 @@ export const useVehicleFuelComparison = (months: number = 6) => {
     const fetchData = async () => {
       try {
         setLoading(true);
-        const result = await reportsService.getVehicleFuelComparison(months);
+        const result = await reportsService.getVehicleFuelComparison(months, options?.startDate, options?.endDate, options?.branch);
         setData(result);
         setError(null);
       } catch (err) {
@@ -67,12 +67,12 @@ export const useVehicleFuelComparison = (months: number = 6) => {
     };
 
     fetchData();
-  }, [months]);
+  }, [months, options?.startDate?.getTime(), options?.endDate?.getTime(), options?.branch]);
 
   return { data, loading, error };
 };
 
-export const useFuelTrend = (months: number = 6) => {
+export const useFuelTrend = (months: number = 6, options?: { startDate?: Date; endDate?: Date; branch?: string }) => {
   const [data, setData] = useState<FuelTrend | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
@@ -81,7 +81,7 @@ export const useFuelTrend = (months: number = 6) => {
     const fetchData = async () => {
       try {
         setLoading(true);
-        const result = await reportsService.getFuelTrend(months);
+        const result = await reportsService.getFuelTrend(months, options?.startDate, options?.endDate, options?.branch);
         setData(result);
         setError(null);
       } catch (err) {
@@ -93,7 +93,7 @@ export const useFuelTrend = (months: number = 6) => {
     };
 
     fetchData();
-  }, [months]);
+  }, [months, options?.startDate?.getTime(), options?.endDate?.getTime(), options?.branch]);
 
   return { data, loading, error };
 };

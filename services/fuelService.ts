@@ -193,24 +193,41 @@ export const fuelService = {
     start_date?: string;
     end_date?: string;
     fuel_type?: string;
+    branch?: string;
     limit?: number;
     offset?: number;
-  }): Promise<{ data: (FuelRecord & { 
-    user?: { full_name: string; email?: string; avatar_url?: string | null };
-    vehicle?: { plate: string; make?: string; model?: string; image_url?: string | null };
-  })[]; count: number }> => {
+  }): Promise<{
+    data: (FuelRecord & {
+      user?: { full_name: string; email?: string; avatar_url?: string | null };
+      vehicle?: { plate: string; make?: string; model?: string; branch?: string; image_url?: string | null };
+    })[]; count: number
+  }> => {
     const limit = filters?.limit || 100;
     const offset = filters?.offset || 0;
 
-    let query = supabase
-      .from('fuel_records')
-      .select(`
-        *,
-        user:profiles!user_id(full_name, email, avatar_url),
-        vehicle:vehicles!vehicle_id(plate, make, model, image_url)
-      `, { count: 'exact' })
-      .order('filled_at', { ascending: false })
-      .range(offset, offset + limit - 1);
+    let query;
+
+    if (filters?.branch) {
+      // Use inner join behavior to filter by branch
+      query = supabase
+        .from('fuel_records')
+        .select(`
+          *,
+          user:profiles!user_id(full_name, email, avatar_url),
+          vehicle:vehicles!inner(plate, make, model, branch, image_url)
+        `, { count: 'exact' })
+        .eq('vehicle.branch', filters.branch);
+    } else {
+      query = supabase
+        .from('fuel_records')
+        .select(`
+          *,
+          user:profiles!user_id(full_name, email, avatar_url),
+          vehicle:vehicles!vehicle_id(plate, make, model, branch, image_url)
+        `, { count: 'exact' });
+    }
+
+    query = query.order('filled_at', { ascending: false }).range(offset, offset + limit - 1);
 
     if (filters?.vehicle_id) {
       query = query.eq('vehicle_id', filters.vehicle_id);
@@ -242,6 +259,7 @@ export const fuelService = {
     vehicle_id?: string;
     start_date?: string;
     end_date?: string;
+    branch?: string;
   }): Promise<{
     totalCost: number;
     totalLiters: number;
@@ -249,9 +267,18 @@ export const fuelService = {
     averageEfficiency: number | null;
     totalRecords: number;
   }> => {
-    let query = supabase
-      .from('fuel_records')
-      .select('total_cost, liters, price_per_liter, fuel_efficiency');
+    let query;
+
+    if (filters?.branch) {
+      query = supabase
+        .from('fuel_records')
+        .select('total_cost, liters, price_per_liter, fuel_efficiency, vehicle:vehicles!inner(branch)')
+        .eq('vehicle.branch', filters.branch);
+    } else {
+      query = supabase
+        .from('fuel_records')
+        .select('total_cost, liters, price_per_liter, fuel_efficiency');
+    }
 
     if (filters?.vehicle_id) {
       query = query.eq('vehicle_id', filters.vehicle_id);
@@ -472,7 +499,17 @@ export const fuelService = {
   },
 
   // Get vehicle efficiency comparison
-  getVehicleEfficiencyComparison: async (months: number = 6): Promise<Array<{
+  getVehicleEfficiencyComparison: async ({
+    months = 6,
+    startDate,
+    endDate,
+    branch,
+  }: {
+    months?: number;
+    startDate?: Date;
+    endDate?: Date;
+    branch?: string;
+  }): Promise<Array<{
     vehicle_id: string;
     plate: string;
     make: string | null;
@@ -484,15 +521,31 @@ export const fuelService = {
     fill_count: number;
     efficiency_rank: number;
   }>> => {
-    const startDate = new Date();
-    startDate.setMonth(startDate.getMonth() - months);
-    startDate.setDate(1); // First day of month
+    let queryStartDate: string;
+    if (startDate) {
+      queryStartDate = startDate.toISOString().split('T')[0];
+    } else {
+      const date = new Date();
+      date.setMonth(date.getMonth() - months);
+      date.setDate(1); // First day of month
+      queryStartDate = date.toISOString().split('T')[0];
+    }
 
-    const { data: summary, error } = await supabase
+    let query = supabase
       .from('fuel_efficiency_summary')
       .select('*')
-      .gte('month', startDate.toISOString().split('T')[0])
+      .gte('month', queryStartDate)
       .not('avg_efficiency', 'is', null);
+
+    if (endDate) {
+      query = query.lte('month', endDate.toISOString().split('T')[0]);
+    }
+
+    if (branch) {
+      query = query.eq('branch', branch);
+    }
+
+    const { data: summary, error } = await query;
 
     if (error) throw error;
 

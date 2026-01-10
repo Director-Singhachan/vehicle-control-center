@@ -272,10 +272,23 @@ export function useCommissionCalculation() {
 
         try {
             // Use Edge Function instead of client-side calculation to avoid RLS and concurrency issues
-            const success = await crewService.calculateCommissionViaFunction(tripId);
+            const result = await crewService.calculateCommissionViaFunction(tripId);
             
-            if (!success) {
-                throw new Error('การคำนวณล้มเหลว กรุณาตรวจสอบข้อมูลทริป');
+            if (!result.success) {
+                // Get more detailed error message from result
+                const errorMessage = result.reason === 'trip_not_completed'
+                    ? 'ทริปยังไม่เสร็จสมบูรณ์ กรุณาเช็คอินทริปก่อน'
+                    : result.reason === 'no_items'
+                    ? 'ไม่มีสินค้าที่ส่งแล้วในทริปนี้'
+                    : result.reason === 'no_rate'
+                    ? 'ไม่พบอัตราค่าคอมมิชชั่นที่เหมาะสม กรุณาตรวจสอบการตั้งค่าอัตราค่าคอม'
+                    : result.reason === 'zero_commission'
+                    ? 'ค่าคอมมิชชั่นที่คำนวณได้เป็นศูนย์ ไม่มีข้อมูลที่จะบันทึก'
+                    : result.reason === 'no_crew'
+                    ? 'ไม่พบข้อมูลพนักงานในทริปนี้'
+                    : result.message || 'การคำนวณล้มเหลว กรุณาตรวจสอบข้อมูลทริป';
+                
+                throw new Error(errorMessage);
             }
 
             // After successful calculation via function, fetch the logs to show in UI
