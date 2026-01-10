@@ -1,7 +1,9 @@
-// Reports Hooks
+// Reports Hooks - Custom React hooks for reports and analytics
 import { useState, useEffect, useMemo } from 'react';
-import { reportsService } from '../services/reportsService';
-import type {
+import { reportsService, type MonthlyFuelReport, type VehicleFuelComparison, type FuelTrend, type MonthlyTripReport, type VehicleTripSummary, type DriverTripReport, type MonthlyMaintenanceReport, type VehicleMaintenanceComparison, type CostPerKm, type MonthlyCostTrend, type StaffCommissionSummary, type StaffItemStatistics, type StaffItemDetail } from '../services/reportsService';
+
+// Re-export types for convenience
+export type {
   MonthlyFuelReport,
   VehicleFuelComparison,
   FuelTrend,
@@ -10,14 +12,12 @@ import type {
   DriverTripReport,
   MonthlyMaintenanceReport,
   VehicleMaintenanceComparison,
-  VehicleMaintenanceHistory,
-  CostAnalysis,
   CostPerKm,
   MonthlyCostTrend,
   StaffCommissionSummary,
   StaffItemStatistics,
   StaffItemDetail,
-} from '../services/reportsService';
+};
 
 // Fuel Reports Hooks
 export const useMonthlyFuelReport = (months: number = 6) => {
@@ -230,65 +230,7 @@ export const useVehicleMaintenanceComparison = (months: number = 6) => {
   return { data, loading, error };
 };
 
-export const useVehicleMaintenanceHistory = (vehicleId: string | null) => {
-  const [data, setData] = useState<VehicleMaintenanceHistory[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<Error | null>(null);
-
-  useEffect(() => {
-    if (!vehicleId) {
-      setData([]);
-      setLoading(false);
-      return;
-    }
-
-    const fetchData = async () => {
-      try {
-        setLoading(true);
-        const result = await reportsService.getVehicleMaintenanceHistory(vehicleId);
-        setData(result);
-        setError(null);
-      } catch (err) {
-        setError(err as Error);
-        console.error('[useVehicleMaintenanceHistory] Error:', err);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchData();
-  }, [vehicleId]);
-
-  return { data, loading, error };
-};
-
 // Cost Analysis Hooks
-export const useCostAnalysis = (startDate: Date, endDate: Date) => {
-  const [data, setData] = useState<CostAnalysis | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<Error | null>(null);
-
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        setLoading(true);
-        const result = await reportsService.getCostAnalysis(startDate, endDate);
-        setData(result);
-        setError(null);
-      } catch (err) {
-        setError(err as Error);
-        console.error('[useCostAnalysis] Error:', err);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchData();
-  }, [startDate, endDate]);
-
-  return { data, loading, error };
-};
-
 export const useCostPerKm = (months: number = 6) => {
   const [data, setData] = useState<CostPerKm[]>([]);
   const [loading, setLoading] = useState(true);
@@ -362,21 +304,14 @@ export const useVehicleUsageRanking = (options?: {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
 
-  // Create stable dependency string to prevent unnecessary re-fetches
   const dependencyKey = useMemo(() => {
-    if (!options) return 'no-options';
     return JSON.stringify({
-      startDate: options.startDate?.toISOString(),
-      endDate: options.endDate?.toISOString(),
-      branch: options.branch,
-      limit: options.limit,
+      start: options?.startDate?.getTime(),
+      end: options?.endDate?.getTime(),
+      branch: options?.branch,
+      limit: options?.limit,
     });
-  }, [
-    options?.startDate?.getTime(),
-    options?.endDate?.getTime(),
-    options?.branch,
-    options?.limit,
-  ]);
+  }, [options?.startDate?.getTime(), options?.endDate?.getTime(), options?.branch, options?.limit]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -420,19 +355,13 @@ export const useVehicleFuelConsumption = (options?: {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
 
-  // Create stable dependency string to prevent unnecessary re-fetches
   const dependencyKey = useMemo(() => {
-    if (!options) return 'no-options';
     return JSON.stringify({
-      startDate: options.startDate?.toISOString(),
-      endDate: options.endDate?.toISOString(),
-      branch: options.branch,
+      start: options?.startDate?.getTime(),
+      end: options?.endDate?.getTime(),
+      branch: options?.branch,
     });
-  }, [
-    options?.startDate?.getTime(),
-    options?.endDate?.getTime(),
-    options?.branch,
-  ]);
+  }, [options?.startDate?.getTime(), options?.endDate?.getTime(), options?.branch]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -450,7 +379,6 @@ export const useVehicleFuelConsumption = (options?: {
     };
 
     fetchData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dependencyKey]);
 
   return { data, loading, error };
@@ -504,7 +432,6 @@ export const useDeliverySummaryByVehicle = (
     };
 
     fetchData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dependencyKey]);
 
   return { data, loading, error };
@@ -519,14 +446,14 @@ export const useDeliverySummaryByStore = (
     store_id: string;
     customer_code: string;
     customer_name: string;
-    address: string | null;
     totalTrips: number;
     totalItems: number;
     totalQuantity: number;
-    products: Array<{
+    items: Array<{
       product_id: string;
       product_code: string;
       product_name: string;
+      category: string;
       unit: string;
       totalQuantity: number;
       deliveryCount: number;
@@ -559,7 +486,6 @@ export const useDeliverySummaryByStore = (
     };
 
     fetchData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dependencyKey]);
 
   return { data, loading, error };
@@ -614,7 +540,6 @@ export const useDeliverySummaryByProduct = (
     };
 
     fetchData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dependencyKey]);
 
   return { data, loading, error };
@@ -629,8 +554,12 @@ export const useMonthlyDeliveryReport = (months: number = 6) => {
     totalItems: number;
     totalQuantity: number;
     totalDistance: number;
-    averageItemsPerTrip: number;
-    averageQuantityPerTrip: number;
+    tripLogs: Array<{
+      delivery_date: string;
+      trip_number: string;
+      quantity: number;
+      distance: number | null;
+    }>;
   }>>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
@@ -688,7 +617,6 @@ export const useStaffCommissionSummary = (
     };
 
     fetchData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dependencyKey]);
 
   return { data, loading, error };
@@ -698,7 +626,7 @@ export const useStaffItemStatistics = (
   startDate?: Date,
   endDate?: Date
 ) => {
-  const [data, setData] = useState<import('../services/reportsService').StaffItemStatistics[]>([]);
+  const [data, setData] = useState<StaffItemStatistics[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
 
@@ -743,7 +671,7 @@ export const useStaffItemDetails = (
     return JSON.stringify({
       start: startDate?.getTime(),
       end: endDate?.getTime(),
-      staffId,
+      staff: staffId,
     });
   }, [startDate?.getTime(), endDate?.getTime(), staffId]);
 
@@ -795,13 +723,13 @@ export const useProductDeliveryHistory = (
   }, [storeId, productId, startDate?.getTime(), endDate?.getTime()]);
 
   useEffect(() => {
-    const fetchData = async () => {
-      if (!storeId || !productId) {
-        setData([]);
-        setLoading(false);
-        return;
-      }
+    if (!storeId || !productId) {
+      setData([]);
+      setLoading(false);
+      return;
+    }
 
+    const fetchData = async () => {
       try {
         setLoading(true);
         const result = await reportsService.getProductDeliveryHistory(storeId, productId, startDate, endDate);
@@ -816,9 +744,33 @@ export const useProductDeliveryHistory = (
     };
 
     fetchData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dependencyKey]);
 
   return { data, loading, error };
 };
 
+/**
+ * Hook to refresh delivery stats by vehicle
+ * ใช้สำหรับ refresh ข้อมูลสรุปการส่งสินค้าตามรถ
+ */
+export const useRefreshDeliveryStats = () => {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<Error | null>(null);
+
+  const refresh = async (startDate?: Date, endDate?: Date): Promise<void> => {
+    try {
+      setLoading(true);
+      setError(null);
+      await reportsService.refreshDeliveryStatsByVehicle(startDate, endDate);
+    } catch (err) {
+      const error = err as Error;
+      setError(error);
+      console.error('[useRefreshDeliveryStats] Error:', error);
+      throw error;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return { refresh, loading, error };
+};
