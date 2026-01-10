@@ -1603,7 +1603,7 @@ export const reportsService = {
       const startDateStr = formatDateForQuery(startDate);
       const endDateStr = formatDateForQuery(endDate);
 
-      // Query from pre-aggregated daily stats table for high performance
+      // Query from pre-aggregated daily stats table for trips/stores/items/quantity (fast)
       let statsQuery = supabase
         .from('delivery_stats_by_day_vehicle')
         .select(`
@@ -1612,8 +1612,7 @@ export const reportsService = {
           total_trips,
           total_stores,
           total_items,
-          total_quantity,
-          total_distance_km
+          total_quantity
         `)
         .gte('stat_date', startDateStr)
         .lte('stat_date', endDateStr);
@@ -1649,6 +1648,26 @@ export const reportsService = {
       const vehicleMap = new Map(
         (vehicles || []).map((v: any) => [v.id, v])
       );
+
+      // **แก้ไข: ดึงระยะทางจาก trip_logs โดยตรง (ข้อมูลจริง)**
+      // Query trip_logs for actual distance - นับทุก trip ไม่ว่าจะมี delivery_trip_id หรือไม่
+      // เพราะระยะทางจริงของรถต้องนับทุกการใช้งาน (สำคัญสำหรับการคำนวณน้ำมัน, ค่าใช้จ่าย, การบำรุงรักษา)
+      let tripLogsQuery = supabase
+        .from('trip_logs')
+        .select('vehicle_id, distance_km')
+        .eq('status', 'checked_in')
+        .not('distance_km', 'is', null)
+        .gte('checkout_time', startDate.toISOString())
+        .lte('checkout_time', endDate.toISOString())
+        .in('vehicle_id', vehicleIds);
+
+      const { data: tripLogs, error: tripLogsError } = await tripLogsQuery;
+
+      if (tripLogsError) {
+        console.error('[reportsService] Error fetching trip logs for distance:', tripLogsError);
+        // Fallback to stats table distance if trip_logs query fails
+        console.warn('[reportsService] Falling back to delivery_stats_by_day_vehicle distance');
+      }
 
       // Aggregate stats by vehicle across multiple days
       const aggregatedByVehicle = new Map<string, {
@@ -1690,8 +1709,58 @@ export const reportsService = {
         agg.totalStores += Number(stat.total_stores || 0);
         agg.totalItems += Number(stat.total_items || 0);
         agg.totalQuantity += Number(stat.total_quantity || 0);
-        agg.totalDistance += Number(stat.total_distance_km || 0);
+        // ระยะทางจะคำนวณจาก trip_logs แทน (ด้านล่าง)
       });
+
+      // **แก้ไข: คำนวณระยะทางจาก trip_logs โดยตรง (ข้อมูลจริง)**
+      // Sum distance from trip_logs for each vehicle
+      if (tripLogs && tripLogs.length > 0) {
+        const distanceMap = new Map<string, number>();
+
+        tripLogs.forEach(log => {
+          if (!log.vehicle_id || !log.distance_km) return;
+
+          const vid = log.vehicle_id;
+          if (!distanceMap.has(vid)) {
+            distanceMap.set(vid, 0);
+          }
+          distanceMap.set(vid, (distanceMap.get(vid) || 0) + Number(log.distance_km || 0));
+        });
+
+        // Update aggregatedByVehicle with actual distance from trip_logs
+        distanceMap.forEach((distance, vid) => {
+          if (aggregatedByVehicle.has(vid)) {
+            aggregatedByVehicle.get(vid)!.totalDistance = distance;
+          }
+        });
+      } else {
+        // Fallback: If no trip_logs data, try to get from stats table (may not be accurate)
+        console.warn('[reportsService] No trip_logs data found, falling back to stats table distance');
+        const { data: statsWithDistance } = await supabase
+          .from('delivery_stats_by_day_vehicle')
+          .select('vehicle_id, total_distance_km')
+          .gte('stat_date', startDateStr)
+          .lte('stat_date', endDateStr);
+
+        if (vehicleId && statsWithDistance) {
+          // Filter by vehicle if specified
+          const filteredStats = statsWithDistance.filter((s: any) => s.vehicle_id === vehicleId);
+          filteredStats.forEach((stat: any) => {
+            const vid = stat.vehicle_id;
+            if (aggregatedByVehicle.has(vid)) {
+              aggregatedByVehicle.get(vid)!.totalDistance += Number(stat.total_distance_km || 0);
+            }
+          });
+        } else if (statsWithDistance) {
+          // Sum distance from stats table for all vehicles
+          statsWithDistance.forEach((stat: any) => {
+            const vid = stat.vehicle_id;
+            if (aggregatedByVehicle.has(vid)) {
+              aggregatedByVehicle.get(vid)!.totalDistance += Number(stat.total_distance_km || 0);
+            }
+          });
+        }
+      }
 
       const result = Array.from(aggregatedByVehicle.values()).map(vehicleData => ({
         vehicle_id: vehicleData.vehicle_id,
@@ -1703,7 +1772,7 @@ export const reportsService = {
         totalStores: vehicleData.totalStores,
         totalItems: vehicleData.totalItems,
         totalQuantity: vehicleData.totalQuantity,
-        totalDistance: vehicleData.totalDistance,
+        totalDistance: vehicleData.totalDistance, // ใช้ระยะทางจาก trip_logs (ข้อมูลจริง)
         averageItemsPerTrip: vehicleData.totalTrips > 0 ? vehicleData.totalItems / vehicleData.totalTrips : 0,
         averageQuantityPerTrip: vehicleData.totalTrips > 0 ? vehicleData.totalQuantity / vehicleData.totalTrips : 0,
         averageStoresPerTrip: vehicleData.totalTrips > 0 ? vehicleData.totalStores / vehicleData.totalTrips : 0,
@@ -2285,11 +2354,15 @@ export const reportsService = {
         .in('delivery_trip_store_id', tripStoreIds);
 
       // Get trip logs for distance (use different variable name to avoid conflict)
+      // Note: .in() already filters out null values, so no need for .not('delivery_trip_id', 'is', null)
+      // Cannot use both .in() and .not() on the same column in Supabase
       const { data: tripLogsForDistance } = await supabase
         .from('trip_logs')
-        .select('delivery_trip_id, distance')
-        .in('delivery_trip_id', tripIds)
-        .not('delivery_trip_id', 'is', null);
+        .select('delivery_trip_id, distance_km')
+        .in('delivery_trip_id', tripIds);
+
+      // Filter out null delivery_trip_id in JavaScript (in case some slips through)
+      const filteredTripLogs = (tripLogsForDistance || []).filter(log => log.delivery_trip_id !== null);
 
       // Group by month
       const monthMap = new Map<string, {
@@ -2311,7 +2384,7 @@ export const reportsService = {
       });
 
       // Add trip logs for distance calculation
-      (tripLogsForDistance || []).forEach(log => {
+      filteredTripLogs.forEach(log => {
         if (log.delivery_trip_id) {
           // Find which month this trip belongs to based on filtered stores
           const storeForTrip = filteredStores.find((s: any) => s.delivery_trip_id === log.delivery_trip_id);
@@ -2359,7 +2432,7 @@ export const reportsService = {
         });
 
         const totalQuantity = itemsForMonth.reduce((sum, item) => sum + Number(item.quantity || 0), 0);
-        const totalDistance = monthData.tripLogs.reduce((sum, log) => sum + (log.distance || 0), 0);
+        const totalDistance = monthData.tripLogs.reduce((sum, log) => sum + (log.distance_km || 0), 0);
 
         return {
           month: monthKey,
@@ -2800,6 +2873,51 @@ export const reportsService = {
       }));
     } catch (error) {
       console.error('[reportsService] getStaffItemDetails error:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Refresh delivery stats by vehicle for a date range
+   * รีเฟรชข้อมูลสรุปการส่งสินค้าตามรถสำหรับช่วงวันที่ที่กำหนด
+   */
+  refreshDeliveryStatsByVehicle: async (
+    startDate?: Date,
+    endDate?: Date
+  ): Promise<void> => {
+    try {
+      const { supabase } = await import('../lib/supabase');
+
+      // Default to last 3 months if no date range provided
+      if (!startDate || !endDate) {
+        const now = new Date();
+        endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+        startDate = new Date(now.getFullYear(), now.getMonth() - 2, 1);
+      }
+
+      // Format dates for SQL function
+      const formatDateForQuery = (date: Date): string => {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+      };
+
+      const startDateStr = formatDateForQuery(startDate);
+      const endDateStr = formatDateForQuery(endDate);
+
+      // Call the refresh function via RPC
+      const { error } = await supabase.rpc('refresh_delivery_stats_by_day_vehicle', {
+        p_start_date: startDateStr,
+        p_end_date: endDateStr,
+      });
+
+      if (error) {
+        console.error('[reportsService] Error refreshing delivery stats:', error);
+        throw error;
+      }
+    } catch (error) {
+      console.error('[reportsService] refreshDeliveryStatsByVehicle error:', error);
       throw error;
     }
   },

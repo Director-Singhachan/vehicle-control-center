@@ -18,6 +18,7 @@ import {
   Filter,
   X,
   Search,
+  RefreshCw,
 } from 'lucide-react';
 import { PageLayout } from '../components/layout/PageLayout';
 import { Card } from '../components/ui/Card';
@@ -44,6 +45,7 @@ import {
   useStaffCommissionSummary,
   useStaffItemStatistics,
   useStaffItemDetails,
+  useRefreshDeliveryStats,
 } from '../hooks/useReports';
 import { VehicleUsageRankingChart } from '../components/VehicleUsageRankingChart';
 import { VehicleFuelConsumptionChart } from '../components/VehicleFuelConsumptionChart';
@@ -1471,11 +1473,12 @@ const DeliveryReportsTab: React.FC<{
     };
   }, []);
   
-  const { data: vehicleData, loading: vehicleLoading } = useDeliverySummaryByVehicle(
+  const { data: vehicleData, loading: vehicleLoading, error: vehicleError } = useDeliverySummaryByVehicle(
     effectiveStartDate,
     effectiveEndDate,
     selectedVehicleId || undefined
   );
+  const { refresh: refreshVehicleStats, loading: refreshLoading } = useRefreshDeliveryStats();
   const { data: storeData, loading: storeLoading } = useDeliverySummaryByStore(
     effectiveStartDate,
     effectiveEndDate,
@@ -1510,6 +1513,17 @@ const DeliveryReportsTab: React.FC<{
 
   const formatNumber = (value: number, decimals: number = 0) => {
     return value.toFixed(decimals).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  };
+
+  const handleRefreshVehicleStats = async () => {
+    try {
+      await refreshVehicleStats(effectiveStartDate, effectiveEndDate);
+      // Reload data after refresh
+      window.location.reload();
+    } catch (error) {
+      console.error('Error refreshing vehicle stats:', error);
+      alert('เกิดข้อผิดพลาดในการรีเฟรชข้อมูล กรุณาลองอีกครั้ง');
+    }
   };
 
   const exportVehicleReport = () => {
@@ -1786,10 +1800,22 @@ const DeliveryReportsTab: React.FC<{
               <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
                 สรุปการส่งสินค้าตามรถ
               </h3>
-              <Button onClick={exportVehicleReport} variant="outline" size="sm">
-                <Download className="w-4 h-4 mr-2" />
-                Export Excel
-              </Button>
+              <div className="flex gap-2">
+                <Button 
+                  onClick={handleRefreshVehicleStats} 
+                  variant="outline" 
+                  size="sm"
+                  disabled={refreshLoading}
+                  title="รีเฟรชข้อมูลระยะทางใหม่"
+                >
+                  <RefreshCw className={`w-4 h-4 mr-2 ${refreshLoading ? 'animate-spin' : ''}`} />
+                  {refreshLoading ? 'กำลังรีเฟรช...' : 'รีเฟรชข้อมูล'}
+                </Button>
+                <Button onClick={exportVehicleReport} variant="outline" size="sm">
+                  <Download className="w-4 h-4 mr-2" />
+                  Export Excel
+                </Button>
+              </div>
             </div>
             {vehicleLoading ? (
               <div className="text-center py-8 text-slate-400">กำลังโหลด...</div>
