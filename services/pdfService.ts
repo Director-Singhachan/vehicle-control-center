@@ -200,13 +200,15 @@ export const pdfService = {
             let repairDetailsBottom = repairY + 15;
 
             // Problem Description label - use same style as addField labels (size 10, bold, gray)
+            // Reset font settings to match addField exactly (addField sets font to 12/normal for value, so we need to reset)
             doc.setFontSize(10);
-            doc.setFont('SarabunNew', 'bold'); // Use Bold for labels
+            doc.setFont('SarabunNew', 'bold'); // Use Bold for labels (same as addField)
             doc.setTextColor(100, 100, 100); // Gray for label (same as addField)
             doc.text('ปัญหา/อาการ (Problem Description)', repairDetailsX, repairDetailsBottom);
             repairDetailsBottom += 6;
 
             doc.setFontSize(12);
+            doc.setFont('SarabunNew', 'normal'); // Use Regular for value text
             doc.setTextColor(0, 0, 0);
             const splitDescription = doc.splitTextToSize(problemDescription, 85);
             doc.text(splitDescription, repairDetailsX, repairDetailsBottom);
