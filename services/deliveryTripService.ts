@@ -6,7 +6,17 @@ import type { Database } from '../types/database';
 type DeliveryTrip = Database['public']['Tables']['delivery_trips']['Row'];
 type DeliveryTripInsert = Database['public']['Tables']['delivery_trips']['Insert'];
 type DeliveryTripUpdate = Database['public']['Tables']['delivery_trips']['Update'];
-type DeliveryTripStore = Database['public']['Tables']['delivery_trip_stores']['Row'];
+// Define DeliveryTripStore interface manually (database types may not be up to date)
+interface DeliveryTripStore {
+  id: string;
+  delivery_trip_id: string;
+  store_id: string;
+  sequence_order: number;
+  delivery_status?: string;
+  delivered_at?: string;
+  created_at?: string;
+  updated_at?: string;
+}
 type DeliveryTripItem = Database['public']['Tables']['delivery_trip_items']['Row'];
 type DeliveryTripItemChange = Database['public']['Tables']['delivery_trip_item_changes']['Row'];
 type DeliveryTripCrew = Database['public']['Tables']['delivery_trip_crews']['Row'];
@@ -115,6 +125,8 @@ export interface UpdateDeliveryTripData {
     }>;
   }>;
   helpers?: string[]; // Array of service_staff IDs to add as helpers
+  // Required reason when editing trip data
+  edit_reason?: string;
   // Optional reason when modifying items for completed trips
   change_reason?: string;
 }
@@ -711,12 +723,34 @@ export const deliveryTripService = {
       throw new Error('User not authenticated');
     }
 
+    // Validate edit_reason if this is a data edit (not just status change)
+    const isDataEdit = data.vehicle_id || data.driver_id || data.planned_date ||
+      data.odometer_start !== undefined || data.notes !== undefined ||
+      data.stores || data.helpers;
+
+    if (isDataEdit && (!data.edit_reason || !data.edit_reason.trim())) {
+      throw new Error('กรุณาระบุเหตุผลในการแก้ไขข้อมูลทริป');
+    }
+
+    // Get current trip data for audit log
+    const { data: currentTrip, error: fetchError } = await supabase
+      .from('delivery_trips')
+      .select('*')
+      .eq('id', id)
+      .single();
+
+    if (fetchError) {
+      console.error('[deliveryTripService] Error fetching current trip:', fetchError);
+      throw fetchError;
+    }
+
     // Extract relation data & reason from input (not direct columns)
     const stores = data.stores;
     const changeReason = data.change_reason;
+    const editReason = data.edit_reason;
     let itemChangesOccurred = false;
 
-    // Update trip basic info (exclude stores/change_reason - they are not columns)
+    // Update trip basic info (exclude stores/change_reason/edit_reason - they are not columns)
     // Create updateData without relation fields to avoid PGRST204 error
     const updateData: DeliveryTripUpdate = {
       vehicle_id: data.vehicle_id,
@@ -740,6 +774,25 @@ export const deliveryTripService = {
     // Explicitly ensure relation-only fields are not in updateData
     delete (updateData as any).stores;
     delete (updateData as any).change_reason;
+    delete (updateData as any).edit_reason;
+
+    // Prepare old and new values for audit log
+    const oldValues: Record<string, any> = {};
+    const newValues: Record<string, any> = {};
+
+    // Track which fields are being changed
+    const fieldsToTrack = ['vehicle_id', 'driver_id', 'planned_date', 'odometer_start', 'odometer_end', 'status', 'notes', 'sequence_order'];
+    fieldsToTrack.forEach(field => {
+      if (field in updateData && updateData[field as keyof typeof updateData] !== undefined) {
+        oldValues[field] = currentTrip[field as keyof typeof currentTrip];
+        newValues[field] = updateData[field as keyof typeof updateData];
+      }
+    });
+
+    // Add edit_reason to updateData if provided
+    if (editReason) {
+      (updateData as any).edit_reason = editReason;
+    }
 
     const { error: updateError } = await supabase
       .from('delivery_trips')
@@ -749,6 +802,32 @@ export const deliveryTripService = {
     if (updateError) {
       console.error('[deliveryTripService] Error updating trip:', updateError);
       throw updateError;
+    }
+
+    // Save audit log if edit_reason was provided
+    if (editReason && Object.keys(oldValues).length > 0) {
+      try {
+        const { error: auditError } = await supabase
+          .from('trip_edit_history')
+          .insert({
+            trip_log_id: null,
+            delivery_trip_id: id,
+            edited_by: user.id,
+            edit_reason: editReason,
+            changes: {
+              old_values: oldValues,
+              new_values: newValues,
+            },
+            edited_at: new Date().toISOString(),
+          });
+
+        if (auditError) {
+          console.error('[deliveryTripService] Error saving audit log:', auditError);
+          // Don't throw - audit log failure shouldn't block the update
+        }
+      } catch (auditError) {
+        console.error('[deliveryTripService] Error saving audit log:', auditError);
+      }
     }
 
     // Handle helpers (crew) assignment if provided
@@ -1407,6 +1486,25 @@ export const deliveryTripService = {
         : null,
       user: change.created_by ? userMap.get(change.created_by) || null : null,
     })) as DeliveryTripItemChangeWithDetails[];
+  },
+
+  // Get delivery trip edit history (audit log)
+  getDeliveryTripEditHistory: async (tripId: string): Promise<import('../services/tripLogService').TripEditHistory[]> => {
+    const { data, error } = await supabase
+      .from('trip_edit_history')
+      .select(`
+        *,
+        editor:profiles!edited_by(full_name, email)
+      `)
+      .eq('delivery_trip_id', tripId)
+      .order('edited_at', { ascending: false });
+
+    if (error) {
+      console.error('[deliveryTripService] Error fetching delivery trip edit history:', error);
+      throw error;
+    }
+
+    return (data || []) as import('../services/tripLogService').TripEditHistory[];
   },
 
   // Change vehicle for delivery trip

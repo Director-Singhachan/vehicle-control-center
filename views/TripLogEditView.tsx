@@ -44,6 +44,7 @@ export const TripLogEditView: React.FC<TripLogEditViewProps> = ({
         notes: '',
         odometer_start: '',
         odometer_end: '',
+        edit_reason: '', // Required - reason for editing
     });
 
     useEffect(() => {
@@ -59,6 +60,7 @@ export const TripLogEditView: React.FC<TripLogEditViewProps> = ({
                         notes: data.notes || '',
                         odometer_start: data.odometer_start?.toString() || '',
                         odometer_end: data.odometer_end?.toString() || '',
+                        edit_reason: '', // Always start with empty edit reason
                     });
                 } else {
                     setError('ไม่พบข้อมูลการเดินทาง');
@@ -84,12 +86,18 @@ export const TripLogEditView: React.FC<TripLogEditViewProps> = ({
             return;
         }
 
+        if (!formData.edit_reason.trim()) {
+            setError('กรุณาระบุเหตุผลในการแก้ไขข้อมูลทริป');
+            return;
+        }
+
         setSaving(true);
         try {
             const updates: any = {
                 destination: formData.destination,
                 route: formData.route,
                 notes: formData.notes,
+                edit_reason: formData.edit_reason,
             };
 
             // Include odometer values if admin
@@ -286,6 +294,25 @@ export const TripLogEditView: React.FC<TripLogEditViewProps> = ({
                             />
                         </div>
                     </div>
+                </Card>
+
+                {/* Edit Reason - Required */}
+                <Card className="p-6 bg-amber-50 dark:bg-amber-900/20 border-2 border-amber-300 dark:border-amber-700">
+                    <h3 className="text-lg font-semibold text-amber-800 dark:text-amber-200 mb-4 flex items-center gap-2">
+                        <AlertCircle size={20} />
+                        เหตุผลในการแก้ไข (บังคับ)
+                    </h3>
+                    <p className="text-sm text-amber-700 dark:text-amber-300 mb-3">
+                        กรุณาระบุเหตุผลในการแก้ไขข้อมูลทริป เพื่อบันทึกประวัติการแก้ไข
+                    </p>
+                    <textarea
+                        value={formData.edit_reason}
+                        onChange={(e) => setFormData({ ...formData, edit_reason: e.target.value })}
+                        placeholder="เช่น แก้ไขปลายทาง, แก้ไขเลขไมล์ผิด, เพิ่มหมายเหตุ, เป็นต้น"
+                        rows={3}
+                        required
+                        className="w-full px-4 py-2 border-2 border-amber-300 dark:border-amber-700 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-amber-500 focus:border-transparent resize-none"
+                    />
                 </Card>
 
                 {/* Action Buttons */}

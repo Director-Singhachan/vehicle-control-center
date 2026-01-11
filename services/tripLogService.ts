@@ -53,6 +53,24 @@ export interface TripLogUpdateData {
   notes?: string;
   odometer_start?: number; // Admin only
   odometer_end?: number; // Admin only
+  edit_reason: string; // Required - reason for editing
+}
+
+export interface TripEditHistory {
+  id: string;
+  trip_log_id: string | null;
+  delivery_trip_id: string | null;
+  edited_by: string;
+  edit_reason: string;
+  changes: {
+    old_values: Record<string, any>;
+    new_values: Record<string, any>;
+  };
+  edited_at: string;
+  editor?: {
+    full_name: string;
+    email: string;
+  };
 }
 
 export const tripLogService = {
@@ -736,17 +754,22 @@ export const tripLogService = {
       throw new Error('User not authenticated');
     }
 
+    // Validate edit_reason
+    if (!updates.edit_reason || !updates.edit_reason.trim()) {
+      throw new Error('กรุณาระบุเหตุผลในการแก้ไขข้อมูลทริป');
+    }
+
     // Get user profile to check role
     const { data: profile } = await supabase
       .from('profiles')
-      .select('role')
+      .select('role, full_name')
       .eq('id', user.id)
       .single();
 
-    // Get the trip to validate status
+    // Get the current trip data to validate status and save old values
     const { data: trip, error: fetchError } = await supabase
       .from('trip_logs')
-      .select('status')
+      .select('*')
       .eq('id', tripId)
       .single();
 
@@ -763,10 +786,29 @@ export const tripLogService = {
       delete allowedUpdates.odometer_end;
     }
 
+    // Prepare old and new values for audit log
+    const oldValues: Record<string, any> = {};
+    const newValues: Record<string, any> = {};
+
+    // Track which fields are being changed
+    const fieldsToTrack = ['destination', 'route', 'notes', 'odometer_start', 'odometer_end'];
+    fieldsToTrack.forEach(field => {
+      if (field in allowedUpdates && allowedUpdates[field as keyof typeof allowedUpdates] !== undefined) {
+        oldValues[field] = trip[field as keyof typeof trip];
+        newValues[field] = allowedUpdates[field as keyof typeof allowedUpdates];
+      }
+    });
+
+    // Update trip log
     const { data: result, error } = await supabase
       .from('trip_logs')
       .update({
-        ...allowedUpdates,
+        destination: allowedUpdates.destination,
+        route: allowedUpdates.route,
+        notes: allowedUpdates.notes,
+        odometer_start: allowedUpdates.odometer_start,
+        odometer_end: allowedUpdates.odometer_end,
+        edit_reason: updates.edit_reason,
         updated_at: new Date().toISOString(),
       })
       .eq('id', tripId)
@@ -776,6 +818,30 @@ export const tripLogService = {
     if (error) {
       console.error('[tripLogService] Error updating trip log:', error);
       throw error;
+    }
+
+    // Save audit log
+    try {
+      const { error: auditError } = await supabase
+        .from('trip_edit_history')
+        .insert({
+          trip_log_id: tripId,
+          delivery_trip_id: null,
+          edited_by: user.id,
+          edit_reason: updates.edit_reason,
+          changes: {
+            old_values: oldValues,
+            new_values: newValues,
+          },
+          edited_at: new Date().toISOString(),
+        });
+
+      if (auditError) {
+        console.error('[tripLogService] Error saving audit log:', auditError);
+        // Don't throw - audit log failure shouldn't block the update
+      }
+    } catch (auditError) {
+      console.error('[tripLogService] Error saving audit log:', auditError);
     }
 
     return result;
@@ -800,6 +866,25 @@ export const tripLogService = {
     }
 
     return data as TripLogWithRelations;
+  },
+
+  // Get trip edit history (audit log)
+  getTripEditHistory: async (tripId: string): Promise<TripEditHistory[]> => {
+    const { data, error } = await supabase
+      .from('trip_edit_history')
+      .select(`
+        *,
+        editor:profiles!edited_by(full_name, email)
+      `)
+      .eq('trip_log_id', tripId)
+      .order('edited_at', { ascending: false });
+
+    if (error) {
+      console.error('[tripLogService] Error fetching trip edit history:', error);
+      throw error;
+    }
+
+    return (data || []) as TripEditHistory[];
   },
 
   // Get active trips by vehicle (trips that are checked out but not checked in)
