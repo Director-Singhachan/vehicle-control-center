@@ -33,10 +33,14 @@ export const fuelService = {
   },
 
   // Get fuel record by ID
-  getById: async (id: string): Promise<FuelRecord | null> => {
+  getById: async (id: string): Promise<any | null> => {
     const { data, error } = await supabase
       .from('fuel_records')
-      .select('*')
+      .select(`
+        *,
+        user:profiles!user_id(full_name, email, avatar_url),
+        vehicle:vehicles!vehicle_id(plate, make, model, branch, image_url)
+      `)
       .eq('id', id)
       .single();
 
@@ -160,8 +164,43 @@ export const fuelService = {
     return data;
   },
 
-  // Update fuel record
+  // Update fuel record (with admin-only odometer editing)
   update: async (id: string, updates: FuelRecordUpdate): Promise<FuelRecord> => {
+    // Get current user
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (!user) {
+      throw new Error('User not authenticated');
+    }
+
+    // Get user profile to check role
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single();
+
+    // Prevent odometer updates for non-admin users
+    if (profile?.role !== 'admin' && updates.odometer !== undefined) {
+      delete (updates as any).odometer;
+    }
+
+    // Recalculate total_cost if liters or price_per_liter changed
+    if (updates.liters !== undefined || updates.price_per_liter !== undefined) {
+      // Get current values to fill gaps
+      const { data: current } = await supabase
+        .from('fuel_records')
+        .select('liters, price_per_liter')
+        .eq('id', id)
+        .single();
+
+      if (current) {
+        const liters = updates.liters !== undefined ? Number(updates.liters) : Number(current.liters);
+        const pricePerLiter = updates.price_per_liter !== undefined ? Number(updates.price_per_liter) : Number(current.price_per_liter);
+        (updates as any).total_cost = liters * pricePerLiter;
+      }
+    }
+
     const { data, error } = await supabase
       .from('fuel_records')
       .update({
