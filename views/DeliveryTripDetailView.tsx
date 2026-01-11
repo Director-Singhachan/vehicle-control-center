@@ -57,6 +57,11 @@ export const DeliveryTripDetailView: React.FC<DeliveryTripDetailViewProps> = ({
   const [itemChangesLoading, setItemChangesLoading] = useState(false);
   const [itemChangesError, setItemChangesError] = useState<string | null>(null);
 
+  // Trip edit history (audit log for trip data changes)
+  const [editHistory, setEditHistory] = useState<any[]>([]);
+  const [editHistoryLoading, setEditHistoryLoading] = useState(false);
+  const [editHistoryError, setEditHistoryError] = useState<string | null>(null);
+
   // Staff item distribution
   const [staffDistribution, setStaffDistribution] = useState<any[]>([]);
   const [productDistribution, setProductDistribution] = useState<any[]>([]);
@@ -107,6 +112,26 @@ export const DeliveryTripDetailView: React.FC<DeliveryTripDetailViewProps> = ({
     };
 
     fetchHistory();
+  }, [trip]);
+
+  // Fetch trip edit history
+  React.useEffect(() => {
+    const fetchEditHistory = async () => {
+      if (!trip) return;
+      try {
+        setEditHistoryLoading(true);
+        setEditHistoryError(null);
+        const data = await deliveryTripService.getDeliveryTripEditHistory(trip.id);
+        setEditHistory(data);
+      } catch (err: any) {
+        console.error('[DeliveryTripDetailView] Error loading trip edit history:', err);
+        setEditHistoryError(err?.message || 'ไม่สามารถโหลดประวัติการแก้ไขข้อมูลทริปได้');
+      } finally {
+        setEditHistoryLoading(false);
+      }
+    };
+
+    fetchEditHistory();
   }, [trip]);
 
 
@@ -688,6 +713,140 @@ export const DeliveryTripDetailView: React.FC<DeliveryTripDetailViewProps> = ({
           refetch();
         }}
       />
+
+      {/* Trip Edit History (Audit Log for Trip Data Changes) */}
+      <Card>
+        <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-4 flex items-center gap-2">
+          <FileText size={20} />
+          ประวัติการแก้ไขข้อมูลทริป
+        </h3>
+
+        {editHistoryLoading && (
+          <div className="text-center py-8 text-slate-500 dark:text-slate-400">
+            กำลังโหลดประวัติการแก้ไข...
+          </div>
+        )}
+
+        {editHistoryError && (
+          <div className="text-center py-8 text-red-600 dark:text-red-400">
+            {editHistoryError}
+          </div>
+        )}
+
+        {!editHistoryLoading && !editHistoryError && editHistory.length === 0 && (
+          <div className="text-center py-8 text-slate-500 dark:text-slate-400">
+            ยังไม่มีประวัติการแก้ไขข้อมูลทริป
+          </div>
+        )}
+
+        {!editHistoryLoading && !editHistoryError && editHistory.length > 0 && (
+          <div className="space-y-4">
+            {editHistory.map((edit, index) => (
+              <div
+                key={edit.id || index}
+                className="border border-slate-200 dark:border-slate-700 rounded-lg p-4 bg-slate-50 dark:bg-slate-800/50"
+              >
+                <div className="flex items-start justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 rounded-full bg-blue-500"></div>
+                    <span className="font-medium text-slate-900 dark:text-slate-100">
+                      {edit.editor?.full_name || 'ไม่ทราบชื่อ'}
+                    </span>
+                    <span className="text-sm text-slate-500 dark:text-slate-400">
+                      ({edit.editor?.email || 'ไม่มีอีเมล'})
+                    </span>
+                  </div>
+                  <span className="text-sm text-slate-500 dark:text-slate-400">
+                    {new Date(edit.edited_at).toLocaleString('th-TH', {
+                      year: 'numeric',
+                      month: 'short',
+                      day: 'numeric',
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })}
+                  </span>
+                </div>
+
+                <div className="mb-3 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded">
+                  <div className="text-sm font-medium text-amber-800 dark:text-amber-200 mb-1">
+                    เหตุผล:
+                  </div>
+                  <div className="text-sm text-amber-900 dark:text-amber-100">
+                    {edit.edit_reason}
+                  </div>
+                </div>
+
+                {edit.changes && (() => {
+                  // Filter out UUID fields (vehicle_id, driver_id) and only show meaningful changes
+                  const fieldsToShow = Object.keys(edit.changes.new_values || {}).filter(
+                    field => !['vehicle_id', 'driver_id'].includes(field)
+                  );
+
+                  if (fieldsToShow.length === 0) {
+                    return null;
+                  }
+
+                  return (
+                    <div className="space-y-2">
+                      <div className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                        การเปลี่ยนแปลง:
+                      </div>
+                      <div className="space-y-2">
+                        {fieldsToShow.map((field) => {
+                          const oldValue = edit.changes.old_values?.[field];
+                          const newValue = edit.changes.new_values?.[field];
+
+                          // Format field name
+                          const fieldNames: Record<string, string> = {
+                            'planned_date': 'วันที่วางแผน',
+                            'odometer_start': 'เลขไมล์เริ่มต้น',
+                            'odometer_end': 'เลขไมล์สิ้นสุด',
+                            'status': 'สถานะ',
+                            'notes': 'หมายเหตุ',
+                            'sequence_order': 'ลำดับ',
+                          };
+
+                          const fieldLabel = fieldNames[field] || field;
+
+                          // Format values
+                          const formatValue = (val: any) => {
+                            if (val === null || val === undefined || val === '') return '-';
+                            if (field === 'planned_date') {
+                              return new Date(val).toLocaleDateString('th-TH', {
+                                year: 'numeric',
+                                month: 'short',
+                                day: 'numeric',
+                              });
+                            }
+                            return String(val);
+                          };
+
+                          return (
+                            <div key={field} className="p-2 bg-white dark:bg-slate-900 rounded border border-slate-200 dark:border-slate-700">
+                              <div className="font-medium text-slate-600 dark:text-slate-400 text-xs mb-1">
+                                {fieldLabel}
+                              </div>
+                              <div className="flex items-center gap-2 text-sm">
+                                <span className="text-red-600 dark:text-red-400 line-through">
+                                  {formatValue(oldValue)}
+                                </span>
+                                <span className="text-slate-400">→</span>
+                                <span className="text-green-600 dark:text-green-400 font-medium">
+                                  {formatValue(newValue)}
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
 
       {/* Item Change History (Audit Log) */}
       <Card>
