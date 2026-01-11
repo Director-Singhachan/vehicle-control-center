@@ -47,6 +47,32 @@ export interface CheckinData {
   is_backfill?: boolean; // Flag to indicate if this is a backfill entry
 }
 
+export interface TripLogUpdateData {
+  destination?: string;
+  route?: string;
+  notes?: string;
+  odometer_start?: number; // Admin only
+  odometer_end?: number; // Admin only
+  edit_reason: string; // Required - reason for editing
+}
+
+export interface TripEditHistory {
+  id: string;
+  trip_log_id: string | null;
+  delivery_trip_id: string | null;
+  edited_by: string;
+  edit_reason: string;
+  changes: {
+    old_values: Record<string, any>;
+    new_values: Record<string, any>;
+  };
+  edited_at: string;
+  editor?: {
+    full_name: string;
+    email: string;
+  };
+}
+
 export const tripLogService = {
   // Create check-out (start trip)
   createCheckout: async (data: CheckoutData): Promise<TripLog> => {
@@ -720,6 +746,147 @@ export const tripLogService = {
     return result;
   },
 
+  // Update trip log (with admin-only odometer editing)
+  updateTripLog: async (tripId: string, updates: TripLogUpdateData): Promise<TripLog> => {
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (!user) {
+      throw new Error('User not authenticated');
+    }
+
+    // Validate edit_reason
+    if (!updates.edit_reason || !updates.edit_reason.trim()) {
+      throw new Error('กรุณาระบุเหตุผลในการแก้ไขข้อมูลทริป');
+    }
+
+    // Get user profile to check role
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role, full_name')
+      .eq('id', user.id)
+      .single();
+
+    // Get the current trip data to validate status and save old values
+    const { data: trip, error: fetchError } = await supabase
+      .from('trip_logs')
+      .select('*')
+      .eq('id', tripId)
+      .single();
+
+    if (fetchError) throw fetchError;
+    if (!trip) throw new Error('Trip not found');
+    if (trip.status !== 'checked_in') {
+      throw new Error('เฉพาะ Trip ที่บันทึกการกลับแล้วเท่านั้นที่สามารถแก้ไขได้');
+    }
+
+    // Prepare updates - remove odometer fields if not admin
+    const allowedUpdates = { ...updates };
+    if (profile?.role !== 'admin') {
+      delete allowedUpdates.odometer_start;
+      delete allowedUpdates.odometer_end;
+    }
+
+    // Prepare old and new values for audit log
+    const oldValues: Record<string, any> = {};
+    const newValues: Record<string, any> = {};
+
+    // Track which fields are being changed
+    const fieldsToTrack = ['destination', 'route', 'notes', 'odometer_start', 'odometer_end'];
+    fieldsToTrack.forEach(field => {
+      if (field in allowedUpdates && allowedUpdates[field as keyof typeof allowedUpdates] !== undefined) {
+        oldValues[field] = trip[field as keyof typeof trip];
+        newValues[field] = allowedUpdates[field as keyof typeof allowedUpdates];
+      }
+    });
+
+    // Update trip log
+    const { data: result, error } = await supabase
+      .from('trip_logs')
+      .update({
+        destination: allowedUpdates.destination,
+        route: allowedUpdates.route,
+        notes: allowedUpdates.notes,
+        odometer_start: allowedUpdates.odometer_start,
+        odometer_end: allowedUpdates.odometer_end,
+        edit_reason: updates.edit_reason,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', tripId)
+      .select()
+      .single();
+
+    if (error) {
+      console.error('[tripLogService] Error updating trip log:', error);
+      throw error;
+    }
+
+    // Save audit log
+    try {
+      const { error: auditError } = await supabase
+        .from('trip_edit_history')
+        .insert({
+          trip_log_id: tripId,
+          delivery_trip_id: null,
+          edited_by: user.id,
+          edit_reason: updates.edit_reason,
+          changes: {
+            old_values: oldValues,
+            new_values: newValues,
+          },
+          edited_at: new Date().toISOString(),
+        });
+
+      if (auditError) {
+        console.error('[tripLogService] Error saving audit log:', auditError);
+        // Don't throw - audit log failure shouldn't block the update
+      }
+    } catch (auditError) {
+      console.error('[tripLogService] Error saving audit log:', auditError);
+    }
+
+    return result;
+  },
+
+  // Get trip log by ID
+  getById: async (tripId: string): Promise<TripLogWithRelations | null> => {
+    const { data, error } = await supabase
+      .from('trip_logs')
+      .select(`
+        *,
+        vehicle:vehicles(plate, make, model, image_url),
+        driver:profiles(full_name, email, avatar_url),
+        delivery_trip:delivery_trips(id, trip_number, status)
+      `)
+      .eq('id', tripId)
+      .single();
+
+    if (error) {
+      console.error('[tripLogService] Error fetching trip by ID:', error);
+      throw error;
+    }
+
+    return data as TripLogWithRelations;
+  },
+
+  // Get trip edit history (audit log)
+  getTripEditHistory: async (tripId: string): Promise<TripEditHistory[]> => {
+    const { data, error } = await supabase
+      .from('trip_edit_history')
+      .select(`
+        *,
+        editor:profiles!edited_by(full_name, email)
+      `)
+      .eq('trip_log_id', tripId)
+      .order('edited_at', { ascending: false });
+
+    if (error) {
+      console.error('[tripLogService] Error fetching trip edit history:', error);
+      throw error;
+    }
+
+    return (data || []) as TripEditHistory[];
+  },
+
   // Get active trips by vehicle (trips that are checked out but not checked in)
   getActiveTripsByVehicle: async (vehicleId?: string): Promise<TripLogWithRelations[]> => {
     let query = supabase
@@ -858,26 +1025,6 @@ export const tripLogService = {
     };
   },
 
-  // Get trip by ID
-  getById: async (tripId: string): Promise<TripLogWithRelations | null> => {
-    const { data, error } = await supabase
-      .from('trip_logs')
-      .select(`
-        *,
-        vehicle:vehicles(plate, make, model, image_url),
-        driver:profiles(full_name, email, avatar_url),
-        delivery_trip:delivery_trips(id, trip_number, status)
-      `)
-      .eq('id', tripId)
-      .single();
-
-    if (error) {
-      console.error('[tripLogService] Error fetching trip:', error);
-      throw error;
-    }
-
-    return data as TripLogWithRelations | null;
-  },
 
   // Get last odometer reading for a vehicle
   getLastOdometer: async (vehicleId: string): Promise<number | null> => {

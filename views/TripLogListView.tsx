@@ -16,10 +16,11 @@ import {
   Plus,
   ChevronLeft,
   ChevronRight,
-  X,
-  ZoomIn,
   Package,
-  XCircle
+  XCircle,
+  Edit2,
+  ZoomIn,
+  X
 } from 'lucide-react';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
@@ -29,6 +30,7 @@ import { Avatar } from '../components/ui/Avatar';
 import { useTripLogs, useVehicles } from '../hooks';
 import { tripLogService, type TripLogWithRelations } from '../services/tripLogService';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
+import { TripLogEditView } from './TripLogEditView';
 
 interface TripLogListViewProps {
   onCreateCheckout?: () => void;
@@ -60,6 +62,7 @@ export const TripLogListView: React.FC<TripLogListViewProps> = ({
   const [cancelTripId, setCancelTripId] = useState<string | null>(null);
   const [cancelReason, setCancelReason] = useState('');
   const [isCancelling, setIsCancelling] = useState(false);
+  const [editTripId, setEditTripId] = useState<string | null>(null);
 
   // Debounce search input (wait 500ms after user stops typing)
   useEffect(() => {
@@ -209,6 +212,19 @@ export const TripLogListView: React.FC<TripLogListViewProps> = ({
     if (!filters.branch || filters.vehicle_id) return totalCount;
     return displayedTrips.length;
   }, [totalCount, displayedTrips, filters.branch, filters.vehicle_id]);
+
+  if (editTripId) {
+    return (
+      <TripLogEditView
+        tripId={editTripId}
+        onSave={() => {
+          setEditTripId(null);
+          refetch();
+        }}
+        onCancel={() => setEditTripId(null)}
+      />
+    );
+  }
 
   return (
     <PageLayout
@@ -608,30 +624,44 @@ export const TripLogListView: React.FC<TripLogListViewProps> = ({
                     </div>
 
                     {/* Actions */}
-                    {trip.status === 'checked_out' && (
-                      <div className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-700 flex items-center gap-2">
-                        {onCreateCheckin && (
+                    <div className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-700 flex items-center gap-2">
+                      {trip.status === 'checked_out' && (
+                        <>
+                          {onCreateCheckin && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => onCreateCheckin(trip.id)}
+                              className="flex items-center gap-1"
+                            >
+                              <CheckCircle size={16} />
+                              บันทึกการกลับ
+                            </Button>
+                          )}
                           <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => onCreateCheckin(trip.id)}
-                            className="flex items-center gap-1"
+                            onClick={() => setCancelTripId(trip.id)}
+                            className="flex items-center gap-1 text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
                           >
-                            <CheckCircle size={16} />
-                            บันทึกการกลับ
+                            <XCircle size={16} />
+                            ยกเลิกทริป
                           </Button>
-                        )}
+                        </>
+                      )}
+
+                      {trip.status === 'checked_in' && (
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={() => setCancelTripId(trip.id)}
-                          className="flex items-center gap-1 text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
+                          onClick={() => setEditTripId(trip.id)}
+                          className="flex items-center gap-1"
                         >
-                          <XCircle size={16} />
-                          ยกเลิกทริป
+                          <Edit2 size={16} />
+                          แก้ไขข้อมูล
                         </Button>
-                      </div>
-                    )}
+                      )}
+                    </div>
                   </div>
                 </div>
               </Card>

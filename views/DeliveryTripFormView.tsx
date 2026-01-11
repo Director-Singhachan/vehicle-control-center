@@ -15,6 +15,7 @@ import {
   User,
   ChevronDown,
   ChevronUp,
+  AlertCircle,
 } from 'lucide-react';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
@@ -258,6 +259,9 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
   const [showHelperDropdown, setShowHelperDropdown] = useState(false);
   const helperInputRef = useRef<HTMLDivElement>(null);
   const [helperDropdownPosition, setHelperDropdownPosition] = useState<{ top: number; left: number; width: number } | null>(null);
+
+  // Edit reason (required for edit mode)
+  const [editReason, setEditReason] = useState('');
 
   // Load trip data when editing
   useEffect(() => {
@@ -951,7 +955,8 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
   // Prevent form submission on Enter key press (except when clicking submit button)
   const handleFormKeyDown = (e: React.KeyboardEvent<HTMLFormElement>) => {
     // If Enter is pressed and the target is not a submit button, prevent form submission
-    if (e.key === 'Enter' && (e.target as HTMLElement).tagName !== 'BUTTON' && (e.target as HTMLElement).type !== 'submit') {
+    const target = e.target as HTMLElement;
+    if (e.key === 'Enter' && target.tagName !== 'BUTTON' && (target as HTMLInputElement).type !== 'submit') {
       e.preventDefault();
       e.stopPropagation();
     }
@@ -993,6 +998,12 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
       }
     }
 
+    // Validate edit reason for edit mode
+    if (isEdit && (!editReason || !editReason.trim())) {
+      setError('กรุณาระบุเหตุผลในการแก้ไขข้อมูลทริป');
+      return;
+    }
+
     try {
       setSaving(true);
 
@@ -1004,6 +1015,7 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
           planned_date: formData.planned_date,
           odometer_start: formData.odometer_start ? parseInt(formData.odometer_start) : undefined,
           notes: formData.notes || undefined,
+          edit_reason: editReason, // Required for edit mode
           helpers: selectedHelpers, // Include helpers for update
           stores: selectedStores.map(store => ({
             store_id: store.store_id,
@@ -1799,6 +1811,27 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
                 </tbody>
               </table>
             </div>
+          </Card>
+        )}
+
+        {/* Edit Reason - Required for Edit Mode */}
+        {isEdit && (
+          <Card className="p-6 bg-amber-50 dark:bg-amber-900/20 border-2 border-amber-300 dark:border-amber-700">
+            <h3 className="text-lg font-semibold text-amber-800 dark:text-amber-200 mb-4 flex items-center gap-2">
+              <AlertCircle size={20} />
+              เหตุผลในการแก้ไข (บังคับ)
+            </h3>
+            <p className="text-sm text-amber-700 dark:text-amber-300 mb-3">
+              กรุณาระบุเหตุผลในการแก้ไขข้อมูลทริป เพื่อบันทึกประวัติการแก้ไข
+            </p>
+            <textarea
+              value={editReason}
+              onChange={(e) => setEditReason(e.target.value)}
+              placeholder="เช่น แก้ไขรถ, เปลี่ยนคนขับ, แก้ไขร้านค้า, แก้ไขสินค้า, เป็นต้น"
+              rows={3}
+              required
+              className="w-full px-4 py-2 border-2 border-amber-300 dark:border-amber-700 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-amber-500 focus:border-transparent resize-none"
+            />
           </Card>
         )}
 

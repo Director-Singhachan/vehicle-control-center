@@ -16,6 +16,7 @@ import {
   FileText,
   User,
   X,
+  Edit2
 } from 'lucide-react';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
@@ -26,6 +27,7 @@ import { ImageModal } from '../components/ui/ImageModal';
 import { useFuelLogs, useFuelStats, useVehicles, useVehicleEfficiencyComparison } from '../hooks';
 import { useVehicleFuelComparison, useFuelTrend } from '../hooks/useReports';
 import type { Database } from '../types/database';
+import { FuelLogEditView } from './FuelLogEditView';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -74,6 +76,7 @@ export const FuelLogListView: React.FC<FuelLogListViewProps> = ({
   const { vehicles } = useVehicles();
   const [expandedImage, setExpandedImage] = useState<{ src: string; alt: string } | null>(null);
   const [selectedVehicleImage, setSelectedVehicleImage] = useState<{ url: string; alt: string } | null>(null);
+  const [editFuelRecordId, setEditFuelRecordId] = useState<string | null>(null);
 
   const [filters, setFilters] = useState<{
     vehicle_id?: string;
@@ -204,6 +207,19 @@ export const FuelLogListView: React.FC<FuelLogListViewProps> = ({
 
   const displayedFuelLogs = fuelLogs;
   const displayedTotalCount = totalCount;
+
+  if (editFuelRecordId) {
+    return (
+      <FuelLogEditView
+        fuelRecordId={editFuelRecordId}
+        onSave={() => {
+          setEditFuelRecordId(null);
+          refetch();
+        }}
+        onCancel={() => setEditFuelRecordId(null)}
+      />
+    );
+  }
 
   return (
     <PageLayout
@@ -706,6 +722,18 @@ export const FuelLogListView: React.FC<FuelLogListViewProps> = ({
                               {FUEL_TYPE_LABELS[record.fuel_type] || record.fuel_type} • {formatDateOnly(record.filled_at)}
                             </p>
                           </div>
+                        </div>
+
+                        <div className="absolute top-6 right-6 flex items-center gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setEditFuelRecordId(record.id)}
+                            className="flex items-center gap-1"
+                          >
+                            <Edit2 size={16} />
+                            แก้ไขข้อมูล
+                          </Button>
                         </div>
 
                         <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mt-4 text-sm">

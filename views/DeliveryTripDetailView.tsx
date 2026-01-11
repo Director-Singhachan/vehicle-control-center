@@ -15,7 +15,6 @@ import {
   AlertCircle,
   Download,
   FileText,
-  Save,
   Users,
   BarChart3,
 } from 'lucide-react';
@@ -46,15 +45,9 @@ export const DeliveryTripDetailView: React.FC<DeliveryTripDetailViewProps> = ({
 }) => {
   const { trip, loading, error, refetch } = useDeliveryTrip(tripId);
   const [printing, setPrinting] = useState(false);
-  const [editingItems, setEditingItems] = useState(false);
-  const [changeReason, setChangeReason] = useState('');
-  const [savingItems, setSavingItems] = useState(false);
   const [vehicleImageError, setVehicleImageError] = useState(false);
   const [driverImageError, setDriverImageError] = useState(false);
   const [selectedImage, setSelectedImage] = useState<{ url: string; alt: string } | null>(null);
-
-  // Editable copy of stores/items
-  const [editableStores, setEditableStores] = useState<DeliveryTripStoreWithDetails[] | null>(null);
 
   // Get aggregated products
   const [aggregatedProducts, setAggregatedProducts] = useState<any[]>([]);
@@ -64,6 +57,11 @@ export const DeliveryTripDetailView: React.FC<DeliveryTripDetailViewProps> = ({
   const [itemChangesLoading, setItemChangesLoading] = useState(false);
   const [itemChangesError, setItemChangesError] = useState<string | null>(null);
 
+  // Trip edit history (audit log for trip data changes)
+  const [editHistory, setEditHistory] = useState<any[]>([]);
+  const [editHistoryLoading, setEditHistoryLoading] = useState(false);
+  const [editHistoryError, setEditHistoryError] = useState<string | null>(null);
+
   // Staff item distribution
   const [staffDistribution, setStaffDistribution] = useState<any[]>([]);
   const [productDistribution, setProductDistribution] = useState<any[]>([]);
@@ -72,14 +70,10 @@ export const DeliveryTripDetailView: React.FC<DeliveryTripDetailViewProps> = ({
   React.useEffect(() => {
     if (trip) {
       deliveryTripService.getAggregatedProducts(trip.id).then(setAggregatedProducts);
-      if (!editingItems) {
-        // Reset editable stores when trip changes and not currently editing
-        setEditableStores(trip.stores || null);
-      }
       // Reset image error states when trip changes
       setVehicleImageError(false);
       setDriverImageError(false);
-      
+
       // Load staff item distribution
       setDistributionLoading(true);
       Promise.all([
@@ -99,7 +93,7 @@ export const DeliveryTripDetailView: React.FC<DeliveryTripDetailViewProps> = ({
           setDistributionLoading(false);
         });
     }
-  }, [trip, editingItems]);
+  }, [trip]);
 
   React.useEffect(() => {
     const fetchHistory = async () => {
@@ -120,89 +114,27 @@ export const DeliveryTripDetailView: React.FC<DeliveryTripDetailViewProps> = ({
     fetchHistory();
   }, [trip]);
 
-  const isCompleted = trip?.status === 'completed';
+  // Fetch trip edit history
+  React.useEffect(() => {
+    const fetchEditHistory = async () => {
+      if (!trip) return;
+      try {
+        setEditHistoryLoading(true);
+        setEditHistoryError(null);
+        const data = await deliveryTripService.getDeliveryTripEditHistory(trip.id);
+        setEditHistory(data);
+      } catch (err: any) {
+        console.error('[DeliveryTripDetailView] Error loading trip edit history:', err);
+        setEditHistoryError(err?.message || 'ไม่สามารถโหลดประวัติการแก้ไขข้อมูลทริปได้');
+      } finally {
+        setEditHistoryLoading(false);
+      }
+    };
 
-  const handleStartEditItems = () => {
-    if (!trip || !trip.stores) return;
-    setEditableStores(trip.stores);
-    setEditingItems(true);
-    setChangeReason('');
-  };
+    fetchEditHistory();
+  }, [trip]);
 
-  const handleCancelEditItems = () => {
-    if (trip?.stores) {
-      setEditableStores(trip.stores);
-    } else {
-      setEditableStores(null);
-    }
-    setEditingItems(false);
-    setChangeReason('');
-  };
 
-  const handleItemQuantityChange = (
-    storeId: string,
-    itemId: string,
-    quantity: number,
-  ) => {
-    setEditableStores(prev => {
-      if (!prev) return prev;
-      return prev.map(store => {
-        if (store.id !== storeId || !store.items) return store;
-        const newItems = store.items.map(item =>
-          item.id === itemId ? { ...item, quantity } : item
-        );
-        return { ...store, items: newItems as DeliveryTripItemWithProduct[] };
-      });
-    });
-  };
-
-  const handleRemoveItem = (storeId: string, itemId: string) => {
-    if (!window.confirm('ยืนยันลบรายการสินค้านี้ออกจากทริป?')) return;
-    setEditableStores(prev => {
-      if (!prev) return prev;
-      return prev.map(store => {
-        if (store.id !== storeId || !store.items) return store;
-        const newItems = store.items.filter(item => item.id !== itemId);
-        return { ...store, items: newItems as DeliveryTripItemWithProduct[] };
-      });
-    });
-  };
-
-  const handleSaveItems = async () => {
-    if (!trip || !editableStores) return;
-
-    if (isCompleted && !changeReason.trim()) {
-      alert('กรุณาระบุเหตุผลการแก้ไขรายการสินค้า (ทริปนี้เสร็จสิ้นแล้ว)');
-      return;
-    }
-
-    try {
-      setSavingItems(true);
-
-      await deliveryTripService.update(trip.id, {
-        change_reason: changeReason.trim() || undefined,
-        stores: editableStores.map(store => ({
-          store_id: store.store_id,
-          sequence_order: store.sequence_order,
-          items: (store.items || []).map(item => ({
-            product_id: item.product_id,
-            quantity: Number(item.quantity),
-            notes: item.notes,
-          })),
-        })),
-      });
-
-      await refetch();
-      setEditingItems(false);
-      setChangeReason('');
-      alert('บันทึกการแก้ไขรายการสินค้าเรียบร้อยแล้ว');
-    } catch (err: any) {
-      console.error('[DeliveryTripDetailView] Error saving items:', err);
-      alert('ไม่สามารถบันทึกการแก้ไขสินค้าได้: ' + (err.message || 'Unknown error'));
-    } finally {
-      setSavingItems(false);
-    }
-  };
 
   const getStatusBadge = (status: string) => {
     const badges = {
@@ -302,7 +234,7 @@ export const DeliveryTripDetailView: React.FC<DeliveryTripDetailViewProps> = ({
             <Download size={18} className="mr-2" />
             พิมพ์ A5
           </Button>
-          {onEdit && !editingItems && (
+          {onEdit && (
             <Button variant="outline" onClick={() => onEdit(trip.id)}>
               <Edit size={18} className="mr-2" />
               แก้ไขข้อมูลทริป
@@ -329,8 +261,8 @@ export const DeliveryTripDetailView: React.FC<DeliveryTripDetailViewProps> = ({
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="flex items-center gap-3">
             {trip.vehicle?.image_url && !vehicleImageError ? (
-              <img 
-                src={trip.vehicle.image_url} 
+              <img
+                src={trip.vehicle.image_url}
                 alt={trip.vehicle.plate || 'Vehicle'}
                 className="w-16 h-16 rounded-lg object-cover border border-slate-200 dark:border-slate-700"
                 onError={() => setVehicleImageError(true)}
@@ -354,8 +286,8 @@ export const DeliveryTripDetailView: React.FC<DeliveryTripDetailViewProps> = ({
           {trip.driver && (
             <div className="flex items-center gap-3">
               {trip.driver.avatar_url && !driverImageError ? (
-                <img 
-                  src={trip.driver.avatar_url} 
+                <img
+                  src={trip.driver.avatar_url}
                   alt={trip.driver.full_name || 'Driver'}
                   className="w-16 h-16 rounded-full object-cover border-2 border-slate-200 dark:border-slate-700 cursor-pointer hover:ring-2 hover:ring-enterprise-500 transition-all"
                   onClick={() => {
@@ -430,7 +362,7 @@ export const DeliveryTripDetailView: React.FC<DeliveryTripDetailViewProps> = ({
             <Users size={20} />
             สถิติการยกสินค้าต่อพนักงาน
           </h3>
-          
+
           <div className="mb-4 p-3 bg-slate-50 dark:bg-slate-800/50 rounded-lg">
             <div className="text-sm text-slate-600 dark:text-slate-400">
               พนักงานทั้งหมด: <span className="font-semibold text-slate-900 dark:text-slate-100">{staffDistribution.length} คน</span>
@@ -439,14 +371,14 @@ export const DeliveryTripDetailView: React.FC<DeliveryTripDetailViewProps> = ({
               จำนวนสินค้าถูกหารด้วยจำนวนพนักงานทั้งหมด เพื่อให้ทุกคนยกเท่ากัน
             </div>
           </div>
-          
+
           <div className="space-y-3">
             {staffDistribution.map((staff, index) => {
               // คำนวณค่าเฉลี่ยจากข้อมูลที่มี
               const avgItems = staffDistribution.reduce((sum, s) => sum + s.total_items_per_staff, 0) / staffDistribution.length;
               const diffFromAvg = staff.total_items_per_staff - avgItems;
               const diffPercent = avgItems > 0 ? (diffFromAvg / avgItems) * 100 : 0;
-              
+
               // กำหนดสีตามความแตกต่างจากค่าเฉลี่ย
               const getStatusColor = () => {
                 if (Math.abs(diffPercent) < 1) return 'text-slate-600 dark:text-slate-400'; // ใกล้ค่าเฉลี่ย
@@ -455,7 +387,7 @@ export const DeliveryTripDetailView: React.FC<DeliveryTripDetailViewProps> = ({
                 if (diffPercent > 0) return 'text-orange-600 dark:text-orange-400'; // มากกว่าเฉลี่ยนิดหน่อย
                 return 'text-blue-600 dark:text-blue-400'; // น้อยกว่าเฉลี่ยนิดหน่อย
               };
-              
+
               const getStatusBadge = () => {
                 if (Math.abs(diffPercent) < 1) return { text: 'สมดุล', color: 'bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-300' };
                 if (diffPercent > 10) return { text: 'ยกมาก', color: 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300' };
@@ -463,9 +395,9 @@ export const DeliveryTripDetailView: React.FC<DeliveryTripDetailViewProps> = ({
                 if (diffPercent > 0) return { text: 'ยกมากกว่า', color: 'bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-300' };
                 return { text: 'ยกน้อยกว่า', color: 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300' };
               };
-              
+
               const status = getStatusBadge();
-              
+
               return (
                 <div
                   key={staff.crew_id}
@@ -473,11 +405,10 @@ export const DeliveryTripDetailView: React.FC<DeliveryTripDetailViewProps> = ({
                 >
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3 flex-1">
-                      <div className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-lg ${
-                        staff.staff_role === 'driver'
-                          ? 'bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-400'
-                          : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
-                      }`}>
+                      <div className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-lg ${staff.staff_role === 'driver'
+                        ? 'bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-400'
+                        : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
+                        }`}>
                         {index + 1}
                       </div>
                       <div className="flex-1">
@@ -499,7 +430,7 @@ export const DeliveryTripDetailView: React.FC<DeliveryTripDetailViewProps> = ({
                         </div>
                       </div>
                     </div>
-                    
+
                     <div className="text-right ml-4">
                       <div className={`text-3xl font-bold ${getStatusColor()}`}>
                         {staff.total_items_per_staff.toLocaleString('th-TH', {
@@ -517,7 +448,7 @@ export const DeliveryTripDetailView: React.FC<DeliveryTripDetailViewProps> = ({
                       )}
                     </div>
                   </div>
-                  
+
                   {/* Progress bar showing comparison */}
                   <div className="mt-3 pt-3 border-t border-slate-200 dark:border-slate-700">
                     <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 mb-1">
@@ -526,12 +457,11 @@ export const DeliveryTripDetailView: React.FC<DeliveryTripDetailViewProps> = ({
                     </div>
                     <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2">
                       <div
-                        className={`h-2 rounded-full ${
-                          diffPercent > 10 ? 'bg-red-500' :
+                        className={`h-2 rounded-full ${diffPercent > 10 ? 'bg-red-500' :
                           diffPercent < -10 ? 'bg-green-500' :
-                          diffPercent > 0 ? 'bg-orange-500' :
-                          'bg-blue-500'
-                        }`}
+                            diffPercent > 0 ? 'bg-orange-500' :
+                              'bg-blue-500'
+                          }`}
                         style={{
                           width: `${Math.min(100, Math.max(0, (staff.total_items_per_staff / (avgItems * 1.5)) * 100))}%`
                         }}
@@ -552,7 +482,7 @@ export const DeliveryTripDetailView: React.FC<DeliveryTripDetailViewProps> = ({
             <BarChart3 size={20} />
             สรุปการกระจายสินค้าตามชนิด
           </h3>
-          
+
           <div className="space-y-3">
             {productDistribution.map((product) => (
               <div
@@ -580,7 +510,7 @@ export const DeliveryTripDetailView: React.FC<DeliveryTripDetailViewProps> = ({
                     </div>
                   </div>
                 </div>
-                
+
                 <div className="grid grid-cols-3 gap-4 mt-3 pt-3 border-t border-slate-200 dark:border-slate-700 text-sm">
                   <div>
                     <div className="text-xs text-slate-500 dark:text-slate-400">รวมทั้งหมด</div>
@@ -611,42 +541,15 @@ export const DeliveryTripDetailView: React.FC<DeliveryTripDetailViewProps> = ({
       )}
 
       {/* Stores */}
-      {editableStores && editableStores.length > 0 && (
+      {trip.stores && trip.stores.length > 0 && (
         <Card className="mb-6">
           <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-4 flex items-center gap-2">
             <MapPin size={20} />
-            ร้านค้า ({editableStores.length} ร้าน)
+            ร้านค้า ({trip.stores.length} ร้าน)
           </h3>
 
-          <div className="flex justify-between items-center mb-4">
-            <div className="text-sm text-slate-600 dark:text-slate-400">
-              {editingItems
-                ? 'โหมดแก้ไขสินค้าในทริป สามารถปรับจำนวน หรือลบรายการได้'
-                : 'ดูรายการสินค้าในแต่ละร้าน (ถ้าต้องการแก้ไข กดปุ่มด้านขวา)'}
-            </div>
-            {!editingItems && (
-              <Button variant="outline" size="sm" onClick={handleStartEditItems}>
-                <Edit size={16} className="mr-1" />
-                แก้ไขสินค้าในทริป
-              </Button>
-            )}
-          </div>
-
-          {editingItems && isCompleted && (
-            <div className="mb-4 p-3 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 text-sm text-amber-800 dark:text-amber-100">
-              ทริปนี้มีสถานะ <strong>เสร็จสิ้น</strong> การแก้ไขสินค้าจะถูกเก็บประวัติไว้ กรุณาระบุเหตุผลอย่างชัดเจน
-              <textarea
-                className="mt-2 w-full rounded-md border border-amber-300 dark:border-amber-700 bg-white/80 dark:bg-slate-900/40 px-3 py-2 text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-amber-400"
-                rows={2}
-                placeholder="เช่น ขึ้นสินค้าเกิน, ลูกค้าสั่งผิด, ตัดจำนวนตามของที่ส่งจริง เป็นต้น"
-                value={changeReason}
-                onChange={(e) => setChangeReason(e.target.value)}
-              />
-            </div>
-          )}
-
           <div className="space-y-4">
-            {editableStores
+            {trip.stores
               .sort((a, b) => a.sequence_order - b.sequence_order)
               .map((storeWithDetails) => {
                 const store = storeWithDetails.store;
@@ -729,40 +632,9 @@ export const DeliveryTripDetailView: React.FC<DeliveryTripDetailViewProps> = ({
                                 <div className="flex-1">
                                   • {product.product_code} - {product.product_name}
                                 </div>
-                                {editingItems ? (
-                                  <div className="flex items-center gap-2">
-                                    <input
-                                      type="number"
-                                      min={0}
-                                      step={0.01}
-                                      className="w-24 px-2 py-1 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-right text-sm text-slate-900 dark:text-slate-100"
-                                      value={quantityValue}
-                                      onChange={(e) =>
-                                        handleItemQuantityChange(
-                                          storeWithDetails.id,
-                                          item.id,
-                                          Number(e.target.value),
-                                        )
-                                      }
-                                    />
-                                    <span className="text-xs text-slate-500 dark:text-slate-400">
-                                      {product.unit}
-                                    </span>
-                                    <button
-                                      type="button"
-                                      className="text-xs text-red-600 hover:text-red-700 dark:text-red-400"
-                                      onClick={() =>
-                                        handleRemoveItem(storeWithDetails.id, item.id)
-                                      }
-                                    >
-                                      ลบ
-                                    </button>
-                                  </div>
-                                ) : (
-                                  <div className="text-right min-w-[120px]">
-                                    {quantityValue.toLocaleString()} {product.unit}
-                                  </div>
-                                )}
+                                <div className="text-right min-w-[120px]">
+                                  {quantityValue.toLocaleString()} {product.unit}
+                                </div>
                               </div>
                             );
                           })}
@@ -773,18 +645,6 @@ export const DeliveryTripDetailView: React.FC<DeliveryTripDetailViewProps> = ({
                 );
               })}
           </div>
-
-          {editingItems && (
-            <div className="mt-4 flex justify-end gap-2">
-              <Button variant="outline" onClick={handleCancelEditItems} disabled={savingItems}>
-                ยกเลิก
-              </Button>
-              <Button onClick={handleSaveItems} isLoading={savingItems}>
-                <Save size={16} className="mr-1" />
-                บันทึกการแก้ไขสินค้า
-              </Button>
-            </div>
-          )}
         </Card>
       )}
 
@@ -853,6 +713,140 @@ export const DeliveryTripDetailView: React.FC<DeliveryTripDetailViewProps> = ({
           refetch();
         }}
       />
+
+      {/* Trip Edit History (Audit Log for Trip Data Changes) */}
+      <Card>
+        <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-4 flex items-center gap-2">
+          <FileText size={20} />
+          ประวัติการแก้ไขข้อมูลทริป
+        </h3>
+
+        {editHistoryLoading && (
+          <div className="text-center py-8 text-slate-500 dark:text-slate-400">
+            กำลังโหลดประวัติการแก้ไข...
+          </div>
+        )}
+
+        {editHistoryError && (
+          <div className="text-center py-8 text-red-600 dark:text-red-400">
+            {editHistoryError}
+          </div>
+        )}
+
+        {!editHistoryLoading && !editHistoryError && editHistory.length === 0 && (
+          <div className="text-center py-8 text-slate-500 dark:text-slate-400">
+            ยังไม่มีประวัติการแก้ไขข้อมูลทริป
+          </div>
+        )}
+
+        {!editHistoryLoading && !editHistoryError && editHistory.length > 0 && (
+          <div className="space-y-4">
+            {editHistory.map((edit, index) => (
+              <div
+                key={edit.id || index}
+                className="border border-slate-200 dark:border-slate-700 rounded-lg p-4 bg-slate-50 dark:bg-slate-800/50"
+              >
+                <div className="flex items-start justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 rounded-full bg-blue-500"></div>
+                    <span className="font-medium text-slate-900 dark:text-slate-100">
+                      {edit.editor?.full_name || 'ไม่ทราบชื่อ'}
+                    </span>
+                    <span className="text-sm text-slate-500 dark:text-slate-400">
+                      ({edit.editor?.email || 'ไม่มีอีเมล'})
+                    </span>
+                  </div>
+                  <span className="text-sm text-slate-500 dark:text-slate-400">
+                    {new Date(edit.edited_at).toLocaleString('th-TH', {
+                      year: 'numeric',
+                      month: 'short',
+                      day: 'numeric',
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })}
+                  </span>
+                </div>
+
+                <div className="mb-3 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded">
+                  <div className="text-sm font-medium text-amber-800 dark:text-amber-200 mb-1">
+                    เหตุผล:
+                  </div>
+                  <div className="text-sm text-amber-900 dark:text-amber-100">
+                    {edit.edit_reason}
+                  </div>
+                </div>
+
+                {edit.changes && (() => {
+                  // Filter out UUID fields (vehicle_id, driver_id) and only show meaningful changes
+                  const fieldsToShow = Object.keys(edit.changes.new_values || {}).filter(
+                    field => !['vehicle_id', 'driver_id'].includes(field)
+                  );
+
+                  if (fieldsToShow.length === 0) {
+                    return null;
+                  }
+
+                  return (
+                    <div className="space-y-2">
+                      <div className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                        การเปลี่ยนแปลง:
+                      </div>
+                      <div className="space-y-2">
+                        {fieldsToShow.map((field) => {
+                          const oldValue = edit.changes.old_values?.[field];
+                          const newValue = edit.changes.new_values?.[field];
+
+                          // Format field name
+                          const fieldNames: Record<string, string> = {
+                            'planned_date': 'วันที่วางแผน',
+                            'odometer_start': 'เลขไมล์เริ่มต้น',
+                            'odometer_end': 'เลขไมล์สิ้นสุด',
+                            'status': 'สถานะ',
+                            'notes': 'หมายเหตุ',
+                            'sequence_order': 'ลำดับ',
+                          };
+
+                          const fieldLabel = fieldNames[field] || field;
+
+                          // Format values
+                          const formatValue = (val: any) => {
+                            if (val === null || val === undefined || val === '') return '-';
+                            if (field === 'planned_date') {
+                              return new Date(val).toLocaleDateString('th-TH', {
+                                year: 'numeric',
+                                month: 'short',
+                                day: 'numeric',
+                              });
+                            }
+                            return String(val);
+                          };
+
+                          return (
+                            <div key={field} className="p-2 bg-white dark:bg-slate-900 rounded border border-slate-200 dark:border-slate-700">
+                              <div className="font-medium text-slate-600 dark:text-slate-400 text-xs mb-1">
+                                {fieldLabel}
+                              </div>
+                              <div className="flex items-center gap-2 text-sm">
+                                <span className="text-red-600 dark:text-red-400 line-through">
+                                  {formatValue(oldValue)}
+                                </span>
+                                <span className="text-slate-400">→</span>
+                                <span className="text-green-600 dark:text-green-400 font-medium">
+                                  {formatValue(newValue)}
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
 
       {/* Item Change History (Audit Log) */}
       <Card>
