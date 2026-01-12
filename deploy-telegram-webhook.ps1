@@ -20,7 +20,15 @@ Write-Host ""
 # Step 2: Link Project
 Write-Host "Step 2: Linking project..." -ForegroundColor Yellow
 Write-Host "โปรดใส่ Database password เมื่อมี prompt" -ForegroundColor Gray
-npx supabase link --project-ref oqacrkcfpdhcntbldgrm
+# ใช้ Project Reference จาก Environment Variable หรือแก้ไขที่นี่
+$PROJECT_REF = $env:SUPABASE_PROJECT_REF
+if (-not $PROJECT_REF) {
+    Write-Host "⚠️  ไม่พบ SUPABASE_PROJECT_REF ใน Environment Variables" -ForegroundColor Yellow
+    Write-Host "กรุณาตั้งค่า SUPABASE_PROJECT_REF หรือแก้ไขไฟล์นี้" -ForegroundColor Yellow
+    exit 1
+}
+
+npx supabase link --project-ref $PROJECT_REF
 
 if ($LASTEXITCODE -ne 0) {
     Write-Host "[ERROR] Link failed. Please check your project-ref and password." -ForegroundColor Red
@@ -45,7 +53,14 @@ Write-Host ""
 # Step 4: Test Webhook
 Write-Host "Step 4: Testing webhook..." -ForegroundColor Yellow
 Write-Host "ตรวจสอบ webhook info:" -ForegroundColor Gray
-Write-Host "https://api.telegram.org/bot7656958369:AAFbWIRZwTbLTUf2WFZXTU9EZRCcw3IGnhk/getWebhookInfo" -ForegroundColor Cyan
+# ใช้ Telegram Bot Token จาก Environment Variable
+$TELEGRAM_BOT_TOKEN = $env:TELEGRAM_BOT_TOKEN
+if ($TELEGRAM_BOT_TOKEN) {
+    Write-Host "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/getWebhookInfo" -ForegroundColor Cyan
+} else {
+    Write-Host "⚠️  ไม่พบ TELEGRAM_BOT_TOKEN ใน Environment Variables" -ForegroundColor Yellow
+    Write-Host "กรุณาตั้งค่า TELEGRAM_BOT_TOKEN หรือตรวจสอบ webhook info ใน Supabase Dashboard" -ForegroundColor Yellow
+}
 Write-Host ""
 Write-Host "[SUCCESS] Done! Check the webhook info above." -ForegroundColor Green
 

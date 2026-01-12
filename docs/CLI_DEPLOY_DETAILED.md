@@ -98,8 +98,14 @@ npx supabase login --token $env:SUPABASE_ACCESS_TOKEN
 Link project กับ Supabase project ของคุณ:
 
 ```powershell
-npx supabase link --project-ref oqacrkcfpdhcntbldgrm
+npx supabase link --project-ref YOUR_PROJECT_REF
 ```
+
+**วิธีหา Project Reference:**
+1. ไปที่ Supabase Dashboard
+2. เลือก Project ของคุณ
+3. ไปที่ Settings → General
+4. Copy **Reference ID** (รูปแบบ: `xxxxxxxxxxxxxxxxxx`)
 
 **สิ่งที่เกิดขึ้น:**
 1. จะถาม **Database password**
@@ -111,9 +117,9 @@ npx supabase link --project-ref oqacrkcfpdhcntbldgrm
 
 **ผลลัพธ์ที่ต้องการ:**
 ```
-> npx supabase link --project-ref oqacrkcfpdhcntbldgrm
+> npx supabase link --project-ref YOUR_PROJECT_REF
 Enter your database password: [hidden]
-Linked to project oqacrkcfpdhcntbldgrm
+Linked to project YOUR_PROJECT_REF
 ```
 
 **ถ้ามี Error:**
@@ -173,7 +179,14 @@ npx supabase functions list
 ไปที่ **Supabase Dashboard** → **Edge Functions** → **telegram-webhook** → **Settings** → **Environment Variables**
 
 ตั้งค่า:
-- `TELEGRAM_BOT_TOKEN` = `7656958369:AAFbWIRZwTbLTUf2WFZXTU9EZRCcw3IGnhk`
+- `TELEGRAM_BOT_TOKEN` = `YOUR_TELEGRAM_BOT_TOKEN`
+
+**วิธีหา Telegram Bot Token:**
+1. เปิด Telegram และค้นหา `@BotFather`
+2. ส่งคำสั่ง `/mybots`
+3. เลือก Bot ของคุณ
+4. เลือก **API Token**
+5. Copy Token (รูปแบบ: `123456789:ABCdefGHIjklMNOpqrsTUVwxyz`)
 
 **หมายเหตุ:** Environment Variables ไม่สามารถตั้งค่าผ่าน CLI ได้ ต้องตั้งใน Dashboard
 
@@ -185,15 +198,20 @@ npx supabase functions list
 
 ### วิธีที่ 1: ใช้ Browser
 
-เปิด URL นี้ใน browser:
+เปิด URL นี้ใน browser (แทน `<YOUR_BOT_TOKEN>` และ `<YOUR_PROJECT_REF>`):
 ```
-https://api.telegram.org/bot7656958369:AAFbWIRZwTbLTUf2WFZXTU9EZRCcw3IGnhk/setWebhook?url=https://oqacrkcfpdhcntbldgrm.supabase.co/functions/v1/telegram-webhook
+https://api.telegram.org/bot<YOUR_BOT_TOKEN>/setWebhook?url=https://<YOUR_PROJECT_REF>.supabase.co/functions/v1/telegram-webhook
+```
+
+**ตัวอย่าง:**
+```
+https://api.telegram.org/bot123456789:ABCdefGHIjklMNOpqrsTUVwxyz/setWebhook?url=https://abcdefghijklmnopqrs.supabase.co/functions/v1/telegram-webhook
 ```
 
 ### วิธีที่ 2: ใช้ PowerShell
 
 ```powershell
-Invoke-WebRequest -Uri "https://api.telegram.org/bot7656958369:AAFbWIRZwTbLTUf2WFZXTU9EZRCcw3IGnhk/setWebhook?url=https://oqacrkcfpdhcntbldgrm.supabase.co/functions/v1/telegram-webhook"
+Invoke-WebRequest -Uri "https://api.telegram.org/bot<YOUR_BOT_TOKEN>/setWebhook?url=https://<YOUR_PROJECT_REF>.supabase.co/functions/v1/telegram-webhook"
 ```
 
 **ผลลัพธ์ที่ต้องการ:**
@@ -211,9 +229,9 @@ Invoke-WebRequest -Uri "https://api.telegram.org/bot7656958369:AAFbWIRZwTbLTUf2W
 
 ### ตรวจสอบว่า webhook ทำงานได้:
 
-เปิด URL นี้ใน browser:
+เปิด URL นี้ใน browser (แทน `<YOUR_BOT_TOKEN>`):
 ```
-https://api.telegram.org/bot7656958369:AAFbWIRZwTbLTUf2WFZXTU9EZRCcw3IGnhk/getWebhookInfo
+https://api.telegram.org/bot<YOUR_BOT_TOKEN>/getWebhookInfo
 ```
 
 **ผลลัพธ์ที่ต้องการ:**
@@ -221,7 +239,7 @@ https://api.telegram.org/bot7656958369:AAFbWIRZwTbLTUf2WFZXTU9EZRCcw3IGnhk/getWe
 {
   "ok": true,
   "result": {
-    "url": "https://oqacrkcfpdhcntbldgrm.supabase.co/functions/v1/telegram-webhook",
+    "url": "https://<YOUR_PROJECT_REF>.supabase.co/functions/v1/telegram-webhook",
     "has_custom_certificate": false,
     "pending_update_count": 0,
     "last_error_date": 0,
@@ -247,8 +265,9 @@ npx supabase login --token $env:SUPABASE_ACCESS_TOKEN
 ### ❌ Error: "Project not found"
 
 **แก้ไข:**
-- ตรวจสอบ project-ref: `oqacrkcfpdhcntbldgrm`
+- ตรวจสอบ project-ref ว่าถูกต้อง
 - หรือใช้: `npx supabase projects list` เพื่อดู project ที่มี
+- Project Reference อยู่ใน Supabase Dashboard → Settings → General
 
 ### ❌ Error: "Invalid password"
 
@@ -282,7 +301,7 @@ npx supabase login --token $env:SUPABASE_ACCESS_TOKEN
 npx supabase login
 
 # 2. Link Project
-npx supabase link --project-ref oqacrkcfpdhcntbldgrm
+npx supabase link --project-ref YOUR_PROJECT_REF
 
 # 3. Deploy Function
 npx supabase functions deploy telegram-webhook

@@ -27,7 +27,7 @@
 npx supabase login
 
 # Link project
-npx supabase link --project-ref oqacrkcfpdhcntbldgrm
+npx supabase link --project-ref YOUR_PROJECT_REF
 
 # Deploy
 npx supabase functions deploy telegram-webhook
@@ -56,7 +56,14 @@ npx supabase functions deploy telegram-webhook
 ไปที่ **Supabase Dashboard** → **Edge Functions** → **telegram-webhook** → **Settings** → **Environment Variables**
 
 ตั้งค่า:
-- `TELEGRAM_BOT_TOKEN` = `7656958369:AAFbWIRZwTbLTUf2WFZXTU9EZRCcw3IGnhk`
+- `TELEGRAM_BOT_TOKEN` = `YOUR_TELEGRAM_BOT_TOKEN`
+
+**วิธีหา Telegram Bot Token:**
+1. เปิด Telegram และค้นหา `@BotFather`
+2. ส่งคำสั่ง `/mybots`
+3. เลือก Bot ของคุณ
+4. เลือก **API Token**
+5. Copy Token (รูปแบบ: `123456789:ABCdefGHIjklMNOpqrsTUVwxyz`)
 - `SUPABASE_URL` = (มีอยู่แล้วอัตโนมัติ)
 - `SUPABASE_SERVICE_ROLE_KEY` = (มีอยู่แล้วอัตโนมัติ)
 
@@ -68,15 +75,15 @@ npx supabase functions deploy telegram-webhook
 
 **วิธีที่ 1: ใช้ Browser**
 
-เปิด URL นี้ใน browser:
+เปิด URL นี้ใน browser (แทน `<YOUR_BOT_TOKEN>` และ `<YOUR_PROJECT_REF>`):
 ```
-https://api.telegram.org/bot7656958369:AAFbWIRZwTbLTUf2WFZXTU9EZRCcw3IGnhk/setWebhook?url=https://oqacrkcfpdhcntbldgrm.supabase.co/functions/v1/telegram-webhook
+https://api.telegram.org/bot<YOUR_BOT_TOKEN>/setWebhook?url=https://<YOUR_PROJECT_REF>.supabase.co/functions/v1/telegram-webhook
 ```
 
 **วิธีที่ 2: ใช้ PowerShell**
 
 ```powershell
-Invoke-WebRequest -Uri "https://api.telegram.org/bot7656958369:AAFbWIRZwTbLTUf2WFZXTU9EZRCcw3IGnhk/setWebhook?url=https://oqacrkcfpdhcntbldgrm.supabase.co/functions/v1/telegram-webhook"
+Invoke-WebRequest -Uri "https://api.telegram.org/bot<YOUR_BOT_TOKEN>/setWebhook?url=https://<YOUR_PROJECT_REF>.supabase.co/functions/v1/telegram-webhook"
 ```
 
 **ผลลัพธ์ที่ต้องการ:**
@@ -92,9 +99,9 @@ Invoke-WebRequest -Uri "https://api.telegram.org/bot7656958369:AAFbWIRZwTbLTUf2W
 
 ### ขั้นตอนที่ 5: ตรวจสอบ Webhook Status
 
-เปิด URL นี้ใน browser:
+เปิด URL นี้ใน browser (แทน `<YOUR_BOT_TOKEN>`):
 ```
-https://api.telegram.org/bot7656958369:AAFbWIRZwTbLTUf2WFZXTU9EZRCcw3IGnhk/getWebhookInfo
+https://api.telegram.org/bot<YOUR_BOT_TOKEN>/getWebhookInfo
 ```
 
 **ผลลัพธ์ที่ต้องการ:**
@@ -102,7 +109,7 @@ https://api.telegram.org/bot7656958369:AAFbWIRZwTbLTUf2WFZXTU9EZRCcw3IGnhk/getWe
 {
   "ok": true,
   "result": {
-    "url": "https://oqacrkcfpdhcntbldgrm.supabase.co/functions/v1/telegram-webhook",
+    "url": "https://<YOUR_PROJECT_REF>.supabase.co/functions/v1/telegram-webhook",
     "has_custom_certificate": false,
     "pending_update_count": 0,
     "last_error_date": 0,  ← ควรเป็น 0

@@ -12,6 +12,10 @@ dist
 dist-ssr
 *.local
 
+# Scripts with sensitive data (should use environment variables)
+# scripts/test-daily-summary.ps1
+# deploy-telegram-webhook.ps1
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

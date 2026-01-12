@@ -51,7 +51,7 @@
 
 ```bash
 # ไปที่ directory ที่ต้องการสร้างโปรเจกต์
-cd C:\Users\pepsi\projects
+cd /path/to/projects
 
 # สร้าง Flutter project
 flutter create vehicle_control_center_mobile

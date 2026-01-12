@@ -17,9 +17,15 @@ npx supabase login
 หลังจาก login แล้ว รัน:
 
 ```bash
-cd C:\Users\pepsi\projects\vehicle-control-center
-npx supabase link --project-ref oqacrkcfpdhcntbldgrm
+cd /path/to/vehicle-control-center
+npx supabase link --project-ref YOUR_PROJECT_REF
 ```
+
+**วิธีหา Project Reference:**
+1. ไปที่ Supabase Dashboard
+2. เลือก Project ของคุณ
+3. ไปที่ Settings → General
+4. Copy **Reference ID**
 
 จะถาม password (Database password) - ใส่ password ที่ตั้งไว้ตอนสร้าง project
 
@@ -40,7 +46,7 @@ npx supabase functions deploy telegram-webhook
 หลังจาก deploy แล้ว ทดสอบ webhook:
 
 ```
-https://api.telegram.org/bot7656958369:AAFbWIRZwTbLTUf2WFZXTU9EZRCcw3IGnhk/getWebhookInfo
+https://api.telegram.org/bot<YOUR_BOT_TOKEN>/getWebhookInfo
 ```
 
 ควรเห็น:
@@ -72,7 +78,8 @@ https://api.telegram.org/bot7656958369:AAFbWIRZwTbLTUf2WFZXTU9EZRCcw3IGnhk/getWe
 - หรือเปิด browser แล้ว login ผ่าน URL ที่แสดง
 
 ### Error: "Project not found"
-- ตรวจสอบ project-ref ว่าถูกต้อง: `oqacrkcfpdhcntbldgrm`
+- ตรวจสอบ project-ref ว่าถูกต้อง
+- Project Reference อยู่ใน Supabase Dashboard → Settings → General
 - หรือใช้ `npx supabase projects list` เพื่อดู project ที่มี
 
 ### Error: "Function not found"

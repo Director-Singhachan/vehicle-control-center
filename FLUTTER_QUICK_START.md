@@ -36,7 +36,7 @@ flutter doctor
 
 ```powershell
 # ไปที่ parent directory
-cd C:\Users\pepsi\projects
+cd /path/to/projects
 
 # สร้าง Flutter project สำหรับแอพสั่งสินค้า
 flutter create customer_order_app
