@@ -382,7 +382,10 @@ export const DeliveryTripListView: React.FC<DeliveryTripListViewProps> = ({
                 <div className="flex items-start justify-between mb-3">
                   <div>
                     <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-2">
-                      <span>{trip.trip_number || 'N/A'}</span>
+                      <span>
+                        {trip.trip_number || 
+                          (trip.sequence_order ? `ทริป #${trip.sequence_order}` : `ทริป #${trip.id.substring(0, 8)}`)}
+                      </span>
                       {trip.has_item_changes && (
                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200">
                           <History size={12} />
