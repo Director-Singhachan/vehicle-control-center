@@ -6,9 +6,17 @@ param(
     [string]$Date = ""
 )
 
-# ตั้งค่า URL และ Key
-$SUPABASE_URL = "https://oqacrkcfpdhcntbldgrm.supabase.co"
-$SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9xYWNya2NmcGRoY250YmxkZ3JtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzQyNzY4MDAsImV4cCI6MjA0OTg1MjgwMH0.YourAnonKey"
+# ตั้งค่า URL และ Key จาก Environment Variables
+$SUPABASE_URL = $env:VITE_SUPABASE_URL
+$SUPABASE_ANON_KEY = $env:VITE_SUPABASE_ANON_KEY
+
+# ถ้าไม่มี Environment Variables ให้ใช้ค่าจาก .env.local
+if (-not $SUPABASE_URL -or -not $SUPABASE_ANON_KEY) {
+    Write-Host "⚠️  ไม่พบ Environment Variables" -ForegroundColor Yellow
+    Write-Host "กรุณาตั้งค่า VITE_SUPABASE_URL และ VITE_SUPABASE_ANON_KEY" -ForegroundColor Yellow
+    Write-Host "หรือแก้ไขไฟล์นี้ให้ใช้ค่าจาก .env.local" -ForegroundColor Yellow
+    exit 1
+}
 
 # สร้าง URL
 $url = "$SUPABASE_URL/functions/v1/daily-summary-worker"

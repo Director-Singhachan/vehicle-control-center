@@ -53,11 +53,15 @@ https://api.telegram.org/bot123456789:ABCdefGHIjklMNOpqrsTUVwxyz/setWebhook?url=
 
 **สมมติว่า:**
 - Bot Token ของคุณ: `987654321:XYZabcDEFghiJKLmnoPQRstuVWX`
-- Function URL ของคุณ: `https://oqacrkcfpdhcntbldgrm.supabase.co/functions/v1/telegram-webhook`
+- Function URL ของคุณ: `https://<YOUR_PROJECT_REF>.supabase.co/functions/v1/telegram-webhook`
+
+**วิธีหา Project Reference:**
+1. ไปที่ Supabase Dashboard → Settings → General
+2. Copy **Reference ID**
 
 **URL ที่ต้องพิมพ์:**
 ```
-https://api.telegram.org/bot987654321:XYZabcDEFghiJKLmnoPQRstuVWX/setWebhook?url=https://oqacrkcfpdhcntbldgrm.supabase.co/functions/v1/telegram-webhook
+https://api.telegram.org/bot<YOUR_BOT_TOKEN>/setWebhook?url=https://<YOUR_PROJECT_REF>.supabase.co/functions/v1/telegram-webhook
 ```
 
 **Copy URL นี้ไปวางใน Browser แล้วกด Enter**

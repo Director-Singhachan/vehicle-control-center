@@ -18,7 +18,7 @@ Supabase Edge Functions ต้องการ JWT authorization header โดย
 2. **Login และ Link Project**:
    ```bash
    supabase login
-   supabase link --project-ref oqacrkcfpdhcntbldgrm
+   supabase link --project-ref YOUR_PROJECT_REF
    ```
 
 3. **Deploy Function พร้อม Config**:

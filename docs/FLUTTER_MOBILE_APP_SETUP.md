@@ -50,7 +50,7 @@
 
 ```bash
 # ไปที่ directory ที่ต้องการ
-cd C:\Users\pepsi\projects
+cd /path/to/projects
 
 # สร้าง Flutter project
 flutter create customer_order_app

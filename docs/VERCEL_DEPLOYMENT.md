@@ -34,8 +34,8 @@ VITE_SUPABASE_ANON_KEY=your-anon-key-here
 หลังจาก deploy แล้ว เปิด Browser Console (F12) และดู logs:
 
 ```
-[Supabase Config] URL: https://oqacrkcfpdhcntbldgrm.s...
-[Supabase Config] Key: eyJhbGciOiJIUzI1NiIs...
+[Supabase Config] URL: https://<YOUR_PROJECT_REF>.supabase.co
+[Supabase Config] Key: <YOUR_ANON_KEY>
 ```
 
 **ถ้าเห็น:**

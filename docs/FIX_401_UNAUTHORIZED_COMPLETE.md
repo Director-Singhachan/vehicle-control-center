@@ -50,7 +50,7 @@ https://api.telegram.org/bot<YOUR_BOT_TOKEN>/setWebhook?url=<YOUR_FUNCTION_URL>&
 
 **ตัวอย่าง:**
 ```
-https://api.telegram.org/bot7656958369:AAFbWIRZwTbLTUf2WFZXTU9EZRCcw3IGnhk/setWebhook?url=https://oqacrkcfpdhcntbldgrm.supabase.co/functions/v1/telegram-webhook&secret_token=my-secret-token-12345
+https://api.telegram.org/bot<YOUR_BOT_TOKEN>/setWebhook?url=https://<YOUR_PROJECT_REF>.supabase.co/functions/v1/telegram-webhook&secret_token=<YOUR_SECRET_TOKEN>
 ```
 
 #### **ขั้นตอนที่ 3: Deploy Function ใหม่**
@@ -73,7 +73,7 @@ https://api.telegram.org/bot7656958369:AAFbWIRZwTbLTUf2WFZXTU9EZRCcw3IGnhk/setWe
 3. **ตรวจสอบ Webhook Info:**
 
 ```
-https://api.telegram.org/bot7656958369:AAFbWIRZwTbLTUf2WFZXTU9EZRCcw3IGnhk/getWebhookInfo
+https://api.telegram.org/bot<YOUR_BOT_TOKEN>/getWebhookInfo
 ```
 
 ควรเห็น:
