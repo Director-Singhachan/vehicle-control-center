@@ -1,5 +1,129 @@
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
+import pdfMake from 'pdfmake/build/pdfmake';
+import pdfFonts from 'pdfmake/build/vfs_fonts';
+import type { TDocumentDefinitions, Content, StyleDictionary } from 'pdfmake/interfaces';
+
+// Initialize pdfMake vfs and fonts
+if (!pdfMake.vfs) {
+    pdfMake.vfs = {};
+}
+
+if (!pdfMake.fonts) {
+    pdfMake.fonts = {};
+}
+
+// ========================================
+// Font loader - load Thai fonts from /public/fonts at runtime
+// ========================================
+let fontsLoaded = false;
+
+async function ensurePdfFontsLoaded() {
+    if (fontsLoaded) {
+        // ตรวจสอบว่า vfs ยังมีอยู่หรือไม่
+        if (pdfMake.vfs && pdfMake.vfs['Sarabun-Regular.ttf']) {
+            console.log('[pdfService] Fonts already loaded');
+            return;
+        }
+        // ถ้า vfs หายไป ให้โหลดใหม่
+        console.log('[pdfService] Fonts were loaded but vfs missing, reloading...');
+        fontsLoaded = false;
+    }
+
+    // pdfMake ใช้งานบน browser เท่านั้น
+    if (typeof window === 'undefined') {
+        fontsLoaded = true;
+        return;
+    }
+
+    try {
+        console.log('[pdfService] Starting font loading from /fonts...');
+
+        // ตรวจสอบว่า default fonts มีอยู่หรือไม่
+        console.log('[pdfService] Current pdfMake state:', {
+            hasVfs: !!pdfMake.vfs,
+            vfsKeys: Object.keys(pdfMake.vfs || {}),
+            hasFonts: !!pdfMake.fonts,
+            fontNames: Object.keys(pdfMake.fonts || {})
+        });
+
+        const [regularRes, boldRes] = await Promise.all([
+            fetch('/fonts/Sarabun-Regular.ttf'),
+            fetch('/fonts/Sarabun-Bold.ttf'),
+        ]);
+
+        console.log('[pdfService] Font fetch responses:', {
+            regularOk: regularRes.ok,
+            regularStatus: regularRes.status,
+            boldOk: boldRes.ok,
+            boldStatus: boldRes.status
+        });
+
+        if (!regularRes.ok || !boldRes.ok) {
+            console.error('[pdfService] Failed to load font files from /fonts', {
+                regular: regularRes.status,
+                bold: boldRes.status
+            });
+            fontsLoaded = true; // ป้องกันไม่ให้โหลดซ้ำรัวๆ
+            return;
+        }
+
+        const [regularBuffer, boldBuffer] = await Promise.all([
+            regularRes.arrayBuffer(),
+            boldRes.arrayBuffer(),
+        ]);
+
+        console.log('[pdfService] Font buffers loaded:', {
+            regularSize: regularBuffer.byteLength,
+            boldSize: boldBuffer.byteLength
+        });
+
+        // แปลง ArrayBuffer เป็น Base64
+        const toBase64 = (buffer: ArrayBuffer) => {
+            const bytes = new Uint8Array(buffer);
+            let binary = '';
+            for (let i = 0; i < bytes.byteLength; i++) {
+                binary += String.fromCharCode(bytes[i]);
+            }
+            return btoa(binary);
+        };
+
+        const regularBase64 = toBase64(regularBuffer);
+        const boldBase64 = toBase64(boldBuffer);
+
+        console.log('[pdfService] Fonts converted to Base64', {
+            regularSize: regularBase64.length,
+            boldSize: boldBase64.length
+        });
+
+        // ตั้งค่า vfs และ font mapping ให้ pdfMake v0.2.x
+        // Ensure vfs exists
+        if (!pdfMake.vfs) {
+            pdfMake.vfs = {};
+        }
+
+        pdfMake.vfs['Sarabun-Regular.ttf'] = regularBase64;
+        pdfMake.vfs['Sarabun-Bold.ttf'] = boldBase64;
+
+        pdfMake.fonts = {
+            Sarabun: {
+                normal: 'Sarabun-Regular.ttf',
+                bold: 'Sarabun-Bold.ttf',
+                italics: 'Sarabun-Regular.ttf',
+                bolditalics: 'Sarabun-Bold.ttf',
+            }
+        };
+
+        fontsLoaded = true;
+        console.log('[pdfService] Thai fonts loaded successfully', {
+            vfsKeys: Object.keys(pdfMake.vfs || {}),
+            fontNames: Object.keys(pdfMake.fonts || {}),
+            sarabunFont: pdfMake.fonts?.Sarabun
+        });
+    } catch (error) {
+        console.error('[pdfService] Error loading fonts from /fonts:', error);
+        fontsLoaded = true; // ไม่ให้พยายามซ้ำใน request เดียวกัน
+        throw error; // throw error เพื่อให้ caller รู้ว่ามีปัญหา
+    }
+}
 
 // Ticket interface for PDF
 interface Ticket {
@@ -26,258 +150,230 @@ interface Ticket {
     estimated_cost?: number | null;
 }
 
-// (fixThaiScript removed due to missing PUA in font)
-
 export const pdfService = {
     generateMaintenanceTicketPDF: async (ticket: Ticket) => {
         try {
+            await ensurePdfFontsLoaded();
             console.log('[pdfService] generateMaintenanceTicketPDF input:', ticket);
-            // Create new PDF document
-            const doc = new jsPDF();
-            // Increase line height globally to avoid Thai diacritics clipping
-            doc.setLineHeightFactor(1.35);
 
-            // Load Thai Font (Sarabun) Regular and Bold from local files
-            // Sarabun has better vertical space for Thai vowels and tone marks
-            const fontUrl = '/fonts/Sarabun-Regular.ttf';
-            const fontBoldUrl = '/fonts/Sarabun-Bold.ttf';
-            try {
-                const response = await fetch(fontUrl);
-                const responseBold = await fetch(fontBoldUrl);
-                if (!response.ok) throw new Error(`Failed to fetch font: ${response.status}`);
-                if (!responseBold.ok) throw new Error(`Failed to fetch bold font: ${responseBold.status}`);
-                const buffer = await response.arrayBuffer();
-                const bufferBold = await responseBold.arrayBuffer();
-
-                // Convert ArrayBuffer to Base64
-                let binary = '';
-                const bytes = new Uint8Array(buffer);
-                const len = bytes.byteLength;
-                for (let i = 0; i < len; i++) {
-                    binary += String.fromCharCode(bytes[i]);
-                }
-                const base64Font = window.btoa(binary);
-
-                // Convert Bold font to Base64
-                let binaryBold = '';
-                const bytesBold = new Uint8Array(bufferBold);
-                const lenBold = bytesBold.byteLength;
-                for (let i = 0; i < lenBold; i++) {
-                    binaryBold += String.fromCharCode(bytesBold[i]);
-                }
-                const base64FontBold = window.btoa(binaryBold);
-
-                // Add fonts to VFS and register
-                doc.addFileToVFS('Sarabun-Regular.ttf', base64Font);
-                doc.addFont('Sarabun-Regular.ttf', 'SarabunNew', 'normal');
-                doc.addFileToVFS('Sarabun-Bold.ttf', base64FontBold);
-                doc.addFont('Sarabun-Bold.ttf', 'SarabunNew', 'bold');
-
-                doc.setFont('SarabunNew');
-                doc.setLineHeightFactor(1.2);
-            } catch (fontError) {
-                console.error('Failed to load Thai font:', fontError, 'url:', fontUrl);
-                // Fallback to default font if loading fails
-            }
-
-            // Helper to add text with label
-            const addField = (label: string, value: string | null | undefined, x: number, y: number) => {
-                doc.setFontSize(10);
-                doc.setFont('SarabunNew', 'bold'); // Use Bold for labels
-                doc.setTextColor(100, 100, 100); // Gray for label
-                doc.text(label, x, y);
-
-                doc.setFontSize(12);
-                doc.setFont('SarabunNew', 'normal'); // Use Regular for values
-                doc.setTextColor(0, 0, 0); // Black for value
-                doc.text(value || '-', x, y + 6);
-            };
-
-            // Normalized fields (เผื่อมีหลายชื่อฟิลด์จาก view / table ต่างกัน)
-            const repairType =
-                ticket.problem ||
-                (ticket as any).repair_type ||
-                '-';
-
-            const problemDescription =
-                ticket.description ||
-                (ticket as any).problem_description ||
-                '-';
-
-            const makeModel =
-                `${ticket.vehicle_make || (ticket as any).vehicle_make || ''} ${ticket.vehicle_model || (ticket as any).vehicle_model || ''}`.trim() ||
-                '-';
-
-            const repairGarage =
-                ticket.garage ||
-                (ticket as any).repair_garage ||
-                null;
-
-            const repairNotes =
-                ticket.notes ||
-                (ticket as any).repair_notes ||
-                null;
-
-            // --- Header ---
-            // Title
-            doc.setFontSize(16);
-            doc.setFont('SarabunNew', 'bold'); // Use Bold for title
-            // ขยับขึ้นเล็กน้อยเพื่อเว้นระยะจากเส้นด้านล่าง
-            // ขยับขึ้นเล็กน้อยเพื่อเว้นระยะจากเส้นด้านล่าง
-            // ขยับขึ้นเล็กน้อยเพื่อเว้นระยะจากเส้นด้านล่าง
-            doc.text('ใบแจ้งซ่อม', 105, 22, { align: 'center', baseline: 'top' });
-
-            doc.setFontSize(12);
-            doc.setFont('SarabunNew', 'bold'); // Use Bold for document number label
-            doc.text(`เลขที่เอกสาร: ${ticket.ticket_number || ticket.id}`, 195, 22, { align: 'right', baseline: 'top' });
-
-            // Draw line under header (เหนือหัวข้อ column) เว้นระยะพอสมควร
-            doc.setLineWidth(0.5);
-            doc.line(15, 40, 195, 40);
-
-            // --- 2-Column Layout (Top Section) ---
-            const leftColX = 15;
-            const rightColX = 110;
-            const sectionStartY = 50; // กำหนดจุดเริ่มเดียวกันให้ทั้งซ้ายและขวา (ระยะห่างใกล้เคียงด้านล่าง)
-            let currentY = sectionStartY;
-
-            // Left Column: General Info
-            doc.setFontSize(14);
-            doc.setFont('SarabunNew', 'bold'); // Use Bold for section headers
-            doc.setFontSize(14);
-            doc.setFont('SarabunNew', 'bold'); // Use Bold for section headers
-            doc.text('ข้อมูลทั่วไป (General Info)', leftColX, currentY);
-            currentY += 10;
-
-            addField('วันที่แจ้ง (Date)', new Date(ticket.created_at).toLocaleDateString('th-TH'), leftColX, currentY);
-            addField('สถานะ (Status)', 'รอซ่อม', leftColX + 40, currentY); // ฟิกให้เป็นสถานะรอซ่อมในไฟล์ PDF
-            currentY += 15;
-
-            addField('ผู้แจ้ง (Reporter)', ticket.reporter_name, leftColX, currentY);
-            addField('สาขา (Branch)', ticket.branch, leftColX + 40, currentY);
-            currentY += 15;
-
-            // Right Column: Vehicle Info (align with left column start)
-            let rightY = sectionStartY;
-            doc.setFontSize(14);
-            doc.setFont('SarabunNew', 'bold'); // Use Bold for section headers
-            doc.setFontSize(14);
-            doc.setFont('SarabunNew', 'bold'); // Use Bold for section headers
-            doc.text('ข้อมูลรถยนต์ (Vehicle Info)', rightColX, rightY);
-            rightY += 10;
-
-            addField('ทะเบียน (Plate)', ticket.vehicle_plate, rightColX, rightY);
-            addField('ยี่ห้อ/รุ่น (Make/Model)', makeModel, rightColX + 40, rightY);
-            rightY += 15;
-
-            addField('ประเภท (Type)', ticket.vehicle_type, rightColX, rightY);
-            addField('เลขไมล์ (Odometer)', ticket.odometer ? `${ticket.odometer.toLocaleString()} km` : '-', rightColX + 40, rightY);
-            rightY += 15;
-
-            // Update currentY to be below the lowest column
-            currentY = Math.max(currentY, rightY) + 10;
-
-            // Draw separator line
-            doc.setLineWidth(0.5);
-            doc.line(15, currentY, 195, currentY);
-            currentY += 10;
-
-            // --- Repair Details + Repair Info (two-column layout) ---
-            const repairDetailsX = 15;
-            const repairInfoX = 110;
-            let repairY = currentY;
-
-            doc.setFontSize(14);
-            doc.setFont('SarabunNew', 'bold'); // Use Bold for section headers
-            doc.setFontSize(14);
-            doc.setFont('SarabunNew', 'bold'); // Use Bold for section headers
-            doc.text('รายละเอียดการซ่อม (Repair Details)', repairDetailsX, repairY);
-            doc.text('ข้อมูลการซ่อม (Repair Info)', repairInfoX, repairY);
-            repairY += 10;
-
-            // Left column: Repair Details
-            addField('ประเภทการซ่อม (Repair Type)', repairType, repairDetailsX, repairY);
-            let repairDetailsBottom = repairY + 15;
-
-            // Problem Description label - use same style as addField labels (size 10, bold, gray)
-            // Reset font settings to match addField exactly (addField sets font to 12/normal for value, so we need to reset)
-            doc.setFontSize(10);
-            doc.setFont('SarabunNew', 'bold'); // Use Bold for labels (same as addField)
-            doc.setTextColor(100, 100, 100); // Gray for label (same as addField)
-            doc.text('ปัญหา/อาการ (Problem Description)', repairDetailsX, repairDetailsBottom);
-            repairDetailsBottom += 6;
-
-            doc.setFontSize(12);
-            doc.setFont('SarabunNew', 'normal'); // Use Regular for value text
-            doc.setTextColor(0, 0, 0);
-            const splitDescription = doc.splitTextToSize(problemDescription, 85);
-            doc.text(splitDescription, repairDetailsX, repairDetailsBottom);
-            repairDetailsBottom += (splitDescription.length * 7) + 5;
-
-            // Urgency under Problem Description
-            const urgencyY = repairDetailsBottom;
-            addField('ความเร่งด่วน (Urgency)', ticket.urgency, repairDetailsX, urgencyY);
-            repairDetailsBottom = urgencyY + 15;
-
-            // Right column: Repair Info (always show, use "-" if empty)
-            let repairInfoY = repairY;
-            const garageValue = repairGarage || '-';
-            const notesValue = repairNotes || '-';
+            // Normalized fields
+            const repairType = ticket.problem || (ticket as any).repair_type || '-';
+            const problemDescription = ticket.description || (ticket as any).problem_description || '-';
+            const makeModel = `${ticket.vehicle_make || (ticket as any).vehicle_make || ''} ${ticket.vehicle_model || (ticket as any).vehicle_model || ''}`.trim() || '-';
+            const repairGarage = ticket.garage || (ticket as any).repair_garage || '-';
+            const repairNotes = ticket.notes || (ticket as any).repair_notes || '-';
             const lastRepairDate = ticket.last_repair_date
                 ? new Date(ticket.last_repair_date).toLocaleDateString('th-TH')
                 : '-';
 
-            addField('อู่/ร้านที่จะเข้าซ่อม (Garage)', garageValue, repairInfoX, repairInfoY);
-            repairInfoY += 15;
-            addField('หมายเหตุ (Notes)', notesValue, repairInfoX, repairInfoY);
-            repairInfoY += 15;
-            // Align Last Repair Date with Urgency row
-            const lastRepairDateY = urgencyY;
-            addField('ประวัติการซ่อมล่าสุด (Last Repair Date)', lastRepairDate, repairInfoX, lastRepairDateY);
-            const repairInfoBottom = Math.max(repairInfoY, lastRepairDateY + 15);
-
-            // Advance currentY below the lower column
-            currentY = Math.max(repairDetailsBottom, repairInfoBottom) + 5;
-
-            // (History merged into Repair Info column above)
-
-            // (ข้อมูลการซ่อมถูกแสดงในคอลัมน์ขวาด้านบนแล้ว)
-
-            // --- Signatures Section ---
-            // Move to bottom of page or ensure enough space
-            const pageHeight = doc.internal.pageSize.height;
-            if (currentY > pageHeight - 60) {
-                doc.addPage();
-                currentY = 40;
-            } else {
-                // Push to bottom if plenty of space, or just leave some gap
-                currentY = Math.max(currentY, pageHeight - 60);
-            }
-
-            const drawSignatureLine = (label: string, x: number, y: number) => {
-                doc.setLineWidth(0.5);
-                doc.line(x, y, x + 50, y); // Signature line
-
-                doc.setFontSize(10);
-                doc.setFont('SarabunNew', 'bold'); // Use Bold for signature labels
-                doc.setTextColor(0, 0, 0);
-                doc.setFontSize(10);
-                doc.setFont('SarabunNew', 'bold'); // Use Bold for signature labels
-                doc.setTextColor(0, 0, 0);
-                doc.text(label, x + 25, y + 5, { align: 'center' }); // Label below line
-
-                doc.setFont('SarabunNew', 'normal'); // Use Regular for date
-                doc.text('Date: ____/____/____', x + 25, y + 12, { align: 'center' }); // Date line
+            // Define styles
+            const styles: StyleDictionary = {
+                header: {
+                    fontSize: 16,
+                    bold: true,
+                    alignment: 'center',
+                    margin: [0, 0, 0, 10] as [number, number, number, number]
+                },
+                docNumber: {
+                    fontSize: 12,
+                    bold: true,
+                    alignment: 'right',
+                    margin: [0, 0, 0, 0] as [number, number, number, number]
+                },
+                sectionHeader: {
+                    fontSize: 14,
+                    bold: true,
+                    margin: [0, 10, 0, 5] as [number, number, number, number]
+                },
+                label: {
+                    fontSize: 10,
+                    bold: true,
+                    color: '#666666',
+                    margin: [0, 0, 0, 2] as [number, number, number, number]
+                },
+                value: {
+                    fontSize: 12,
+                    margin: [0, 0, 0, 8] as [number, number, number, number]
+                },
+                signatureLabel: {
+                    fontSize: 10,
+                    bold: true,
+                    alignment: 'center',
+                    margin: [0, 5, 0, 2] as [number, number, number, number]
+                },
+                signatureDate: {
+                    fontSize: 10,
+                    alignment: 'center'
+                }
             };
 
-            // 3 Signatures: Inspector, Manager, Executive
-            const sigY = pageHeight - 40;
-            drawSignatureLine('ผู้ตรวจสอบ (Inspector)', 20, sigY);
-            drawSignatureLine('ผู้จัดการ (Manager)', 80, sigY);
-            drawSignatureLine('ผู้บริหาร (Executive)', 140, sigY);
+            // Build document content
+            const content: Content[] = [
+                // Header
+                {
+                    columns: [
+                        { text: '', width: '*' },
+                        { text: 'ใบแจ้งซ่อม', style: 'header', width: 'auto' },
+                        { text: `เลขที่เอกสาร: ${ticket.ticket_number || ticket.id}`, style: 'docNumber', width: '*' }
+                    ]
+                },
+                {
+                    canvas: [
+                        { type: 'line', x1: 0, y1: 0, x2: 515, y2: 0, lineWidth: 0.5 }
+                    ],
+                    margin: [0, 10, 0, 10] as [number, number, number, number]
+                },
 
-            // Save PDF (for download)
-            doc.save(`Maintenance_Ticket_${ticket.ticket_number || ticket.id}.pdf`);
+                // Two-column layout: General Info and Vehicle Info
+                {
+                    columns: [
+                        // Left column: General Info
+                        {
+                            width: '50%',
+                            stack: [
+                                { text: 'ข้อมูลทั่วไป (General Info)', style: 'sectionHeader' },
+                                { text: 'วันที่แจ้ง (Date)', style: 'label' },
+                                { text: new Date(ticket.created_at).toLocaleDateString('th-TH'), style: 'value' },
+                                { text: 'สถานะ (Status)', style: 'label' },
+                                { text: 'รอซ่อม', style: 'value' },
+                                { text: 'ผู้แจ้ง (Reporter)', style: 'label' },
+                                { text: ticket.reporter_name, style: 'value' },
+                                { text: 'สาขา (Branch)', style: 'label' },
+                                { text: ticket.branch || '-', style: 'value' }
+                            ]
+                        },
+                        // Right column: Vehicle Info
+                        {
+                            width: '50%',
+                            stack: [
+                                { text: 'ข้อมูลรถยนต์ (Vehicle Info)', style: 'sectionHeader' },
+                                { text: 'ทะเบียน (Plate)', style: 'label' },
+                                { text: ticket.vehicle_plate, style: 'value' },
+                                { text: 'ยี่ห้อ/รุ่น (Make/Model)', style: 'label' },
+                                { text: makeModel, style: 'value' },
+                                { text: 'ประเภท (Type)', style: 'label' },
+                                { text: ticket.vehicle_type || '-', style: 'value' },
+                                { text: 'เลขไมล์ (Odometer)', style: 'label' },
+                                { text: ticket.odometer ? `${ticket.odometer.toLocaleString()} km` : '-', style: 'value' }
+                            ]
+                        }
+                    ],
+                    columnGap: 20
+                },
+
+                {
+                    canvas: [
+                        { type: 'line', x1: 0, y1: 0, x2: 515, y2: 0, lineWidth: 0.5 }
+                    ],
+                    margin: [0, 10, 0, 10] as [number, number, number, number]
+                },
+
+                // Repair Details and Repair Info
+                {
+                    columns: [
+                        // Left column: Repair Details
+                        {
+                            width: '50%',
+                            stack: [
+                                { text: 'รายละเอียดการซ่อม (Repair Details)', style: 'sectionHeader' },
+                                { text: 'ประเภทการซ่อม (Repair Type)', style: 'label' },
+                                { text: repairType, style: 'value' },
+                                { text: 'ปัญหา/อาการ (Problem Description)', style: 'label' },
+                                { text: problemDescription, style: 'value', margin: [0, 0, 0, 8] as [number, number, number, number] },
+                                { text: 'ความเร่งด่วน (Urgency)', style: 'label' },
+                                { text: ticket.urgency, style: 'value' }
+                            ]
+                        },
+                        // Right column: Repair Info
+                        {
+                            width: '50%',
+                            stack: [
+                                { text: 'ข้อมูลการซ่อม (Repair Info)', style: 'sectionHeader' },
+                                { text: 'อู่/ร้านที่จะเข้าซ่อม (Garage)', style: 'label' },
+                                { text: repairGarage, style: 'value' },
+                                { text: 'หมายเหตุ (Notes)', style: 'label' },
+                                { text: repairNotes, style: 'value' },
+                                { text: 'ประวัติการซ่อมล่าสุด (Last Repair Date)', style: 'label' },
+                                { text: lastRepairDate, style: 'value' }
+                            ]
+                        }
+                    ],
+                    columnGap: 20
+                },
+
+                // Spacer before signatures
+                { text: '', margin: [0, 20, 0, 20] as [number, number, number, number] },
+
+                // Signatures
+                {
+                    columns: [
+                        {
+                            width: '33%',
+                            stack: [
+                                {
+                                    canvas: [
+                                        { type: 'line', x1: 0, y1: 0, x2: 140, y2: 0, lineWidth: 0.5 }
+                                    ]
+                                },
+                                { text: 'ผู้ตรวจสอบ (Inspector)', style: 'signatureLabel' },
+                                { text: 'Date: ____/____/____', style: 'signatureDate' }
+                            ]
+                        },
+                        {
+                            width: '33%',
+                            stack: [
+                                {
+                                    canvas: [
+                                        { type: 'line', x1: 0, y1: 0, x2: 140, y2: 0, lineWidth: 0.5 }
+                                    ]
+                                },
+                                { text: 'ผู้จัดการ (Manager)', style: 'signatureLabel' },
+                                { text: 'Date: ____/____/____', style: 'signatureDate' }
+                            ]
+                        },
+                        {
+                            width: '33%',
+                            stack: [
+                                {
+                                    canvas: [
+                                        { type: 'line', x1: 0, y1: 0, x2: 140, y2: 0, lineWidth: 0.5 }
+                                    ]
+                                },
+                                { text: 'ผู้บริหาร (Executive)', style: 'signatureLabel' },
+                                { text: 'Date: ____/____/____', style: 'signatureDate' }
+                            ]
+                        }
+                    ],
+                    columnGap: 10,
+                    margin: [0, 40, 0, 0] as [number, number, number, number]
+                }
+            ];
+
+            // Create document definition
+            const docDefinition: TDocumentDefinitions = {
+                pageSize: 'A4',
+                pageMargins: [40, 40, 40, 40] as [number, number, number, number],
+                defaultStyle: {
+                    font: 'Sarabun',
+                    fontSize: 12,
+                    lineHeight: 1.3
+                },
+                content,
+                styles
+            };
+
+            // ตรวจสอบว่า vfs ถูกตั้งค่าจริงๆ ก่อนสร้าง PDF
+            if (!(pdfMake as any).vfs || !(pdfMake as any).vfs['Sarabun-Regular.ttf']) {
+                throw new Error('Fonts not loaded. VFS is not properly initialized.');
+            }
+
+            // ตรวจสอบว่า vfs ถูกตั้งค่าจริงๆ ก่อนสร้าง PDF
+            if (!(pdfMake as any).vfs || !(pdfMake as any).vfs['Sarabun-Regular.ttf']) {
+                throw new Error('Fonts not loaded. VFS is not properly initialized.');
+            }
+
+            // Generate and download PDF
+            pdfMake.createPdf(docDefinition).download(`Maintenance_Ticket_${ticket.ticket_number || ticket.id}.pdf`);
         } catch (error) {
             console.error('Error generating PDF:', error);
             alert('เกิดข้อผิดพลาดในการสร้าง PDF');
@@ -286,265 +382,217 @@ export const pdfService = {
 
     // Generate PDF as Blob (for sending via notifications)
     generateMaintenanceTicketPDFAsBlob: async (ticket: Ticket): Promise<Blob> => {
-        try {
-            console.log('[pdfService] generateMaintenanceTicketPDFAsBlob input:', ticket);
-            // Create new PDF document
-            const doc = new jsPDF();
-            // Increase line height globally to avoid Thai diacritics clipping
-            doc.setLineHeightFactor(1.35);
-
-            // Load Thai Font (Sarabun) Regular and Bold from local files
-            // Sarabun has better vertical space for Thai vowels and tone marks
-            const fontUrl = '/fonts/Sarabun-Regular.ttf';
-            const fontBoldUrl = '/fonts/Sarabun-Bold.ttf';
+        await ensurePdfFontsLoaded();
+        return new Promise((resolve, reject) => {
             try {
-                const response = await fetch(fontUrl);
-                const responseBold = await fetch(fontBoldUrl);
-                if (!response.ok) throw new Error(`Failed to fetch font: ${response.status}`);
-                if (!responseBold.ok) throw new Error(`Failed to fetch bold font: ${responseBold.status}`);
-                const buffer = await response.arrayBuffer();
-                const bufferBold = await responseBold.arrayBuffer();
+                console.log('[pdfService] generateMaintenanceTicketPDFAsBlob input:', ticket);
 
-                // Convert ArrayBuffer to Base64
-                let binary = '';
-                const bytes = new Uint8Array(buffer);
-                const len = bytes.byteLength;
-                for (let i = 0; i < len; i++) {
-                    binary += String.fromCharCode(bytes[i]);
+                // Normalized fields
+                const repairType = ticket.problem || (ticket as any).repair_type || '-';
+                const problemDescription = ticket.description || (ticket as any).problem_description || '-';
+                const makeModel = `${ticket.vehicle_make || (ticket as any).vehicle_make || ''} ${ticket.vehicle_model || (ticket as any).vehicle_model || ''}`.trim() || '-';
+                const repairGarage = ticket.garage || (ticket as any).repair_garage || '-';
+                const repairNotes = ticket.notes || (ticket as any).repair_notes || '-';
+                const lastRepairDate = ticket.last_repair_date
+                    ? new Date(ticket.last_repair_date).toLocaleDateString('th-TH')
+                    : '-';
+
+                // Define styles (same as above)
+                const styles: StyleDictionary = {
+                    header: {
+                        fontSize: 16,
+                        bold: true,
+                        alignment: 'center',
+                        margin: [0, 0, 0, 10] as [number, number, number, number]
+                    },
+                    docNumber: {
+                        fontSize: 12,
+                        bold: true,
+                        alignment: 'right',
+                        margin: [0, 0, 0, 0] as [number, number, number, number]
+                    },
+                    sectionHeader: {
+                        fontSize: 14,
+                        bold: true,
+                        margin: [0, 10, 0, 5] as [number, number, number, number]
+                    },
+                    label: {
+                        fontSize: 10,
+                        bold: true,
+                        color: '#666666',
+                        margin: [0, 0, 0, 2] as [number, number, number, number]
+                    },
+                    value: {
+                        fontSize: 12,
+                        margin: [0, 0, 0, 8] as [number, number, number, number]
+                    },
+                    signatureLabel: {
+                        fontSize: 10,
+                        bold: true,
+                        alignment: 'center',
+                        margin: [0, 5, 0, 2] as [number, number, number, number]
+                    },
+                    signatureDate: {
+                        fontSize: 10,
+                        alignment: 'center'
+                    }
+                };
+
+                // Build document content (same structure as download version)
+                const content: Content[] = [
+                    {
+                        columns: [
+                            { text: '', width: '*' },
+                            { text: 'ใบแจ้งซ่อม', style: 'header', width: 'auto' },
+                            { text: `เลขที่เอกสาร: ${ticket.ticket_number || ticket.id}`, style: 'docNumber', width: '*' }
+                        ]
+                    },
+                    {
+                        canvas: [
+                            { type: 'line', x1: 0, y1: 0, x2: 515, y2: 0, lineWidth: 0.5 }
+                        ],
+                        margin: [0, 10, 0, 10] as [number, number, number, number]
+                    },
+                    {
+                        columns: [
+                            {
+                                width: '50%',
+                                stack: [
+                                    { text: 'ข้อมูลทั่วไป (General Info)', style: 'sectionHeader' },
+                                    { text: 'วันที่แจ้ง (Date)', style: 'label' },
+                                    { text: new Date(ticket.created_at).toLocaleDateString('th-TH'), style: 'value' },
+                                    { text: 'สถานะ (Status)', style: 'label' },
+                                    { text: 'รอซ่อม', style: 'value' },
+                                    { text: 'ผู้แจ้ง (Reporter)', style: 'label' },
+                                    { text: ticket.reporter_name, style: 'value' },
+                                    { text: 'สาขา (Branch)', style: 'label' },
+                                    { text: ticket.branch || '-', style: 'value' }
+                                ]
+                            },
+                            {
+                                width: '50%',
+                                stack: [
+                                    { text: 'ข้อมูลรถยนต์ (Vehicle Info)', style: 'sectionHeader' },
+                                    { text: 'ทะเบียน (Plate)', style: 'label' },
+                                    { text: ticket.vehicle_plate, style: 'value' },
+                                    { text: 'ยี่ห้อ/รุ่น (Make/Model)', style: 'label' },
+                                    { text: makeModel, style: 'value' },
+                                    { text: 'ประเภท (Type)', style: 'label' },
+                                    { text: ticket.vehicle_type || '-', style: 'value' },
+                                    { text: 'เลขไมล์ (Odometer)', style: 'label' },
+                                    { text: ticket.odometer ? `${ticket.odometer.toLocaleString()} km` : '-', style: 'value' }
+                                ]
+                            }
+                        ],
+                        columnGap: 20
+                    },
+                    {
+                        canvas: [
+                            { type: 'line', x1: 0, y1: 0, x2: 515, y2: 0, lineWidth: 0.5 }
+                        ],
+                        margin: [0, 10, 0, 10] as [number, number, number, number]
+                    },
+                    {
+                        columns: [
+                            {
+                                width: '50%',
+                                stack: [
+                                    { text: 'รายละเอียดการซ่อม (Repair Details)', style: 'sectionHeader' },
+                                    { text: 'ประเภทการซ่อม (Repair Type)', style: 'label' },
+                                    { text: repairType, style: 'value' },
+                                    { text: 'ปัญหา/อาการ (Problem Description)', style: 'label' },
+                                    { text: problemDescription, style: 'value', margin: [0, 0, 0, 8] as [number, number, number, number] },
+                                    { text: 'ความเร่งด่วน (Urgency)', style: 'label' },
+                                    { text: ticket.urgency, style: 'value' }
+                                ]
+                            },
+                            {
+                                width: '50%',
+                                stack: [
+                                    { text: 'ข้อมูลการซ่อม (Repair Info)', style: 'sectionHeader' },
+                                    { text: 'อู่/ร้านที่จะเข้าซ่อม (Garage)', style: 'label' },
+                                    { text: repairGarage, style: 'value' },
+                                    { text: 'หมายเหตุ (Notes)', style: 'label' },
+                                    { text: repairNotes, style: 'value' },
+                                    { text: 'ประวัติการซ่อมล่าสุด (Last Repair Date)', style: 'label' },
+                                    { text: lastRepairDate, style: 'value' }
+                                ]
+                            }
+                        ],
+                        columnGap: 20
+                    },
+                    { text: '', margin: [0, 20, 0, 20] as [number, number, number, number] },
+                    {
+                        columns: [
+                            {
+                                width: '33%',
+                                stack: [
+                                    {
+                                        canvas: [
+                                            { type: 'line', x1: 0, y1: 0, x2: 140, y2: 0, lineWidth: 0.5 }
+                                        ]
+                                    },
+                                    { text: 'ผู้ตรวจสอบ (Inspector)', style: 'signatureLabel' },
+                                    { text: 'Date: ____/____/____', style: 'signatureDate' }
+                                ]
+                            },
+                            {
+                                width: '33%',
+                                stack: [
+                                    {
+                                        canvas: [
+                                            { type: 'line', x1: 0, y1: 0, x2: 140, y2: 0, lineWidth: 0.5 }
+                                        ]
+                                    },
+                                    { text: 'ผู้จัดการ (Manager)', style: 'signatureLabel' },
+                                    { text: 'Date: ____/____/____', style: 'signatureDate' }
+                                ]
+                            },
+                            {
+                                width: '33%',
+                                stack: [
+                                    {
+                                        canvas: [
+                                            { type: 'line', x1: 0, y1: 0, x2: 140, y2: 0, lineWidth: 0.5 }
+                                        ]
+                                    },
+                                    { text: 'ผู้บริหาร (Executive)', style: 'signatureLabel' },
+                                    { text: 'Date: ____/____/____', style: 'signatureDate' }
+                                ]
+                            }
+                        ],
+                        columnGap: 10,
+                        margin: [0, 40, 0, 0] as [number, number, number, number]
+                    }
+                ];
+
+                // Create document definition
+                const docDefinition: TDocumentDefinitions = {
+                    pageSize: 'A4',
+                    pageMargins: [40, 40, 40, 40] as [number, number, number, number],
+                    defaultStyle: {
+                        font: 'Sarabun',
+                        fontSize: 12,
+                        lineHeight: 1.3
+                    },
+                    content,
+                    styles
+                };
+
+                // ตรวจสอบว่า vfs ถูกตั้งค่าจริงๆ ก่อนสร้าง PDF
+                if (!(pdfMake as any).vfs || !(pdfMake as any).vfs['Sarabun-Regular.ttf']) {
+                    throw new Error('Fonts not loaded. VFS is not properly initialized.');
                 }
-                const base64Font = window.btoa(binary);
 
-                // Convert Bold font to Base64
-                let binaryBold = '';
-                const bytesBold = new Uint8Array(bufferBold);
-                const lenBold = bytesBold.byteLength;
-                for (let i = 0; i < lenBold; i++) {
-                    binaryBold += String.fromCharCode(bytesBold[i]);
-                }
-                const base64FontBold = window.btoa(binaryBold);
-
-                // Add fonts to VFS and register
-                doc.addFileToVFS('Sarabun-Regular.ttf', base64Font);
-                doc.addFont('Sarabun-Regular.ttf', 'SarabunNew', 'normal');
-                doc.addFileToVFS('Sarabun-Bold.ttf', base64FontBold);
-                doc.addFont('Sarabun-Bold.ttf', 'SarabunNew', 'bold');
-
-                doc.setFont('SarabunNew');
-                doc.setLineHeightFactor(1.2);
-            } catch (fontError) {
-                console.error('Failed to load Thai font:', fontError, 'url:', fontUrl);
-                // Fallback to default font if loading fails
+                // Generate PDF as Blob
+                pdfMake.createPdf(docDefinition).getBlob((blob) => {
+                    resolve(blob);
+                });
+            } catch (error) {
+                console.error('Error generating PDF as Blob:', error);
+                reject(error);
             }
-
-            // Helper to add text with label
-            const addField = (label: string, value: string | null | undefined, x: number, y: number) => {
-                doc.setFontSize(10);
-                doc.setFont('SarabunNew', 'bold'); // Use Bold for labels
-                doc.setTextColor(100, 100, 100); // Gray for label
-                doc.text(label, x, y);
-
-                doc.setFontSize(12);
-                doc.setFont('SarabunNew', 'normal'); // Use Regular for values
-                doc.setTextColor(0, 0, 0); // Black for value
-                doc.text(value || '-', x, y + 6);
-            };
-
-            // Normalized fields (เผื่อมีหลายชื่อฟิลด์จาก view / table ต่างกัน)
-            const repairType =
-                ticket.problem ||
-                (ticket as any).repair_type ||
-                '-';
-
-            const problemDescription =
-                ticket.description ||
-                (ticket as any).problem_description ||
-                '-';
-
-            const makeModel =
-                `${ticket.vehicle_make || (ticket as any).vehicle_make || ''} ${ticket.vehicle_model || (ticket as any).vehicle_model || ''}`.trim() ||
-                '-';
-
-            const repairGarage =
-                ticket.garage ||
-                (ticket as any).repair_garage ||
-                null;
-
-            const repairNotes =
-                ticket.notes ||
-                (ticket as any).repair_notes ||
-                null;
-
-            // --- Header ---
-            // Title
-            doc.setFontSize(16);
-            doc.text('ใบแจ้งซ่อม', 105, 20, { align: 'center' });
-
-            doc.setFontSize(12);
-            doc.text(`เลขที่เอกสาร: ${ticket.ticket_number || ticket.id}`, 195, 20, { align: 'right' });
-
-            // Draw line under header
-            doc.setLineWidth(0.5);
-            doc.line(15, 30, 195, 30);
-
-            // --- 2-Column Layout (Top Section) ---
-            const leftColX = 15;
-            const rightColX = 110;
-            let currentY = 45;
-
-            // Left Column: General Info
-            doc.setFontSize(14);
-            doc.text('ข้อมูลทั่วไป (General Info)', leftColX, currentY);
-            currentY += 10;
-
-            addField('วันที่แจ้ง (Date)', new Date(ticket.created_at).toLocaleDateString('th-TH'), leftColX, currentY);
-            addField('สถานะ (Status)', 'รอซ่อม', leftColX + 40, currentY); // ฟิกสถานะในไฟล์ PDF
-            currentY += 15;
-
-            addField('ผู้แจ้ง (Reporter)', ticket.reporter_name, leftColX, currentY);
-            addField('สาขา (Branch)', ticket.branch, leftColX + 40, currentY);
-            currentY += 15;
-
-            // Right Column: Vehicle Info
-            let rightY = 45;
-            doc.setFontSize(14);
-            doc.text('ข้อมูลรถยนต์ (Vehicle Info)', rightColX, rightY);
-            rightY += 10;
-
-            addField('ทะเบียน (Plate)', ticket.vehicle_plate, rightColX, rightY);
-            addField('ยี่ห้อ/รุ่น (Make/Model)', makeModel, rightColX + 40, rightY);
-            rightY += 15;
-
-            addField('ประเภท (Type)', ticket.vehicle_type, rightColX, rightY);
-            addField('เลขไมล์ (Odometer)', ticket.odometer ? `${ticket.odometer.toLocaleString()} km` : '-', rightColX + 40, rightY);
-            rightY += 15;
-
-            // Update currentY to be below the lowest column
-            currentY = Math.max(currentY, rightY) + 10;
-
-            // Draw separator line
-            doc.setLineWidth(0.1);
-            doc.line(15, currentY, 195, currentY);
-            currentY += 10;
-
-            // --- Repair Details + Repair Info (two-column layout) ---
-            const repairDetailsX = 15;
-            const repairInfoX = 110;
-            let repairY = currentY;
-
-            doc.setFontSize(14);
-            doc.setFont('SarabunNew', 'bold'); // Use Bold for section headers
-            doc.text('รายละเอียดการซ่อม (Repair Details)', repairDetailsX, repairY);
-            doc.text('ข้อมูลการซ่อม (Repair Info)', repairInfoX, repairY);
-            repairY += 10;
-
-            // Left column: Repair Details
-            addField('ประเภทการซ่อม (Repair Type)', repairType, repairDetailsX, repairY);
-            let repairDetailsBottom = repairY + 15;
-
-            // Problem Description label - use same style as addField labels (size 10, bold, gray)
-            doc.setFontSize(10);
-            doc.setFont('SarabunNew', 'bold'); // Use Bold for labels
-            doc.setTextColor(100, 100, 100); // Gray for label (same as addField)
-            doc.text('ปัญหา/อาการ (Problem Description)', repairDetailsX, repairDetailsBottom);
-            repairDetailsBottom += 6;
-
-            doc.setFontSize(12);
-            doc.setTextColor(0, 0, 0);
-            const splitDescription = doc.splitTextToSize(problemDescription, 85);
-            doc.text(splitDescription, repairDetailsX, repairDetailsBottom);
-            repairDetailsBottom += (splitDescription.length * 7) + 5;
-
-            // Urgency under Problem Description
-            addField('ความเร่งด่วน (Urgency)', ticket.urgency, repairDetailsX, repairDetailsBottom);
-            repairDetailsBottom += 15;
-
-            // Right column: Repair Info (always show, use "-" if empty)
-            let repairInfoY = repairY;
-            const garageValue = repairGarage || '-';
-            const notesValue = repairNotes || '-';
-            addField('อู่/ร้านที่จะเข้าซ่อม (Garage)', garageValue, repairInfoX, repairInfoY);
-            repairInfoY += 15;
-            addField('หมายเหตุ (Notes)', notesValue, repairInfoX, repairInfoY);
-            repairInfoY += 15;
-
-            // Advance currentY below the lower column
-            currentY = Math.max(repairDetailsBottom, repairInfoY) + 5;
-
-            // --- History Section (Optional: only show last repair date) ---
-            if (ticket.last_repair_date) {
-                doc.setLineWidth(0.1);
-                doc.line(15, currentY, 195, currentY);
-                currentY += 10;
-
-                doc.setFontSize(14);
-                doc.setFontSize(14);
-                doc.text('ประวัติการซ่อมล่าสุด (Last Repair History)', 15, currentY);
-                currentY += 10;
-
-                addField('วันที่ซ่อมล่าสุด', new Date(ticket.last_repair_date).toLocaleDateString('th-TH'), 15, currentY);
-                currentY += 15;
-            }
-
-            // --- Garage Section ---
-            if (repairGarage) {
-                doc.setLineWidth(0.1);
-                doc.line(15, currentY, 195, currentY);
-                currentY += 10;
-
-                doc.setFontSize(14);
-                doc.setFontSize(14);
-                doc.text('ข้อมูลการซ่อม (Repair Info)', 15, currentY);
-                currentY += 10;
-
-                addField('อู่/ร้านที่จะเข้าซ่อม (Garage)', repairGarage, 15, currentY);
-                if (repairNotes) {
-                    addField('หมายเหตุ (Notes)', repairNotes, 80, currentY);
-                }
-                currentY += 20;
-            } else {
-                currentY += 10;
-            }
-
-            // --- Signatures Section ---
-            // Move to bottom of page or ensure enough space
-            const pageHeight = doc.internal.pageSize.height;
-            if (currentY > pageHeight - 60) {
-                doc.addPage();
-                currentY = 40;
-            } else {
-                // Push to bottom if plenty of space, or just leave some gap
-                currentY = Math.max(currentY, pageHeight - 60);
-            }
-
-            const drawSignatureLine = (label: string, x: number, y: number) => {
-                doc.setLineWidth(0.5);
-                doc.line(x, y, x + 50, y); // Signature line
-
-                doc.setFontSize(10);
-                doc.setFont('SarabunNew', 'bold'); // Use Bold for signature labels
-                doc.setTextColor(0, 0, 0);
-                doc.setFontSize(10);
-                doc.setFont('SarabunNew', 'bold'); // Use Bold for signature labels
-                doc.setTextColor(0, 0, 0);
-                doc.text(label, x + 25, y + 5, { align: 'center' }); // Label below line
-
-                doc.setFont('SarabunNew', 'normal'); // Use Regular for date
-                doc.text('Date: ____/____/____', x + 25, y + 12, { align: 'center' }); // Date line
-            };
-
-            // 3 Signatures: Inspector, Manager, Executive
-            const sigY = pageHeight - 40;
-            drawSignatureLine('ผู้ตรวจสอบ (Inspector)', 20, sigY);
-            drawSignatureLine('ผู้จัดการ (Manager)', 80, sigY);
-            drawSignatureLine('ผู้บริหาร (Executive)', 140, sigY);
-
-            // Convert PDF to Blob
-            const pdfBlob = doc.output('blob');
-            return pdfBlob;
-        } catch (error) {
-            console.error('Error generating PDF as Blob:', error);
-            throw error;
-        }
+        });
     },
 
     // Generate PDF as Base64 string (for storing in database or sending via API)
@@ -574,202 +622,203 @@ export const pdfService = {
         aggregatedProducts: any[]
     ) => {
         try {
+            console.log('[pdfService] Starting generateDeliveryTripPDFA5 for trip:', trip.trip_number || trip.id);
+            await ensurePdfFontsLoaded();
+            console.log('[pdfService] Fonts loaded, proceeding with PDF generation');
             console.log('[pdfService] generateDeliveryTripPDFA5 input:', trip);
 
-            // Create new PDF document in A5 size (148 x 210 mm)
-            const doc = new jsPDF({
-                orientation: 'portrait',
-                unit: 'mm',
-                format: 'a5',
-            });
-
-            // Load Thai Font (Sarabun)
-            try {
-                const fontUrl = 'https://raw.githubusercontent.com/google/fonts/main/ofl/sarabun/Sarabun-Regular.ttf';
-                const response = await fetch(fontUrl);
-                const buffer = await response.arrayBuffer();
-                let binary = '';
-                const bytes = new Uint8Array(buffer);
-                const len = bytes.byteLength;
-                for (let i = 0; i < len; i++) {
-                    binary += String.fromCharCode(bytes[i]);
-                }
-                const base64Font = window.btoa(binary);
-                doc.addFileToVFS('Sarabun-Regular.ttf', base64Font);
-                doc.addFont('Sarabun-Regular.ttf', 'Sarabun', 'normal');
-                doc.setFont('Sarabun');
-            } catch (fontError) {
-                console.warn('[pdfService] Failed to load Thai font, using default:', fontError);
-            }
-
-            let yPos = 15;
-
-            // Header
-            doc.setFontSize(16);
-            doc.setFont('Sarabun', 'normal');
-            doc.text('ใบเบิกสินค้า', 74, yPos, { align: 'center' });
-            yPos += 8;
-
-            // First row: Date (left) and Trip Number (right)
-            doc.setFontSize(11);
-            const plannedDate = new Date(trip.planned_date).toLocaleDateString('th-TH', {
-                year: 'numeric',
-                month: 'long',
-                day: 'numeric',
-            });
-            doc.text(`วันที่: ${plannedDate}`, 10, yPos);
-            doc.text(`รหัสทริป: ${trip.trip_number || 'N/A'}`, 138, yPos, { align: 'right' });
-            yPos += 6;
-
-            // Second row: Vehicle (left) and Driver (right)
-            if (trip.vehicle) {
-                const vehicleText = `รถ: ${trip.vehicle.plate}${trip.vehicle.make && trip.vehicle.model ? ` (${trip.vehicle.make} ${trip.vehicle.model})` : ''}`;
-                doc.text(vehicleText, 10, yPos);
-            }
-            if (trip.driver) {
-                doc.text(`คนขับ: ${trip.driver.full_name}`, 138, yPos, { align: 'right' });
-            }
-            yPos += 6;
-
-            yPos += 3;
-
-            // Stores
+            // Build stores section
+            const storesContent: Content[] = [];
             if (trip.stores && trip.stores.length > 0) {
-                doc.setFontSize(14);
-                doc.text('ร้านค้า', 10, yPos);
-                yPos += 6;
+                storesContent.push({ text: 'ร้านค้า', fontSize: 14, bold: true, margin: [0, 5, 0, 5] as [number, number, number, number] });
 
-                doc.setFontSize(10);
                 trip.stores
                     .sort((a: any, b: any) => a.sequence_order - b.sequence_order)
-                    .forEach((storeWithDetails: any, index: number) => {
+                    .forEach((storeWithDetails: any) => {
                         const store = storeWithDetails.store;
                         if (!store) return;
 
-                        // Check if we need a new page
-                        if (yPos > 180) {
-                            doc.addPage();
-                            yPos = 15;
-                        }
+                        // Store header
+                        storesContent.push({
+                            text: `${storeWithDetails.sequence_order}. ${store.customer_code} - ${store.customer_name}`,
+                            fontSize: 11,
+                            bold: true,
+                            margin: [0, 3, 0, 2] as [number, number, number, number]
+                        });
 
-                        doc.setFontSize(11);
-                        doc.text(`${storeWithDetails.sequence_order}. ${store.customer_code} - ${store.customer_name}`, 10, yPos);
-                        yPos += 5;
-
+                        // Store address
                         if (store.address) {
-                            doc.setFontSize(9);
-                            doc.text(`   ที่อยู่: ${store.address}`, 10, yPos);
-                            yPos += 4;
+                            storesContent.push({
+                                text: `   ที่อยู่: ${store.address}`,
+                                fontSize: 9,
+                                margin: [0, 0, 0, 2] as [number, number, number, number]
+                            });
                         }
 
                         // Products for this store
                         if (storeWithDetails.items && storeWithDetails.items.length > 0) {
-                            doc.setFontSize(9);
+                            const productItems: Content[] = [];
                             storeWithDetails.items.forEach((item: any) => {
                                 const product = item.product;
                                 if (!product) return;
 
-                                if (yPos > 190) {
-                                    doc.addPage();
-                                    yPos = 15;
-                                }
-
-                                // Format: bullet, product code, product name (left aligned)
-                                // quantity and unit separated on the right
-                                const productText = `   • ${product.product_code} - ${product.product_name}`;
-                                const quantityText = item.quantity.toLocaleString();
-                                const unitText = product.unit;
-
-                                // Calculate positions
-                                const leftX = 10;
-                                const quantityX = 115; // Position for quantity (right aligned)
-                                const unitX = 138; // Position for unit (rightmost, with space from quantity)
-
-                                // Draw product info on left
-                                doc.text(productText, leftX, yPos);
-
-                                // Draw quantity on right (aligned right)
-                                doc.text(quantityText, quantityX, yPos, { align: 'right' });
-
-                                // Draw unit separately, with space from quantity
-                                doc.text(unitText, unitX, yPos, { align: 'right' });
-
-                                yPos += 4;
+                                productItems.push({
+                                    columns: [
+                                        {
+                                            text: `   • ${product.product_code} - ${product.product_name}`,
+                                            width: '*'
+                                        },
+                                        {
+                                            text: item.quantity.toLocaleString(),
+                                            width: 'auto',
+                                            alignment: 'right'
+                                        },
+                                        {
+                                            text: product.unit,
+                                            width: 30,
+                                            alignment: 'right'
+                                        }
+                                    ],
+                                    fontSize: 9,
+                                    margin: [0, 0, 0, 1] as [number, number, number, number]
+                                });
                             });
+                            storesContent.push(...productItems);
                         }
 
-                        yPos += 2;
+                        storesContent.push({ text: '', margin: [0, 2, 0, 0] as [number, number, number, number] });
                     });
             }
 
-            yPos += 3;
-
-            // Aggregated Products Summary
+            // Build aggregated products table
+            const aggregatedContent: Content[] = [];
             if (aggregatedProducts.length > 0) {
-                if (yPos > 160) {
-                    doc.addPage();
-                    yPos = 15;
-                }
+                const tableBody = [
+                    [
+                        { text: 'รหัส', bold: true },
+                        { text: 'ชื่อสินค้า', bold: true },
+                        { text: 'หมวดหมู่', bold: true },
+                        { text: 'จำนวน', bold: true }
+                    ],
+                    ...aggregatedProducts.map((product) => [
+                        product.product_code,
+                        product.product_name,
+                        product.category,
+                        `${product.total_quantity.toLocaleString()} ${product.unit}`
+                    ])
+                ];
 
-                doc.setFontSize(14);
-                doc.text('สรุปสินค้าทั้งหมด', 10, yPos);
-                yPos += 6;
-
-                doc.setFontSize(9);
-                const tableData = aggregatedProducts.map((product) => [
-                    product.product_code,
-                    product.product_name,
-                    product.category,
-                    `${product.total_quantity.toLocaleString()} ${product.unit}`,
-                ]);
-
-                // Set font before creating table
-                doc.setFont('Sarabun', 'normal');
-
-                autoTable(doc, {
-                    head: [['รหัส', 'ชื่อสินค้า', 'หมวดหมู่', 'จำนวน']],
-                    body: tableData,
-                    startY: yPos,
-                    styles: {
-                        font: 'Sarabun',
-                        fontSize: 8,
-                        fontStyle: 'normal'
-                    },
-                    headStyles: {
-                        fillColor: [59, 130, 246],
-                        textColor: [255, 255, 255],
-                        font: 'Sarabun',
-                        fontSize: 9,
-                        fontStyle: 'normal'
-                    },
-                    columnStyles: {
-                        0: { font: 'Sarabun', fontSize: 8 },
-                        1: { font: 'Sarabun', fontSize: 8 },
-                        2: { font: 'Sarabun', fontSize: 8 },
-                        3: { font: 'Sarabun', fontSize: 8 }
-                    },
-                    margin: { left: 10, right: 10 },
+                aggregatedContent.push({
+                    text: 'สรุปสินค้าทั้งหมด',
+                    fontSize: 14,
+                    bold: true,
+                    margin: [0, 5, 0, 5] as [number, number, number, number]
                 });
 
-                yPos = (doc as any).lastAutoTable.finalY + 5;
+                aggregatedContent.push({
+                    table: {
+                        headerRows: 1,
+                        widths: ['auto', '*', 'auto', 'auto'],
+                        body: tableBody
+                    },
+                    layout: 'lightHorizontalLines',
+                    fontSize: 8
+                });
             }
 
-            // Notes
-            if (trip.notes) {
-                if (yPos > 180) {
-                    doc.addPage();
-                    yPos = 15;
+            // Build content
+            const content: Content[] = [
+                // Header
+                { text: 'ใบเบิกสินค้า', fontSize: 16, bold: true, alignment: 'center', margin: [0, 0, 0, 5] as [number, number, number, number] },
+
+                // Date and Trip Number
+                {
+                    columns: [
+                        {
+                            text: `วันที่: ${new Date(trip.planned_date).toLocaleDateString('th-TH', {
+                                year: 'numeric',
+                                month: 'long',
+                                day: 'numeric',
+                            })}`,
+                            width: '*'
+                        },
+                        {
+                            text: `รหัสทริป: ${trip.trip_number || 'N/A'}`,
+                            width: '*',
+                            alignment: 'right'
+                        }
+                    ],
+                    fontSize: 11,
+                    margin: [0, 0, 0, 3] as [number, number, number, number]
+                },
+
+                // Vehicle and Driver
+                {
+                    columns: [
+                        {
+                            text: trip.vehicle ? `รถ: ${trip.vehicle.plate}${trip.vehicle.make && trip.vehicle.model ? ` (${trip.vehicle.make} ${trip.vehicle.model})` : ''}` : '',
+                            width: '*'
+                        },
+                        {
+                            text: trip.driver ? `คนขับ: ${trip.driver.full_name}` : '',
+                            width: '*',
+                            alignment: 'right'
+                        }
+                    ],
+                    fontSize: 11,
+                    margin: [0, 0, 0, 5] as [number, number, number, number]
+                },
+
+                // Stores section
+                ...storesContent,
+
+                // Aggregated products
+                ...aggregatedContent,
+
+                // Notes
+                ...(trip.notes ? [
+                    { text: 'หมายเหตุ:', fontSize: 10, bold: true, margin: [0, 5, 0, 2] as [number, number, number, number] },
+                    { text: trip.notes, fontSize: 9, margin: [0, 0, 0, 0] as [number, number, number, number] }
+                ] : [])
+            ];
+
+            // Create document definition
+            const docDefinition: TDocumentDefinitions = {
+                pageSize: 'A5',
+                pageOrientation: 'portrait',
+                pageMargins: [10, 15, 10, 15] as [number, number, number, number],
+                defaultStyle: {
+                    font: 'Sarabun',
+                    fontSize: 10
+                },
+                content,
+                styles: {
+                    normal: {
+                        font: 'Sarabun'
+                    }
                 }
-                doc.setFontSize(10);
-                doc.text('หมายเหตุ:', 10, yPos);
-                yPos += 5;
-                doc.setFontSize(9);
-                const notesLines = doc.splitTextToSize(trip.notes, 120);
-                doc.text(notesLines, 10, yPos);
+            };
+
+            // ตรวจสอบว่า vfs ถูกตั้งค่าจริงๆ ก่อนสร้าง PDF
+            console.log('[pdfService] Before PDF creation check:', {
+                hasVfs: !!pdfMake.vfs,
+                hasSarabunRegular: !!pdfMake.vfs?.['Sarabun-Regular.ttf'],
+                hasSarabunBold: !!pdfMake.vfs?.['Sarabun-Bold.ttf'],
+                sarabunFont: pdfMake.fonts?.Sarabun,
+                defaultFont: docDefinition.defaultStyle?.font
+            });
+
+            if (!pdfMake.vfs || !pdfMake.vfs['Sarabun-Regular.ttf']) {
+                throw new Error('Fonts not loaded. VFS is not properly initialized.');
             }
 
-            // Save PDF
-            doc.save(`delivery-trip-${trip.trip_number || trip.id}.pdf`);
+            console.log('[pdfService] Creating PDF with docDefinition:', docDefinition);
+
+            // รอให้ pdfMake อัพเดท font registry ก่อนสร้าง PDF
+            await new Promise(resolve => setTimeout(resolve, 100));
+
+            // Generate and download PDF
+            pdfMake.createPdf(docDefinition).download(`delivery-trip-${trip.trip_number || trip.id}.pdf`);
         } catch (error) {
             console.error('[pdfService] Error generating delivery trip PDF:', error);
             throw error;
