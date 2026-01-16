@@ -21,6 +21,7 @@ import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Card } from '../components/ui/Card';
 import { PageLayout } from '../components/layout/PageLayout';
+import { VehicleGroupBadge } from '../components/vehicle/VehicleGroupBadge';
 import type { Database } from '../types/database';
 
 type Vehicle = Database['public']['Tables']['vehicles']['Row'];
@@ -92,6 +93,11 @@ const VehicleCard = React.memo<VehicleCardProps>(({
               <p className="text-sm text-slate-500 dark:text-slate-400">
                 {vehicle.make} {vehicle.model}
               </p>
+              {vehicle.owner_group && (
+                <div className="mt-1">
+                  <VehicleGroupBadge ownerGroup={vehicle.owner_group} />
+                </div>
+              )}
             </div>
           </div>
         </div>

@@ -17,6 +17,8 @@ import {
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
 import { PageLayout } from '../components/layout/PageLayout';
+import { VehicleGroupBadge } from '../components/vehicle/VehicleGroupBadge';
+import { VehicleDocumentManager } from '../components/vehicle/VehicleDocumentManager';
 import { useTickets } from '../hooks';
 
 interface VehicleDetailViewProps {
@@ -135,6 +137,11 @@ export const VehicleDetailView: React.FC<VehicleDetailViewProps> = ({
                   <div>
                     <h1 className="text-3xl font-bold text-white mb-1">{vehicle.plate}</h1>
                     <p className="text-slate-200 text-lg">{vehicle.make} {vehicle.model}</p>
+                    {vehicle.owner_group && (
+                      <div className="mt-2">
+                        <VehicleGroupBadge ownerGroup={vehicle.owner_group} />
+                      </div>
+                    )}
                   </div>
                   <span className={`px-3 py-1 rounded-full text-sm font-medium flex items-center gap-2 ${statusConfig[status as keyof typeof statusConfig].className
                     }`}>
@@ -316,6 +323,9 @@ export const VehicleDetailView: React.FC<VehicleDetailViewProps> = ({
               </div>
             )}
           </Card>
+
+          {/* Vehicle Documents */}
+          <VehicleDocumentManager vehicleId={vehicleId} canEdit={canEdit} />
 
           {/* Recent Tickets */}
           <Card className="p-6">
