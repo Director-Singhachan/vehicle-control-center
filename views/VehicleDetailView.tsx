@@ -234,6 +234,9 @@ export const VehicleDetailView: React.FC<VehicleDetailViewProps> = ({
             </div>
           </Card>
 
+          {/* Vehicle Documents */}
+          <VehicleDocumentManager vehicleId={vehicleId} canEdit={canEdit} />
+
           {/* Maintenance History Table */}
           <Card className="p-6">
             <div className="flex items-center justify-between mb-6">
@@ -323,9 +326,6 @@ export const VehicleDetailView: React.FC<VehicleDetailViewProps> = ({
               </div>
             )}
           </Card>
-
-          {/* Vehicle Documents */}
-          <VehicleDocumentManager vehicleId={vehicleId} canEdit={canEdit} />
 
           {/* Recent Tickets */}
           <Card className="p-6">
