@@ -16,7 +16,7 @@ ALTER TABLE public.vehicles
 ADD COLUMN IF NOT EXISTS owner_group TEXT 
 CHECK (owner_group IN ('thaikit', 'sing_chanthaburi', 'rental'));
 
-COMMENT ON COLUMN public.vehicles.owner_group IS 'กลุ่มเจ้าของรถ: thaikit=ไทยกิจ, sing_chanthaburi=Sing Chanthaburi, rental=รถเช่า';
+COMMENT ON COLUMN public.vehicles.owner_group IS 'กลุ่มเจ้าของรถ: thaikit=บริษัทไทยกิจ, sing_chanthaburi=บริษัทสิงห์จันทบุรีจำกัด, rental=รถเช่า';
 
 -- ========================================
 -- 2. Create vehicle_documents table (Central table)
@@ -166,6 +166,12 @@ ALTER TABLE public.vehicle_insurance_records ENABLE ROW LEVEL SECURITY;
 -- 7. RLS Policies for vehicle_documents
 -- ========================================
 
+-- Drop existing policies if they exist (to allow re-running migration)
+DROP POLICY IF EXISTS "vehicle_documents_select_all_staff" ON public.vehicle_documents;
+DROP POLICY IF EXISTS "vehicle_documents_insert_staff" ON public.vehicle_documents;
+DROP POLICY IF EXISTS "vehicle_documents_update_staff" ON public.vehicle_documents;
+DROP POLICY IF EXISTS "vehicle_documents_delete_staff" ON public.vehicle_documents;
+
 -- SELECT: Admin, Manager, Inspector can see all; Drivers can see documents for their vehicles
 CREATE POLICY "vehicle_documents_select_all_staff"
 ON public.vehicle_documents
@@ -242,6 +248,12 @@ USING (
 -- 8. RLS Policies for vehicle_tax_records
 -- ========================================
 
+-- Drop existing policies if they exist
+DROP POLICY IF EXISTS "vehicle_tax_records_select_all_staff" ON public.vehicle_tax_records;
+DROP POLICY IF EXISTS "vehicle_tax_records_insert_staff" ON public.vehicle_tax_records;
+DROP POLICY IF EXISTS "vehicle_tax_records_update_staff" ON public.vehicle_tax_records;
+DROP POLICY IF EXISTS "vehicle_tax_records_delete_staff" ON public.vehicle_tax_records;
+
 -- SELECT: Same as vehicle_documents
 CREATE POLICY "vehicle_tax_records_select_all_staff"
 ON public.vehicle_tax_records
@@ -317,6 +329,12 @@ USING (
 -- ========================================
 -- 9. RLS Policies for vehicle_insurance_records
 -- ========================================
+
+-- Drop existing policies if they exist
+DROP POLICY IF EXISTS "vehicle_insurance_records_select_all_staff" ON public.vehicle_insurance_records;
+DROP POLICY IF EXISTS "vehicle_insurance_records_insert_staff" ON public.vehicle_insurance_records;
+DROP POLICY IF EXISTS "vehicle_insurance_records_update_staff" ON public.vehicle_insurance_records;
+DROP POLICY IF EXISTS "vehicle_insurance_records_delete_staff" ON public.vehicle_insurance_records;
 
 -- SELECT: Same as vehicle_documents
 CREATE POLICY "vehicle_insurance_records_select_all_staff"

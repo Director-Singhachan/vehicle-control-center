@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "check": "node check-dev.js"
+    "check": "node check-dev.js",
+    "gen:types": "node scripts/regenerate-types.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.84.0",

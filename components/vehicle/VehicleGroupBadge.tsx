@@ -20,11 +20,11 @@ export const VehicleGroupBadge: React.FC<VehicleGroupBadgeProps> = ({
 
   const config = {
     thaikit: {
-      label: 'ไทยกิจ',
+      label: 'บริษัทไทยกิจ',
       className: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200',
     },
     sing_chanthaburi: {
-      label: 'Sing Chanthaburi',
+      label: 'บริษัทสิงห์จันทบุรีจำกัด',
       className: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
     },
     rental: {

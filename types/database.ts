@@ -61,6 +61,7 @@ export interface Database {
           lat: number | null;
           lng: number | null;
           image_url: string | null;
+          owner_group: 'thaikit' | 'sing_chanthaburi' | 'rental' | null;
           created_at: string;
         };
         Insert: {
@@ -73,6 +74,7 @@ export interface Database {
           lat?: number | null;
           lng?: number | null;
           image_url?: string | null;
+          owner_group?: 'thaikit' | 'sing_chanthaburi' | 'rental' | null;
           created_at?: string;
         };
         Update: {
@@ -85,7 +87,146 @@ export interface Database {
           lat?: number | null;
           lng?: number | null;
           image_url?: string | null;
+          owner_group?: 'thaikit' | 'sing_chanthaburi' | 'rental' | null;
           created_at?: string;
+        };
+      };
+      vehicle_documents: {
+        Row: {
+          id: string;
+          vehicle_id: string;
+          document_type: 'registration' | 'tax' | 'insurance' | 'inspection' | 'other';
+          file_url: string;
+          file_name: string;
+          mime_type: string | null;
+          issued_date: string | null;
+          expiry_date: string | null;
+          remind_before_days: number | null;
+          status: 'active' | 'expired' | 'pending' | 'cancelled';
+          notes: string | null;
+          created_by: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          vehicle_id: string;
+          document_type: 'registration' | 'tax' | 'insurance' | 'inspection' | 'other';
+          file_url: string;
+          file_name: string;
+          mime_type?: string | null;
+          issued_date?: string | null;
+          expiry_date?: string | null;
+          remind_before_days?: number | null;
+          status?: 'active' | 'expired' | 'pending' | 'cancelled';
+          notes?: string | null;
+          created_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          vehicle_id?: string;
+          document_type?: 'registration' | 'tax' | 'insurance' | 'inspection' | 'other';
+          file_url?: string;
+          file_name?: string;
+          mime_type?: string | null;
+          issued_date?: string | null;
+          expiry_date?: string | null;
+          remind_before_days?: number | null;
+          status?: 'active' | 'expired' | 'pending' | 'cancelled';
+          notes?: string | null;
+          created_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+      };
+      vehicle_tax_records: {
+        Row: {
+          id: string;
+          vehicle_id: string;
+          document_id: string | null;
+          tax_number: string | null;
+          amount: number | null;
+          paid_date: string | null;
+          receipt_number: string | null;
+          notes: string | null;
+          created_at: string;
+          created_by: string | null;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          vehicle_id: string;
+          document_id?: string | null;
+          tax_number?: string | null;
+          amount?: number | null;
+          paid_date?: string | null;
+          receipt_number?: string | null;
+          notes?: string | null;
+          created_at?: string;
+          created_by?: string | null;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          vehicle_id?: string;
+          document_id?: string | null;
+          tax_number?: string | null;
+          amount?: number | null;
+          paid_date?: string | null;
+          receipt_number?: string | null;
+          notes?: string | null;
+          created_at?: string;
+          created_by?: string | null;
+          updated_at?: string;
+        };
+      };
+      vehicle_insurance_records: {
+        Row: {
+          id: string;
+          vehicle_id: string;
+          document_id: string | null;
+          provider_name: string | null;
+          policy_number: string | null;
+          coverage_type: 'compulsory' | 'voluntary' | 'both' | null;
+          coverage_amount: number | null;
+          premium_amount: number | null;
+          contact_phone: string | null;
+          notes: string | null;
+          created_at: string;
+          created_by: string | null;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          vehicle_id: string;
+          document_id?: string | null;
+          provider_name?: string | null;
+          policy_number?: string | null;
+          coverage_type?: 'compulsory' | 'voluntary' | 'both' | null;
+          coverage_amount?: number | null;
+          premium_amount?: number | null;
+          contact_phone?: string | null;
+          notes?: string | null;
+          created_at?: string;
+          created_by?: string | null;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          vehicle_id?: string;
+          document_id?: string | null;
+          provider_name?: string | null;
+          policy_number?: string | null;
+          coverage_type?: 'compulsory' | 'voluntary' | 'both' | null;
+          coverage_amount?: number | null;
+          premium_amount?: number | null;
+          contact_phone?: string | null;
+          notes?: string | null;
+          created_at?: string;
+          created_by?: string | null;
+          updated_at?: string;
         };
       };
       tickets: {
