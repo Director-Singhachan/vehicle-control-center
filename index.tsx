@@ -28,6 +28,10 @@ import {
   ShoppingCart,
   ClipboardList,
   Boxes,
+  Calculator,
+  Receipt,
+  Briefcase,
+  CreditCard,
 } from 'lucide-react';
 import { DashboardView } from './views/DashboardView';
 import { ProfileView } from './views/ProfileView';
@@ -63,6 +67,10 @@ import { CreateOrderView } from './views/CreateOrderView';
 import { PendingOrdersView } from './views/PendingOrdersView';
 import { TrackOrdersView } from './views/TrackOrdersView';
 import { SalesTripsView } from './views/SalesTripsView';
+import FinancialReportsView from './views/FinancialReportsView';
+import JournalEntriesView from './views/JournalEntriesView';
+import PurchaseOrdersView from './views/PurchaseOrdersView';
+import PayrollManagementView from './views/PayrollManagementView';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { useAuth, usePendingTickets } from './hooks';
 import { ticketService, type TicketWithRelations } from './services/ticketService';
@@ -222,6 +230,11 @@ const AppContent = () => {
   const tripsMenuRef = React.useRef<HTMLDivElement>(null);
   const commissionTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
   const [flyoutPosition, setFlyoutPosition] = useState({ top: 0, left: 0 });
+
+  // ERP menu state - Accordion style
+  const [isFinancialOpen, setIsFinancialOpen] = useState(false);
+  const [isPurchaseOpen, setIsPurchaseOpen] = useState(false);
+  const [isHROpen, setIsHROpen] = useState(false);
 
   // Settings menu state
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -458,6 +471,7 @@ const AppContent = () => {
     setIsSettingsHovered(false);
   };
 
+
   // Open commission menu if one of its sub-items is active
   useEffect(() => {
     // ปิด accordion ย่อยทั้งหมด ใช้ hover flyout อย่างเดียว
@@ -488,6 +502,19 @@ const AppContent = () => {
       }
     };
   }, []);
+
+  // Open ERP accordions if one of their sub-items is active
+  useEffect(() => {
+    if (activeTab === 'financial-reports' || activeTab === 'journal-entries') {
+      setIsFinancialOpen(true);
+    }
+    if (activeTab === 'purchase-orders') {
+      setIsPurchaseOpen(true);
+    }
+    if (activeTab === 'payroll-management') {
+      setIsHROpen(true);
+    }
+  }, [activeTab]);
   const [deliveryTripView, setDeliveryTripView] = useState<'list' | 'form' | 'detail'>('list');
   const [selectedDeliveryTripId, setSelectedDeliveryTripId] = useState<string | null>(null);
   const [deliveryTripReturnContext, setDeliveryTripReturnContext] = useState<'delivery-list' | 'triplogs' | 'daily-summary'>('delivery-list');
@@ -1116,6 +1143,90 @@ const AppContent = () => {
                 </div>
               )}
             </>
+          )}
+
+          {/* Financial Menu with Accordion */}
+          {!isDriver && (
+            <div>
+              <SidebarItem
+                icon={Calculator}
+                label={isSidebarOpen ? "การเงิน" : ""}
+                active={activeTab === 'financial-reports' || activeTab === 'journal-entries'}
+                onClick={() => setIsFinancialOpen(!isFinancialOpen)}
+                isCollapsed={!isSidebarOpen}
+                hasSubmenu={true}
+                isOpen={isFinancialOpen}
+              />
+              {/* Accordion Style Submenu */}
+              {isFinancialOpen && isSidebarOpen && (
+                <div className="mt-1 space-y-1 ml-4 border-l-2 border-slate-100 dark:border-slate-800 animate-in fade-in slide-in-from-top-1 duration-200">
+                  <SubSidebarItem
+                    label="รายงานการเงิน"
+                    active={activeTab === 'financial-reports'}
+                    onClick={() => setActiveTab('financial-reports')}
+                    isCollapsed={false}
+                  />
+                  <SubSidebarItem
+                    label="สมุดรายวัน"
+                    active={activeTab === 'journal-entries'}
+                    onClick={() => setActiveTab('journal-entries')}
+                    isCollapsed={false}
+                  />
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Purchase Menu with Accordion */}
+          {!isDriver && (
+            <div>
+              <SidebarItem
+                icon={Receipt}
+                label={isSidebarOpen ? "การจัดซื้อ" : ""}
+                active={activeTab === 'purchase-orders'}
+                onClick={() => setIsPurchaseOpen(!isPurchaseOpen)}
+                isCollapsed={!isSidebarOpen}
+                hasSubmenu={true}
+                isOpen={isPurchaseOpen}
+              />
+              {/* Accordion Style Submenu */}
+              {isPurchaseOpen && isSidebarOpen && (
+                <div className="mt-1 space-y-1 ml-4 border-l-2 border-slate-100 dark:border-slate-800 animate-in fade-in slide-in-from-top-1 duration-200">
+                  <SubSidebarItem
+                    label="ใบสั่งซื้อ"
+                    active={activeTab === 'purchase-orders'}
+                    onClick={() => setActiveTab('purchase-orders')}
+                    isCollapsed={false}
+                  />
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* HR Menu with Accordion */}
+          {!isDriver && (
+            <div>
+              <SidebarItem
+                icon={Briefcase}
+                label={isSidebarOpen ? "ทรัพยากรบุคคล" : ""}
+                active={activeTab === 'payroll-management'}
+                onClick={() => setIsHROpen(!isHROpen)}
+                isCollapsed={!isSidebarOpen}
+                hasSubmenu={true}
+                isOpen={isHROpen}
+              />
+              {/* Accordion Style Submenu */}
+              {isHROpen && isSidebarOpen && (
+                <div className="mt-1 space-y-1 ml-4 border-l-2 border-slate-100 dark:border-slate-800 animate-in fade-in slide-in-from-top-1 duration-200">
+                  <SubSidebarItem
+                    label="เงินเดือน"
+                    active={activeTab === 'payroll-management'}
+                    onClick={() => setActiveTab('payroll-management')}
+                    isCollapsed={false}
+                  />
+                </div>
+              )}
+            </div>
           )}
         </div>
 
@@ -1926,6 +2037,14 @@ const AppContent = () => {
             <PendingOrdersView />
           ) : activeTab === 'sales-trips' ? (
             <SalesTripsView />
+          ) : activeTab === 'financial-reports' ? (
+            <FinancialReportsView />
+          ) : activeTab === 'journal-entries' ? (
+            <JournalEntriesView />
+          ) : activeTab === 'purchase-orders' ? (
+            <PurchaseOrdersView />
+          ) : activeTab === 'payroll-management' ? (
+            <PayrollManagementView />
           ) : (
             <div className="flex flex-col items-center justify-center h-[60vh] text-slate-400">
               <Wrench size={48} className="mb-4 opacity-50" />
