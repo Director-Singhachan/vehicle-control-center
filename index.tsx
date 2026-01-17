@@ -1423,6 +1423,11 @@ const AppContent = () => {
         <div className="p-6">
           {activeTab === 'dashboard' ? (
             <DashboardView
+              onNavigateToVehicle={(vehicleId) => {
+                setActiveTab('vehicles');
+                setSelectedVehicleId(vehicleId);
+                setVehicleView('detail');
+              }}
               isDark={isDark}
               onNavigateToTickets={() => {
                 setActiveTab('maintenance');

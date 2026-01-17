@@ -37,6 +37,7 @@ export const VehicleFormView: React.FC<VehicleFormViewProps> = ({
     model: '',
     type: '',
     branch: '',
+    owner_group: '' as 'thaikit' | 'sing_chanthaburi' | 'rental' | '',
     lat: '',
     lng: '',
     image_url: '',
@@ -58,6 +59,7 @@ export const VehicleFormView: React.FC<VehicleFormViewProps> = ({
         model: vehicle.model || '',
         type: vehicle.type || '',
         branch: vehicle.branch || '',
+        owner_group: vehicle.owner_group || '',
         lat: vehicle.lat?.toString() || '',
         lng: vehicle.lng?.toString() || '',
         image_url: vehicle.image_url || '',
@@ -152,6 +154,7 @@ export const VehicleFormView: React.FC<VehicleFormViewProps> = ({
         model: formData.model.trim() || null,
         type: formData.type.trim() || null,
         branch: formData.branch.trim() || null,
+        owner_group: formData.owner_group || null,
         lat: formData.lat ? parseFloat(formData.lat) : null,
         lng: formData.lng ? parseFloat(formData.lng) : null,
         image_url: imageUrl,
@@ -272,6 +275,23 @@ export const VehicleFormView: React.FC<VehicleFormViewProps> = ({
               placeholder="สาขา A"
               disabled={saving}
             />
+
+            <div>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                กลุ่มเจ้าของรถ
+              </label>
+              <select
+                value={formData.owner_group}
+                onChange={(e) => handleChange('owner_group', e.target.value)}
+                disabled={saving}
+                className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <option value="">-- ไม่ระบุ --</option>
+                <option value="thaikit">บริษัทไทยกิจ</option>
+                <option value="sing_chanthaburi">บริษัทสิงห์จันทบุรีจำกัด</option>
+                <option value="rental">รถเช่า</option>
+              </select>
+            </div>
 
             <div className="md:col-span-2">
               <h3 className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-4 flex items-center gap-2">

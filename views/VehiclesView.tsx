@@ -21,6 +21,8 @@ import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Card } from '../components/ui/Card';
 import { PageLayout } from '../components/layout/PageLayout';
+import { VehicleGroupBadge } from '../components/vehicle/VehicleGroupBadge';
+import { VehicleDocumentBadge } from '../components/vehicle/VehicleDocumentBadge';
 import type { Database } from '../types/database';
 
 type Vehicle = Database['public']['Tables']['vehicles']['Row'];
@@ -71,11 +73,12 @@ const VehicleCard = React.memo<VehicleCardProps>(({
           onError={handleImageError}
           loading="lazy"
         />
-        <div className="absolute top-3 right-3">
+        <div className="absolute top-3 right-3 flex flex-col gap-2 items-end">
           <span className={`px-2 py-1 rounded-full text-xs font-medium flex items-center gap-1 shadow-sm ${statusBadge.className}`}>
             <StatusIcon className="w-3 h-3" />
             {statusBadge.label}
           </span>
+          <VehicleDocumentBadge vehicleId={vehicle.id} compact={true} />
         </div>
       </div>
 
@@ -92,6 +95,11 @@ const VehicleCard = React.memo<VehicleCardProps>(({
               <p className="text-sm text-slate-500 dark:text-slate-400">
                 {vehicle.make} {vehicle.model}
               </p>
+              {vehicle.owner_group && (
+                <div className="mt-1">
+                  <VehicleGroupBadge ownerGroup={vehicle.owner_group} />
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -109,6 +117,7 @@ const VehicleCard = React.memo<VehicleCardProps>(({
               <span>{vehicle.branch}</span>
             </div>
           )}
+          <VehicleDocumentBadge vehicleId={vehicle.id} compact={false} />
         </div>
 
         <div className="flex gap-2 pt-4 border-t border-slate-200 dark:border-slate-700">
@@ -178,6 +187,7 @@ export const VehiclesView: React.FC<VehiclesViewProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'maintenance' | 'idle'>('all');
   const [branchFilter, setBranchFilter] = useState<string>('all');
+  const [ownerGroupFilter, setOwnerGroupFilter] = useState<'all' | 'thaikit' | 'sing_chanthaburi' | 'rental'>('all');
   const [showFilters, setShowFilters] = useState(false);
 
   // Memoize filter handlers to prevent unnecessary re-renders
@@ -243,8 +253,13 @@ export const VehiclesView: React.FC<VehiclesViewProps> = ({
       filtered = filtered.filter(v => v.branch === branchFilter);
     }
 
+    // Owner group filter
+    if (ownerGroupFilter !== 'all') {
+      filtered = filtered.filter(v => v.owner_group === ownerGroupFilter);
+    }
+
     return filtered;
-  }, [vehicles, searchQuery, statusFilter, branchFilter, statusMap]);
+  }, [vehicles, searchQuery, statusFilter, branchFilter, ownerGroupFilter, statusMap]);
 
   // Log initial state - moved after filteredVehicles declaration
   React.useEffect(() => {
@@ -367,7 +382,7 @@ export const VehiclesView: React.FC<VehiclesViewProps> = ({
             </div>
 
             {/* Quick Status Filters */}
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               <button
                 onClick={handleStatusFilterAll}
                 className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${statusFilter === 'all'
@@ -407,10 +422,54 @@ export const VehiclesView: React.FC<VehiclesViewProps> = ({
             </div>
           </div>
 
+          {/* Quick Owner Group Filters */}
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button
+              onClick={() => setOwnerGroupFilter('all')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                ownerGroupFilter === 'all'
+                  ? 'bg-enterprise-600 text-white'
+                  : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+              }`}
+            >
+              ทุกกลุ่ม
+            </button>
+            <button
+              onClick={() => setOwnerGroupFilter('thaikit')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                ownerGroupFilter === 'thaikit'
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/30'
+              }`}
+            >
+              บริษัทไทยกิจ
+            </button>
+            <button
+              onClick={() => setOwnerGroupFilter('sing_chanthaburi')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                ownerGroupFilter === 'sing_chanthaburi'
+                  ? 'bg-green-600 text-white'
+                  : 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300 hover:bg-green-100 dark:hover:bg-green-900/30'
+              }`}
+            >
+              บริษัทสิงห์จันทบุรีจำกัด
+            </button>
+            <button
+              onClick={() => setOwnerGroupFilter('rental')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                ownerGroupFilter === 'rental'
+                  ? 'bg-purple-600 text-white'
+                  : 'bg-purple-50 dark:bg-purple-900/20 text-purple-700 dark:text-purple-300 hover:bg-purple-100 dark:hover:bg-purple-900/30'
+              }`}
+            >
+              รถเช่า
+            </button>
+          </div>
+
           {/* Advanced Filters */}
           {showFilters && (
             <div className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-700">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                     สาขา
@@ -424,6 +483,21 @@ export const VehiclesView: React.FC<VehiclesViewProps> = ({
                     {branches.map(branch => (
                       <option key={branch} value={branch}>{branch}</option>
                     ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                    กลุ่มเจ้าของรถ
+                  </label>
+                  <select
+                    value={ownerGroupFilter}
+                    onChange={(e) => setOwnerGroupFilter(e.target.value as 'all' | 'thaikit' | 'sing_chanthaburi' | 'rental')}
+                    className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-enterprise-500 focus:border-transparent"
+                  >
+                    <option value="all">ทุกกลุ่ม</option>
+                    <option value="thaikit">บริษัทไทยกิจ</option>
+                    <option value="sing_chanthaburi">บริษัทสิงห์จันทบุรีจำกัด</option>
+                    <option value="rental">รถเช่า</option>
                   </select>
                 </div>
               </div>
@@ -495,12 +569,27 @@ export const VehiclesView: React.FC<VehiclesViewProps> = ({
                 : 'ไม่พบยานพาหนะที่ตรงกับเงื่อนไข'}
             </h3>
             <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">
-              {searchQuery || statusFilter !== 'all' || branchFilter !== 'all'
+              {searchQuery || statusFilter !== 'all' || branchFilter !== 'all' || ownerGroupFilter !== 'all'
                 ? 'ลองเปลี่ยนเงื่อนไขการค้นหา'
                 : canEdit
                   ? 'เริ่มต้นด้วยการเพิ่มยานพาหนะ'
                   : 'ยังไม่มีข้อมูลยานพาหนะ'}
             </p>
+            {(searchQuery || statusFilter !== 'all' || branchFilter !== 'all' || ownerGroupFilter !== 'all') && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setSearchQuery('');
+                  setStatusFilter('all');
+                  setBranchFilter('all');
+                  setOwnerGroupFilter('all');
+                }}
+              >
+                <X className="w-4 h-4 mr-2" />
+                ล้างตัวกรอง
+              </Button>
+            )}
             {vehicles.length === 0 && (
               <Button
                 variant="outline"
