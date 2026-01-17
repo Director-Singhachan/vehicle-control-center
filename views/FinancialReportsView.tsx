@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { supabase } from '../services';
+import { supabase } from '../lib/supabase';
 import { Database } from '../types/database';
 
 type TrialBalance = {
