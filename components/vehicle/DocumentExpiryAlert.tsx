@@ -10,8 +10,8 @@ interface DocumentExpiryAlertProps {
 }
 
 const DOCUMENT_TYPE_LABELS: Record<string, string> = {
-  registration: 'ทะเบียนรถ',
-  tax: 'ภาษีรถ',
+  registration: 'ทะเบียนรถ / เล่มรถ',
+  tax: 'ภาษีรถ / ต่อทะเบียน',
   insurance: 'ประกัน',
   inspection: 'พรบ./ตรวจสภาพ',
   other: 'อื่นๆ',

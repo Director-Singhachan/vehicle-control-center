@@ -25,8 +25,8 @@ interface VehicleDocumentManagerProps {
 }
 
 const DOCUMENT_TYPE_LABELS: Record<DocumentType, string> = {
-  registration: 'ทะเบียนรถ',
-  tax: 'ภาษีรถ',
+  registration: 'ทะเบียนรถ / เล่มรถ',
+  tax: 'ภาษีรถ / ต่อทะเบียน',
   insurance: 'ประกัน',
   inspection: 'พรบ./ตรวจสภาพ',
   other: 'อื่นๆ',
