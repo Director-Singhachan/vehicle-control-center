@@ -37,6 +37,13 @@ export interface CreateDocumentParams {
 export interface DocumentWithDetails extends VehicleDocument {
   tax_record?: VehicleTaxRecord | null;
   insurance_record?: VehicleInsuranceRecord | null;
+  vehicle?: {
+    id: string;
+    plate: string;
+    make?: string | null;
+    model?: string | null;
+    image_url?: string | null;
+  } | null;
 }
 
 export const vehicleDocumentService = {
@@ -323,10 +330,95 @@ export const vehicleDocumentService = {
   /**
    * Get documents expiring soon
    */
+  /**
+   * Get document expiry statistics by month
+   */
+  getExpiryByMonth: async (months: number = 6): Promise<{
+    labels: string[];
+    expired: number[];
+    expiring: number[];
+  }> => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    const endDate = new Date();
+    endDate.setMonth(endDate.getMonth() + months);
+    const startDate = new Date();
+    startDate.setMonth(startDate.getMonth() - months);
+
+    const { data, error } = await supabase
+      .from('vehicle_documents')
+      .select('expiry_date, status')
+      .not('expiry_date', 'is', null)
+      .gte('expiry_date', startDate.toISOString().split('T')[0])
+      .lte('expiry_date', endDate.toISOString().split('T')[0]);
+
+    if (error) throw error;
+
+    // Group by month
+    const monthMap = new Map<string, { expired: number; expiring: number }>();
+    
+    // Initialize all months (past and future)
+    for (let i = -months; i <= months; i++) {
+      const date = new Date();
+      date.setMonth(date.getMonth() + i);
+      const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+      monthMap.set(monthKey, { expired: 0, expiring: 0 });
+    }
+
+    (data || []).forEach((doc) => {
+      if (!doc.expiry_date) return;
+      
+      const expiryDate = new Date(doc.expiry_date);
+      expiryDate.setHours(0, 0, 0, 0);
+      const monthKey = `${expiryDate.getFullYear()}-${String(expiryDate.getMonth() + 1).padStart(2, '0')}`;
+      
+      if (monthMap.has(monthKey)) {
+        const stats = monthMap.get(monthKey)!;
+        if (expiryDate < today || doc.status === 'expired') {
+          stats.expired++;
+        } else {
+          stats.expiring++;
+        }
+        monthMap.set(monthKey, stats);
+      }
+    });
+
+    // Convert to arrays (only show last N months)
+    const labels: string[] = [];
+    const expired: number[] = [];
+    const expiring: number[] = [];
+
+    const monthNames = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+    
+    // Get last N months
+    for (let i = months - 1; i >= 0; i--) {
+      const date = new Date();
+      date.setMonth(date.getMonth() - i);
+      const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+      const stats = monthMap.get(monthKey) || { expired: 0, expiring: 0 };
+      
+      labels.push(`${monthNames[date.getMonth()]} ${date.getFullYear()}`);
+      expired.push(stats.expired);
+      expiring.push(stats.expiring);
+    }
+
+    return { labels, expired, expiring };
+  },
+
   getExpiringSoon: async (days: number = 30): Promise<DocumentWithDetails[]> => {
     const { data, error } = await supabase
       .from('vehicle_documents')
-      .select('*')
+      .select(`
+        *,
+        vehicles!vehicle_documents_vehicle_id_fkey (
+          id,
+          plate,
+          make,
+          model,
+          image_url
+        )
+      `)
       .eq('status', 'active')
       .not('expiry_date', 'is', null)
       .lte('expiry_date', new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString().split('T')[0])
@@ -337,8 +429,17 @@ export const vehicleDocumentService = {
 
     // Fetch tax and insurance records
     const documentsWithDetails: DocumentWithDetails[] = await Promise.all(
-      (data || []).map(async (doc) => {
-        const details: DocumentWithDetails = { ...doc };
+      (data || []).map(async (doc: any) => {
+        const details: DocumentWithDetails = { 
+          ...doc,
+          vehicle: doc.vehicles ? {
+            id: doc.vehicles.id,
+            plate: doc.vehicles.plate,
+            make: doc.vehicles.make,
+            model: doc.vehicles.model,
+            image_url: doc.vehicles.image_url,
+          } : null,
+        };
 
         if (doc.document_type === 'tax') {
           const { data: taxData } = await supabase

@@ -22,6 +22,7 @@ import { Input } from '../components/ui/Input';
 import { Card } from '../components/ui/Card';
 import { PageLayout } from '../components/layout/PageLayout';
 import { VehicleGroupBadge } from '../components/vehicle/VehicleGroupBadge';
+import { VehicleDocumentBadge } from '../components/vehicle/VehicleDocumentBadge';
 import type { Database } from '../types/database';
 
 type Vehicle = Database['public']['Tables']['vehicles']['Row'];
@@ -72,11 +73,12 @@ const VehicleCard = React.memo<VehicleCardProps>(({
           onError={handleImageError}
           loading="lazy"
         />
-        <div className="absolute top-3 right-3">
+        <div className="absolute top-3 right-3 flex flex-col gap-2 items-end">
           <span className={`px-2 py-1 rounded-full text-xs font-medium flex items-center gap-1 shadow-sm ${statusBadge.className}`}>
             <StatusIcon className="w-3 h-3" />
             {statusBadge.label}
           </span>
+          <VehicleDocumentBadge vehicleId={vehicle.id} compact={true} />
         </div>
       </div>
 
@@ -115,6 +117,7 @@ const VehicleCard = React.memo<VehicleCardProps>(({
               <span>{vehicle.branch}</span>
             </div>
           )}
+          <VehicleDocumentBadge vehicleId={vehicle.id} compact={false} />
         </div>
 
         <div className="flex gap-2 pt-4 border-t border-slate-200 dark:border-slate-700">

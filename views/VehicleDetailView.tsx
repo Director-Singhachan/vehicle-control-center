@@ -19,6 +19,7 @@ import { Card } from '../components/ui/Card';
 import { PageLayout } from '../components/layout/PageLayout';
 import { VehicleGroupBadge } from '../components/vehicle/VehicleGroupBadge';
 import { VehicleDocumentManager } from '../components/vehicle/VehicleDocumentManager';
+import { DocumentExpiryAlert } from '../components/vehicle/DocumentExpiryAlert';
 import { useTickets } from '../hooks';
 
 interface VehicleDetailViewProps {
@@ -233,6 +234,9 @@ export const VehicleDetailView: React.FC<VehicleDetailViewProps> = ({
               </div>
             </div>
           </Card>
+
+          {/* Document Expiry Alert */}
+          <DocumentExpiryAlert vehicleId={vehicleId} />
 
           {/* Vehicle Documents */}
           <VehicleDocumentManager vehicleId={vehicleId} canEdit={canEdit} />

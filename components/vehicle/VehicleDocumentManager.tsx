@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
+import { ConfirmDialog } from '../ui/ConfirmDialog';
 import { DocumentUploadModal, type DocumentType } from './DocumentUploadModal';
 import { ImageModal } from '../ui/ImageModal';
 import { useVehicleDocuments } from '../../hooks/useVehicleDocuments';
@@ -48,6 +49,8 @@ export const VehicleDocumentManager: React.FC<VehicleDocumentManagerProps> = ({
   const [uploadDocumentType, setUploadDocumentType] = useState<DocumentType>('registration');
   const [viewingImage, setViewingImage] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [documentToDelete, setDocumentToDelete] = useState<{ id: string; name: string; type: string } | null>(null);
 
   const { documents, loading, error, refetch } = useVehicleDocuments({
     vehicleId,
@@ -138,21 +141,36 @@ export const VehicleDocumentManager: React.FC<VehicleDocumentManagerProps> = ({
     }
   };
 
-  const handleDeleteDocument = async (documentId: string) => {
-    if (!confirm('คุณแน่ใจหรือไม่ว่าต้องการลบเอกสารนี้?')) {
-      return;
-    }
+  const handleDeleteClick = (doc: DocumentWithDetails) => {
+    setDocumentToDelete({
+      id: doc.id,
+      name: doc.file_name,
+      type: DOCUMENT_TYPE_LABELS[doc.document_type as DocumentType],
+    });
+    setDeleteConfirmOpen(true);
+  };
 
-    setDeletingId(documentId);
+  const handleDeleteConfirm = async () => {
+    if (!documentToDelete) return;
+
+    setDeletingId(documentToDelete.id);
+    setDeleteConfirmOpen(false);
+    
     try {
-      await vehicleDocumentService.deleteDocument(documentId);
+      await vehicleDocumentService.deleteDocument(documentToDelete.id);
       refetch();
     } catch (err) {
       console.error('Error deleting document:', err);
       alert('เกิดข้อผิดพลาดในการลบเอกสาร');
     } finally {
       setDeletingId(null);
+      setDocumentToDelete(null);
     }
+  };
+
+  const handleDeleteCancel = () => {
+    setDeleteConfirmOpen(false);
+    setDocumentToDelete(null);
   };
 
   if (loading && documents.length === 0) {
@@ -326,7 +344,7 @@ export const VehicleDocumentManager: React.FC<VehicleDocumentManagerProps> = ({
                           <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => handleDeleteDocument(doc.id)}
+                            onClick={() => handleDeleteClick(doc)}
                             disabled={deletingId === doc.id}
                             title="ลบเอกสาร"
                           >
@@ -362,6 +380,35 @@ export const VehicleDocumentManager: React.FC<VehicleDocumentManagerProps> = ({
         imageUrl={viewingImage || ''}
         alt="Document preview"
         onClose={() => setViewingImage(null)}
+      />
+
+      {/* Delete Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={deleteConfirmOpen}
+        title="ยืนยันการลบเอกสาร"
+        message={
+          documentToDelete ? (
+            <>
+              คุณแน่ใจหรือไม่ว่าต้องการลบเอกสารนี้?
+              <br />
+              <br />
+              <span className="font-semibold text-slate-900 dark:text-white">
+                {documentToDelete.type}: {documentToDelete.name}
+              </span>
+              <br />
+              <span className="text-sm text-slate-500 dark:text-slate-400">
+                การกระทำนี้ไม่สามารถยกเลิกได้
+              </span>
+            </>
+          ) : (
+            'คุณแน่ใจหรือไม่ว่าต้องการลบเอกสารนี้?'
+          )
+        }
+        confirmText="ลบ"
+        cancelText="ยกเลิก"
+        variant="danger"
+        onConfirm={handleDeleteConfirm}
+        onCancel={handleDeleteCancel}
       />
     </>
   );

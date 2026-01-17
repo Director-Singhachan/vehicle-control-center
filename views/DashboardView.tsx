@@ -13,6 +13,8 @@ import { UsageChart } from '../components/UsageChart';
 import { MaintenanceTrendChart } from '../components/MaintenanceTrendChart';
 import { ActivityFeed } from '../components/ActivityFeed';
 import { ActiveTripsWidget } from '../components/ActiveTripsWidget';
+import { ExpiringDocumentsWidget } from '../components/ExpiringDocumentsWidget';
+import { DocumentExpiryChart } from '../components/DocumentExpiryChart';
 import { PageLayout } from '../components/layout/PageLayout';
 import { useDashboard } from '../hooks';
 
@@ -22,6 +24,7 @@ interface DashboardProps {
   onNavigateToTicketDetail?: (ticketId: number) => void;
   onNavigateToTripLogs?: () => void;
   onCheckInTrip?: (tripId: string) => void;
+  onNavigateToVehicle?: (vehicleId: string) => void;
 }
 
 export const DashboardView: React.FC<DashboardProps> = ({
@@ -30,6 +33,7 @@ export const DashboardView: React.FC<DashboardProps> = ({
   onNavigateToTicketDetail,
   onNavigateToTripLogs,
   onCheckInTrip,
+  onNavigateToVehicle,
 }) => {
   const { data, loading, error, refetch } = useDashboard();
 
@@ -166,6 +170,21 @@ export const DashboardView: React.FC<DashboardProps> = ({
         />
       </div>
 
+      {/* Expiring Documents Widget */}
+      <div className="mt-6">
+        <ExpiringDocumentsWidget
+          onNavigateToVehicle={onNavigateToVehicle}
+          onDocumentClick={(vehicleId) => {
+            // Fallback navigation if onNavigateToVehicle is not provided
+            if (onNavigateToVehicle) {
+              onNavigateToVehicle(vehicleId);
+            } else if (window.location.hash) {
+              window.location.hash = `#/vehicles/${vehicleId}`;
+            }
+          }}
+        />
+      </div>
+
       {/* Charts Section */}
       {usageData && maintenanceTrends ? (
         <>
@@ -180,6 +199,16 @@ export const DashboardView: React.FC<DashboardProps> = ({
             <div className="bg-white/80 dark:bg-charcoal-900/50 backdrop-blur-md p-6 rounded-xl border border-slate-200 dark:border-slate-700/50 shadow-sm hover:shadow-glow transition-all duration-300">
               <h3 className="font-semibold text-slate-900 dark:text-white mb-6">ค่าใช้จ่ายการซ่อมบำรุง</h3>
               <MaintenanceTrendChart data={maintenanceTrends} isDark={isDark} />
+            </div>
+          </div>
+
+          {/* Document Expiry Chart */}
+          <div className="mt-6">
+            <div className="bg-white/80 dark:bg-charcoal-900/50 backdrop-blur-md p-6 rounded-xl border border-slate-200 dark:border-slate-700/50 shadow-sm hover:shadow-glow transition-all duration-300">
+              <h3 className="font-semibold text-slate-900 dark:text-white mb-6">
+                สถิติเอกสารที่หมดอายุ (6 เดือนล่าสุด)
+              </h3>
+              <DocumentExpiryChart isDark={isDark} months={6} />
             </div>
           </div>
         </>
