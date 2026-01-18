@@ -13,7 +13,7 @@ import { Modal } from '../components/ui/Modal';
 
 export function SalesTripsView() {
   const { user } = useAuth();
-  const { toasts, success, error, dismissToast } = useToast();
+  const { toasts, success, error, warning, dismissToast } = useToast();
   const [dateFilter, setDateFilter] = useState(new Date().toISOString().split('T')[0]);
   const [updatingStatus, setUpdatingStatus] = useState<Set<string>>(new Set());
   const [expandedStores, setExpandedStores] = useState<Set<string>>(new Set());
@@ -63,7 +63,12 @@ export function SalesTripsView() {
   }, [myTrips]);
 
   // เปลี่ยนสถานะการออกบิล
-  const handleToggleInvoiceStatus = async (tripId: string, storeId: string, currentStatus: string) => {
+  const handleToggleInvoiceStatus = async (
+    tripId: string, 
+    storeId: string, 
+    currentStatus: string,
+    onStatusUpdated?: (newStatus: 'pending' | 'issued') => void
+  ) => {
     const key = `${tripId}-${storeId}`;
     setUpdatingStatus(prev => new Set(prev).add(key));
     
@@ -71,7 +76,14 @@ export function SalesTripsView() {
       const newStatus = currentStatus === 'issued' ? 'pending' : 'issued';
       await deliveryTripService.updateStoreInvoiceStatus(tripId, storeId, newStatus);
       
-      // Refresh trips immediately to update UI
+      // Call callback to update local state immediately
+      if (onStatusUpdated) {
+        onStatusUpdated(newStatus);
+      }
+      
+      // Refresh trips to ensure data consistency
+      // Add a small delay to ensure database update is committed
+      await new Promise(resolve => setTimeout(resolve, 300));
       await refetch();
       
       // Show success message after state update
@@ -85,6 +97,7 @@ export function SalesTripsView() {
     } catch (err: any) {
       console.error('Error updating invoice status:', err);
       error(err.message || 'เกิดข้อผิดพลาดในการอัพเดทสถานะการออกบิล');
+      throw err; // Re-throw to allow caller to handle
     } finally {
       setUpdatingStatus(prev => {
         const next = new Set(prev);
@@ -635,9 +648,9 @@ export function SalesTripsView() {
                         <th className="text-left py-3 px-3 text-sm font-semibold text-gray-700 dark:text-gray-300">หมวดหมู่</th>
                         <th className="text-right py-3 px-3 text-sm font-semibold text-gray-700 dark:text-gray-300">จำนวน</th>
                         <th className="text-right py-3 px-3 text-sm font-semibold text-gray-700 dark:text-gray-300">หน่วย</th>
-                        {selectedStoreDetail.store.items[0]?.product?.base_price && (
+                        {selectedStoreDetail.store.items[0]?.product?.base_price ? (
                           <th className="text-right py-3 px-3 text-sm font-semibold text-gray-700 dark:text-gray-300">ราคาต่อหน่วย</th>
-                        )}
+                        ) : null}
                       </tr>
                     </thead>
                     <tbody>
@@ -699,11 +712,11 @@ export function SalesTripsView() {
                             <td className="py-3 px-3 text-sm text-right text-gray-600 dark:text-gray-400">
                               {item.product?.unit || 'ชิ้น'}
                             </td>
-                            {item.product?.base_price && (
+                            {item.product?.base_price ? (
                               <td className="py-3 px-3 text-sm text-right text-gray-600 dark:text-gray-400">
                                 {new Intl.NumberFormat('th-TH', { style: 'currency', currency: 'THB' }).format(item.product.base_price)}
                               </td>
-                            )}
+                            ) : null}
                           </tr>
                         );
                       })}
@@ -714,8 +727,145 @@ export function SalesTripsView() {
                 {/* Helper Text */}
                 <div className="mt-4 p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
                   <p className="text-xs text-yellow-800 dark:text-yellow-300">
-                    <strong>💡 คำแนะนำ:</strong> ใช้รายการนี้เป็นคู่มือในการคีย์บิลในระบบอื่น ตรวจสอบให้ครบทุกรายการก่อนกด "ออกบิลแล้ว"
+                    <strong>💡 คำแนะนำ:</strong> ใช้รายการนี้เป็นคู่มือในการคีย์บิลในระบบอื่น ตรวจสอบให้ครบทุกรายการก่อนกด "ยืนยันการออกบิล"
                   </p>
+                </div>
+
+                {/* Confirm Button */}
+                <div className="mt-6 pt-4 border-t border-gray-200 dark:border-slate-700">
+                  {(() => {
+                    const totalItems = selectedStoreDetail.store.items.length;
+                    const checkedCount = selectedStoreDetail.store.items.filter((item: any) => {
+                      const itemKey = `${selectedStoreDetail.tripId}-${selectedStoreDetail.store.store_id}-${item.id}`;
+                      return checkedItems.has(itemKey);
+                    }).length;
+                    const allChecked = checkedCount === totalItems && totalItems > 0;
+                    const currentInvoiceStatus = selectedStoreDetail.store.invoice_status || 'pending';
+                    const isAlreadyIssued = currentInvoiceStatus === 'issued';
+                    const modalKey = `${selectedStoreDetail.tripId}-${selectedStoreDetail.store.store_id}`;
+                    const isUpdating = updatingStatus.has(modalKey);
+
+                    return (
+                      <div className="flex items-center justify-between">
+                        <div className="flex-1">
+                          {!allChecked && totalItems > 0 && (
+                            <p className="text-sm text-orange-600 dark:text-orange-400">
+                              ⚠️ ยังไม่ได้เช็ครายการครบ ({checkedCount} / {totalItems} รายการ)
+                            </p>
+                          )}
+                          {allChecked && !isAlreadyIssued && (
+                            <p className="text-sm text-green-600 dark:text-green-400">
+                              ✅ เช็ครายการครบแล้ว พร้อมยืนยันการออกบิล
+                            </p>
+                          )}
+                          {isAlreadyIssued && (
+                            <p className="text-sm text-blue-600 dark:text-blue-400">
+                              ℹ️ สถานะการออกบิล: ออกบิลแล้ว
+                            </p>
+                          )}
+                        </div>
+                        <div className="flex gap-3">
+                          {isAlreadyIssued ? (
+                            <Button
+                              variant="outline"
+                              onClick={async () => {
+                                await handleToggleInvoiceStatus(
+                                  selectedStoreDetail.tripId,
+                                  selectedStoreDetail.store.store_id,
+                                  currentInvoiceStatus,
+                                  (newStatus) => {
+                                    // Update the selectedStoreDetail state immediately
+                                    setSelectedStoreDetail(prev => {
+                                      if (!prev) return null;
+                                      return {
+                                        ...prev,
+                                        store: {
+                                          ...prev.store,
+                                          invoice_status: newStatus,
+                                        },
+                                      };
+                                    });
+                                  }
+                                );
+                                // Close modal after updating
+                                setTimeout(() => {
+                                  setSelectedStoreDetail(null);
+                                  setCheckedItems(new Set());
+                                }, 1000);
+                              }}
+                              disabled={isUpdating}
+                            >
+                              {isUpdating ? (
+                                <>
+                                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-current mr-2" />
+                                  กำลังอัพเดท...
+                                </>
+                              ) : (
+                                <>
+                                  <Square className="w-4 h-4 mr-2" />
+                                  ยกเลิกสถานะออกบิล
+                                </>
+                              )}
+                            </Button>
+                          ) : (
+                            <Button
+                              onClick={async () => {
+                                if (!allChecked) {
+                                  warning('กรุณาเช็ครายการสินค้าให้ครบก่อนยืนยันการออกบิล');
+                                  return;
+                                }
+
+                                // Call handleToggleInvoiceStatus with callback to update state immediately
+                                await handleToggleInvoiceStatus(
+                                  selectedStoreDetail.tripId,
+                                  selectedStoreDetail.store.store_id,
+                                  currentInvoiceStatus,
+                                  (newStatus) => {
+                                    // Update the selectedStoreDetail state immediately
+                                    setSelectedStoreDetail(prev => {
+                                      if (!prev) return null;
+                                      return {
+                                        ...prev,
+                                        store: {
+                                          ...prev.store,
+                                          invoice_status: newStatus,
+                                        },
+                                      };
+                                    });
+                                  }
+                                );
+                                
+                                // Close modal after a short delay to show success
+                                setTimeout(() => {
+                                  setSelectedStoreDetail(null);
+                                  setCheckedItems(new Set());
+                                }, 1500);
+                              }}
+                              disabled={!allChecked || isUpdating}
+                              className={`
+                                ${allChecked 
+                                  ? 'bg-green-600 hover:bg-green-700 dark:bg-green-600 dark:hover:bg-green-700' 
+                                  : 'bg-gray-300 dark:bg-gray-600 cursor-not-allowed'
+                                }
+                              `}
+                            >
+                              {isUpdating ? (
+                                <>
+                                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
+                                  กำลังอัพเดท...
+                                </>
+                              ) : (
+                                <>
+                                  <CheckCircle className="w-4 h-4 mr-2" />
+                                  ยืนยันการออกบิล
+                                </>
+                              )}
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
             ) : (

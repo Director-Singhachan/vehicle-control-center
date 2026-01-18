@@ -279,7 +279,7 @@ export const deliveryTripService = {
     const tripIds = trips.map(t => t.id);
     const { data: tripStores } = tripIds.length > 0 ? await supabase
       .from('delivery_trip_stores')
-      .select('id, delivery_trip_id, store_id, sequence_order') // Select id (not aliased) for use in items query
+      .select('id, delivery_trip_id, store_id, sequence_order, invoice_status, delivery_status') // Include invoice_status and delivery_status
       .in('delivery_trip_id', tripIds)
       .order('sequence_order', { ascending: true }) : { data: [] };
 
