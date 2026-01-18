@@ -1120,7 +1120,7 @@ const AppContent = () => {
                       />
                       {(isAdmin || isManager) && (
                         <SubSidebarItem
-                          label="ลบข้อมูลทดลอง"
+                          label="จัดการออเดอร์"
                           active={activeTab === 'cleanup-test-orders'}
                           onClick={() => {
                             setActiveTab('cleanup-test-orders');

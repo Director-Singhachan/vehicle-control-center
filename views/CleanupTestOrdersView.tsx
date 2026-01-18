@@ -18,6 +18,7 @@ interface Order {
   created_at: string;
   customer_name?: string;
   customer_code?: string;
+  delivery_trip_id?: string | null;
 }
 
 export function CleanupTestOrdersView() {
@@ -93,6 +94,11 @@ export function CleanupTestOrdersView() {
 
   // Toggle selection
   const toggleOrderSelection = (orderId: string) => {
+    const order = orders.find((o) => o.id === orderId);
+    if (order && isOrderAssignedToTrip(order)) {
+      // ไม่สามารถเลือกออเดอร์ที่ถูกกำหนดทริปแล้ว
+      return;
+    }
     const newSelected = new Set(selectedOrders);
     if (newSelected.has(orderId)) {
       newSelected.delete(orderId);
@@ -103,11 +109,19 @@ export function CleanupTestOrdersView() {
   };
 
   const toggleSelectAll = () => {
-    if (selectedOrders.size === filteredOrders.length) {
+    // กรองออเดอร์ที่สามารถเลือกได้ (ไม่ถูกกำหนดทริป)
+    const selectableOrders = filteredOrders.filter((o) => !isOrderAssignedToTrip(o));
+    
+    if (selectedOrders.size === selectableOrders.length && selectableOrders.length > 0) {
       setSelectedOrders(new Set());
     } else {
-      setSelectedOrders(new Set(filteredOrders.map((o) => o.id)));
+      setSelectedOrders(new Set(selectableOrders.map((o) => o.id)));
     }
+  };
+
+  // ตรวจสอบว่าออเดอร์ถูกกำหนดทริปแล้วหรือไม่
+  const isOrderAssignedToTrip = (order: Order): boolean => {
+    return !!(order.delivery_trip_id || order.status === 'assigned');
   };
 
   // ลบออเดอร์
@@ -120,40 +134,75 @@ export function CleanupTestOrdersView() {
     setIsDeleting(true);
     try {
       let orderIdsToDelete: string[] = [];
+      let allOrderIds: string[] = [];
 
       if (deleteMode === 'selected' && selectedOrders.size > 0) {
         // ลบออเดอร์ที่เลือก
-        orderIdsToDelete = Array.from(selectedOrders);
+        allOrderIds = Array.from(selectedOrders);
       } else if (deleteMode === 'all') {
         // ลบทั้งหมดที่กรอง
-        orderIdsToDelete = filteredOrders.map((o) => o.id);
+        allOrderIds = filteredOrders.map((o) => o.id);
       } else if (deleteMode === 'without_number') {
         // ลบออเดอร์ที่ไม่มี order_number
-        orderIdsToDelete = filteredOrders
+        allOrderIds = filteredOrders
           .filter((o) => !o.order_number || o.order_number === '')
           .map((o) => o.id);
       } else if (deleteMode === 'date_range' && dateFrom && dateTo) {
         // ลบตามช่วงวันที่
-        orderIdsToDelete = filteredOrders
+        allOrderIds = filteredOrders
           .filter((o) => o.order_date >= dateFrom && o.order_date <= dateTo)
           .map((o) => o.id);
       }
 
+      // กรองออเดอร์ที่ถูกกำหนดทริปแล้วออก
+      const ordersToCheck = orders.filter((o) => allOrderIds.includes(o.id));
+      const assignedOrders = ordersToCheck.filter((o) => isOrderAssignedToTrip(o));
+      orderIdsToDelete = allOrderIds.filter((id) => {
+        const order = orders.find((o) => o.id === id);
+        return order && !isOrderAssignedToTrip(order);
+      });
+
+      if (assignedOrders.length > 0) {
+        const assignedNumbers = assignedOrders
+          .map((o) => o.order_number || o.id.substring(0, 8))
+          .join(', ');
+        alert(
+          `⚠️ ไม่สามารถลบออเดอร์ที่ถูกกำหนดทริปแล้วได้\n\n` +
+          `ออเดอร์ที่ถูกกำหนดทริปแล้ว (${assignedOrders.length} รายการ):\n${assignedNumbers}\n\n` +
+          `ออเดอร์ที่สามารถลบได้: ${orderIdsToDelete.length} รายการ`
+        );
+      }
+
       if (orderIdsToDelete.length === 0) {
-        alert('ไม่มีออเดอร์ที่ต้องการลบ');
+        if (assignedOrders.length > 0) {
+          alert('ไม่มีออเดอร์ที่สามารถลบได้ (ออเดอร์ทั้งหมดถูกกำหนดทริปแล้ว)');
+        } else {
+          alert('ไม่มีออเดอร์ที่ต้องการลบ');
+        }
+        setIsDeleting(false);
         return;
       }
 
       // ลบออเดอร์หลายรายการพร้อมกัน
-      await ordersService.deleteMany(orderIdsToDelete);
+      const deletedOrders = await ordersService.deleteMany(orderIdsToDelete);
 
-      alert(`✅ ลบออเดอร์เรียบร้อย: ${orderIdsToDelete.length} รายการ`);
+      if (!deletedOrders || deletedOrders.length === 0) {
+        alert('❌ ไม่สามารถลบออเดอร์ได้ (อาจไม่มีสิทธิ์หรือออเดอร์ถูกกำหนดทริปแล้ว)');
+        setIsDeleting(false);
+        return;
+      }
+
+      const message = assignedOrders.length > 0
+        ? `✅ ลบออเดอร์เรียบร้อย: ${deletedOrders.length} รายการ\n\n⚠️ ข้ามออเดอร์ที่ถูกกำหนดทริปแล้ว: ${assignedOrders.length} รายการ`
+        : `✅ ลบออเดอร์เรียบร้อย: ${deletedOrders.length} รายการ`;
+      alert(message);
       setSelectedOrders(new Set());
       setDeleteConfirmOpen(false);
       await loadOrders();
     } catch (err: any) {
-      alert(`❌ เกิดข้อผิดพลาด: ${err.message}`);
       console.error('Error deleting orders:', err);
+      const errorMessage = err.message || 'เกิดข้อผิดพลาดในการลบออเดอร์';
+      alert(`❌ ${errorMessage}\n\nกรุณาตรวจสอบ:\n- สิทธิ์การลบ (ต้องเป็น Admin/Manager)\n- ออเดอร์ที่เลือกไม่ถูกกำหนดทริปแล้ว`);
     } finally {
       setIsDeleting(false);
     }
@@ -175,7 +224,7 @@ export function CleanupTestOrdersView() {
 
   if (!canDelete) {
     return (
-      <PageLayout title="ลบข้อมูลทดลอง">
+      <PageLayout title="จัดการออเดอร์">
         <Card>
           <div className="p-12 text-center">
             <AlertTriangle className="w-16 h-16 mx-auto mb-4 text-red-500" />
@@ -192,7 +241,7 @@ export function CleanupTestOrdersView() {
   }
 
   return (
-    <PageLayout title="ลบข้อมูลทดลอง">
+    <PageLayout title="จัดการออเดอร์">
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
         <Card>
@@ -481,7 +530,12 @@ export function CleanupTestOrdersView() {
                   <th className="text-left py-3 px-4">
                     <input
                       type="checkbox"
-                      checked={selectedOrders.size === filteredOrders.length && filteredOrders.length > 0}
+                      checked={
+                        (() => {
+                          const selectableOrders = filteredOrders.filter((o) => !isOrderAssignedToTrip(o));
+                          return selectedOrders.size === selectableOrders.length && selectableOrders.length > 0;
+                        })()
+                      }
                       onChange={toggleSelectAll}
                       className="w-5 h-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
                     />
@@ -507,30 +561,43 @@ export function CleanupTestOrdersView() {
                 </tr>
               </thead>
               <tbody>
-                {filteredOrders.map((order) => (
-                  <tr
-                    key={order.id}
-                    className={`border-b border-gray-100 dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-800/50 ${
-                      selectedOrders.has(order.id) ? 'bg-blue-50 dark:bg-blue-900/20' : ''
-                    }`}
-                  >
-                    <td className="py-3 px-4">
-                      <input
-                        type="checkbox"
-                        checked={selectedOrders.has(order.id)}
-                        onChange={() => toggleOrderSelection(order.id)}
-                        className="w-5 h-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                      />
-                    </td>
-                    <td className="py-3 px-4">
-                      {order.order_number ? (
-                        <span className="font-mono text-sm font-semibold text-blue-600 dark:text-blue-400">
-                          {order.order_number}
-                        </span>
-                      ) : (
-                        <span className="text-sm text-gray-400 italic">ไม่มีเลขกำกับ</span>
-                      )}
-                    </td>
+                {filteredOrders.map((order) => {
+                  const isAssigned = isOrderAssignedToTrip(order);
+                  return (
+                    <tr
+                      key={order.id}
+                      className={`border-b border-gray-100 dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-800/50 ${
+                        selectedOrders.has(order.id) ? 'bg-blue-50 dark:bg-blue-900/20' : ''
+                      } ${isAssigned ? 'opacity-60 bg-gray-50 dark:bg-slate-800/30' : ''}`}
+                    >
+                      <td className="py-3 px-4">
+                        <input
+                          type="checkbox"
+                          checked={selectedOrders.has(order.id)}
+                          onChange={() => toggleOrderSelection(order.id)}
+                          disabled={isAssigned}
+                          title={isAssigned ? 'ออเดอร์นี้ถูกกำหนดทริปแล้ว ไม่สามารถลบได้' : ''}
+                          className={`w-5 h-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500 ${
+                            isAssigned ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'
+                          }`}
+                        />
+                      </td>
+                      <td className="py-3 px-4">
+                        <div className="flex items-center gap-2">
+                          {order.order_number ? (
+                            <span className="font-mono text-sm font-semibold text-blue-600 dark:text-blue-400">
+                              {order.order_number}
+                            </span>
+                          ) : (
+                            <span className="text-sm text-gray-400 italic">ไม่มีเลขกำกับ</span>
+                          )}
+                          {isAssigned && (
+                            <Badge variant="info" className="text-xs">
+                              กำหนดทริปแล้ว
+                            </Badge>
+                          )}
+                        </div>
+                      </td>
                     <td className="py-3 px-4">
                       <div>
                         <p className="font-medium text-gray-900 dark:text-white">
@@ -567,7 +634,8 @@ export function CleanupTestOrdersView() {
                       })}
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>

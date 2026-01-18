@@ -269,8 +269,56 @@ export const ordersService = {
    * ลบออเดอร์หลายรายการ
    */
   async deleteMany(ids: string[]) {
-    const { error } = await supabase.from('orders').delete().in('id', ids);
-    if (error) throw error;
+    if (!ids || ids.length === 0) {
+      throw new Error('ไม่มีออเดอร์ที่ต้องการลบ');
+    }
+
+    // ลบทีละรายการเพื่อให้เห็น error ที่ชัดเจนขึ้น
+    const deletedIds: string[] = [];
+    const errors: Array<{ id: string; error: string }> = [];
+
+    for (const id of ids) {
+      try {
+        const { data, error } = await supabase
+          .from('orders')
+          .delete()
+          .eq('id', id)
+          .select('id')
+          .single();
+
+        if (error) {
+          console.error(`[ordersService] Error deleting order ${id}:`, error);
+          errors.push({ id, error: error.message });
+        } else if (data) {
+          deletedIds.push(id);
+        } else {
+          errors.push({ id, error: 'ไม่พบออเดอร์หรือไม่มีสิทธิ์ลบ' });
+        }
+      } catch (err: any) {
+        console.error(`[ordersService] Exception deleting order ${id}:`, err);
+        errors.push({ id, error: err.message || 'เกิดข้อผิดพลาดไม่ทราบสาเหตุ' });
+      }
+    }
+
+    // ถ้ามี error บางรายการ แสดง error message
+    if (errors.length > 0 && deletedIds.length === 0) {
+      const errorMessages = errors.map(e => `- ${e.id}: ${e.error}`).join('\n');
+      throw new Error(
+        `ไม่สามารถลบออเดอร์ได้:\n${errorMessages}\n\n` +
+        `กรุณาตรวจสอบ:\n` +
+        `1. สิทธิ์การลบ (ต้องเป็น Admin/Manager)\n` +
+        `2. ออเดอร์ไม่ถูกกำหนดทริปแล้ว (delivery_trip_id = null)\n` +
+        `3. ไม่มี foreign key constraint ที่ป้องกันการลบ`
+      );
+    }
+
+    // ถ้าลบได้บางรายการ แสดง warning
+    if (errors.length > 0 && deletedIds.length > 0) {
+      const errorMessages = errors.map(e => `- ${e.id}: ${e.error}`).join('\n');
+      console.warn(`[ordersService] Some orders failed to delete:\n${errorMessages}`);
+    }
+
+    return deletedIds.map(id => ({ id }));
   },
 };
 
