@@ -20,6 +20,7 @@ import { PageLayout } from '../components/layout/PageLayout';
 import { VehicleGroupBadge } from '../components/vehicle/VehicleGroupBadge';
 import { VehicleDocumentManager } from '../components/vehicle/VehicleDocumentManager';
 import { DocumentExpiryAlert } from '../components/vehicle/DocumentExpiryAlert';
+import { VehicleDriverHistory } from '../components/vehicle/VehicleDriverHistory';
 import { useTickets } from '../hooks';
 
 interface VehicleDetailViewProps {
@@ -27,6 +28,7 @@ interface VehicleDetailViewProps {
   onEdit?: (vehicleId: string) => void;
   onBack?: () => void;
   onViewTicket?: (ticketId: number) => void;
+  onViewDeliveryTrip?: (deliveryTripId: string) => void;
 }
 
 export const VehicleDetailView: React.FC<VehicleDetailViewProps> = ({
@@ -34,6 +36,7 @@ export const VehicleDetailView: React.FC<VehicleDetailViewProps> = ({
   onEdit,
   onBack,
   onViewTicket,
+  onViewDeliveryTrip,
 }) => {
   const { isManager, isAdmin } = useAuth();
   const { vehicle, loading, error } = useVehicle(vehicleId);
@@ -240,6 +243,8 @@ export const VehicleDetailView: React.FC<VehicleDetailViewProps> = ({
 
           {/* Vehicle Documents */}
           <VehicleDocumentManager vehicleId={vehicleId} canEdit={canEdit} />
+
+          <VehicleDriverHistory vehicleId={vehicleId} onViewDeliveryTrip={onViewDeliveryTrip} />
 
           {/* Maintenance History Table */}
           <Card className="p-6">

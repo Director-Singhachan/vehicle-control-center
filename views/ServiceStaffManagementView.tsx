@@ -1,6 +1,6 @@
 // Service Staff Management View - Manage service staff (drivers, helpers)
 import React, { useState, useEffect } from 'react';
-import { Plus, Edit2, Trash2, Search, Users, Phone, User, AlertCircle } from 'lucide-react';
+import { Plus, Edit2, Trash2, Search, Users, Phone, User, AlertCircle, Route } from 'lucide-react';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Card } from '../components/ui/Card';
@@ -10,7 +10,11 @@ import type { Database } from '../types/database';
 
 type ServiceStaff = Database['public']['Tables']['service_staff']['Row'];
 
-export const ServiceStaffManagementView: React.FC = () => {
+interface ServiceStaffManagementViewProps {
+    onViewUsage?: (staffId: string) => void;
+}
+
+export const ServiceStaffManagementView: React.FC<ServiceStaffManagementViewProps> = ({ onViewUsage }) => {
     const [staff, setStaff] = useState<ServiceStaff[]>([]);
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState('');
@@ -397,15 +401,25 @@ export const ServiceStaffManagementView: React.FC = () => {
                                 )}
                             </div>
 
-                            <div className="flex gap-2 pt-3 border-t">
+                            <div className="grid grid-cols-3 gap-2 pt-3 border-t">
                                 <Button
                                     variant="outline"
                                     size="sm"
                                     onClick={() => handleEdit(staffMember)}
-                                    className="flex-1 flex items-center justify-center gap-1"
+                                    className="flex items-center justify-center gap-1"
                                 >
                                     <Edit2 size={16} />
                                     แก้ไข
+                                </Button>
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => onViewUsage?.(staffMember.id)}
+                                    disabled={!onViewUsage}
+                                    className="flex items-center justify-center gap-1"
+                                >
+                                    <Route size={16} />
+                                    ประวัติ
                                 </Button>
                                 <Button
                                     variant="outline"
