@@ -9,11 +9,13 @@ import {
   CheckCircle,
   Clock,
   X,
+  Edit,
 } from 'lucide-react';
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { ConfirmDialog } from '../ui/ConfirmDialog';
 import { DocumentUploadModal, type DocumentType } from './DocumentUploadModal';
+import { DocumentEditModal } from './DocumentEditModal';
 import { ImageModal } from '../ui/ImageModal';
 import { useVehicleDocuments } from '../../hooks/useVehicleDocuments';
 import { vehicleDocumentService } from '../../services/vehicleDocumentService';
@@ -47,6 +49,8 @@ export const VehicleDocumentManager: React.FC<VehicleDocumentManagerProps> = ({
   const [activeTab, setActiveTab] = useState<DocumentType | 'all'>('all');
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
   const [uploadDocumentType, setUploadDocumentType] = useState<DocumentType>('registration');
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [documentToEdit, setDocumentToEdit] = useState<DocumentWithDetails | null>(null);
   const [viewingImage, setViewingImage] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
@@ -130,6 +134,17 @@ export const VehicleDocumentManager: React.FC<VehicleDocumentManagerProps> = ({
   const handleUploadSuccess = () => {
     refetch();
     setUploadModalOpen(false);
+  };
+
+  const handleEditClick = (doc: DocumentWithDetails) => {
+    setDocumentToEdit(doc);
+    setEditModalOpen(true);
+  };
+
+  const handleEditSuccess = () => {
+    refetch();
+    setEditModalOpen(false);
+    setDocumentToEdit(null);
   };
 
   const handleViewDocument = (url: string) => {
@@ -221,7 +236,7 @@ export const VehicleDocumentManager: React.FC<VehicleDocumentManagerProps> = ({
             <Button
               size="sm"
               onClick={() => {
-                setUploadDocumentType('registration');
+                setUploadDocumentType(activeTab === 'all' ? 'registration' : (activeTab as DocumentType));
                 setUploadModalOpen(true);
               }}
             >
@@ -258,22 +273,9 @@ export const VehicleDocumentManager: React.FC<VehicleDocumentManagerProps> = ({
         {displayDocuments.length === 0 ? (
           <div className="text-center py-12">
             <FileText className="w-16 h-16 mx-auto mb-4 text-slate-400 opacity-50" />
-            <p className="text-slate-600 dark:text-slate-400 mb-4">
+            <p className="text-slate-600 dark:text-slate-400">
               ยังไม่มีเอกสาร{activeTab !== 'all' ? `ประเภท${DOCUMENT_TYPE_LABELS[activeTab as DocumentType]}` : ''}
             </p>
-            {canEdit && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  setUploadDocumentType(activeTab === 'all' ? 'registration' : (activeTab as DocumentType));
-                  setUploadModalOpen(true);
-                }}
-              >
-                <Upload className="w-4 h-4 mr-2" />
-                อัปโหลดเอกสาร
-              </Button>
-            )}
           </div>
         ) : (
           <div className="space-y-4">
@@ -325,11 +327,20 @@ export const VehicleDocumentManager: React.FC<VehicleDocumentManagerProps> = ({
                         variant="outline"
                         size="sm"
                         onClick={() => handleViewDocument(doc.file_url)}
+                        title="ดูเอกสาร"
                       >
                         <Eye className="w-4 h-4" />
                       </Button>
                       {canEdit && (
                         <>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleEditClick(doc)}
+                            title="แก้ไขข้อมูล"
+                          >
+                            <Edit className="w-4 h-4" />
+                          </Button>
                           <Button
                             variant="outline"
                             size="sm"
@@ -372,6 +383,17 @@ export const VehicleDocumentManager: React.FC<VehicleDocumentManagerProps> = ({
         vehicleId={vehicleId}
         documentType={uploadDocumentType}
         onUploaded={handleUploadSuccess}
+      />
+
+      {/* Edit Modal */}
+      <DocumentEditModal
+        isOpen={editModalOpen}
+        onClose={() => {
+          setEditModalOpen(false);
+          setDocumentToEdit(null);
+        }}
+        document={documentToEdit}
+        onUpdated={handleEditSuccess}
       />
 
       {/* Image Viewer Modal */}
