@@ -64,6 +64,7 @@ import { CreateOrderView } from './views/CreateOrderView';
 import { PendingOrdersView } from './views/PendingOrdersView';
 import { TrackOrdersView } from './views/TrackOrdersView';
 import { SalesTripsView } from './views/SalesTripsView';
+import { CleanupTestOrdersView } from './views/CleanupTestOrdersView';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { useAuth, usePendingTickets } from './hooks';
 import { ticketService, type TicketWithRelations } from './services/ticketService';
@@ -1026,7 +1027,8 @@ const AppContent = () => {
                     activeTab === 'sales-trips' ||
                     activeTab === 'products' ||
                     activeTab === 'product-pricing' ||
-                    activeTab === 'customer-tiers'
+                    activeTab === 'customer-tiers' ||
+                    activeTab === 'cleanup-test-orders'
                   }
                   onClick={() => {
                     if (activeTab !== 'create-order') {
@@ -1116,6 +1118,18 @@ const AppContent = () => {
                         isCollapsed={false}
                         isFlyout={true}
                       />
+                      {(isAdmin || isManager) && (
+                        <SubSidebarItem
+                          label="ลบข้อมูลทดลอง"
+                          active={activeTab === 'cleanup-test-orders'}
+                          onClick={() => {
+                            setActiveTab('cleanup-test-orders');
+                            setIsOrdersHovered(false);
+                          }}
+                          isCollapsed={false}
+                          isFlyout={true}
+                        />
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1956,6 +1970,8 @@ const AppContent = () => {
             <PendingOrdersView />
           ) : activeTab === 'sales-trips' ? (
             <SalesTripsView />
+          ) : activeTab === 'cleanup-test-orders' ? (
+            <CleanupTestOrdersView />
           ) : (
             <div className="flex flex-col items-center justify-center h-[60vh] text-slate-400">
               <Wrench size={48} className="mb-4 opacity-50" />

@@ -1,12 +1,69 @@
 import { supabase } from '../lib/supabase';
-import type { Database } from '../types/database';
 
-type Order = Database['public']['Tables']['orders']['Row'];
-type OrderInsert = Database['public']['Tables']['orders']['Insert'];
-type OrderUpdate = Database['public']['Tables']['orders']['Update'];
+// Temporary types until database.ts is regenerated
+type Order = {
+  id: string;
+  order_number: string | null;
+  store_id: string;
+  customer_id: string | null;
+  sales_person_id: string | null;
+  order_date: string;
+  delivery_date: string | null;
+  delivery_address: string | null;
+  status: string;
+  total_amount: number | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+  created_by: string | null;
+  updated_by: string | null;
+  approved_by: string | null;
+  approved_at: string | null;
+  delivery_trip_id: string | null;
+};
 
-type OrderItem = Database['public']['Tables']['order_items']['Row'];
-type OrderItemInsert = Database['public']['Tables']['order_items']['Insert'];
+type OrderInsert = {
+  id?: string;
+  order_number?: string | null;
+  store_id: string; // Required
+  customer_id?: string | null;
+  sales_person_id?: string | null;
+  order_date: string; // Required
+  delivery_date?: string | null;
+  delivery_address?: string | null;
+  status: string; // Required
+  total_amount?: number | null;
+  notes?: string | null;
+  created_at?: string;
+  updated_at?: string;
+  created_by?: string | null;
+  updated_by?: string | null;
+  approved_by?: string | null;
+  approved_at?: string | null;
+  delivery_trip_id?: string | null;
+};
+
+type OrderUpdate = Partial<OrderInsert>;
+
+type OrderItem = {
+  id: string;
+  order_id: string;
+  product_id: string;
+  quantity: number;
+  unit_price: number | null;
+  discount_percent: number | null;
+  discount_amount: number | null;
+  line_total: number | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type OrderItemInsert = Omit<OrderItem, 'id' | 'created_at' | 'updated_at'> & {
+  id?: string;
+  created_at?: string;
+  updated_at?: string;
+};
 
 // ========================================
 // Orders Service
@@ -77,7 +134,7 @@ export const ordersService = {
    * สร้างออเดอร์ใหม่พร้อมรายการสินค้า
    */
   async createWithItems(
-    orderData: Omit<OrderInsert, 'id' | 'created_at' | 'updated_at'>,
+    orderData: Omit<OrderInsert, 'id' | 'created_at' | 'updated_at'> & { warehouse_id?: string },
     items: Array<{
       product_id: string;
       quantity: number;
@@ -88,7 +145,7 @@ export const ordersService = {
     // สร้างออเดอร์
     const { data: order, error: orderError } = await supabase
       .from('orders')
-      .insert(orderData)
+      .insert(orderData as any)
       .select()
       .single();
 
@@ -193,6 +250,22 @@ export const ordersService = {
       })
       .in('id', orderIds);
 
+    if (error) throw error;
+  },
+
+  /**
+   * ลบออเดอร์
+   */
+  async delete(id: string) {
+    const { error } = await supabase.from('orders').delete().eq('id', id);
+    if (error) throw error;
+  },
+
+  /**
+   * ลบออเดอร์หลายรายการ
+   */
+  async deleteMany(ids: string[]) {
+    const { error } = await supabase.from('orders').delete().in('id', ids);
     if (error) throw error;
   },
 };

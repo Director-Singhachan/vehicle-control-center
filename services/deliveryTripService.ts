@@ -668,7 +668,54 @@ export const deliveryTripService = {
     }
 
     // 2. Create delivery trip stores and items
+    // Check for duplicate stores before inserting
+    const storeIds = new Set<string>();
     for (const storeData of data.stores) {
+      if (storeIds.has(storeData.store_id)) {
+        throw new Error(`ร้านค้าซ้ำกันในรายการ: store_id ${storeData.store_id} ปรากฏมากกว่า 1 ครั้ง`);
+      }
+      storeIds.add(storeData.store_id);
+    }
+
+    for (const storeData of data.stores) {
+      // Check if store already exists in this trip (defensive check)
+      const { data: existingStore } = await supabase
+        .from('delivery_trip_stores')
+        .select('id')
+        .eq('delivery_trip_id', trip.id)
+        .eq('store_id', storeData.store_id)
+        .maybeSingle();
+
+      if (existingStore) {
+        console.warn('[deliveryTripService] Store already exists in trip, skipping:', {
+          trip_id: trip.id,
+          store_id: storeData.store_id,
+        });
+        // Use existing store instead of creating new one
+        const tripStore = existingStore;
+        
+        // Still create items for this store
+        if (storeData.items && storeData.items.length > 0) {
+          const itemsData = storeData.items.map(item => ({
+            delivery_trip_id: trip.id,
+            delivery_trip_store_id: tripStore.id,
+            product_id: item.product_id,
+            quantity: item.quantity,
+            notes: item.notes,
+          }));
+
+          const { error: itemsError } = await supabase
+            .from('delivery_trip_items')
+            .insert(itemsData);
+
+          if (itemsError) {
+            console.error('[deliveryTripService] Error creating trip items:', itemsError);
+            throw itemsError;
+          }
+        }
+        continue;
+      }
+
       // Create trip store
       const { data: tripStore, error: storeError } = await supabase
         .from('delivery_trip_stores')
@@ -682,6 +729,10 @@ export const deliveryTripService = {
 
       if (storeError) {
         console.error('[deliveryTripService] Error creating trip store:', storeError);
+        // Provide more helpful error message for 409 conflict
+        if (storeError.code === '23505' || storeError.message?.includes('duplicate') || storeError.message?.includes('unique')) {
+          throw new Error(`ไม่สามารถเพิ่มร้านค้านี้ได้: ร้านค้านี้มีอยู่ในทริปนี้แล้ว (store_id: ${storeData.store_id})`);
+        }
         throw storeError;
       }
 
@@ -1336,6 +1387,30 @@ export const deliveryTripService = {
 
     console.log('[deliveryTripService] Cancel completed successfully');
     return updatedTrip;
+  },
+
+  // Update store invoice status
+  updateStoreInvoiceStatus: async (
+    tripId: string,
+    storeId: string,
+    status: 'pending' | 'issued'
+  ): Promise<void> => {
+    // We need to find the delivery_trip_store record first
+    const { data: tripStore, error: findError } = await supabase
+      .from('delivery_trip_stores')
+      .select('id')
+      .eq('delivery_trip_id', tripId)
+      .eq('store_id', storeId)
+      .single();
+
+    if (findError) throw findError;
+
+    const { error } = await supabase
+      .from('delivery_trip_stores')
+      .update({ invoice_status: status })
+      .eq('id', tripStore.id);
+
+    if (error) throw error;
   },
 
   // Get aggregated products for a trip (all products across all stores)

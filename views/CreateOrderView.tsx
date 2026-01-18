@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { ShoppingCart, Plus, Trash2, Search, Check } from 'lucide-react';
-import { useProducts } from '../hooks/useInventory';
+import { useProducts, useWarehouses } from '../hooks/useInventory';
 import { ordersService } from '../services/ordersService';
 import { productTierPriceService } from '../services/customerTierService';
 import { Card } from '../components/ui/Card';
@@ -21,6 +21,7 @@ interface OrderItem {
 
 export function CreateOrderView() {
   const { products, loading: productsLoading } = useProducts();
+  const { warehouses, loading: warehousesLoading } = useWarehouses();
   const { user } = useAuth();
 
   const showNotification = (type: 'success' | 'error' | 'warning', message: string) => {
@@ -34,6 +35,7 @@ export function CreateOrderView() {
   };
 
   const [selectedStore, setSelectedStore] = useState<any>(null);
+  const [selectedWarehouse, setSelectedWarehouse] = useState<any>(null);
   const [stores, setStores] = useState<any[]>([]);
   const [storesLoading, setStoresLoading] = useState(false);
   const [storeSearch, setStoreSearch] = useState('');
@@ -48,6 +50,7 @@ export function CreateOrderView() {
   // Refs สำหรับ click outside
   const storeDropdownRef = useRef<HTMLDivElement>(null);
   const productDropdownRef = useRef<HTMLDivElement>(null);
+  const priceUpdateTimeouts = useRef<Record<string, NodeJS.Timeout>>({});
 
   // ปิด dropdown เมื่อคลิกข้างนอก
   useEffect(() => {
@@ -175,13 +178,41 @@ export function CreateOrderView() {
   // อัพเดทจำนวนสินค้า
   const handleUpdateQuantity = (index: number, value: string) => {
     const updated = [...orderItems];
+    let num = 0;
+    
     if (value === '') {
       updated[index].quantity = '';
     } else {
-      const num = Math.max(0, Number(value) || 0);
+      num = Math.max(0, Number(value) || 0);
       updated[index].quantity = num;
     }
     setOrderItems(updated);
+
+    // Debounce price update based on quantity (Volume Discount)
+    const item = updated[index];
+    if (selectedStore && item.product_id) {
+      if (priceUpdateTimeouts.current[item.product_id]) {
+        clearTimeout(priceUpdateTimeouts.current[item.product_id]);
+      }
+
+      priceUpdateTimeouts.current[item.product_id] = setTimeout(async () => {
+        if (num > 0) {
+          try {
+            const price = await productTierPriceService.calculatePriceForStore(
+              item.product_id,
+              selectedStore.id,
+              num
+            );
+            
+            setOrderItems(prev => prev.map(p => 
+              p.product_id === item.product_id ? { ...p, unit_price: price } : p
+            ));
+          } catch (err) {
+            console.error('Error updating price:', err);
+          }
+        }
+      }, 500);
+    }
   };
 
   // อัพเดทส่วนลด
@@ -252,6 +283,7 @@ export function CreateOrderView() {
           notes: notes || null,
           delivery_address: selectedStore.address || null,
           created_by: user?.id,
+          warehouse_id: selectedWarehouse?.id || null,
         },
         orderItems.map(item => ({
           product_id: item.product_id,
@@ -265,6 +297,7 @@ export function CreateOrderView() {
       
       // Reset form
       setSelectedStore(null);
+      // Keep warehouse selected for convenience
       setOrderItems([]);
       setNotes('');
       setDeliveryDate('');
@@ -280,10 +313,52 @@ export function CreateOrderView() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left: Store & Products Selection */}
         <div className="lg:col-span-2 space-y-6">
+          
+          {/* Warehouse Selection */}
+          <Card>
+            <div className="p-6">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">1. เลือกสาขา/คลังสินค้า</h3>
+              {warehousesLoading ? (
+                <div className="flex justify-center py-4">
+                  <LoadingSpinner />
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {warehouses?.map((wh) => (
+                    <div
+                      key={wh.id}
+                      onClick={() => setSelectedWarehouse(wh)}
+                      className={`cursor-pointer p-4 rounded-xl border-2 transition-all ${
+                        selectedWarehouse?.id === wh.id
+                          ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
+                          : 'border-gray-200 dark:border-slate-700 hover:border-blue-300 dark:hover:border-blue-700'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <span className={`text-sm font-medium px-2 py-0.5 rounded ${
+                          wh.type === 'main' 
+                            ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300'
+                            : 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300'
+                        }`}>
+                          {wh.type === 'main' ? 'สำนักงานใหญ่' : 'สาขา'}
+                        </span>
+                        {selectedWarehouse?.id === wh.id && (
+                          <Check className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                        )}
+                      </div>
+                      <p className="font-semibold text-gray-900 dark:text-white">{wh.name}</p>
+                      <p className="text-sm text-gray-500 dark:text-gray-400">{wh.code}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </Card>
+
           {/* Store Selection */}
           <Card className={`overflow-visible ${stores.length > 0 && !selectedStore ? 'relative z-50' : ''}`}>
             <div className="p-6">
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">1. เลือกร้านค้า</h3>
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">2. เลือกร้านค้า</h3>
               
               {selectedStore ? (
                 <div className="flex items-center justify-between p-4 bg-green-50 dark:bg-green-900/20 border-2 border-green-200 dark:border-green-700 rounded-xl">
@@ -352,7 +427,7 @@ export function CreateOrderView() {
           {/* Products Selection */}
           <Card className={`overflow-visible ${productSearch && filteredProducts.length > 0 ? 'relative z-50' : ''}`}>
             <div className="p-6">
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">2. เพิ่มสินค้า</h3>
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">3. เพิ่มสินค้า</h3>
               
               <div className="relative mb-4" ref={productDropdownRef}>
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 dark:text-gray-500" />
@@ -421,16 +496,18 @@ export function CreateOrderView() {
                 <div className="overflow-x-auto">
                   <table className="w-full table-fixed">
                     <colgroup>
-                      <col className="w-[32%]" />
-                      <col className="w-[16%]" />
-                      <col className="w-[16%]" />
-                      <col className="w-[16%]" />
-                      <col className="w-[16%]" />
-                      <col className="w-[4%]" />
+                      <col className="w-[28%]" />
+                      <col className="w-[10%]" />
+                      <col className="w-[14%]" />
+                      <col className="w-[14%]" />
+                      <col className="w-[14%]" />
+                      <col className="w-[14%]" />
+                      <col className="w-[6%]" />
                     </colgroup>
                     <thead>
                       <tr className="border-b border-gray-200 dark:border-slate-700">
                         <th className="text-left py-3 px-2 text-sm font-semibold text-gray-700 dark:text-gray-300">สินค้า</th>
+                        <th className="text-center py-3 px-2 text-sm font-semibold text-gray-700 dark:text-gray-300">หน่วย</th>
                         <th className="text-right py-3 px-2 text-sm font-semibold text-gray-700 dark:text-gray-300">ราคา</th>
                         <th className="text-center py-3 px-2 text-sm font-semibold text-gray-700 dark:text-gray-300">จำนวน</th>
                         <th className="text-center py-3 px-2 text-sm font-semibold text-gray-700 dark:text-gray-300">ส่วนลด%</th>
@@ -449,6 +526,11 @@ export function CreateOrderView() {
                             <td className="py-3 px-2 align-top">
                               <p className="font-medium text-gray-900 dark:text-white text-sm">{item.product?.product_name}</p>
                               <p className="text-xs text-gray-500 dark:text-gray-400">{item.product?.product_code}</p>
+                            </td>
+                            <td className="py-3 px-2 text-center align-top">
+                              <span className="inline-block px-2 py-1 text-xs font-medium bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded">
+                                {item.product?.unit || '-'}
+                              </span>
                             </td>
                             <td className="py-3 px-2 text-right text-sm align-top text-gray-900 dark:text-white">
                               {new Intl.NumberFormat('th-TH').format(item.unit_price)} ฿

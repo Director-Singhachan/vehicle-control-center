@@ -47,6 +47,7 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
   const [notes, setNotes] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [orderItemsMap, setOrderItemsMap] = useState<Map<string, any[]>>(new Map());
+  const [skipStockDeduction, setSkipStockDeduction] = useState(true); // เริ่มต้นเป็น true เพื่อไม่ตัดสต๊อก
   
   // Vehicle filtering
   const [selectedBranch, setSelectedBranch] = useState('');
@@ -209,8 +210,9 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
 
   // Submit
   const handleSubmit = async () => {
-    if (!selectedWarehouseId) {
-      alert('กรุณาเลือกคลังสินค้าต้นทาง');
+    // ถ้าต้องการตัดสต๊อก ต้องเลือกคลังสินค้า
+    if (!skipStockDeduction && !selectedWarehouseId) {
+      alert('กรุณาเลือกคลังสินค้าต้นทาง (เมื่อต้องการตัดสต๊อก)');
       return;
     }
     if (!selectedVehicleId) {
@@ -246,15 +248,17 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
         };
       });
 
-      // Reserve stock per order item from selected warehouse
-      for (const delivery of storeDeliveries) {
-        const orderItems = orderItemsMap.get(delivery.order_id) || [];
-        for (const item of orderItems) {
-          await inventoryService.reserveStock(
-            selectedWarehouseId,
-            item.product_id,
-            item.quantity
-          );
+      // Reserve stock per order item from selected warehouse (ถ้าไม่ข้ามการตัดสต๊อก)
+      if (!skipStockDeduction) {
+        for (const delivery of storeDeliveries) {
+          const orderItems = orderItemsMap.get(delivery.order_id) || [];
+          for (const item of orderItems) {
+            await inventoryService.reserveStock(
+              selectedWarehouseId,
+              item.product_id,
+              item.quantity
+            );
+          }
         }
       }
 
@@ -409,6 +413,23 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
                   />
                 </div>
 
+                {/* Skip Stock Deduction Option */}
+                <div className="flex items-center gap-3 p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
+                  <input
+                    type="checkbox"
+                    id="skipStockDeduction"
+                    checked={skipStockDeduction}
+                    onChange={(e) => setSkipStockDeduction(e.target.checked)}
+                    className="w-5 h-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                  />
+                  <label htmlFor="skipStockDeduction" className="flex-1 text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
+                    <span className="font-medium">ไม่ตัดสต๊อก</span>
+                    <span className="text-gray-500 dark:text-gray-400 ml-2">
+                      (ใช้สำหรับระบบใบน้อยที่ยังไม่ตัดสต๊อก)
+                    </span>
+                  </label>
+                </div>
+
                 {/* Notes */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -440,7 +461,8 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    คลังสินค้าต้นทาง *
+                    คลังสินค้าต้นทาง {!skipStockDeduction && '*'}
+                    {skipStockDeduction && <span className="text-gray-400 text-xs ml-1">(ไม่จำเป็น)</span>}
                   </label>
                   <select
                     value={selectedWarehouseId}

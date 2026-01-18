@@ -19,6 +19,11 @@ export function SalesTripsView() {
     lite: false, // Fetch full store details
   });
 
+  // Show notification helper
+  const showNotification = (type: 'success' | 'error', message: string) => {
+    if (type === 'error') console.error(message);
+  };
+
   // Show all trips that are ready for invoicing
   // Sales can create invoices for any trip (not just assigned to them)
   const myTrips = useMemo(() => {
@@ -30,7 +35,7 @@ export function SalesTripsView() {
     });
   }, [trips]);
 
-  const handlePrintInvoice = (tripId: string, storeId: string) => {
+  const handlePrintInvoice = async (tripId: string, storeId: string) => {
     // TODO: Implement invoice printing
     alert(`พิมพ์ใบแจ้งหนี้สำหรับทริป ${tripId}, ร้าน ${storeId}`);
   };
@@ -279,14 +284,21 @@ export function SalesTripsView() {
 
                           {/* Actions */}
                           <div className="flex-shrink-0">
-                            <Button
-                              size="sm"
-                              onClick={() => handlePrintInvoice(trip.id, store.store_id)}
-                              disabled={trip.status === 'cancelled'}
-                            >
-                              <FileText className="w-4 h-4 mr-1" />
-                              ออกใบแจ้งหนี้
-                            </Button>
+                            {store.invoice_status === 'issued' ? (
+                              <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300 border border-green-200 dark:border-green-800">
+                                <CheckCircle className="w-3 h-3 mr-1" />
+                                ออกใบแจ้งหนี้แล้ว
+                              </span>
+                            ) : (
+                              <Button
+                                size="sm"
+                                onClick={() => handlePrintInvoice(trip.id, store.store_id)}
+                                disabled={trip.status === 'cancelled'}
+                              >
+                                <FileText className="w-4 h-4 mr-1" />
+                                ออกใบแจ้งหนี้
+                              </Button>
+                            )}
                           </div>
                         </div>
                       ))}
