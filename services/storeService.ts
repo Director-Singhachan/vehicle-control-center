@@ -1,6 +1,7 @@
 // Store Service - CRUD operations for stores/customers
 import { supabase } from '../lib/supabase';
 import type { Database } from '../types/database';
+import { searchWithMultipleFields } from '../utils/searchUtils';
 
 export type Store = Database['public']['Tables']['stores']['Row'];
 type StoreInsert = Database['public']['Tables']['stores']['Insert'];
@@ -18,61 +19,21 @@ export interface StoreFilters {
 export const storeService = {
   // Get all stores
   getAll: async (filters?: StoreFilters): Promise<Store[]> => {
-    // If search is provided, use separate queries to avoid PostgREST parsing errors
+    // If search is provided, use searchUtils for consistent search logic
     if (filters?.search) {
-      const searchTerm = filters.search.trim();
-      if (searchTerm) {
-        const searchPattern = `%${searchTerm}%`;
-        
-        // Build base query with is_active filter
-        let codeQuery = supabase
-          .from('stores')
-          .select('*')
-          .ilike('customer_code', searchPattern);
-        
-        let nameQuery = supabase
-          .from('stores')
-          .select('*')
-          .ilike('customer_name', searchPattern);
-        
-        // Apply is_active filter if provided
-        if (filters?.is_active !== undefined) {
-          codeQuery = codeQuery.eq('is_active', filters.is_active);
-          nameQuery = nameQuery.eq('is_active', filters.is_active);
-        }
-        
-        // Execute both queries in parallel
-        const [codeResult, nameResult] = await Promise.all([
-          codeQuery,
-          nameQuery
-        ]);
-        
-        if (codeResult.error) {
-          console.error('[storeService] Error fetching stores by code:', codeResult.error);
-          throw codeResult.error;
-        }
-        
-        if (nameResult.error) {
-          console.error('[storeService] Error fetching stores by name:', nameResult.error);
-          throw nameResult.error;
-        }
-        
-        // Combine results and remove duplicates
-        const codeStores = codeResult.data || [];
-        const nameStores = nameResult.data || [];
-        const combinedStores = [...codeStores, ...nameStores];
-        
-        // Remove duplicates by id
-        const uniqueStores = combinedStores.filter((store, index, self) =>
-          index === self.findIndex(s => s.id === store.id)
-        );
-        
-        // Sort and limit
-        uniqueStores.sort((a, b) => (a.customer_name || '').localeCompare(b.customer_name || ''));
-        const limitedStores = uniqueStores.slice(0, 100);
-        
-        return limitedStores;
+      const additionalFilters: Record<string, any> = {};
+      if (filters?.is_active !== undefined) {
+        additionalFilters.is_active = filters.is_active;
       }
+      
+      return await searchWithMultipleFields<Store>(
+        supabase,
+        'stores',
+        filters.search,
+        ['customer_code', 'customer_name'],
+        additionalFilters,
+        100
+      );
     }
     
     // No search - use normal query

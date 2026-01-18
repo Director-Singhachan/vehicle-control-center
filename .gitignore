@@ -12,6 +12,11 @@ dist
 dist-ssr
 *.local
 
+# Test coverage
+coverage/
+*.lcov
+.nyc_output
+
 # Scripts with sensitive data (should use environment variables)
 # scripts/test-daily-summary.ps1
 # deploy-telegram-webhook.ps1

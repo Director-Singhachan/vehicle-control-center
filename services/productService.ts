@@ -1,6 +1,7 @@
 // Product Service - CRUD operations for products
 import { supabase } from '../lib/supabase';
 import type { Database } from '../types/database';
+import { searchWithMultipleFields } from '../utils/searchUtils';
 
 export type Product = Database['public']['Tables']['products']['Row'];
 type ProductInsert = Database['public']['Tables']['products']['Insert'];
@@ -33,87 +34,24 @@ export const productService = {
       query = query.eq('category', filters.category);
     }
 
-    // If search is provided, use separate queries to avoid PostgREST parsing errors
+    // If search is provided, use searchUtils for consistent search logic
     if (filters?.search) {
-      const searchTerm = filters.search.trim();
-      if (searchTerm) {
-        const searchPattern = `%${searchTerm}%`;
-        
-        // Build base queries with is_active and category filters
-        let codeQuery = supabase
-          .from('products')
-          .select('*')
-          .ilike('product_code', searchPattern);
-        
-        let nameQuery = supabase
-          .from('products')
-          .select('*')
-          .ilike('product_name', searchPattern);
-        
-        let categoryQuery = supabase
-          .from('products')
-          .select('*')
-          .ilike('category', searchPattern);
-        
-        // Apply is_active filter if provided
-        if (filters?.is_active !== undefined) {
-          codeQuery = codeQuery.eq('is_active', filters.is_active);
-          nameQuery = nameQuery.eq('is_active', filters.is_active);
-          categoryQuery = categoryQuery.eq('is_active', filters.is_active);
-        }
-        
-        // Apply category filter if provided
-        if (filters?.category) {
-          codeQuery = codeQuery.eq('category', filters.category);
-          nameQuery = nameQuery.eq('category', filters.category);
-          categoryQuery = categoryQuery.eq('category', filters.category);
-        }
-        
-        // Execute all queries in parallel
-        const [codeResult, nameResult, categoryResult] = await Promise.all([
-          codeQuery,
-          nameQuery,
-          categoryQuery
-        ]);
-        
-        if (codeResult.error) {
-          console.error('[productService] Error fetching products by code:', codeResult.error);
-          throw codeResult.error;
-        }
-        
-        if (nameResult.error) {
-          console.error('[productService] Error fetching products by name:', nameResult.error);
-          throw nameResult.error;
-        }
-        
-        if (categoryResult.error) {
-          console.error('[productService] Error fetching products by category:', categoryResult.error);
-          throw categoryResult.error;
-        }
-        
-        // Combine results and remove duplicates
-        const codeProducts = codeResult.data || [];
-        const nameProducts = nameResult.data || [];
-        const categoryProducts = categoryResult.data || [];
-        const combinedProducts = [...codeProducts, ...nameProducts, ...categoryProducts];
-        
-        // Remove duplicates by id
-        const uniqueProducts = combinedProducts.filter((product, index, self) =>
-          index === self.findIndex(p => p.id === product.id)
-        );
-        
-        // Sort and limit
-        uniqueProducts.sort((a, b) => {
-          // Sort by category first, then product_name
-          if (a.category !== b.category) {
-            return (a.category || '').localeCompare(b.category || '');
-          }
-          return (a.product_name || '').localeCompare(b.product_name || '');
-        });
-        const limitedProducts = uniqueProducts.slice(0, 100);
-        
-        return limitedProducts;
+      const additionalFilters: Record<string, any> = {};
+      if (filters?.is_active !== undefined) {
+        additionalFilters.is_active = filters.is_active;
       }
+      if (filters?.category) {
+        additionalFilters.category = filters.category;
+      }
+      
+      return await searchWithMultipleFields<Product>(
+        supabase,
+        'products',
+        filters.search,
+        ['product_code', 'product_name', 'category'],
+        additionalFilters,
+        100
+      );
     }
 
     const { data, error } = await query;
