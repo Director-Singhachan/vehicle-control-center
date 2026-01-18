@@ -1,6 +1,7 @@
 import pdfMake from 'pdfmake/build/pdfmake';
 import pdfFonts from 'pdfmake/build/vfs_fonts';
 import type { TDocumentDefinitions, Content, StyleDictionary } from 'pdfmake/interfaces';
+import type { DocumentReportRow } from './vehicleDocumentReportService';
 
 // Initialize pdfMake vfs and fonts
 if (!pdfMake.vfs) {
@@ -149,6 +150,51 @@ interface Ticket {
     last_repair_garage?: string | null;
     estimated_cost?: number | null;
 }
+
+interface VehicleDocumentsReportParams {
+    rows: DocumentReportRow[];
+    periodMonths: 1 | 3 | 6;
+    includeExpired: boolean;
+    generatedAt: string;
+}
+
+interface VehicleDocumentsSummaryByOwnerGroupParams {
+    rows: DocumentReportRow[];
+    periodMonths: 1 | 3 | 6;
+    includeExpired: boolean;
+    generatedAt: string;
+}
+
+const DOCUMENT_TYPE_LABELS: Record<string, string> = {
+    registration: 'ทะเบียนรถ / เล่มรถ',
+    tax: 'ภาษีรถ / ต่อทะเบียน',
+    insurance: 'ประกัน',
+    inspection: 'พรบ./ตรวจสภาพ',
+    other: 'อื่นๆ',
+};
+
+const OWNER_GROUP_LABELS: Record<string, string> = {
+    thaikit: 'บริษัทไทยกิจ',
+    sing_chanthaburi: 'บริษัทสิงห์จันทบุรีจำกัด',
+    rental: 'รถเช่า',
+    unknown: 'ไม่ระบุ',
+};
+
+const STATUS_LABELS: Record<string, string> = {
+    active: 'ใช้งาน',
+    expired: 'หมดอายุ',
+    pending: 'รออนุมัติ',
+    cancelled: 'ยกเลิก',
+};
+
+const getDaysUntil = (expiryDate: string | null): number | null => {
+    if (!expiryDate) return null;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const expiry = new Date(expiryDate);
+    expiry.setHours(0, 0, 0, 0);
+    return Math.ceil((expiry.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+};
 
 export const pdfService = {
     generateMaintenanceTicketPDF: async (ticket: Ticket) => {
@@ -376,6 +422,157 @@ export const pdfService = {
             pdfMake.createPdf(docDefinition).download(`Maintenance_Ticket_${ticket.ticket_number || ticket.id}.pdf`);
         } catch (error) {
             console.error('Error generating PDF:', error);
+            alert('เกิดข้อผิดพลาดในการสร้าง PDF');
+        }
+    },
+
+    generateVehicleDocumentsReportPDF: async (params: VehicleDocumentsReportParams) => {
+        try {
+            await ensurePdfFontsLoaded();
+
+            const generatedAtLabel = new Date(params.generatedAt).toLocaleString('th-TH');
+
+            const styles: StyleDictionary = {
+                header: { fontSize: 16, bold: true, alignment: 'center', margin: [0, 0, 0, 10] as any },
+                subheader: { fontSize: 10, color: '#666666', alignment: 'center', margin: [0, 0, 0, 10] as any },
+                tableHeader: { bold: true, fillColor: '#f1f5f9' },
+            };
+
+            const body: any[] = [
+                [
+                    { text: 'ทะเบียน', style: 'tableHeader' },
+                    { text: 'กลุ่มรถ', style: 'tableHeader' },
+                    { text: 'ประเภทเอกสาร', style: 'tableHeader' },
+                    { text: 'วันหมดอายุ', style: 'tableHeader' },
+                    { text: 'เหลือ(วัน)', style: 'tableHeader' },
+                    { text: 'สถานะ', style: 'tableHeader' },
+                    { text: 'ไฟล์', style: 'tableHeader' },
+                ],
+            ];
+
+            params.rows.forEach((r) => {
+                const days = getDaysUntil(r.expiry_date);
+                const ownerGroup = r.vehicle?.owner_group || 'unknown';
+                body.push([
+                    r.vehicle?.plate || '-',
+                    OWNER_GROUP_LABELS[ownerGroup] || ownerGroup,
+                    DOCUMENT_TYPE_LABELS[r.document_type] || r.document_type,
+                    r.expiry_date ? new Date(r.expiry_date).toLocaleDateString('th-TH') : '-',
+                    days === null ? '-' : String(days),
+                    STATUS_LABELS[r.status] || r.status,
+                    r.file_name,
+                ]);
+            });
+
+            const content: Content[] = [
+                { text: 'รายงานเอกสารรถ', style: 'header' },
+                {
+                    text: `ช่วงเวลา: ${params.periodMonths} เดือน | รวมเอกสารหมดอายุ: ${params.includeExpired ? 'ใช่' : 'ไม่ใช่'} | ออกรายงาน: ${generatedAtLabel}`,
+                    style: 'subheader',
+                },
+                {
+                    table: {
+                        headerRows: 1,
+                        widths: [55, 75, 90, 65, 45, 55, '*'],
+                        body,
+                    },
+                    layout: 'lightHorizontalLines',
+                } as any,
+            ];
+
+            const docDefinition: TDocumentDefinitions = {
+                pageSize: 'A4',
+                pageOrientation: 'landscape',
+                pageMargins: [24, 24, 24, 24] as any,
+                defaultStyle: { font: 'Sarabun', fontSize: 10, lineHeight: 1.2 },
+                styles,
+                content,
+            };
+
+            if (!(pdfMake as any).vfs || !(pdfMake as any).vfs['Sarabun-Regular.ttf']) {
+                throw new Error('Fonts not loaded. VFS is not properly initialized.');
+            }
+
+            pdfMake.createPdf(docDefinition).download(`Vehicle_Documents_Report_${new Date().toISOString().split('T')[0]}.pdf`);
+        } catch (error) {
+            console.error('Error generating vehicle documents report PDF:', error);
+            alert('เกิดข้อผิดพลาดในการสร้าง PDF');
+        }
+    },
+
+    generateVehicleDocumentsSummaryByOwnerGroupPDF: async (params: VehicleDocumentsSummaryByOwnerGroupParams) => {
+        try {
+            await ensurePdfFontsLoaded();
+
+            const generatedAtLabel = new Date(params.generatedAt).toLocaleString('th-TH');
+
+            const groupMap = new Map<string, DocumentReportRow[]>();
+            params.rows.forEach((r) => {
+                const group = r.vehicle?.owner_group || 'unknown';
+                groupMap.set(group, [...(groupMap.get(group) || []), r]);
+            });
+
+            const body: any[] = [
+                [
+                    { text: 'กลุ่มรถ', bold: true, fillColor: '#f1f5f9' },
+                    { text: 'จำนวนเอกสาร', bold: true, fillColor: '#f1f5f9' },
+                    { text: 'เร่งด่วน', bold: true, fillColor: '#f1f5f9' },
+                    { text: 'เตือนล่วงหน้า', bold: true, fillColor: '#f1f5f9' },
+                ],
+            ];
+
+            Array.from(groupMap.entries()).forEach(([group, items]) => {
+                const critical = items.filter((r) => {
+                    const days = getDaysUntil(r.expiry_date);
+                    if (days === null) return false;
+                    return days < 0 || r.status === 'expired' || days <= 7;
+                }).length;
+                const warning = items.filter((r) => {
+                    const days = getDaysUntil(r.expiry_date);
+                    if (days === null) return false;
+                    return days > 7 && days <= 30 && r.status !== 'expired';
+                }).length;
+                body.push([
+                    OWNER_GROUP_LABELS[group] || group,
+                    String(items.length),
+                    String(critical),
+                    String(warning),
+                ]);
+            });
+
+            const content: Content[] = [
+                { text: 'รายงานเอกสารรถ (สรุปตามกลุ่มรถ)', fontSize: 16, bold: true, alignment: 'center', margin: [0, 0, 0, 10] as any },
+                {
+                    text: `ช่วงเวลา: ${params.periodMonths} เดือน | รวมเอกสารหมดอายุ: ${params.includeExpired ? 'ใช่' : 'ไม่ใช่'} | ออกรายงาน: ${generatedAtLabel}`,
+                    fontSize: 10,
+                    color: '#666666',
+                    alignment: 'center',
+                    margin: [0, 0, 0, 10] as any,
+                },
+                {
+                    table: {
+                        headerRows: 1,
+                        widths: ['*', 90, 80, 100],
+                        body,
+                    },
+                    layout: 'lightHorizontalLines',
+                } as any,
+            ];
+
+            const docDefinition: TDocumentDefinitions = {
+                pageSize: 'A4',
+                pageMargins: [40, 40, 40, 40] as any,
+                defaultStyle: { font: 'Sarabun', fontSize: 12, lineHeight: 1.3 },
+                content,
+            };
+
+            if (!(pdfMake as any).vfs || !(pdfMake as any).vfs['Sarabun-Regular.ttf']) {
+                throw new Error('Fonts not loaded. VFS is not properly initialized.');
+            }
+
+            pdfMake.createPdf(docDefinition).download(`Vehicle_Documents_Summary_By_Group_${new Date().toISOString().split('T')[0]}.pdf`);
+        } catch (error) {
+            console.error('Error generating vehicle documents summary PDF:', error);
             alert('เกิดข้อผิดพลาดในการสร้าง PDF');
         }
     },
