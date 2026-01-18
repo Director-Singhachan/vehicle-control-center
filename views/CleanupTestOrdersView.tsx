@@ -7,7 +7,8 @@ import { Badge } from '../components/ui/Badge';
 import { PageLayout } from '../components/ui/PageLayout';
 import { LoadingSpinner } from '../components/ui/LoadingSpinner';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
-import { useAuth } from '../hooks';
+import { ToastContainer } from '../components/ui/Toast';
+import { useAuth, useToast } from '../hooks';
 
 interface Order {
   id: string;
@@ -23,6 +24,7 @@ interface Order {
 
 export function CleanupTestOrdersView() {
   const { user, isAdmin, isManager } = useAuth();
+  const { toasts, success, error: showError, warning, dismissToast } = useToast();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -127,7 +129,7 @@ export function CleanupTestOrdersView() {
   // ลบออเดอร์
   const handleDelete = async () => {
     if (!canDelete) {
-      alert('คุณไม่มีสิทธิ์ในการลบออเดอร์');
+      showError('คุณไม่มีสิทธิ์ในการลบออเดอร์');
       return;
     }
 
@@ -166,18 +168,17 @@ export function CleanupTestOrdersView() {
         const assignedNumbers = assignedOrders
           .map((o) => o.order_number || o.id.substring(0, 8))
           .join(', ');
-        alert(
-          `⚠️ ไม่สามารถลบออเดอร์ที่ถูกกำหนดทริปแล้วได้\n\n` +
-          `ออเดอร์ที่ถูกกำหนดทริปแล้ว (${assignedOrders.length} รายการ):\n${assignedNumbers}\n\n` +
-          `ออเดอร์ที่สามารถลบได้: ${orderIdsToDelete.length} รายการ`
+        warning(
+          `ไม่สามารถลบออเดอร์ที่ถูกกำหนดทริปแล้วได้ (${assignedOrders.length} รายการ)\nออเดอร์ที่สามารถลบได้: ${orderIdsToDelete.length} รายการ`,
+          8000
         );
       }
 
       if (orderIdsToDelete.length === 0) {
         if (assignedOrders.length > 0) {
-          alert('ไม่มีออเดอร์ที่สามารถลบได้ (ออเดอร์ทั้งหมดถูกกำหนดทริปแล้ว)');
+          warning('ไม่มีออเดอร์ที่สามารถลบได้ (ออเดอร์ทั้งหมดถูกกำหนดทริปแล้ว)');
         } else {
-          alert('ไม่มีออเดอร์ที่ต้องการลบ');
+          warning('ไม่มีออเดอร์ที่ต้องการลบ');
         }
         setIsDeleting(false);
         return;
@@ -187,22 +188,29 @@ export function CleanupTestOrdersView() {
       const deletedOrders = await ordersService.deleteMany(orderIdsToDelete);
 
       if (!deletedOrders || deletedOrders.length === 0) {
-        alert('❌ ไม่สามารถลบออเดอร์ได้ (อาจไม่มีสิทธิ์หรือออเดอร์ถูกกำหนดทริปแล้ว)');
+        showError('ไม่สามารถลบออเดอร์ได้ (อาจไม่มีสิทธิ์หรือออเดอร์ถูกกำหนดทริปแล้ว)');
         setIsDeleting(false);
         return;
       }
 
-      const message = assignedOrders.length > 0
-        ? `✅ ลบออเดอร์เรียบร้อย: ${deletedOrders.length} รายการ\n\n⚠️ ข้ามออเดอร์ที่ถูกกำหนดทริปแล้ว: ${assignedOrders.length} รายการ`
-        : `✅ ลบออเดอร์เรียบร้อย: ${deletedOrders.length} รายการ`;
-      alert(message);
+      if (assignedOrders.length > 0) {
+        success(
+          `ลบออเดอร์เรียบร้อย: ${deletedOrders.length} รายการ\nข้ามออเดอร์ที่ถูกกำหนดทริปแล้ว: ${assignedOrders.length} รายการ`,
+          6000
+        );
+      } else {
+        success(`ลบออเดอร์เรียบร้อย: ${deletedOrders.length} รายการ`);
+      }
       setSelectedOrders(new Set());
       setDeleteConfirmOpen(false);
       await loadOrders();
     } catch (err: any) {
       console.error('Error deleting orders:', err);
       const errorMessage = err.message || 'เกิดข้อผิดพลาดในการลบออเดอร์';
-      alert(`❌ ${errorMessage}\n\nกรุณาตรวจสอบ:\n- สิทธิ์การลบ (ต้องเป็น Admin/Manager)\n- ออเดอร์ที่เลือกไม่ถูกกำหนดทริปแล้ว`);
+      showError(
+        `${errorMessage}\nกรุณาตรวจสอบ:\n- สิทธิ์การลบ (ต้องเป็น Admin/Manager)\n- ออเดอร์ที่เลือกไม่ถูกกำหนดทริปแล้ว`,
+        8000
+      );
     } finally {
       setIsDeleting(false);
     }
@@ -241,7 +249,9 @@ export function CleanupTestOrdersView() {
   }
 
   return (
-    <PageLayout title="จัดการออเดอร์">
+    <>
+      <ToastContainer toasts={toasts} onDismiss={dismissToast} />
+      <PageLayout title="จัดการออเดอร์">
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
         <Card>
@@ -399,7 +409,7 @@ export function CleanupTestOrdersView() {
                 onClick={() => {
                   setDeleteMode('selected');
                   if (selectedOrders.size === 0) {
-                    alert('กรุณาเลือกออเดอร์ที่ต้องการลบ');
+                    warning('กรุณาเลือกออเดอร์ที่ต้องการลบ');
                     return;
                   }
                   setDeleteConfirmOpen(true);
@@ -417,7 +427,7 @@ export function CleanupTestOrdersView() {
                   setDeleteMode('without_number');
                   const count = filteredOrders.filter((o) => !o.order_number || o.order_number === '').length;
                   if (count === 0) {
-                    alert('ไม่มีออเดอร์ที่ไม่มีเลขกำกับ');
+                    warning('ไม่มีออเดอร์ที่ไม่มีเลขกำกับ');
                     return;
                   }
                   setDeleteConfirmOpen(true);
@@ -434,7 +444,7 @@ export function CleanupTestOrdersView() {
                 onClick={() => {
                   setDeleteMode('all');
                   if (filteredOrders.length === 0) {
-                    alert('ไม่มีออเดอร์ที่ต้องการลบ');
+                    warning('ไม่มีออเดอร์ที่ต้องการลบ');
                     return;
                   }
                   setDeleteConfirmOpen(true);
@@ -473,7 +483,7 @@ export function CleanupTestOrdersView() {
                 size="sm"
                 onClick={() => {
                   if (!dateFrom || !dateTo) {
-                    alert('กรุณาเลือกช่วงวันที่');
+                    warning('กรุณาเลือกช่วงวันที่');
                     return;
                   }
                   setDeleteMode('date_range');
@@ -481,7 +491,7 @@ export function CleanupTestOrdersView() {
                     (o) => o.order_date >= dateFrom && o.order_date <= dateTo
                   ).length;
                   if (count === 0) {
-                    alert('ไม่มีออเดอร์ในช่วงวันที่ที่เลือก');
+                    warning('ไม่มีออเดอร์ในช่วงวันที่ที่เลือก');
                     return;
                   }
                   setDeleteConfirmOpen(true);
@@ -662,5 +672,6 @@ export function CleanupTestOrdersView() {
         variant="danger"
       />
     </PageLayout>
+    </>
   );
 }

@@ -8,7 +8,8 @@ import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
 import { PageLayout } from '../components/ui/PageLayout';
 import { LoadingSpinner } from '../components/ui/LoadingSpinner';
-import { useAuth } from '../hooks';
+import { ToastContainer } from '../components/ui/Toast';
+import { useAuth, useToast } from '../hooks';
 import { supabase } from '../lib/supabase';
 
 interface OrderItem {
@@ -23,16 +24,7 @@ export function CreateOrderView() {
   const { products, loading: productsLoading } = useProducts();
   const { warehouses, loading: warehousesLoading } = useWarehouses();
   const { user } = useAuth();
-
-  const showNotification = (type: 'success' | 'error' | 'warning', message: string) => {
-    if (type === 'error') {
-      alert(`❌ ${message}`);
-    } else if (type === 'warning') {
-      alert(`⚠️ ${message}`);
-    } else {
-      alert(`✅ ${message}`);
-    }
-  };
+  const { toasts, success, error, warning, dismissToast } = useToast();
 
   const [selectedStore, setSelectedStore] = useState<any>(null);
   const [selectedWarehouse, setSelectedWarehouse] = useState<any>(null);
@@ -96,7 +88,7 @@ export function CreateOrderView() {
       if (error) throw error;
       setStores(data || []);
     } catch (error: any) {
-      showNotification('error', 'เกิดข้อผิดพลาดในการค้นหาร้านค้า');
+      error('เกิดข้อผิดพลาดในการค้นหาร้านค้า');
     } finally {
       setStoresLoading(false);
     }
@@ -141,14 +133,14 @@ export function CreateOrderView() {
   // เพิ่มสินค้า
   const handleAddProduct = async (product: any) => {
     if (!selectedStore) {
-      showNotification('error', 'กรุณาเลือกร้านค้าก่อน');
+      error('กรุณาเลือกร้านค้าก่อน');
       return;
     }
 
     // ตรวจสอบว่ามีสินค้านี้แล้วหรือไม่
     const existingItem = orderItems.find(item => item.product_id === product.id);
     if (existingItem) {
-      showNotification('warning', 'สินค้านี้มีในรายการแล้ว');
+      warning('สินค้านี้มีในรายการแล้ว');
       return;
     }
 
@@ -171,7 +163,7 @@ export function CreateOrderView() {
       setOrderItems([...orderItems, newItem]);
       setProductSearch('');
     } catch (error: any) {
-      showNotification('error', 'ไม่สามารถดึงราคาสินค้าได้');
+      error('ไม่สามารถดึงราคาสินค้าได้');
     }
   };
 
@@ -256,19 +248,19 @@ export function CreateOrderView() {
   // บันทึกออเดอร์
   const handleSubmit = async () => {
     if (!selectedStore) {
-      showNotification('error', 'กรุณาเลือกร้านค้า');
+      error('กรุณาเลือกร้านค้า');
       return;
     }
 
   // validate quantities > 0
   const hasInvalidQuantity = orderItems.some(item => Number(item.quantity || 0) <= 0);
   if (hasInvalidQuantity) {
-    showNotification('error', 'กรุณาใส่จำนวนสินค้ามากกว่า 0');
+    error('กรุณาใส่จำนวนสินค้ามากกว่า 0');
     return;
   }
 
     if (orderItems.length === 0) {
-      showNotification('error', 'กรุณาเพิ่มสินค้าอย่างน้อย 1 รายการ');
+      error('กรุณาเพิ่มสินค้าอย่างน้อย 1 รายการ');
       return;
     }
 
@@ -293,7 +285,7 @@ export function CreateOrderView() {
         }))
       );
 
-      showNotification('success', 'สร้างออเดอร์เรียบร้อย');
+      success('สร้างออเดอร์เรียบร้อย');
       
       // Reset form
       setSelectedStore(null);
@@ -302,15 +294,17 @@ export function CreateOrderView() {
       setNotes('');
       setDeliveryDate('');
     } catch (error: any) {
-      showNotification('error', error.message || 'เกิดข้อผิดพลาดในการสร้างออเดอร์');
+      error(error.message || 'เกิดข้อผิดพลาดในการสร้างออเดอร์');
     } finally {
       setIsSubmitting(false);
     }
   };
 
   return (
-    <PageLayout title="สร้างออเดอร์ใหม่">
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <>
+      <ToastContainer toasts={toasts} onDismiss={dismissToast} />
+      <PageLayout title="สร้างออเดอร์ใหม่">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left: Store & Products Selection */}
         <div className="lg:col-span-2 space-y-6">
           
@@ -456,13 +450,20 @@ export function CreateOrderView() {
                           <button
                             key={product.id}
                             onClick={() => handleAddProduct(product)}
-                            className="w-full p-4 text-left hover:bg-gray-50 dark:hover:bg-slate-700/50 border-b border-gray-100 dark:border-slate-700 last:border-b-0 flex items-center justify-between"
+                            className="w-full p-4 text-left hover:bg-gray-50 dark:hover:bg-slate-700/50 border-b border-gray-100 dark:border-slate-700 last:border-b-0 flex items-center justify-between gap-3"
                           >
-                            <div>
-                              <p className="font-medium text-gray-900 dark:text-white">{product.product_name}</p>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 mb-1">
+                                <p className="font-medium text-gray-900 dark:text-white truncate">{product.product_name}</p>
+                                {product.unit && (
+                                  <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 text-xs flex-shrink-0">
+                                    {product.unit}
+                                  </Badge>
+                                )}
+                              </div>
                               <p className="text-sm text-gray-500 dark:text-gray-400">{product.product_code}</p>
                             </div>
-                            <p className="text-sm font-semibold text-blue-600 dark:text-blue-400">
+                            <p className="text-sm font-semibold text-blue-600 dark:text-blue-400 flex-shrink-0">
                               {new Intl.NumberFormat('th-TH').format(product.base_price || 0)} ฿
                             </p>
                           </button>
@@ -653,7 +654,8 @@ export function CreateOrderView() {
           </Card>
         </div>
       </div>
-    </PageLayout>
+      </PageLayout>
+    </>
   );
 }
 

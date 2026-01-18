@@ -415,7 +415,15 @@ export function EditOrderView({ orderId, onSave, onCancel }: EditOrderViewProps)
         total_amount: calculateTotal.total,
       });
 
-      showNotification('success', 'แก้ไขออเดอร์เรียบร้อย');
+      // 8. Sync ไปยังทริป (ทำงานอัตโนมัติผ่าน database trigger)
+      // หมายเหตุ: การ sync จะทำงานอัตโนมัติใน database backend
+      // ไม่ต้องเรียก sync service เอง เพราะ database trigger จะจัดการให้
+      if (hasAssignedTrip) {
+        showNotification('success', 'แก้ไขออเดอร์เรียบร้อย ระบบจะ sync ไปยังทริปอัตโนมัติ');
+      } else {
+        showNotification('success', 'แก้ไขออเดอร์เรียบร้อย');
+      }
+
       onSave?.();
     } catch (error: any) {
       showNotification('error', error.message || 'เกิดข้อผิดพลาดในการแก้ไขออเดอร์');
@@ -616,13 +624,20 @@ export function EditOrderView({ orderId, onSave, onCancel }: EditOrderViewProps)
                           <button
                             key={product.id}
                             onClick={() => handleAddProduct(product)}
-                            className="w-full p-4 text-left hover:bg-gray-50 dark:hover:bg-slate-700/50 border-b border-gray-100 dark:border-slate-700 last:border-b-0 flex items-center justify-between"
+                            className="w-full p-4 text-left hover:bg-gray-50 dark:hover:bg-slate-700/50 border-b border-gray-100 dark:border-slate-700 last:border-b-0 flex items-center justify-between gap-3"
                           >
-                            <div>
-                              <p className="font-medium text-gray-900 dark:text-white">{product.product_name}</p>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 mb-1">
+                                <p className="font-medium text-gray-900 dark:text-white truncate">{product.product_name}</p>
+                                {product.unit && (
+                                  <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 text-xs flex-shrink-0">
+                                    {product.unit}
+                                  </Badge>
+                                )}
+                              </div>
                               <p className="text-sm text-gray-500 dark:text-gray-400">{product.product_code}</p>
                             </div>
-                            <p className="text-sm font-semibold text-blue-600 dark:text-blue-400">
+                            <p className="text-sm font-semibold text-blue-600 dark:text-blue-400 flex-shrink-0">
                               {new Intl.NumberFormat('th-TH').format(product.base_price || 0)} ฿
                             </p>
                           </button>

@@ -377,6 +377,89 @@ export const MyComponent: React.FC<MyComponentProps> = ({
 - Use `Skeleton` component for content loading
 - Never show blank screens during loading
 
+## Notifications & Alerts (CRITICAL - MUST FOLLOW)
+
+### **NEVER use `alert()` or `confirm()`**
+- **ALWAYS** use the `useToast` hook for all notifications
+- **ALWAYS** use `ToastContainer` component to display toasts
+- **ALWAYS** create beautiful, accessible UI for all user feedback
+
+### Toast Usage Pattern
+```tsx
+// ✅ Correct: Use useToast hook
+import { useToast } from '../hooks';
+import { ToastContainer } from '../components/ui/Toast';
+
+export const MyComponent: React.FC = () => {
+  const { toasts, success, error, warning, info, dismissToast } = useToast();
+
+  const handleAction = async () => {
+    try {
+      await someAction();
+      success('ดำเนินการสำเร็จ');
+    } catch (err: any) {
+      error(err.message || 'เกิดข้อผิดพลาด');
+    }
+  };
+
+  return (
+    <>
+      <ToastContainer toasts={toasts} onDismiss={dismissToast} />
+      {/* Your component content */}
+    </>
+  );
+};
+```
+
+### Toast Types
+- **`success()`**: For successful operations (green)
+- **`error()`**: For errors and failures (red)
+- **`warning()`**: For warnings and cautions (yellow)
+- **`info()`**: For informational messages (blue)
+
+### Toast Duration
+- Default: 5000ms (5 seconds)
+- Can be customized: `success('ข้อความ', 8000)` for 8 seconds
+- Use longer duration for important messages
+
+### Toast Message Guidelines
+- Keep messages concise but clear
+- Use Thai language for user-facing messages
+- Include relevant details (counts, IDs, etc.)
+- For multi-line messages, use `\n` for line breaks
+
+### Examples
+```tsx
+// ✅ Success message
+success('ลบออเดอร์เรียบร้อย: 5 รายการ');
+
+// ✅ Error message with details
+error('ไม่สามารถลบออเดอร์ได้\nกรุณาตรวจสอบสิทธิ์การลบ');
+
+// ✅ Warning message with custom duration
+warning('ออเดอร์นี้ถูกกำหนดทริปแล้ว', 8000);
+
+// ✅ Info message
+info('กำลังประมวลผลข้อมูล...');
+```
+
+### ❌ Wrong Patterns
+```tsx
+// ❌ NEVER use browser alert()
+alert('ข้อความ');
+
+// ❌ NEVER use browser confirm()
+if (confirm('ยืนยัน?')) { ... }
+
+// ❌ NEVER use console.log for user feedback
+console.log('สำเร็จ');
+```
+
+### Toast Container Placement
+- **ALWAYS** place `ToastContainer` at the top level of your component
+- Use React Fragment (`<>...</>`) to wrap both ToastContainer and content
+- ToastContainer uses `z-[70]` to appear above all other content
+
 ## Testing & Quality
 
 ### Code Quality
