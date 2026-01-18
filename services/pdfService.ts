@@ -924,6 +924,61 @@ export const pdfService = {
             }
 
             // Build content
+            const crews = Array.isArray(trip.crews) ? trip.crews : [];
+            const activeCrews = crews.filter((c: any) => (c?.status ?? 'active') === 'active');
+            const helperCrews = activeCrews.filter((c: any) => c?.role === 'helper');
+
+            const helperNames = helperCrews
+                .map((c: any) => {
+                    const name = c?.staff?.name || '-';
+                    return `${name}`;
+                })
+                .filter(Boolean);
+
+            const helpersText = helperNames.length > 0 ? helperNames.join(', ') : '-';
+
+            const driverName = trip.driver?.full_name || '';
+
+            const signatureBlock: Content = {
+                table: {
+                    widths: ['*', '*', '*'],
+                    body: [
+                        [
+                            {
+                                stack: [
+                                    { text: 'ลงชื่อ ____________________________', fontSize: 10, margin: [0, 8, 0, 0] as [number, number, number, number] },
+                                    { text: driverName ? `(${driverName})` : '(____________________)', fontSize: 9, alignment: 'center', margin: [0, 2, 0, 0] as [number, number, number, number] },
+                                    { text: 'Driver (คนขับ)', fontSize: 9, alignment: 'center', margin: [0, 2, 0, 0] as [number, number, number, number] },
+                                ],
+                            },
+                            {
+                                stack: [
+                                    { text: 'ลงชื่อ ____________________________', fontSize: 10, margin: [0, 8, 0, 0] as [number, number, number, number] },
+                                    { text: '(____________________)', fontSize: 9, alignment: 'center', margin: [0, 2, 0, 0] as [number, number, number, number] },
+                                    { text: 'Forklift (โฟล์คลิฟท์)', fontSize: 9, alignment: 'center', margin: [0, 2, 0, 0] as [number, number, number, number] },
+                                ],
+                            },
+                            {
+                                stack: [
+                                    { text: 'ลงชื่อ ____________________________', fontSize: 10, margin: [0, 8, 0, 0] as [number, number, number, number] },
+                                    { text: '(____________________)', fontSize: 9, alignment: 'center', margin: [0, 2, 0, 0] as [number, number, number, number] },
+                                    { text: 'Checker (เช็คเกอร์)', fontSize: 9, alignment: 'center', margin: [0, 2, 0, 0] as [number, number, number, number] },
+                                ],
+                            },
+                        ],
+                    ],
+                },
+                layout: {
+                    hLineWidth: () => 0,
+                    vLineWidth: () => 0,
+                    paddingLeft: () => 0,
+                    paddingRight: () => 0,
+                    paddingTop: () => 0,
+                    paddingBottom: () => 0,
+                },
+                margin: [10, 0, 10, 10] as [number, number, number, number],
+            } as any;
+
             const content: Content[] = [
                 // Header
                 { text: 'ใบเบิกสินค้า', fontSize: 16, bold: true, alignment: 'center', margin: [0, 0, 0, 5] as [number, number, number, number] },
@@ -966,6 +1021,12 @@ export const pdfService = {
                     margin: [0, 0, 0, 5] as [number, number, number, number]
                 },
 
+                {
+                    text: `พนักงานบริการ: ${helpersText}`,
+                    fontSize: 10,
+                    margin: [0, 0, 0, 6] as [number, number, number, number]
+                },
+
                 // Stores section
                 ...storesContent,
 
@@ -983,12 +1044,17 @@ export const pdfService = {
             const docDefinition: TDocumentDefinitions = {
                 pageSize: 'A5',
                 pageOrientation: 'portrait',
-                pageMargins: [10, 15, 10, 15] as [number, number, number, number],
+                // Reserve space at bottom for the signature footer
+                pageMargins: [10, 15, 10, 90] as [number, number, number, number],
                 defaultStyle: {
                     font: 'Sarabun',
                     fontSize: 10
                 },
                 content,
+                footer: (currentPage: number, pageCount: number) => {
+                    if (currentPage !== pageCount) return { text: '' };
+                    return signatureBlock;
+                },
                 styles: {
                     normal: {
                         font: 'Sarabun'
@@ -1018,6 +1084,136 @@ export const pdfService = {
             pdfMake.createPdf(docDefinition).download(`delivery-trip-${trip.trip_number || trip.id}.pdf`);
         } catch (error) {
             console.error('[pdfService] Error generating delivery trip PDF:', error);
+            throw error;
+        }
+    },
+
+    // Forklift-only PDF: aggregated products summary only (A5)
+    generateDeliveryTripForkliftSummaryPDFA5: async (
+        trip: any,
+        aggregatedProducts: any[]
+    ) => {
+        try {
+            console.log('[pdfService] Starting generateDeliveryTripForkliftSummaryPDFA5 for trip:', trip.trip_number || trip.id);
+            await ensurePdfFontsLoaded();
+
+            // Build aggregated products table (summary only)
+            const aggregatedContent: Content[] = [];
+            if (aggregatedProducts.length > 0) {
+                const tableBody = [
+                    [
+                        { text: 'รหัส', bold: true },
+                        { text: 'ชื่อสินค้า', bold: true },
+                        { text: 'หมวดหมู่', bold: true },
+                        { text: 'จำนวน', bold: true }
+                    ],
+                    ...aggregatedProducts.map((product) => [
+                        product.product_code,
+                        product.product_name,
+                        product.category,
+                        `${product.total_quantity.toLocaleString()} ${product.unit}`
+                    ])
+                ];
+
+                aggregatedContent.push({
+                    text: 'สรุปสินค้ารวมทั้งหมด',
+                    fontSize: 14,
+                    bold: true,
+                    margin: [0, 8, 0, 6] as [number, number, number, number]
+                });
+
+                aggregatedContent.push({
+                    table: {
+                        headerRows: 1,
+                        widths: ['auto', '*', 'auto', 'auto'],
+                        body: tableBody
+                    },
+                    layout: 'lightHorizontalLines',
+                    fontSize: 8
+                });
+            } else {
+                aggregatedContent.push({ text: 'ไม่มีข้อมูลสรุปสินค้า', fontSize: 10, color: '#666666', margin: [0, 10, 0, 0] as [number, number, number, number] });
+            }
+
+            const forkliftSignatureFooter: Content = {
+                table: {
+                    widths: ['*'],
+                    body: [
+                        [
+                            {
+                                stack: [
+                                    { text: 'ลงชื่อ ____________________________', fontSize: 10, margin: [0, 6, 0, 0] as [number, number, number, number], alignment: 'center' },
+                                    { text: '(____________________)', fontSize: 9, alignment: 'center', margin: [0, 2, 0, 0] as [number, number, number, number] },
+                                    { text: 'Forklift (โฟล์คลิฟท์)', fontSize: 9, alignment: 'center', margin: [0, 2, 0, 0] as [number, number, number, number] },
+                                ],
+                            },
+                        ],
+                    ],
+                },
+                layout: {
+                    hLineWidth: () => 0,
+                    vLineWidth: () => 0,
+                    paddingLeft: () => 0,
+                    paddingRight: () => 0,
+                    paddingTop: () => 0,
+                    paddingBottom: () => 0,
+                },
+                margin: [10, 0, 10, 10] as [number, number, number, number],
+            } as any;
+
+            const content: Content[] = [
+                { text: 'ใบเบิกสินค้า (โฟล์คลิฟท์)', fontSize: 16, bold: true, alignment: 'center', margin: [0, 0, 0, 5] as [number, number, number, number] },
+                {
+                    columns: [
+                        {
+                            text: `วันที่: ${new Date(trip.planned_date).toLocaleDateString('th-TH', {
+                                year: 'numeric',
+                                month: 'long',
+                                day: 'numeric',
+                            })}`,
+                            width: '*'
+                        },
+                        {
+                            text: `รหัสทริป: ${trip.trip_number || 'N/A'}`,
+                            width: '*',
+                            alignment: 'right'
+                        }
+                    ],
+                    fontSize: 11,
+                    margin: [0, 0, 0, 3] as [number, number, number, number]
+                },
+                {
+                    text: trip.vehicle ? `รถ: ${trip.vehicle.plate}${trip.vehicle.make && trip.vehicle.model ? ` (${trip.vehicle.make} ${trip.vehicle.model})` : ''}` : '',
+                    fontSize: 11,
+                    margin: [0, 0, 0, 2] as [number, number, number, number]
+                },
+                ...aggregatedContent,
+            ];
+
+            const docDefinition: TDocumentDefinitions = {
+                pageSize: 'A5',
+                pageOrientation: 'portrait',
+                // Reserve bottom area for forklift signature
+                pageMargins: [10, 15, 10, 70] as [number, number, number, number],
+                defaultStyle: {
+                    font: 'Sarabun',
+                    fontSize: 10
+                },
+                content,
+                footer: (currentPage: number, pageCount: number) => {
+                    if (currentPage !== pageCount) return { text: '' };
+                    return forkliftSignatureFooter;
+                },
+            };
+
+            if (!pdfMake.vfs || !pdfMake.vfs['Sarabun-Regular.ttf']) {
+                throw new Error('Fonts not loaded. VFS is not properly initialized.');
+            }
+
+            await new Promise(resolve => setTimeout(resolve, 100));
+            pdfMake.createPdf(docDefinition).download(`delivery-trip-forklift-${trip.trip_number || trip.id}.pdf`);
+        } catch (error) {
+            console.error('[pdfService] Error generating forklift summary PDF:', error);
             throw error;
         }
     },

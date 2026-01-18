@@ -45,6 +45,7 @@ export const DeliveryTripDetailView: React.FC<DeliveryTripDetailViewProps> = ({
 }) => {
   const { trip, loading, error, refetch } = useDeliveryTrip(tripId);
   const [printing, setPrinting] = useState(false);
+  const [printingForklift, setPrintingForklift] = useState(false);
   const [vehicleImageError, setVehicleImageError] = useState(false);
   const [driverImageError, setDriverImageError] = useState(false);
   const [selectedImage, setSelectedImage] = useState<{ url: string; alt: string } | null>(null);
@@ -194,12 +195,28 @@ export const DeliveryTripDetailView: React.FC<DeliveryTripDetailViewProps> = ({
 
     try {
       setPrinting(true);
-      await pdfService.generateDeliveryTripPDFA5(trip, aggregatedProducts);
+      const fullTrip = await deliveryTripService.getById(trip.id);
+      await pdfService.generateDeliveryTripPDFA5(fullTrip || trip, aggregatedProducts);
     } catch (err: any) {
       console.error('[DeliveryTripDetailView] Error printing:', err);
       alert('ไม่สามารถพิมพ์เอกสารได้: ' + (err.message || 'Unknown error'));
     } finally {
       setPrinting(false);
+    }
+  };
+
+  const handlePrintForklift = async () => {
+    if (!trip) return;
+
+    try {
+      setPrintingForklift(true);
+      const fullTrip = await deliveryTripService.getById(trip.id);
+      await pdfService.generateDeliveryTripForkliftSummaryPDFA5(fullTrip || trip, aggregatedProducts);
+    } catch (err: any) {
+      console.error('[DeliveryTripDetailView] Error printing forklift summary:', err);
+      alert('ไม่สามารถพิมพ์เอกสารโฟล์คลิฟท์ได้: ' + (err.message || 'Unknown error'));
+    } finally {
+      setPrintingForklift(false);
     }
   };
 
@@ -233,6 +250,14 @@ export const DeliveryTripDetailView: React.FC<DeliveryTripDetailViewProps> = ({
           <Button variant="outline" onClick={handlePrint} isLoading={printing}>
             <Download size={18} className="mr-2" />
             พิมพ์ A5
+          </Button>
+          <Button
+            variant="outline"
+            onClick={handlePrintForklift}
+            isLoading={printingForklift}
+          >
+            <Download size={18} className="mr-2" />
+            พิมพ์ A5 (โฟล์คลิฟท์)
           </Button>
           {onEdit && (
             <Button variant="outline" onClick={() => onEdit(trip.id)}>
