@@ -51,6 +51,7 @@ import { DeliveryTripFormView } from './views/DeliveryTripFormView';
 import { DeliveryTripDetailView } from './views/DeliveryTripDetailView';
 import { StoreDeliveryDetailView } from './views/StoreDeliveryDetailView';
 import { ServiceStaffManagementView } from './views/ServiceStaffManagementView';
+import { StaffVehicleUsageView } from './views/StaffVehicleUsageView';
 import { CommissionManagementView } from './views/CommissionManagementView';
 import { CommissionRatesView } from './views/CommissionRatesView';
 import { StockDashboardView } from './views/StockDashboardView';
@@ -490,9 +491,13 @@ const AppContent = () => {
   }, []);
   const [deliveryTripView, setDeliveryTripView] = useState<'list' | 'form' | 'detail'>('list');
   const [selectedDeliveryTripId, setSelectedDeliveryTripId] = useState<string | null>(null);
-  const [deliveryTripReturnContext, setDeliveryTripReturnContext] = useState<'delivery-list' | 'triplogs' | 'daily-summary'>('delivery-list');
+  const [deliveryTripReturnContext, setDeliveryTripReturnContext] = useState<
+    'delivery-list' | 'triplogs' | 'daily-summary' | 'vehicles'
+  >('delivery-list');
   const [storeDetailView, setStoreDetailView] = useState<'list' | 'detail'>('list');
   const [selectedStoreId, setSelectedStoreId] = useState<string | null>(null);
+  const [serviceStaffView, setServiceStaffView] = useState<'list' | 'usage'>('list');
+  const [selectedServiceStaffId, setSelectedServiceStaffId] = useState<string | null>(null);
   const [showNotifications, setShowNotifications] = useState(false);
   const [notificationItems, setNotificationItems] = useState<TicketWithRelations[]>([]);
   const [loadingNotifications, setLoadingNotifications] = useState(false);
@@ -1497,6 +1502,12 @@ const AppContent = () => {
                       setSelectedTicketId(ticketId.toString());
                       setTicketView('detail');
                     }}
+                    onViewDeliveryTrip={(deliveryTripId) => {
+                      setSelectedDeliveryTripId(deliveryTripId);
+                      setDeliveryTripView('detail');
+                      setDeliveryTripReturnContext('vehicles');
+                      setActiveTab('delivery-trips');
+                    }}
                   />
                 );
               } else if (effectiveView === 'form') {
@@ -1857,6 +1868,9 @@ const AppContent = () => {
                         setActiveTab('triplogs');
                       } else if (deliveryTripReturnContext === 'daily-summary') {
                         setActiveTab('daily-summary');
+                      } else if (deliveryTripReturnContext === 'vehicles') {
+                        setActiveTab('vehicles');
+                        setVehicleView('detail');
                       } else {
                         // ค่าเริ่มต้น: กลับไปหน้ารายการทริปส่งสินค้า
                         setActiveTab('delivery-trips');
@@ -1901,7 +1915,23 @@ const AppContent = () => {
               }
             })()
           ) : activeTab === 'service-staff' ? (
-            <ServiceStaffManagementView />
+            serviceStaffView === 'usage' && selectedServiceStaffId ? (
+              <StaffVehicleUsageView
+                staffId={selectedServiceStaffId}
+                onBack={() => {
+                  setServiceStaffView('list');
+                  setSelectedServiceStaffId(null);
+                }}
+              />
+            ) : (
+              <ServiceStaffManagementView
+                onViewUsage={(staffId: string) => {
+                  setSelectedServiceStaffId(staffId);
+                  setServiceStaffView('usage');
+                  setActiveTab('service-staff');
+                }}
+              />
+            )
           ) : activeTab === 'commission' ? (
             <CommissionManagementView />
           ) : activeTab === 'commission-rates' ? (
