@@ -70,13 +70,15 @@ export const VehicleDriverHistory: React.FC<VehicleDriverHistoryProps> = ({ vehi
     vehicle_id: vehicleId,
     start_date: startDate,
     end_date: endDate,
-    limit: pageSize,
-    offset: (currentPage - 1) * pageSize,
+    limit: 5000,
+    offset: 0,
   });
 
+  // For pagination display
   const totalPages = Math.ceil(totalCount / pageSize);
   const startIndex = (currentPage - 1) * pageSize;
   const endIndex = Math.min(currentPage * pageSize, totalCount);
+  const displayedTrips = trips.slice(startIndex, endIndex);
 
   const summary = React.useMemo(() => {
     const byDriver = new Map<
@@ -89,6 +91,7 @@ export const VehicleDriverHistory: React.FC<VehicleDriverHistoryProps> = ({ vehi
       }
     >();
 
+    // Use all trips for summary, not just displayed page
     trips.forEach((t) => {
       const driverId = (t as any).driver_id as string;
       const name = t.driver?.full_name || 'ไม่ระบุ';
@@ -242,7 +245,7 @@ export const VehicleDriverHistory: React.FC<VehicleDriverHistoryProps> = ({ vehi
             )}
           </div>
         </div>
-        {trips.length === 0 ? (
+        {displayedTrips.length === 0 ? (
           <div className="text-sm text-slate-500 dark:text-slate-400">ไม่พบข้อมูลในช่วงเวลานี้</div>
         ) : (
           <div className="overflow-x-auto">
@@ -260,7 +263,7 @@ export const VehicleDriverHistory: React.FC<VehicleDriverHistoryProps> = ({ vehi
                 </tr>
               </thead>
               <tbody>
-                {trips.map((t) => {
+                {displayedTrips.map((t) => {
                   const deliveryTripId = (t as any).delivery_trip_id as string | null;
                   return (
                     <tr key={t.id} className="border-b border-slate-100 dark:border-slate-800">
@@ -301,6 +304,146 @@ export const VehicleDriverHistory: React.FC<VehicleDriverHistoryProps> = ({ vehi
               </tbody>
             </table>
           </div>
+        )}
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <Card className="p-4 mt-6">
+            <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+              <div className="text-sm text-slate-600 dark:text-slate-400">
+                แสดง {startIndex + 1}-{endIndex} จาก {totalCount.toLocaleString('th-TH')} รายการ
+                {totalPages > 1 && (
+                  <span className="ml-2">(ทั้งหมด {totalPages.toLocaleString('th-TH')} หน้า)</span>
+                )}
+              </div>
+              <div className="flex items-center gap-2 flex-wrap justify-center">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                  disabled={currentPage === 1}
+                  className="flex items-center gap-1"
+                >
+                  <ChevronLeft size={16} />
+                  ก่อนหน้า
+                </Button>
+
+                {/* Page Numbers */}
+                <div className="flex items-center gap-1 flex-wrap">
+                  {(() => {
+                    const pages: (number | string)[] = [];
+
+                    // For small number of pages, show all
+                    if (totalPages <= 7) {
+                      for (let i = 1; i <= totalPages; i++) {
+                        pages.push(i);
+                      }
+                    } else {
+                      // Always show first page
+                      pages.push(1);
+
+                      // Calculate range around current page (show 2 pages on each side)
+                      const startPage = Math.max(2, currentPage - 2);
+                      const endPage = Math.min(totalPages - 1, currentPage + 2);
+
+                      // Add ellipsis if needed before current range
+                      if (startPage > 2) {
+                        pages.push('ellipsis-start');
+                      }
+
+                      // Add pages around current page
+                      for (let i = startPage; i <= endPage; i++) {
+                        if (i !== 1 && i !== totalPages) {
+                          pages.push(i);
+                        }
+                      }
+
+                      // Add ellipsis if needed after current range
+                      if (endPage < totalPages - 1) {
+                        pages.push('ellipsis-end');
+                      }
+
+                      // Always show last page
+                      pages.push(totalPages);
+                    }
+
+                    return pages.map((page) => {
+                      if (typeof page === 'string') {
+                        return (
+                          <span key={page} className="px-2 text-slate-400">
+                            ...
+                          </span>
+                        );
+                      }
+
+                      return (
+                        <button
+                          key={page}
+                          onClick={() => setCurrentPage(page)}
+                          className={`px-3 py-1 rounded-lg text-sm font-medium transition-colors ${currentPage === page
+                            ? 'bg-enterprise-600 text-white'
+                            : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+                            }`}
+                        >
+                          {page.toLocaleString('th-TH')}
+                        </button>
+                      );
+                    });
+                  })()}
+                </div>
+
+                {/* Jump to Page Input (for large page counts) */}
+                {totalPages > 10 && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-slate-600 dark:text-slate-400">ไปที่หน้า:</span>
+                    <input
+                      type="number"
+                      min="1"
+                      max={totalPages}
+                      value={pageInput}
+                      onChange={(e) => setPageInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          const page = parseInt(pageInput);
+                          if (page >= 1 && page <= totalPages) {
+                            setCurrentPage(page);
+                            setPageInput('');
+                          }
+                        }
+                      }}
+                      placeholder={`1-${totalPages}`}
+                      className="w-20 px-2 py-1 text-sm border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-enterprise-500 focus:border-transparent"
+                    />
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        const page = parseInt(pageInput);
+                        if (page >= 1 && page <= totalPages) {
+                          setCurrentPage(page);
+                          setPageInput('');
+                        }
+                      }}
+                      disabled={!pageInput || parseInt(pageInput) < 1 || parseInt(pageInput) > totalPages}
+                    >
+                      ไป
+                    </Button>
+                  </div>
+                )}
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                  disabled={currentPage === totalPages}
+                  className="flex items-center gap-1"
+                >
+                  ถัดไป
+                  <ChevronRight size={16} />
+                </Button>
+              </div>
+            </div>
+          </Card>
         )}
       </div>
     </Card>
