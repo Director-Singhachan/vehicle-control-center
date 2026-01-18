@@ -1278,6 +1278,44 @@ export const deliveryTripService = {
 
   // Delete delivery trip
   delete: async (id: string): Promise<void> => {
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (!user) {
+      throw new Error('User not authenticated');
+    }
+
+    // 1. หาออเดอร์ทั้งหมดที่เชื่อมกับทริปนี้
+    const { data: orders, error: ordersError } = await supabase
+      .from('orders')
+      .select('id')
+      .eq('delivery_trip_id', id);
+
+    if (ordersError) {
+      console.error('[deliveryTripService] Error fetching orders:', ordersError);
+      throw ordersError;
+    }
+
+    // 2. อัพเดทออเดอร์ทั้งหมดกลับเป็น 'confirmed' และตั้ง delivery_trip_id เป็น null
+    if (orders && orders.length > 0) {
+      const orderIds = orders.map(o => o.id);
+      const { error: updateOrdersError } = await supabase
+        .from('orders')
+        .update({
+          delivery_trip_id: null,
+          status: 'confirmed',
+          updated_by: user.id,
+        })
+        .in('id', orderIds);
+
+      if (updateOrdersError) {
+        console.error('[deliveryTripService] Error updating orders:', updateOrdersError);
+        throw updateOrdersError;
+      }
+
+      console.log(`[deliveryTripService] Updated ${orderIds.length} orders back to 'confirmed' status`);
+    }
+
+    // 3. ลบทริป (CASCADE จะลบข้อมูลที่เกี่ยวข้องอัตโนมัติ)
     const { error } = await supabase
       .from('delivery_trips')
       .delete()
