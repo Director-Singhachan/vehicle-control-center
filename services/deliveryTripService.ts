@@ -279,7 +279,7 @@ export const deliveryTripService = {
     const tripIds = trips.map(t => t.id);
     const { data: tripStores } = tripIds.length > 0 ? await supabase
       .from('delivery_trip_stores')
-      .select('id, delivery_trip_store_id:id, delivery_trip_id, store_id, sequence_order') // Minimally select needed fields
+      .select('id, delivery_trip_id, store_id, sequence_order') // Select id (not aliased) for use in items query
       .in('delivery_trip_id', tripIds)
       .order('sequence_order', { ascending: true }) : { data: [] };
 
@@ -293,8 +293,9 @@ export const deliveryTripService = {
     });
 
     let storeMap = new Map<string, any>();
+    let itemsMap = new Map<string, DeliveryTripItemWithProduct[]>(); // Map: trip_store_id -> items[]
 
-    // In FULL mode only, fetch detailed store info
+    // In FULL mode only, fetch detailed store info and items
     if (!lite) {
       const storeIds = [...new Set((tripStores || []).map(ts => ts.store_id).filter(Boolean))];
       const { data: stores } = storeIds.length > 0 ? await supabase
@@ -303,6 +304,53 @@ export const deliveryTripService = {
         .in('id', storeIds) : { data: [] };
 
       storeMap = new Map((stores || []).map(s => [s.id, s]));
+
+      // Fetch items for all trip stores
+      // Note: tripStores has 'id' field (which is delivery_trip_stores.id) and 'delivery_trip_store_id' alias
+      // We need to use the actual 'id' field from delivery_trip_stores table
+      const tripStoreIds = (tripStores || []).map(ts => {
+        // ts.id is the delivery_trip_stores.id (the primary key)
+        // ts.delivery_trip_store_id is an alias for ts.id (from the select statement)
+        return ts.id || (ts as any).delivery_trip_store_id;
+      }).filter(Boolean) as string[];
+      
+      if (tripStoreIds.length > 0) {
+        const { data: tripItems, error: itemsError } = await supabase
+          .from('delivery_trip_items')
+          .select('id, delivery_trip_store_id, product_id, quantity, notes')
+          .in('delivery_trip_store_id', tripStoreIds);
+        
+        if (itemsError) {
+          console.error('[deliveryTripService] Error fetching trip items:', itemsError, {
+            tripStoreIds,
+            tripStoreIdsLength: tripStoreIds.length,
+            sampleTripStore: tripStores[0],
+          });
+          // Don't throw - continue without items to avoid breaking the whole query
+        }
+
+        // Fetch products
+        if (tripItems && tripItems.length > 0) {
+          const productIds = [...new Set(tripItems.map(item => item.product_id).filter(Boolean))];
+          const { data: products } = productIds.length > 0 ? await supabase
+            .from('products')
+            .select('id, product_code, product_name, category, unit, base_price')
+            .in('id', productIds) : { data: [] };
+
+          const productMap = new Map((products || []).map(p => [p.id, p]));
+
+          // Group items by trip_store_id
+          (tripItems || []).forEach(item => {
+            if (!itemsMap.has(item.delivery_trip_store_id)) {
+              itemsMap.set(item.delivery_trip_store_id, []);
+            }
+            itemsMap.get(item.delivery_trip_store_id)!.push({
+              ...item,
+              product: productMap.get(item.product_id),
+            });
+          });
+        }
+      }
     }
 
     // In FULL mode only, fetch crews for trips
@@ -341,12 +389,18 @@ export const deliveryTripService = {
     // Combine data
     const combinedTrips = trips.map(trip => {
       const tripStoresForTrip = tripStoresMap.get(trip.id) || [];
-      const storesWithDetails: DeliveryTripStoreWithDetails[] = tripStoresForTrip.map(ts => ({
-        ...ts,
-        // In lite mode, store detail will be undefined, which is fine for list view specific needs
-        // The list view primarily checks `stores.length`
-        store: storeMap.get(ts.store_id),
-      }));
+      const storesWithDetails: DeliveryTripStoreWithDetails[] = tripStoresForTrip.map(ts => {
+        // ts.id is the delivery_trip_stores.id (primary key)
+        const tripStoreId = ts.id || (ts as any).delivery_trip_store_id;
+        return {
+          ...ts,
+          // In lite mode, store detail will be undefined, which is fine for list view specific needs
+          // The list view primarily checks `stores.length`
+          store: storeMap.get(ts.store_id),
+          // Add items if in full mode - use tripStoreId to lookup items
+          items: !lite ? (itemsMap.get(tripStoreId) || []) : undefined,
+        };
+      });
 
       return {
         ...trip,
@@ -591,11 +645,25 @@ export const deliveryTripService = {
           if (driverProfile?.full_name) {
             const driverName = driverProfile.full_name.trim();
 
-            const { data: staffMatches, error: staffError } = await supabase
+            // Try exact match first
+            let { data: staffMatches, error: staffError } = await supabase
               .from('service_staff')
               .select('id, name, status')
               .eq('name', driverName)
               .limit(5);
+
+            // If no exact match, try case-insensitive match
+            if (!staffError && (!staffMatches || staffMatches.length === 0)) {
+              const { data: caseInsensitiveMatches, error: caseError } = await supabase
+                .from('service_staff')
+                .select('id, name, status')
+                .ilike('name', driverName)
+                .limit(5);
+              
+              if (!caseError && caseInsensitiveMatches && caseInsensitiveMatches.length > 0) {
+                staffMatches = caseInsensitiveMatches;
+              }
+            }
 
             if (staffError) {
               console.error('[deliveryTripService] Error matching driver to service_staff:', staffError);
@@ -627,14 +695,18 @@ export const deliveryTripService = {
                     trip_id: trip.id,
                     driver_profile_id: trip.driver_id,
                     staff_id: staff.id,
+                    staff_name: staff.name,
                   });
                 }
               }
             } else {
-              console.warn('[deliveryTripService] No matching service_staff found for driver profile name. Driver will not be included in crew automatically.', {
+              // Only log as debug, not warning - this is expected if driver is not in service_staff table
+              // Many drivers may not be in service_staff if they're not part of the commission system
+              console.debug('[deliveryTripService] Driver not found in service_staff table (this is normal if driver is not part of commission system):', {
                 trip_id: trip.id,
                 driver_profile_id: trip.driver_id,
                 driver_name: driverName,
+                note: 'Driver can still be assigned manually via crew management if needed',
               });
             }
           }
