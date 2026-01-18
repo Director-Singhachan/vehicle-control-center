@@ -1,9 +1,10 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Package, Calendar, MapPin, DollarSign, User, Phone, Filter, X, Zap, ChevronDown, ChevronRight, Eye, Box } from 'lucide-react';
+import { Package, Calendar, MapPin, DollarSign, User, Phone, Filter, X, Zap, ChevronDown, ChevronRight, Eye, Box, Edit } from 'lucide-react';
 import { usePendingOrders } from '../hooks/useOrders';
 import { orderItemsService } from '../services/ordersService';
 import { CreateTripFromOrdersView } from './CreateTripFromOrdersView';
 import { DeliveryTripFormView } from './DeliveryTripFormView';
+import { EditOrderView } from './EditOrderView';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
@@ -21,6 +22,7 @@ export function PendingOrdersView() {
   const [expandedOrders, setExpandedOrders] = useState<Set<string>>(new Set());
   const [orderItems, setOrderItems] = useState<Map<string, any[]>>(new Map());
   const [showProductsSummaryModal, setShowProductsSummaryModal] = useState(false);
+  const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
 
   // Filter orders
   const filteredOrders = useMemo(() => {
@@ -207,6 +209,20 @@ export function PendingOrdersView() {
           เกิดข้อผิดพลาด: {error.message}
         </div>
       </PageLayout>
+    );
+  }
+
+  // ถ้ากำลังแก้ไขออเดอร์ แสดงหน้าแก้ไข
+  if (editingOrderId) {
+    return (
+      <EditOrderView
+        orderId={editingOrderId}
+        onSave={() => {
+          setEditingOrderId(null);
+          refetch();
+        }}
+        onCancel={() => setEditingOrderId(null)}
+      />
     );
   }
 
@@ -614,20 +630,31 @@ export function PendingOrdersView() {
                         <div className="text-xs text-gray-500 dark:text-gray-400">
                           สร้างโดย: {order.created_by_name}
                         </div>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => toggleOrderDetails(order.id)}
-                          className="flex items-center gap-1"
-                        >
-                          <Eye className="w-4 h-4" />
-                          {expandedOrders.has(order.id) ? 'ซ่อนรายละเอียด' : 'ดูรายละเอียด'}
-                          {expandedOrders.has(order.id) ? (
-                            <ChevronDown className="w-4 h-4" />
-                          ) : (
-                            <ChevronRight className="w-4 h-4" />
-                          )}
-                        </Button>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => setEditingOrderId(order.id)}
+                            className="flex items-center gap-1 text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
+                          >
+                            <Edit className="w-4 h-4" />
+                            แก้ไข
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => toggleOrderDetails(order.id)}
+                            className="flex items-center gap-1"
+                          >
+                            <Eye className="w-4 h-4" />
+                            {expandedOrders.has(order.id) ? 'ซ่อนรายละเอียด' : 'ดูรายละเอียด'}
+                            {expandedOrders.has(order.id) ? (
+                              <ChevronDown className="w-4 h-4" />
+                            ) : (
+                              <ChevronRight className="w-4 h-4" />
+                            )}
+                          </Button>
+                        </div>
                       </div>
 
                       {/* Order Items (Expandable) */}

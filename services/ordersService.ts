@@ -41,6 +41,7 @@ type OrderInsert = {
   approved_by?: string | null;
   approved_at?: string | null;
   delivery_trip_id?: string | null;
+  warehouse_id?: string | null;
 };
 
 type OrderUpdate = Partial<OrderInsert>;
@@ -59,10 +60,13 @@ type OrderItem = {
   updated_at: string;
 };
 
-type OrderItemInsert = Omit<OrderItem, 'id' | 'created_at' | 'updated_at'> & {
+type OrderItemInsert = Omit<OrderItem, 'id' | 'created_at' | 'updated_at' | 'discount_amount' | 'line_total' | 'notes'> & {
   id?: string;
   created_at?: string;
   updated_at?: string;
+  discount_amount?: number | null;
+  line_total?: number | null;
+  notes?: string | null;
 };
 
 // ========================================
