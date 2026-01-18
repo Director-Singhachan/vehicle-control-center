@@ -51,6 +51,7 @@ import { VehicleUsageRankingChart } from '../components/VehicleUsageRankingChart
 import { VehicleFuelConsumptionChart } from '../components/VehicleFuelConsumptionChart';
 import { StaffItemStatisticsChart } from '../components/StaffItemStatisticsChart';
 import { StaffItemDetailsCard } from '../components/StaffItemDetailsCard';
+import { VehicleDocumentReports } from '../components/vehicle/VehicleDocumentReports';
 import { useVehicles, useStores, useProducts, useProductCategories } from '../hooks';
 import {
   Chart as ChartJS,
@@ -83,7 +84,7 @@ interface ReportsViewProps {
   onNavigateToStoreDetail?: (storeId: string) => void;
 }
 
-type ReportTab = 'fuel' | 'trip' | 'maintenance' | 'cost' | 'usage' | 'fuel-consumption' | 'delivery';
+type ReportTab = 'fuel' | 'trip' | 'maintenance' | 'cost' | 'usage' | 'fuel-consumption' | 'delivery' | 'vehicle-documents';
 
 type FilterPeriod = 'current-month' | 'last-3-months' | 'last-6-months' | 'last-12-months' | 'this-year' | 'custom';
 
@@ -380,6 +381,17 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ isDark = false, onNavi
         >
           <Package className="inline-block w-4 h-4 mr-2" />
           รายงานการส่งสินค้า
+        </button>
+        <button
+          onClick={() => setActiveTab('vehicle-documents')}
+          className={`px-4 py-2 font-medium transition-colors ${
+            activeTab === 'vehicle-documents'
+              ? 'border-b-2 border-enterprise-600 text-enterprise-600 dark:text-enterprise-400'
+              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+          }`}
+        >
+          <FileText className="inline-block w-4 h-4 mr-2" />
+          รายงานเอกสารรถ
         </button>
       </div>
 
@@ -1159,12 +1171,21 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ isDark = false, onNavi
 
       {/* Delivery Reports Tab */}
       {activeTab === 'delivery' && (
-        <DeliveryReportsTab
-          startDate={startDate}
-          endDate={endDate}
-          isDark={isDark}
-          onNavigateToStoreDetail={onNavigateToStoreDetail}
-        />
+        <div className="space-y-6">
+          <DeliveryReportsTab
+            isDark={isDark}
+            startDate={startDate}
+            endDate={endDate}
+            onNavigateToStoreDetail={onNavigateToStoreDetail}
+          />
+        </div>
+      )}
+
+      {/* Vehicle Documents Reports Tab */}
+      {activeTab === 'vehicle-documents' && (
+        <div className="space-y-6">
+          <VehicleDocumentReports isDark={isDark} />
+        </div>
       )}
     </PageLayout>
   );
