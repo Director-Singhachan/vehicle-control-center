@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { ShoppingCart, Plus, Trash2, Search, Check } from 'lucide-react';
-import { useProducts, useWarehouses } from '../hooks/useInventory';
+import { ShoppingCart, Plus, Trash2, Search, Check, Grid3x3, Clock } from 'lucide-react';
+import { useProducts, useWarehouses, useProductCategories } from '../hooks/useInventory';
 import { ordersService } from '../services/ordersService';
 import { productTierPriceService } from '../services/customerTierService';
 import { Card } from '../components/ui/Card';
@@ -20,9 +20,14 @@ interface OrderItem {
   discount_percent: number | ''; // allow empty while typing
 }
 
+// LocalStorage keys
+const RECENT_PRODUCTS_KEY = 'recent_products';
+const MAX_RECENT_PRODUCTS = 20;
+
 export function CreateOrderView() {
   const { products, loading: productsLoading } = useProducts();
   const { warehouses, loading: warehousesLoading } = useWarehouses();
+  const { categories, loading: categoriesLoading } = useProductCategories();
   const { user } = useAuth();
   const { toasts, success, error, warning, dismissToast } = useToast();
 
@@ -34,6 +39,9 @@ export function CreateOrderView() {
 
   const [orderItems, setOrderItems] = useState<OrderItem[]>([]);
   const [productSearch, setProductSearch] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [showProductBrowser, setShowProductBrowser] = useState(false);
+  const [recentProducts, setRecentProducts] = useState<string[]>([]);
   const [notes, setNotes] = useState('');
   const [deliveryDate, setDeliveryDate] = useState('');
 
@@ -105,30 +113,81 @@ export function CreateOrderView() {
     setStoreSearch('');
   };
 
-  // กรองสินค้า
+  // โหลด recent products จาก localStorage
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(RECENT_PRODUCTS_KEY);
+      if (stored) {
+        setRecentProducts(JSON.parse(stored));
+      }
+    } catch (err) {
+      console.error('Error loading recent products:', err);
+    }
+  }, []);
+
+  // เก็บ recent product เมื่อเพิ่มสินค้า
+  const addToRecentProducts = (productId: string) => {
+    try {
+      const updated = [productId, ...recentProducts.filter(id => id !== productId)]
+        .slice(0, MAX_RECENT_PRODUCTS);
+      setRecentProducts(updated);
+      localStorage.setItem(RECENT_PRODUCTS_KEY, JSON.stringify(updated));
+    } catch (err) {
+      console.error('Error saving recent products:', err);
+    }
+  };
+
+  // กรองสินค้า - ค้นหาทั้งชื่อ, รหัส, barcode, description
   const filteredProducts = useMemo(() => {
-    if (!productSearch) return [];
-    
-    console.log('[CreateOrderView] Filtering products:', {
-      totalProducts: products?.length || 0,
-      searchQuery: productSearch,
-      sampleProducts: products?.slice(0, 3).map((p: any) => ({ 
-        code: p.product_code, 
-        name: p.product_name 
-      }))
-    });
-    
     if (!products || products.length === 0) return [];
     
-    const filtered = products.filter((product: any) => 
-      product.product_name?.toLowerCase().includes(productSearch.toLowerCase()) ||
-      product.product_code?.toLowerCase().includes(productSearch.toLowerCase())
-    ).slice(0, 10);
+    // ถ้ามีการค้นหา ให้ค้นหาตามคำค้นหา
+    if (productSearch) {
+      const searchLower = productSearch.toLowerCase();
+      const filtered = products.filter((product: any) => 
+        product.product_name?.toLowerCase().includes(searchLower) ||
+        product.product_code?.toLowerCase().includes(searchLower) ||
+        product.barcode?.toLowerCase().includes(searchLower) ||
+        product.description?.toLowerCase().includes(searchLower) ||
+        product.category?.toLowerCase().includes(searchLower)
+      );
+      
+      // เรียงลำดับ: ตรงกับรหัสสินค้า > ตรงกับชื่อ > อื่นๆ
+      const sorted = filtered.sort((a: any, b: any) => {
+        const aCodeMatch = a.product_code?.toLowerCase().startsWith(searchLower) ? 0 : 1;
+        const bCodeMatch = b.product_code?.toLowerCase().startsWith(searchLower) ? 0 : 1;
+        if (aCodeMatch !== bCodeMatch) return aCodeMatch - bCodeMatch;
+        
+        const aNameMatch = a.product_name?.toLowerCase().startsWith(searchLower) ? 0 : 1;
+        const bNameMatch = b.product_name?.toLowerCase().startsWith(searchLower) ? 0 : 1;
+        if (aNameMatch !== bNameMatch) return aNameMatch - bNameMatch;
+        
+        return 0;
+      });
+      
+      return sorted.slice(0, 20); // แสดงสูงสุด 20 รายการ
+    }
     
-    console.log('[CreateOrderView] Filtered results:', filtered.length);
+    // ถ้ายังไม่พิมพ์ แสดงสินค้าตามหมวดหมู่ที่เลือก
+    if (selectedCategory === 'all') {
+      return products?.slice(0, 50) || []; // แสดง 50 รายการแรก
+    }
     
-    return filtered;
-  }, [products, productSearch]);
+    if (selectedCategory === 'recent') {
+      return []; // recent products จะแสดงแยก
+    }
+    
+    return products?.filter((p: any) => p.category === selectedCategory).slice(0, 50) || [];
+  }, [products, productSearch, selectedCategory]);
+
+  // สินค้าที่ใช้ล่าสุด
+  const recentProductsList = useMemo(() => {
+    if (!products || recentProducts.length === 0) return [];
+    return recentProducts
+      .map(id => products.find((p: any) => p.id === id))
+      .filter(Boolean)
+      .slice(0, 10);
+  }, [products, recentProducts]);
 
   // เพิ่มสินค้า
   const handleAddProduct = async (product: any) => {
@@ -162,6 +221,10 @@ export function CreateOrderView() {
 
       setOrderItems([...orderItems, newItem]);
       setProductSearch('');
+      setShowProductBrowser(false);
+      
+      // เก็บ recent product
+      addToRecentProducts(product.id);
     } catch (error: any) {
       error('ไม่สามารถดึงราคาสินค้าได้');
     }
@@ -419,17 +482,39 @@ export function CreateOrderView() {
           </Card>
 
           {/* Products Selection */}
-          <Card className={`overflow-visible ${productSearch && filteredProducts.length > 0 ? 'relative z-50' : ''}`}>
+          <Card className={`overflow-visible ${(productSearch || showProductBrowser) && filteredProducts.length > 0 ? 'relative z-50' : ''}`}>
             <div className="p-6">
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">3. เพิ่มสินค้า</h3>
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">3. เพิ่มสินค้า</h3>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowProductBrowser(!showProductBrowser)}
+                  disabled={!selectedStore}
+                  className="flex items-center gap-2"
+                >
+                  <Grid3x3 className="w-4 h-4" />
+                  {showProductBrowser ? 'ซ่อน' : 'เลือกสินค้า'}
+                </Button>
+              </div>
               
               <div className="relative mb-4" ref={productDropdownRef}>
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 dark:text-gray-500" />
                 <input
                   type="text"
-                  placeholder="ค้นหาสินค้า (ชื่อหรือรหัส)..."
+                  placeholder="ค้นหาสินค้า (ชื่อ, รหัส, หรือบาร์โค้ด)..."
                   value={productSearch}
-                  onChange={(e) => setProductSearch(e.target.value)}
+                  onChange={(e) => {
+                    setProductSearch(e.target.value);
+                    if (e.target.value) {
+                      setShowProductBrowser(false);
+                    }
+                  }}
+                  onFocus={() => {
+                    if (!productSearch) {
+                      setShowProductBrowser(true);
+                    }
+                  }}
                   className="w-full pl-10 pr-4 py-3 border border-gray-300 dark:border-slate-600 rounded-xl bg-white dark:bg-slate-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 disabled:opacity-50 disabled:cursor-not-allowed"
                   disabled={!selectedStore}
                 />
@@ -441,7 +526,130 @@ export function CreateOrderView() {
                   </div>
                 )}
 
-                {/* Show results if found */}
+                {/* Product Browser - แสดงเมื่อยังไม่พิมพ์หรือกดปุ่มเลือกสินค้า */}
+                {showProductBrowser && !productSearch && !productsLoading && selectedStore && (
+                  <div className="absolute z-50 w-full mt-2 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-xl shadow-lg dark:shadow-black/50 max-h-96 overflow-y-auto">
+                    {/* Tabs: Recent, Categories */}
+                    <div className="sticky top-0 bg-white dark:bg-slate-800 border-b border-gray-200 dark:border-slate-700 p-2 flex gap-2 overflow-x-auto">
+                      {recentProductsList.length > 0 && (
+                        <button
+                          onClick={() => setSelectedCategory('recent')}
+                          className={`px-3 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition-colors flex items-center gap-1 ${
+                            selectedCategory === 'recent'
+                              ? 'bg-blue-500 text-white'
+                              : 'bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-slate-600'
+                          }`}
+                        >
+                          <Clock className="w-4 h-4" />
+                          ใช้ล่าสุด ({recentProductsList.length})
+                        </button>
+                      )}
+                      <button
+                        onClick={() => setSelectedCategory('all')}
+                        className={`px-3 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
+                          selectedCategory === 'all'
+                            ? 'bg-blue-500 text-white'
+                            : 'bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-slate-600'
+                        }`}
+                      >
+                        ทั้งหมด
+                      </button>
+                      {categories.map((cat: any) => (
+                        <button
+                          key={cat.id || cat.name}
+                          onClick={() => setSelectedCategory(cat.name || cat.id)}
+                          className={`px-3 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
+                            selectedCategory === (cat.name || cat.id)
+                              ? 'bg-blue-500 text-white'
+                              : 'bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-slate-600'
+                          }`}
+                        >
+                          {cat.name || cat.id}
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Products Grid */}
+                    <div className="p-4">
+                      {/* แสดงสินค้าที่ใช้ล่าสุด */}
+                      {selectedCategory === 'recent' && recentProductsList.length > 0 && (
+                        <div className="grid grid-cols-1 gap-2 max-h-80 overflow-y-auto">
+                          {recentProductsList.map((product: any) => (
+                            <button
+                              key={product.id}
+                              onClick={() => handleAddProduct(product)}
+                              className="p-3 text-left border border-gray-200 dark:border-slate-700 rounded-lg hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors"
+                            >
+                              <div className="flex items-center justify-between">
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2 mb-1">
+                                    <p className="font-medium text-gray-900 dark:text-white truncate">{product.product_name}</p>
+                                    {product.unit && (
+                                      <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 text-xs">
+                                        {product.unit}
+                                      </Badge>
+                                    )}
+                                  </div>
+                                  <p className="text-xs text-gray-500 dark:text-gray-400">{product.product_code}</p>
+                                </div>
+                                <p className="text-sm font-semibold text-blue-600 dark:text-blue-400 ml-2">
+                                  {new Intl.NumberFormat('th-TH').format(product.base_price || 0)} ฿
+                                </p>
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* แสดงสินค้าตามหมวดหมู่ */}
+                      {selectedCategory !== 'recent' && (
+                        <div className="grid grid-cols-1 gap-2 max-h-80 overflow-y-auto">
+                          {filteredProducts.length > 0 ? (
+                            filteredProducts.slice(0, 30).map((product: any) => (
+                              <button
+                                key={product.id}
+                                onClick={() => handleAddProduct(product)}
+                                className="p-3 text-left border border-gray-200 dark:border-slate-700 rounded-lg hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors"
+                              >
+                                <div className="flex items-center justify-between">
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-2 mb-1">
+                                      <p className="font-medium text-gray-900 dark:text-white truncate">{product.product_name}</p>
+                                      {product.unit && (
+                                        <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 text-xs">
+                                          {product.unit}
+                                        </Badge>
+                                      )}
+                                    </div>
+                                    <p className="text-xs text-gray-500 dark:text-gray-400">{product.product_code}</p>
+                                  </div>
+                                  <p className="text-sm font-semibold text-blue-600 dark:text-blue-400 ml-2">
+                                    {new Intl.NumberFormat('th-TH').format(product.base_price || 0)} ฿
+                                  </p>
+                                </div>
+                              </button>
+                            ))
+                          ) : (
+                            <p className="text-sm text-gray-500 dark:text-gray-400 text-center py-8">
+                              {selectedCategory === 'all' 
+                                ? 'ยังไม่มีสินค้าในระบบ' 
+                                : 'ไม่พบสินค้าในหมวดหมู่นี้'}
+                            </p>
+                          )}
+                        </div>
+                      )}
+
+                      {/* แสดงข้อความเมื่อไม่มีสินค้าที่ใช้ล่าสุด */}
+                      {selectedCategory === 'recent' && recentProductsList.length === 0 && (
+                        <p className="text-sm text-gray-500 dark:text-gray-400 text-center py-8">
+                          ยังไม่มีสินค้าที่ใช้ล่าสุด
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Search Results - แสดงเมื่อพิมพ์ค้นหา */}
                 {productSearch && !productsLoading && (
                   <>
                     {filteredProducts.length > 0 ? (
@@ -482,13 +690,6 @@ export function CreateOrderView() {
                       ผลลัพธ์: {filteredProducts.length} รายการ
                     </div>
                   </>
-                )}
-
-                {/* Debug info - remove in production */}
-                {productSearch && !productsLoading && (
-                  <div className="mt-2 text-xs text-gray-400 dark:text-gray-500">
-                    ข้อมูลสินค้าทั้งหมด: {products?.length || 0} รายการ
-                  </div>
                 )}
               </div>
 

@@ -227,9 +227,11 @@ export const ordersService = {
 
   /**
    * กำหนดออเดอร์ให้กับทริป
+   * ระบบจะสร้าง order_number อัตโนมัติตามลำดับ sequence_order ในทริป
    */
   async assignToTrip(orderIds: string[], tripId: string, updatedBy: string) {
-    const { error } = await supabase
+    // 1. Update orders to assign to trip (trigger will generate order_number)
+    const { error: updateError } = await supabase
       .from('orders')
       .update({
         delivery_trip_id: tripId,
@@ -238,7 +240,35 @@ export const ordersService = {
       })
       .in('id', orderIds);
 
-    if (error) throw error;
+    if (updateError) throw updateError;
+
+    // 2. Generate order numbers for all orders in trip (ตามลำดับ sequence_order)
+    // ใช้ database function เพื่อให้แน่ใจว่าเรียงตามลำดับที่ถูกต้อง
+    const { data: orderNumbers, error: generateError } = await supabase
+      .rpc('generate_order_numbers_for_trip', {
+        p_trip_id: tripId,
+      });
+
+    if (generateError) {
+      console.error('[ordersService] Error generating order numbers:', generateError);
+      // ไม่ throw error เพราะ order อาจมี order_number อยู่แล้ว
+      // แต่ log เพื่อ debug
+    }
+
+    // 3. Verify that all orders have order_numbers
+    const { data: ordersWithoutNumber, error: checkError } = await supabase
+      .from('orders')
+      .select('id')
+      .in('id', orderIds)
+      .or('order_number.is.null,order_number.eq.');
+
+    if (checkError) {
+      console.warn('[ordersService] Error checking order numbers:', checkError);
+    } else if (ordersWithoutNumber && ordersWithoutNumber.length > 0) {
+      console.warn(
+        `[ordersService] ${ordersWithoutNumber.length} orders still missing order_number after assignment`
+      );
+    }
   },
 
   /**
