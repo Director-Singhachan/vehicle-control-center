@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { ShoppingCart, Plus, Trash2, Search, Check, Grid3x3, Clock } from 'lucide-react';
+import { ShoppingCart, Plus, Trash2, Search, Check, Grid3x3, Clock, Gift } from 'lucide-react';
 import { useProducts, useWarehouses, useProductCategories } from '../hooks/useInventory';
 import { ordersService } from '../services/ordersService';
 import { productTierPriceService } from '../services/customerTierService';
@@ -18,6 +18,7 @@ interface OrderItem {
   quantity: number | ''; // allow empty while typing
   unit_price: number;
   discount_percent: number | ''; // allow empty while typing
+  is_bonus?: boolean; // ของแถม
 }
 
 // LocalStorage keys
@@ -190,33 +191,41 @@ export function CreateOrderView() {
   }, [products, recentProducts]);
 
   // เพิ่มสินค้า
-  const handleAddProduct = async (product: any) => {
+  const handleAddProduct = async (product: any, asBonus: boolean = false) => {
     if (!selectedStore) {
       error('กรุณาเลือกร้านค้าก่อน');
       return;
     }
 
-    // ตรวจสอบว่ามีสินค้านี้แล้วหรือไม่
-    const existingItem = orderItems.find(item => item.product_id === product.id);
-    if (existingItem) {
-      warning('สินค้านี้มีในรายการแล้ว');
-      return;
+    // ตรวจสอบว่ามีสินค้านี้แล้วหรือไม่ (ถ้าไม่ใช่ของแถม)
+    if (!asBonus) {
+      const existingItem = orderItems.find(
+        item => item.product_id === product.id && !item.is_bonus
+      );
+      if (existingItem) {
+        warning('สินค้านี้มีในรายการแล้ว (สามารถเพิ่มเป็นของแถมได้)');
+        return;
+      }
     }
 
     try {
-      // คำนวณราคาตาม tier
-      const price = await productTierPriceService.calculatePriceForStore(
-        product.id,
-        selectedStore.id,
-        1
-      );
+      // คำนวณราคาตาม tier (ถ้าไม่ใช่ของแถม)
+      let price = 0;
+      if (!asBonus) {
+        price = await productTierPriceService.calculatePriceForStore(
+          product.id,
+          selectedStore.id,
+          1
+        ) || product.base_price || 0;
+      }
 
       const newItem: OrderItem = {
         product_id: product.id,
         product: product,
         quantity: '', // let user type freely
-        unit_price: price || product.base_price || 0,
+        unit_price: price,
         discount_percent: '', // let user type freely
+        is_bonus: asBonus,
       };
 
       setOrderItems([...orderItems, newItem]);
@@ -290,18 +299,55 @@ export function CreateOrderView() {
     setOrderItems(orderItems.filter((_, i) => i !== index));
   };
 
-  // คำนวณยอดรวม
-  const calculateTotal = useMemo(() => {
-    const subtotal = orderItems.reduce((sum, item) => {
+  // Toggle ของแถม
+  const handleToggleBonus = (index: number) => {
+    const updated = [...orderItems];
+    const item = updated[index];
+    const newIsBonus = !item.is_bonus;
+    
+    updated[index] = {
+      ...item,
+      is_bonus: newIsBonus,
+      unit_price: newIsBonus ? 0 : (item.product?.base_price || 0), // ถ้าเป็นของแถมให้ราคาเป็น 0
+    };
+    
+    setOrderItems(updated);
+    
+    // ถ้าเปลี่ยนจากของแถมเป็นปกติ ต้องคำนวณราคาใหม่
+    if (!newIsBonus && selectedStore && item.product_id) {
       const qty = Number(item.quantity || 0);
-      return sum + (item.unit_price * qty);
-    }, 0);
+      if (qty > 0) {
+        productTierPriceService.calculatePriceForStore(
+          item.product_id,
+          selectedStore.id,
+          qty
+        ).then(price => {
+          setOrderItems(prev => prev.map((p, i) => 
+            i === index ? { ...p, unit_price: price || p.product?.base_price || 0 } : p
+          ));
+        }).catch(err => {
+          console.error('Error updating price:', err);
+        });
+      }
+    }
+  };
 
-    const discountAmount = orderItems.reduce((sum, item) => {
-      const qty = Number(item.quantity || 0);
-      const discount = Number(item.discount_percent || 0);
-      return sum + (item.unit_price * qty * discount / 100);
-    }, 0);
+  // คำนวณยอดรวม (ไม่นับของแถม)
+  const calculateTotal = useMemo(() => {
+    const subtotal = orderItems
+      .filter(item => !item.is_bonus) // ไม่นับของแถม
+      .reduce((sum, item) => {
+        const qty = Number(item.quantity || 0);
+        return sum + (item.unit_price * qty);
+      }, 0);
+
+    const discountAmount = orderItems
+      .filter(item => !item.is_bonus) // ไม่นับของแถม
+      .reduce((sum, item) => {
+        const qty = Number(item.quantity || 0);
+        const discount = Number(item.discount_percent || 0);
+        return sum + (item.unit_price * qty * discount / 100);
+      }, 0);
 
     const total = subtotal - discountAmount;
 
@@ -343,8 +389,9 @@ export function CreateOrderView() {
         orderItems.map(item => ({
           product_id: item.product_id,
           quantity: Number(item.quantity || 0),
-          unit_price: item.unit_price,
+          unit_price: item.is_bonus ? 0 : item.unit_price, // ของแถมราคาเป็น 0
           discount_percent: Number(item.discount_percent || 0),
+          is_bonus: item.is_bonus || false,
         }))
       );
 
@@ -356,8 +403,8 @@ export function CreateOrderView() {
       setOrderItems([]);
       setNotes('');
       setDeliveryDate('');
-    } catch (error: any) {
-      error(error.message || 'เกิดข้อผิดพลาดในการสร้างออเดอร์');
+    } catch (err: any) {
+      error(err.message || 'เกิดข้อผิดพลาดในการสร้างออเดอร์');
     } finally {
       setIsSubmitting(false);
     }
@@ -424,7 +471,7 @@ export function CreateOrderView() {
                     <div>
                       <p className="font-semibold text-gray-900 dark:text-white">{selectedStore.customer_name}</p>
                       <p className="text-sm text-gray-600 dark:text-gray-400">{selectedStore.customer_code}</p>
-                      {selectedStore.customer_tiers && (
+                      {selectedStore.customer_tiers ? (
                         <Badge 
                           className="mt-1"
                           style={{ 
@@ -434,7 +481,7 @@ export function CreateOrderView() {
                         >
                           {selectedStore.customer_tiers.tier_name}
                         </Badge>
-                      )}
+                      ) : null}
                     </div>
                   </div>
                   <Button
@@ -575,20 +622,19 @@ export function CreateOrderView() {
                       {selectedCategory === 'recent' && recentProductsList.length > 0 && (
                         <div className="grid grid-cols-1 gap-2 max-h-80 overflow-y-auto">
                           {recentProductsList.map((product: any) => (
-                            <button
+                            <div
                               key={product.id}
-                              onClick={() => handleAddProduct(product)}
-                              className="p-3 text-left border border-gray-200 dark:border-slate-700 rounded-lg hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors"
+                              className="p-3 border border-gray-200 dark:border-slate-700 rounded-lg hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors"
                             >
-                              <div className="flex items-center justify-between">
+                              <div className="flex items-center justify-between mb-2">
                                 <div className="flex-1 min-w-0">
                                   <div className="flex items-center gap-2 mb-1">
                                     <p className="font-medium text-gray-900 dark:text-white truncate">{product.product_name}</p>
-                                    {product.unit && (
+                                    {product.unit ? (
                                       <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 text-xs">
                                         {product.unit}
                                       </Badge>
-                                    )}
+                                    ) : null}
                                   </div>
                                   <p className="text-xs text-gray-500 dark:text-gray-400">{product.product_code}</p>
                                 </div>
@@ -596,7 +642,22 @@ export function CreateOrderView() {
                                   {new Intl.NumberFormat('th-TH').format(product.base_price || 0)} ฿
                                 </p>
                               </div>
-                            </button>
+                              <div className="flex gap-2">
+                                <button
+                                  onClick={() => handleAddProduct(product, false)}
+                                  className="flex-1 px-3 py-1.5 text-xs font-medium bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
+                                >
+                                  เพิ่ม
+                                </button>
+                                <button
+                                  onClick={() => handleAddProduct(product, true)}
+                                  className="flex-1 px-3 py-1.5 text-xs font-medium bg-green-500 text-white rounded hover:bg-green-600 transition-colors flex items-center justify-center gap-1"
+                                >
+                                  <Gift className="w-3 h-3" />
+                                  เพิ่มเป็นของแถม
+                                </button>
+                              </div>
+                            </div>
                           ))}
                         </div>
                       )}
@@ -606,20 +667,19 @@ export function CreateOrderView() {
                         <div className="grid grid-cols-1 gap-2 max-h-80 overflow-y-auto">
                           {filteredProducts.length > 0 ? (
                             filteredProducts.slice(0, 30).map((product: any) => (
-                              <button
+                              <div
                                 key={product.id}
-                                onClick={() => handleAddProduct(product)}
-                                className="p-3 text-left border border-gray-200 dark:border-slate-700 rounded-lg hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors"
+                                className="p-3 border border-gray-200 dark:border-slate-700 rounded-lg hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors"
                               >
-                                <div className="flex items-center justify-between">
+                                <div className="flex items-center justify-between mb-2">
                                   <div className="flex-1 min-w-0">
                                     <div className="flex items-center gap-2 mb-1">
                                       <p className="font-medium text-gray-900 dark:text-white truncate">{product.product_name}</p>
-                                      {product.unit && (
+                                      {product.unit ? (
                                         <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 text-xs">
                                           {product.unit}
                                         </Badge>
-                                      )}
+                                      ) : null}
                                     </div>
                                     <p className="text-xs text-gray-500 dark:text-gray-400">{product.product_code}</p>
                                   </div>
@@ -627,7 +687,22 @@ export function CreateOrderView() {
                                     {new Intl.NumberFormat('th-TH').format(product.base_price || 0)} ฿
                                   </p>
                                 </div>
-                              </button>
+                                <div className="flex gap-2">
+                                  <button
+                                    onClick={() => handleAddProduct(product, false)}
+                                    className="flex-1 px-3 py-1.5 text-xs font-medium bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
+                                  >
+                                    เพิ่ม
+                                  </button>
+                                  <button
+                                    onClick={() => handleAddProduct(product, true)}
+                                    className="flex-1 px-3 py-1.5 text-xs font-medium bg-green-500 text-white rounded hover:bg-green-600 transition-colors flex items-center justify-center gap-1"
+                                  >
+                                    <Gift className="w-3 h-3" />
+                                    เพิ่มเป็นของแถม
+                                  </button>
+                                </div>
+                              </div>
                             ))
                           ) : (
                             <p className="text-sm text-gray-500 dark:text-gray-400 text-center py-8">
@@ -655,26 +730,42 @@ export function CreateOrderView() {
                     {filteredProducts.length > 0 ? (
                       <div className="absolute z-50 w-full mt-2 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-xl shadow-lg dark:shadow-black/50 max-h-60 overflow-y-auto">
                         {filteredProducts.map((product: any) => (
-                          <button
+                          <div
                             key={product.id}
-                            onClick={() => handleAddProduct(product)}
-                            className="w-full p-4 text-left hover:bg-gray-50 dark:hover:bg-slate-700/50 border-b border-gray-100 dark:border-slate-700 last:border-b-0 flex items-center justify-between gap-3"
+                            className="w-full p-4 hover:bg-gray-50 dark:hover:bg-slate-700/50 border-b border-gray-100 dark:border-slate-700 last:border-b-0"
                           >
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2 mb-1">
-                                <p className="font-medium text-gray-900 dark:text-white truncate">{product.product_name}</p>
-                                {product.unit && (
-                                  <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 text-xs flex-shrink-0">
-                                    {product.unit}
-                                  </Badge>
-                                )}
+                            <div className="flex items-center justify-between mb-2">
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <p className="font-medium text-gray-900 dark:text-white truncate">{product.product_name}</p>
+                                  {product.unit ? (
+                                    <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 text-xs flex-shrink-0">
+                                      {product.unit}
+                                    </Badge>
+                                  ) : null}
+                                </div>
+                                <p className="text-sm text-gray-500 dark:text-gray-400">{product.product_code}</p>
                               </div>
-                              <p className="text-sm text-gray-500 dark:text-gray-400">{product.product_code}</p>
+                              <p className="text-sm font-semibold text-blue-600 dark:text-blue-400 flex-shrink-0">
+                                {new Intl.NumberFormat('th-TH').format(product.base_price || 0)} ฿
+                              </p>
                             </div>
-                            <p className="text-sm font-semibold text-blue-600 dark:text-blue-400 flex-shrink-0">
-                              {new Intl.NumberFormat('th-TH').format(product.base_price || 0)} ฿
-                            </p>
-                          </button>
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() => handleAddProduct(product, false)}
+                                className="flex-1 px-3 py-1.5 text-xs font-medium bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
+                              >
+                                เพิ่ม
+                              </button>
+                              <button
+                                onClick={() => handleAddProduct(product, true)}
+                                className="flex-1 px-3 py-1.5 text-xs font-medium bg-green-500 text-white rounded hover:bg-green-600 transition-colors flex items-center justify-center gap-1"
+                              >
+                                <Gift className="w-3 h-3" />
+                                เพิ่มเป็นของแถม
+                              </button>
+                            </div>
+                          </div>
                         ))}
                       </div>
                     ) : (
@@ -724,10 +815,29 @@ export function CreateOrderView() {
                         const lineTotal = (item.unit_price * qty) - (item.unit_price * qty * discount / 100);
                         
                         return (
-                          <tr key={index} className="border-b border-gray-100 dark:border-slate-700">
+                          <tr key={index} className={`border-b border-gray-100 dark:border-slate-700 ${item.is_bonus ? 'bg-green-50 dark:bg-green-900/10' : ''}`}>
                             <td className="py-3 px-2 align-top">
-                              <p className="font-medium text-gray-900 dark:text-white text-sm">{item.product?.product_name}</p>
-                              <p className="text-xs text-gray-500 dark:text-gray-400">{item.product?.product_code}</p>
+                              <div className="flex items-start gap-2">
+                                <div className="flex-1">
+                                  <div className="flex items-center gap-2 mb-1">
+                                    <p className="font-medium text-gray-900 dark:text-white text-sm">{item.product?.product_name}</p>
+                                    {item.is_bonus ? (
+                                      <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300 text-xs flex items-center gap-1">
+                                        <Gift className="w-3 h-3" />
+                                        ของแถม
+                                      </Badge>
+                                    ) : null}
+                                  </div>
+                                  <p className="text-xs text-gray-500 dark:text-gray-400">{item.product?.product_code}</p>
+                                </div>
+                                <button
+                                  onClick={() => handleToggleBonus(index)}
+                                  className="mt-1 p-1 text-gray-400 hover:text-green-600 dark:hover:text-green-400 transition-colors"
+                                  title={item.is_bonus ? 'ยกเลิกของแถม' : 'ทำเป็นของแถม'}
+                                >
+                                  <Gift className={`w-4 h-4 ${item.is_bonus ? 'text-green-600 dark:text-green-400' : ''}`} />
+                                </button>
+                              </div>
                             </td>
                             <td className="py-3 px-2 text-center align-top">
                               <span className="inline-block px-2 py-1 text-xs font-medium bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded">
@@ -735,7 +845,11 @@ export function CreateOrderView() {
                               </span>
                             </td>
                             <td className="py-3 px-2 text-right text-sm align-top text-gray-900 dark:text-white">
-                              {new Intl.NumberFormat('th-TH').format(item.unit_price)} ฿
+                              {item.is_bonus ? (
+                                <span className="text-green-600 dark:text-green-400 font-medium">ของแถม</span>
+                              ) : (
+                                <span>{new Intl.NumberFormat('th-TH').format(item.unit_price)} ฿</span>
+                              )}
                             </td>
                             <td className="py-3 px-2 text-center align-top">
                               <input
@@ -761,7 +875,11 @@ export function CreateOrderView() {
                               />
                             </td>
                             <td className="py-3 px-2 text-right font-semibold text-gray-900 dark:text-white align-top">
-                              {new Intl.NumberFormat('th-TH').format(lineTotal)} ฿
+                              {item.is_bonus ? (
+                                <span className="text-green-600 dark:text-green-400">0 ฿</span>
+                              ) : (
+                                <span>{new Intl.NumberFormat('th-TH').format(lineTotal)} ฿</span>
+                              )}
                             </td>
                             <td className="py-3 px-2 text-center align-top">
                               <button
