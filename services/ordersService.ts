@@ -144,6 +144,7 @@ export const ordersService = {
       quantity: number;
       unit_price: number;
       discount_percent?: number;
+      is_bonus?: boolean;
     }>
   ) {
     // สร้างออเดอร์
@@ -157,18 +158,27 @@ export const ordersService = {
 
     // สร้างรายการสินค้า
     const orderItems = items.map((item) => {
-      const discountAmount = (item.unit_price * item.quantity * (item.discount_percent || 0)) / 100;
-      const lineTotal = (item.unit_price * item.quantity) - discountAmount;
+      // ของแถมราคาเป็น 0 เสมอ
+      const actualUnitPrice = item.is_bonus ? 0 : item.unit_price;
+      const discountAmount = (actualUnitPrice * item.quantity * (item.discount_percent || 0)) / 100;
+      const lineTotal = (actualUnitPrice * item.quantity) - discountAmount;
 
-      return {
+      const orderItem: any = {
         order_id: order.id,
         product_id: item.product_id,
         quantity: item.quantity,
-        unit_price: item.unit_price,
+        unit_price: actualUnitPrice,
         discount_percent: item.discount_percent || 0,
         discount_amount: discountAmount,
         line_total: lineTotal,
       };
+
+      // เพิ่ม is_bonus ถ้ามี (รองรับกรณีที่ migration ยังไม่ได้รัน)
+      if (item.is_bonus !== undefined) {
+        orderItem.is_bonus = item.is_bonus;
+      }
+
+      return orderItem;
     });
 
     const { error: itemsError } = await supabase
