@@ -7,7 +7,6 @@
  */
 
 import { supabase } from '../lib/supabase';
-import { deliveryTripService } from './deliveryTripService';
 
 interface SyncResult {
   success: boolean;
@@ -76,7 +75,7 @@ export const orderTripSyncService = {
       // 3. ดึง order items
       const { data: orderItems, error: itemsError } = await supabase
         .from('order_items')
-        .select('id, product_id, quantity')
+        .select('id, product_id, quantity, is_bonus')
         .eq('order_id', orderId);
 
       if (itemsError) {
@@ -128,13 +127,14 @@ export const orderTripSyncService = {
       let skippedCount = 0;
 
       for (const orderItem of orderItems) {
-        // หา delivery_trip_item ที่มี product_id เดียวกัน
+        // หา delivery_trip_item ที่มี product_id และ is_bonus เหมือนกัน
         const { data: existingTripItems, error: findError } = await supabase
           .from('delivery_trip_items')
           .select('id, quantity')
           .eq('delivery_trip_id', trip.id)
           .eq('delivery_trip_store_id', tripStore.id)
-          .eq('product_id', orderItem.product_id);
+          .eq('product_id', orderItem.product_id)
+          .eq('is_bonus', orderItem.is_bonus || false);
 
         if (findError) {
           console.error(`[orderTripSyncService] Error finding trip item for product ${orderItem.product_id}:`, findError);
@@ -169,6 +169,7 @@ export const orderTripSyncService = {
               delivery_trip_store_id: tripStore.id,
               product_id: orderItem.product_id,
               quantity: orderItem.quantity,
+              is_bonus: orderItem.is_bonus || false,
             });
 
           if (insertError) {

@@ -244,6 +244,7 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
             product_id: item.product_id,
             quantity: item.quantity,
             notes: item.notes || undefined,
+            is_bonus: item.is_bonus || false,
           })),
         };
       });

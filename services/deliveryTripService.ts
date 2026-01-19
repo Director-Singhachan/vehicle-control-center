@@ -102,6 +102,7 @@ export interface CreateDeliveryTripData {
       product_id: string;
       quantity: number;
       notes?: string;
+      is_bonus?: boolean;
     }>;
   }>;
 }
@@ -122,6 +123,7 @@ export interface UpdateDeliveryTripData {
       product_id: string;
       quantity: number;
       notes?: string;
+      is_bonus?: boolean;
     }>;
   }>;
   helpers?: string[]; // Array of service_staff IDs to add as helpers
@@ -317,7 +319,7 @@ export const deliveryTripService = {
       if (tripStoreIds.length > 0) {
         const { data: tripItems, error: itemsError } = await supabase
           .from('delivery_trip_items')
-          .select('id, delivery_trip_store_id, product_id, quantity, notes')
+          .select('id, delivery_trip_store_id, product_id, quantity, notes, is_bonus')
           .in('delivery_trip_store_id', tripStoreIds);
         
         if (itemsError) {
@@ -774,6 +776,7 @@ export const deliveryTripService = {
             product_id: item.product_id,
             quantity: item.quantity,
             notes: item.notes,
+            is_bonus: item.is_bonus || false,
           }));
 
           const { error: itemsError } = await supabase
@@ -816,6 +819,7 @@ export const deliveryTripService = {
           product_id: item.product_id,
           quantity: item.quantity,
           notes: item.notes,
+          is_bonus: item.is_bonus || false,
         }));
 
         const { error: itemsError } = await supabase
@@ -1042,7 +1046,7 @@ export const deliveryTripService = {
 
       const { data: existingItems, error: existingItemsError } = existingStoreIds.length > 0 ? await supabase
         .from('delivery_trip_items')
-        .select('id, delivery_trip_store_id, product_id, quantity')
+        .select('id, delivery_trip_store_id, product_id, quantity, notes, is_bonus')
         .in('delivery_trip_store_id', existingStoreIds) : { data: [] as any[], error: null };
 
       if (existingItemsError) {
@@ -1180,6 +1184,7 @@ export const deliveryTripService = {
           product_id: string;
           quantity: number;
           notes?: string | null;
+          is_bonus: boolean;
         };
 
         const existingItemsForStore: TripItemRow[] = existingStore
@@ -1187,17 +1192,22 @@ export const deliveryTripService = {
           : [];
 
         const existingItemsMap = new Map<string, TripItemRow>(
-          existingItemsForStore.map(item => [`${item.product_id}`, item])
+          existingItemsForStore.map(item => [`${item.product_id}-${item.is_bonus || false}`, item])
         );
 
-        const newItemsMap = new Map<string, { product_id: string; quantity: number; notes?: string }>();
+        const newItemsMap = new Map<string, { product_id: string; quantity: number; notes?: string; is_bonus: boolean }>();
         for (const item of storeData.items || []) {
-          newItemsMap.set(item.product_id, item);
+          newItemsMap.set(`${item.product_id}-${item.is_bonus || false}`, {
+            product_id: item.product_id,
+            quantity: item.quantity,
+            notes: item.notes,
+            is_bonus: item.is_bonus || false,
+          });
         }
 
         // Remove items that are not in new list
         const itemsToRemove = existingItemsForStore.filter(
-          item => !newItemsMap.has(item.product_id)
+          item => !newItemsMap.has(`${item.product_id}-${item.is_bonus || false}`)
         );
 
         if (itemsToRemove.length > 0) {
@@ -1228,7 +1238,7 @@ export const deliveryTripService = {
 
         // Add or update items
         for (const item of storeData.items || []) {
-          const existingItem = existingItemsMap.get(item.product_id);
+          const existingItem = existingItemsMap.get(`${item.product_id}-${item.is_bonus || false}`);
 
           if (!existingItem) {
             // New item
@@ -1240,6 +1250,7 @@ export const deliveryTripService = {
                 product_id: item.product_id,
                 quantity: item.quantity,
                 notes: item.notes,
+                is_bonus: item.is_bonus || false,
               })
               .select();
 

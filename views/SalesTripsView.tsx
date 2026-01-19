@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Truck, MapPin, Package, FileText, Calendar, User, Phone, CheckCircle, Clock, AlertCircle, CheckSquare, Square, Eye, ChevronDown, ChevronUp } from 'lucide-react';
+import { Truck, MapPin, Package, Calendar, User, Phone, CheckCircle, Clock, CheckSquare, Square, Eye, ChevronDown, ChevronUp } from 'lucide-react';
 import { useAuth, useToast } from '../hooks';
 import { useDeliveryTrips } from '../hooks/useDeliveryTrips';
 import { deliveryTripService } from '../services/deliveryTripService';
@@ -696,9 +696,16 @@ export function SalesTripsView() {
                               {index + 1}
                             </td>
                             <td className="py-3 px-3 text-sm">
-                              <Badge variant="info" className="text-xs font-mono">
-                                {item.product?.product_code || 'ไม่ระบุ'}
-                              </Badge>
+                              <div className="flex flex-col gap-1 items-start">
+                                <Badge variant="info" className="text-xs font-mono">
+                                  {item.product?.product_code || 'ไม่ระบุ'}
+                                </Badge>
+                                {item.is_bonus && (
+                                  <Badge variant="success" className="text-xs">
+                                    ของแถม
+                                  </Badge>
+                                )}
+                              </div>
                             </td>
                             <td className="py-3 px-3 text-sm font-medium text-gray-900 dark:text-white">
                               {item.product?.product_name || 'ไม่ระบุชื่อ'}

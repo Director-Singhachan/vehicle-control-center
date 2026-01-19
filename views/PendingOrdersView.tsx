@@ -497,7 +497,16 @@ export function PendingOrdersView() {
                                   {orderItems.get(order.id)!.map((item: any, idx: number) => (
                                     <tr key={idx} className="border-b border-gray-200 dark:border-gray-700 last:border-0">
                                       <td className="py-2 px-2 text-gray-600 dark:text-gray-400">{item.product?.product_code || '-'}</td>
-                                      <td className="py-2 px-2 text-gray-900 dark:text-gray-100">{item.product?.product_name || 'ไม่ระบุ'}</td>
+                                      <td className="py-2 px-2 text-gray-900 dark:text-gray-100">
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                          <span>{item.product?.product_name || 'ไม่ระบุ'}</span>
+                                          {item.is_bonus && (
+                                            <Badge variant="success" className="text-xs">
+                                              ของแถม
+                                            </Badge>
+                                          )}
+                                        </div>
+                                      </td>
                                       <td className="py-2 px-2 text-right font-semibold text-blue-600 dark:text-blue-400">
                                         {item.quantity.toLocaleString()}
                                       </td>
@@ -681,7 +690,16 @@ export function PendingOrdersView() {
                                   {orderItems.get(order.id)!.map((item: any, idx: number) => (
                                     <tr key={idx} className="border-b border-gray-200 last:border-0">
                                       <td className="py-2 px-2 text-gray-600">{item.product?.product_code || '-'}</td>
-                                      <td className="py-2 px-2 text-gray-900">{item.product?.product_name || 'ไม่ระบุ'}</td>
+                                      <td className="py-2 px-2 text-gray-900">
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                          <span>{item.product?.product_name || 'ไม่ระบุ'}</span>
+                                          {item.is_bonus && (
+                                            <Badge variant="success" className="text-xs">
+                                              ของแถม
+                                            </Badge>
+                                          )}
+                                        </div>
+                                      </td>
                                       <td className="py-2 px-2 text-right font-semibold text-blue-600">
                                         {item.quantity.toLocaleString()}
                                       </td>

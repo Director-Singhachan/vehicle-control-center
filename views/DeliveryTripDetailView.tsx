@@ -656,6 +656,11 @@ export const DeliveryTripDetailView: React.FC<DeliveryTripDetailViewProps> = ({
                               >
                                 <div className="flex-1">
                                   • {product.product_code} - {product.product_name}
+                                  {item.is_bonus && (
+                                    <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
+                                      ของแถม
+                                    </span>
+                                  )}
                                 </div>
                                 <div className="text-right min-w-[120px]">
                                   {quantityValue.toLocaleString()} {product.unit}
