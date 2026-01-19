@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Package, Search, Filter, Clock, CheckCircle, Truck, Eye } from 'lucide-react';
+import { Package, Search, Filter, Clock, CheckCircle, Truck, Eye, Edit } from 'lucide-react';
 import { PageLayout } from '../components/ui/PageLayout';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
@@ -7,6 +7,7 @@ import { Badge } from '../components/ui/Badge';
 import { LoadingSpinner } from '../components/ui/LoadingSpinner';
 import { ordersService, orderItemsService } from '../services/ordersService';
 import { Modal } from '../components/ui/Modal';
+import { EditOrderView } from './EditOrderView';
 
 interface Order {
   id: string;
@@ -28,6 +29,7 @@ export function TrackOrdersView() {
   const [detailItems, setDetailItems] = useState<any[]>([]);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
+  const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
 
   React.useEffect(() => {
     loadOrders();
@@ -116,6 +118,20 @@ export function TrackOrdersView() {
     setDetailItems([]);
     setDetailError(null);
   };
+
+  // ถ้ากำลังแก้ไขออเดอร์ แสดงหน้าแก้ไข
+  if (editingOrderId) {
+    return (
+      <EditOrderView
+        orderId={editingOrderId}
+        onSave={() => {
+          setEditingOrderId(null);
+          loadOrders();
+        }}
+        onCancel={() => setEditingOrderId(null)}
+      />
+    );
+  }
 
   return (
     <PageLayout title="ติดตามออเดอร์">
@@ -211,7 +227,7 @@ export function TrackOrdersView() {
                   <th className="text-right py-3 px-4 text-sm font-semibold text-gray-700 dark:text-gray-300">ยอดรวม</th>
                   <th className="text-center py-3 px-4 text-sm font-semibold text-gray-700 dark:text-gray-300">สถานะ</th>
                   <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700 dark:text-gray-300">วันที่สร้าง</th>
-                  <th className="text-center py-3 px-4 text-sm font-semibold text-gray-700 dark:text-gray-300">ดูรายละเอียด</th>
+                  <th className="text-center py-3 px-4 text-sm font-semibold text-gray-700 dark:text-gray-300">จัดการ</th>
                 </tr>
               </thead>
               <tbody>
@@ -236,10 +252,23 @@ export function TrackOrdersView() {
                       })}
                     </td>
                   <td className="py-3 px-4 text-center">
-                    <Button size="sm" variant="outline" onClick={() => openDetail(order)}>
-                      <Eye className="w-4 h-4 mr-1" />
-                      ดู
-                    </Button>
+                    <div className="flex items-center justify-center gap-2">
+                      <Button size="sm" variant="outline" onClick={() => openDetail(order)}>
+                        <Eye className="w-4 h-4 mr-1" />
+                        ดู
+                      </Button>
+                      {(order.status === 'pending' || order.status === 'confirmed' || order.status === 'assigned') && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setEditingOrderId(order.id)}
+                          className="text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
+                        >
+                          <Edit className="w-4 h-4 mr-1" />
+                          แก้ไข
+                        </Button>
+                      )}
+                    </div>
                   </td>
                   </tr>
                 ))}

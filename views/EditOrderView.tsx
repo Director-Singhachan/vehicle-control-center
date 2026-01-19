@@ -1,36 +1,49 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { ShoppingCart, Plus, Trash2, Search, Check, Grid3x3, Clock } from 'lucide-react';
-import { useProducts, useWarehouses, useProductCategories } from '../hooks/useInventory';
-import { ordersService } from '../services/ordersService';
+import { ShoppingCart, Plus, Trash2, Search, Check, Edit, AlertTriangle } from 'lucide-react';
+import { useProducts, useWarehouses } from '../hooks/useInventory';
+import { ordersService, orderItemsService } from '../services/ordersService';
 import { productTierPriceService } from '../services/customerTierService';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
 import { PageLayout } from '../components/ui/PageLayout';
 import { LoadingSpinner } from '../components/ui/LoadingSpinner';
-import { ToastContainer } from '../components/ui/Toast';
-import { useAuth, useToast } from '../hooks';
+import { useAuth } from '../hooks';
 import { supabase } from '../lib/supabase';
+import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 
 interface OrderItem {
+  id?: string; // สำหรับ item ที่มีอยู่แล้ว
   product_id: string;
   product?: any;
-  quantity: number | ''; // allow empty while typing
+  quantity: number | '';
   unit_price: number;
-  discount_percent: number | ''; // allow empty while typing
+  discount_percent: number | '';
 }
 
-// LocalStorage keys
-const RECENT_PRODUCTS_KEY = 'recent_products';
-const MAX_RECENT_PRODUCTS = 20;
+interface EditOrderViewProps {
+  orderId: string;
+  onSave?: () => void;
+  onCancel?: () => void;
+}
 
-export function CreateOrderView() {
+export function EditOrderView({ orderId, onSave, onCancel }: EditOrderViewProps) {
   const { products, loading: productsLoading } = useProducts();
   const { warehouses, loading: warehousesLoading } = useWarehouses();
-  const { categories, loading: categoriesLoading } = useProductCategories();
   const { user } = useAuth();
-  const { toasts, success, error, warning, dismissToast } = useToast();
 
+  const showNotification = (type: 'success' | 'error' | 'warning', message: string) => {
+    if (type === 'error') {
+      alert(`❌ ${message}`);
+    } else if (type === 'warning') {
+      alert(`⚠️ ${message}`);
+    } else {
+      alert(`✅ ${message}`);
+    }
+  };
+
+  const [order, setOrder] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
   const [selectedStore, setSelectedStore] = useState<any>(null);
   const [selectedWarehouse, setSelectedWarehouse] = useState<any>(null);
   const [stores, setStores] = useState<any[]>([]);
@@ -39,31 +52,87 @@ export function CreateOrderView() {
 
   const [orderItems, setOrderItems] = useState<OrderItem[]>([]);
   const [productSearch, setProductSearch] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState<string>('all');
-  const [showProductBrowser, setShowProductBrowser] = useState(false);
-  const [recentProducts, setRecentProducts] = useState<string[]>([]);
   const [notes, setNotes] = useState('');
   const [deliveryDate, setDeliveryDate] = useState('');
 
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showWarningDialog, setShowWarningDialog] = useState(false);
+  const [hasAssignedTrip, setHasAssignedTrip] = useState(false);
 
   // Refs สำหรับ click outside
   const storeDropdownRef = useRef<HTMLDivElement>(null);
   const productDropdownRef = useRef<HTMLDivElement>(null);
   const priceUpdateTimeouts = useRef<Record<string, NodeJS.Timeout>>({});
 
+  // โหลดข้อมูลออเดอร์
+  useEffect(() => {
+    loadOrder();
+  }, [orderId]);
+
+  const loadOrder = async () => {
+    try {
+      setLoading(true);
+      const orderData = await ordersService.getById(orderId);
+      setOrder(orderData);
+
+      // ตรวจสอบว่าออเดอร์ถูก assign กับทริปแล้วหรือไม่
+      if (orderData.delivery_trip_id) {
+        setHasAssignedTrip(true);
+      }
+
+      // โหลด store
+      if (orderData.store_id) {
+        const { data: storeData } = await supabase
+          .from('stores')
+          .select('*, customer_tiers(tier_name, tier_code, color)')
+          .eq('id', orderData.store_id)
+          .single();
+        if (storeData) {
+          setSelectedStore(storeData);
+        }
+      }
+
+      // โหลด warehouse
+      if (orderData.warehouse_id) {
+        const warehouse = warehouses?.find(w => w.id === orderData.warehouse_id);
+        if (warehouse) {
+          setSelectedWarehouse(warehouse);
+        }
+      }
+
+      // โหลด order items
+      const items = await orderItemsService.getByOrderId(orderId);
+      setOrderItems(
+        items.map((item: any) => ({
+          id: item.id,
+          product_id: item.product_id,
+          product: item.product,
+          quantity: item.quantity,
+          unit_price: item.unit_price || 0,
+          discount_percent: item.discount_percent || '',
+        }))
+      );
+
+      setNotes(orderData.notes || '');
+      setDeliveryDate(orderData.delivery_date || '');
+    } catch (error: any) {
+      showNotification('error', 'เกิดข้อผิดพลาดในการโหลดข้อมูลออเดอร์');
+      console.error('Error loading order:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // ปิด dropdown เมื่อคลิกข้างนอก
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      // ปิด store dropdown
       if (storeDropdownRef.current && !storeDropdownRef.current.contains(event.target as Node)) {
         if (stores.length > 0) {
           setStores([]);
           setStoreSearch('');
         }
       }
-      
-      // ปิด product dropdown
+
       if (productDropdownRef.current && !productDropdownRef.current.contains(event.target as Node)) {
         if (productSearch) {
           setProductSearch('');
@@ -96,7 +165,7 @@ export function CreateOrderView() {
       if (error) throw error;
       setStores(data || []);
     } catch (error: any) {
-      error('เกิดข้อผิดพลาดในการค้นหาร้านค้า');
+      showNotification('error', 'เกิดข้อผิดพลาดในการค้นหาร้านค้า');
     } finally {
       setStoresLoading(false);
     }
@@ -113,93 +182,31 @@ export function CreateOrderView() {
     setStoreSearch('');
   };
 
-  // โหลด recent products จาก localStorage
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem(RECENT_PRODUCTS_KEY);
-      if (stored) {
-        setRecentProducts(JSON.parse(stored));
-      }
-    } catch (err) {
-      console.error('Error loading recent products:', err);
-    }
-  }, []);
-
-  // เก็บ recent product เมื่อเพิ่มสินค้า
-  const addToRecentProducts = (productId: string) => {
-    try {
-      const updated = [productId, ...recentProducts.filter(id => id !== productId)]
-        .slice(0, MAX_RECENT_PRODUCTS);
-      setRecentProducts(updated);
-      localStorage.setItem(RECENT_PRODUCTS_KEY, JSON.stringify(updated));
-    } catch (err) {
-      console.error('Error saving recent products:', err);
-    }
-  };
-
-  // กรองสินค้า - ค้นหาทั้งชื่อ, รหัส, barcode, description
+  // กรองสินค้า
   const filteredProducts = useMemo(() => {
-    if (!products || products.length === 0) return [];
-    
-    // ถ้ามีการค้นหา ให้ค้นหาตามคำค้นหา
-    if (productSearch) {
-      const searchLower = productSearch.toLowerCase();
-      const filtered = products.filter((product: any) => 
-        product.product_name?.toLowerCase().includes(searchLower) ||
-        product.product_code?.toLowerCase().includes(searchLower) ||
-        product.barcode?.toLowerCase().includes(searchLower) ||
-        product.description?.toLowerCase().includes(searchLower) ||
-        product.category?.toLowerCase().includes(searchLower)
-      );
-      
-      // เรียงลำดับ: ตรงกับรหัสสินค้า > ตรงกับชื่อ > อื่นๆ
-      const sorted = filtered.sort((a: any, b: any) => {
-        const aCodeMatch = a.product_code?.toLowerCase().startsWith(searchLower) ? 0 : 1;
-        const bCodeMatch = b.product_code?.toLowerCase().startsWith(searchLower) ? 0 : 1;
-        if (aCodeMatch !== bCodeMatch) return aCodeMatch - bCodeMatch;
-        
-        const aNameMatch = a.product_name?.toLowerCase().startsWith(searchLower) ? 0 : 1;
-        const bNameMatch = b.product_name?.toLowerCase().startsWith(searchLower) ? 0 : 1;
-        if (aNameMatch !== bNameMatch) return aNameMatch - bNameMatch;
-        
-        return 0;
-      });
-      
-      return sorted.slice(0, 20); // แสดงสูงสุด 20 รายการ
-    }
-    
-    // ถ้ายังไม่พิมพ์ แสดงสินค้าตามหมวดหมู่ที่เลือก
-    if (selectedCategory === 'all') {
-      return products?.slice(0, 50) || []; // แสดง 50 รายการแรก
-    }
-    
-    if (selectedCategory === 'recent') {
-      return []; // recent products จะแสดงแยก
-    }
-    
-    return products?.filter((p: any) => p.category === selectedCategory).slice(0, 50) || [];
-  }, [products, productSearch, selectedCategory]);
+    if (!productSearch) return [];
 
-  // สินค้าที่ใช้ล่าสุด
-  const recentProductsList = useMemo(() => {
-    if (!products || recentProducts.length === 0) return [];
-    return recentProducts
-      .map(id => products.find((p: any) => p.id === id))
-      .filter(Boolean)
-      .slice(0, 10);
-  }, [products, recentProducts]);
+    if (!products || products.length === 0) return [];
+
+    const filtered = products.filter((product: any) =>
+      product.product_name?.toLowerCase().includes(productSearch.toLowerCase()) ||
+      product.product_code?.toLowerCase().includes(productSearch.toLowerCase())
+    ).slice(0, 10);
+
+    return filtered;
+  }, [products, productSearch]);
 
   // เพิ่มสินค้า
   const handleAddProduct = async (product: any) => {
     if (!selectedStore) {
-      error('กรุณาเลือกร้านค้าก่อน');
+      showNotification('error', 'กรุณาเลือกร้านค้าก่อน');
       return;
     }
 
     // ตรวจสอบว่ามีสินค้านี้แล้วหรือไม่
     const existingItem = orderItems.find(item => item.product_id === product.id);
     if (existingItem) {
-      warning('สินค้านี้มีในรายการแล้ว');
+      showNotification('warning', 'สินค้านี้มีในรายการแล้ว');
       return;
     }
 
@@ -214,19 +221,15 @@ export function CreateOrderView() {
       const newItem: OrderItem = {
         product_id: product.id,
         product: product,
-        quantity: '', // let user type freely
+        quantity: '',
         unit_price: price || product.base_price || 0,
-        discount_percent: '', // let user type freely
+        discount_percent: '',
       };
 
       setOrderItems([...orderItems, newItem]);
       setProductSearch('');
-      setShowProductBrowser(false);
-      
-      // เก็บ recent product
-      addToRecentProducts(product.id);
     } catch (error: any) {
-      error('ไม่สามารถดึงราคาสินค้าได้');
+      showNotification('error', 'ไม่สามารถดึงราคาสินค้าได้');
     }
   };
 
@@ -234,7 +237,7 @@ export function CreateOrderView() {
   const handleUpdateQuantity = (index: number, value: string) => {
     const updated = [...orderItems];
     let num = 0;
-    
+
     if (value === '') {
       updated[index].quantity = '';
     } else {
@@ -243,7 +246,7 @@ export function CreateOrderView() {
     }
     setOrderItems(updated);
 
-    // Debounce price update based on quantity (Volume Discount)
+    // Debounce price update based on quantity
     const item = updated[index];
     if (selectedStore && item.product_id) {
       if (priceUpdateTimeouts.current[item.product_id]) {
@@ -258,8 +261,8 @@ export function CreateOrderView() {
               selectedStore.id,
               num
             );
-            
-            setOrderItems(prev => prev.map(p => 
+
+            setOrderItems(prev => prev.map(p =>
               p.product_id === item.product_id ? { ...p, unit_price: price } : p
             ));
           } catch (err) {
@@ -277,7 +280,6 @@ export function CreateOrderView() {
       updated[index].discount_percent = '';
     } else {
       const num = Number(value);
-      // clamp 0-100 but allow typing decimals
       if (!isNaN(num)) {
         updated[index].discount_percent = Math.min(100, Math.max(0, num));
       }
@@ -311,66 +313,177 @@ export function CreateOrderView() {
   // บันทึกออเดอร์
   const handleSubmit = async () => {
     if (!selectedStore) {
-      error('กรุณาเลือกร้านค้า');
+      showNotification('error', 'กรุณาเลือกร้านค้า');
       return;
     }
 
-  // validate quantities > 0
-  const hasInvalidQuantity = orderItems.some(item => Number(item.quantity || 0) <= 0);
-  if (hasInvalidQuantity) {
-    error('กรุณาใส่จำนวนสินค้ามากกว่า 0');
-    return;
-  }
+    const hasInvalidQuantity = orderItems.some(item => Number(item.quantity || 0) <= 0);
+    if (hasInvalidQuantity) {
+      showNotification('error', 'กรุณาใส่จำนวนสินค้ามากกว่า 0');
+      return;
+    }
 
     if (orderItems.length === 0) {
-      error('กรุณาเพิ่มสินค้าอย่างน้อย 1 รายการ');
+      showNotification('error', 'กรุณาเพิ่มสินค้าอย่างน้อย 1 รายการ');
       return;
     }
 
+    // ถ้าออเดอร์ถูก assign กับทริปแล้ว แสดง warning
+    if (hasAssignedTrip) {
+      setShowWarningDialog(true);
+      return;
+    }
+
+    await performUpdate();
+  };
+
+  const performUpdate = async () => {
     setIsSubmitting(true);
 
     try {
-      await ordersService.createWithItems(
-        {
-          store_id: selectedStore.id,
-          order_date: new Date().toISOString().split('T')[0],
-          status: 'confirmed',
-          notes: notes || null,
-          delivery_address: selectedStore.address || null,
-          created_by: user?.id,
-          warehouse_id: selectedWarehouse?.id || null,
-        },
-        orderItems.map(item => ({
-          product_id: item.product_id,
-          quantity: Number(item.quantity || 0),
-          unit_price: item.unit_price,
-          discount_percent: Number(item.discount_percent || 0),
-        }))
-      );
+      // 1. อัพเดทข้อมูลออเดอร์
+      await ordersService.update(orderId, {
+        store_id: selectedStore.id,
+        notes: notes || null,
+        delivery_address: selectedStore.address || null,
+        delivery_date: deliveryDate || null,
+        warehouse_id: selectedWarehouse?.id || null,
+        updated_by: user?.id,
+      });
 
-      success('สร้างออเดอร์เรียบร้อย');
-      
-      // Reset form
-      setSelectedStore(null);
-      // Keep warehouse selected for convenience
-      setOrderItems([]);
-      setNotes('');
-      setDeliveryDate('');
+      // 2. ดึง order items ที่มีอยู่
+      const existingItems = await orderItemsService.getByOrderId(orderId);
+      const existingItemIds = new Set(existingItems.map((item: any) => item.id));
+
+      // 3. แยก items ที่ต้องเพิ่ม, อัพเดท, และลบ
+      const itemsToAdd: OrderItem[] = [];
+      const itemsToUpdate: Array<{ id: string; data: any }> = [];
+      const itemsToDelete: string[] = [];
+
+      orderItems.forEach((item) => {
+        if (item.id && existingItemIds.has(item.id)) {
+          // Item ที่มีอยู่แล้ว - อัพเดท
+          itemsToUpdate.push({
+            id: item.id,
+            data: {
+              product_id: item.product_id,
+              quantity: Number(item.quantity || 0),
+              unit_price: item.unit_price,
+              discount_percent: Number(item.discount_percent || 0),
+            },
+          });
+        } else if (!item.id) {
+          // Item ใหม่ - เพิ่ม
+          itemsToAdd.push(item);
+        }
+      });
+
+      // หา items ที่ถูกลบ (มีใน existing แต่ไม่มีใน orderItems)
+      existingItems.forEach((existingItem: any) => {
+        if (!orderItems.find(item => item.id === existingItem.id)) {
+          itemsToDelete.push(existingItem.id);
+        }
+      });
+
+      // 4. ลบ items ที่ถูกลบ
+      if (itemsToDelete.length > 0) {
+        for (const itemId of itemsToDelete) {
+          await orderItemsService.delete(itemId);
+        }
+      }
+
+      // 5. อัพเดท items ที่มีอยู่
+      for (const { id, data } of itemsToUpdate) {
+        await orderItemsService.update(id, data);
+      }
+
+      // 6. เพิ่ม items ใหม่
+      if (itemsToAdd.length > 0) {
+        for (const item of itemsToAdd) {
+          await orderItemsService.add({
+            order_id: orderId,
+            product_id: item.product_id,
+            quantity: Number(item.quantity || 0),
+            unit_price: item.unit_price,
+            discount_percent: Number(item.discount_percent || 0),
+          });
+        }
+      }
+
+      // 7. อัพเดท total_amount
+      await ordersService.update(orderId, {
+        total_amount: calculateTotal.total,
+      });
+
+      // 8. Sync ไปยังทริป (ทำงานอัตโนมัติผ่าน database trigger)
+      // หมายเหตุ: การ sync จะทำงานอัตโนมัติใน database backend
+      // ไม่ต้องเรียก sync service เอง เพราะ database trigger จะจัดการให้
+      if (hasAssignedTrip) {
+        showNotification('success', 'แก้ไขออเดอร์เรียบร้อย ระบบจะ sync ไปยังทริปอัตโนมัติ');
+      } else {
+        showNotification('success', 'แก้ไขออเดอร์เรียบร้อย');
+      }
+
+      onSave?.();
     } catch (error: any) {
-      error(error.message || 'เกิดข้อผิดพลาดในการสร้างออเดอร์');
+      showNotification('error', error.message || 'เกิดข้อผิดพลาดในการแก้ไขออเดอร์');
     } finally {
       setIsSubmitting(false);
+      setShowWarningDialog(false);
     }
   };
 
+  if (loading) {
+    return (
+      <PageLayout title="แก้ไขออเดอร์">
+        <Card>
+          <div className="p-12 flex items-center justify-center">
+            <LoadingSpinner />
+          </div>
+        </Card>
+      </PageLayout>
+    );
+  }
+
+  if (!order) {
+    return (
+      <PageLayout title="แก้ไขออเดอร์">
+        <Card>
+          <div className="p-12 text-center">
+            <AlertTriangle className="w-16 h-16 mx-auto mb-4 text-red-500" />
+            <p className="text-red-600 dark:text-red-400">ไม่พบข้อมูลออเดอร์</p>
+            {onCancel && (
+              <Button onClick={onCancel} className="mt-4">
+                กลับ
+              </Button>
+            )}
+          </div>
+        </Card>
+      </PageLayout>
+    );
+  }
+
   return (
-    <>
-      <ToastContainer toasts={toasts} onDismiss={dismissToast} />
-      <PageLayout title="สร้างออเดอร์ใหม่">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <PageLayout title={`แก้ไขออเดอร์ ${order.order_number || ''}`}>
+      {hasAssignedTrip && (
+        <Card className="mb-6 border-orange-300 dark:border-orange-700 bg-orange-50 dark:bg-orange-900/20">
+          <div className="p-4 flex items-start gap-3">
+            <AlertTriangle className="w-5 h-5 text-orange-600 dark:text-orange-400 mt-0.5 flex-shrink-0" />
+            <div>
+              <div className="font-semibold text-orange-900 dark:text-orange-300 mb-1">
+                ⚠️ ออเดอร์นี้ถูกกำหนดทริปแล้ว
+              </div>
+              <div className="text-sm text-orange-700 dark:text-orange-400">
+                การแก้ไขออเดอร์นี้อาจส่งผลกระทบต่อทริปที่กำหนดไว้แล้ว กรุณาตรวจสอบและยืนยันการแก้ไข
+              </div>
+            </div>
+          </div>
+        </Card>
+      )}
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left: Store & Products Selection */}
         <div className="lg:col-span-2 space-y-6">
-          
           {/* Warehouse Selection */}
           <Card>
             <div className="p-6">
@@ -393,7 +506,7 @@ export function CreateOrderView() {
                     >
                       <div className="flex items-center justify-between mb-2">
                         <span className={`text-sm font-medium px-2 py-0.5 rounded ${
-                          wh.type === 'main' 
+                          wh.type === 'main'
                             ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300'
                             : 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300'
                         }`}>
@@ -416,7 +529,7 @@ export function CreateOrderView() {
           <Card className={`overflow-visible ${stores.length > 0 && !selectedStore ? 'relative z-50' : ''}`}>
             <div className="p-6">
               <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">2. เลือกร้านค้า</h3>
-              
+
               {selectedStore ? (
                 <div className="flex items-center justify-between p-4 bg-green-50 dark:bg-green-900/20 border-2 border-green-200 dark:border-green-700 rounded-xl">
                   <div className="flex items-center gap-3">
@@ -425,11 +538,11 @@ export function CreateOrderView() {
                       <p className="font-semibold text-gray-900 dark:text-white">{selectedStore.customer_name}</p>
                       <p className="text-sm text-gray-600 dark:text-gray-400">{selectedStore.customer_code}</p>
                       {selectedStore.customer_tiers && (
-                        <Badge 
+                        <Badge
                           className="mt-1"
-                          style={{ 
+                          style={{
                             backgroundColor: `${selectedStore.customer_tiers.color}20`,
-                            color: selectedStore.customer_tiers.color 
+                            color: selectedStore.customer_tiers.color
                           }}
                         >
                           {selectedStore.customer_tiers.tier_name}
@@ -455,7 +568,7 @@ export function CreateOrderView() {
                     onChange={(e) => handleStoreSearch(e.target.value)}
                     className="w-full pl-10 pr-4 py-3 border border-gray-300 dark:border-slate-600 rounded-xl bg-white dark:bg-slate-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
                   />
-                  
+
                   {storesLoading && (
                     <div className="absolute right-3 top-1/2 -translate-y-1/2">
                       <LoadingSpinner size={20} />
@@ -482,174 +595,27 @@ export function CreateOrderView() {
           </Card>
 
           {/* Products Selection */}
-          <Card className={`overflow-visible ${(productSearch || showProductBrowser) && filteredProducts.length > 0 ? 'relative z-50' : ''}`}>
+          <Card className={`overflow-visible ${productSearch && filteredProducts.length > 0 ? 'relative z-50' : ''}`}>
             <div className="p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">3. เพิ่มสินค้า</h3>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setShowProductBrowser(!showProductBrowser)}
-                  disabled={!selectedStore}
-                  className="flex items-center gap-2"
-                >
-                  <Grid3x3 className="w-4 h-4" />
-                  {showProductBrowser ? 'ซ่อน' : 'เลือกสินค้า'}
-                </Button>
-              </div>
-              
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">3. จัดการสินค้า</h3>
+
               <div className="relative mb-4" ref={productDropdownRef}>
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 dark:text-gray-500" />
                 <input
                   type="text"
-                  placeholder="ค้นหาสินค้า (ชื่อ, รหัส, หรือบาร์โค้ด)..."
+                  placeholder="ค้นหาสินค้า (ชื่อหรือรหัส)..."
                   value={productSearch}
-                  onChange={(e) => {
-                    setProductSearch(e.target.value);
-                    if (e.target.value) {
-                      setShowProductBrowser(false);
-                    }
-                  }}
-                  onFocus={() => {
-                    if (!productSearch) {
-                      setShowProductBrowser(true);
-                    }
-                  }}
+                  onChange={(e) => setProductSearch(e.target.value)}
                   className="w-full pl-10 pr-4 py-3 border border-gray-300 dark:border-slate-600 rounded-xl bg-white dark:bg-slate-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 disabled:opacity-50 disabled:cursor-not-allowed"
                   disabled={!selectedStore}
                 />
 
-                {/* Loading indicator */}
                 {productsLoading && productSearch && (
                   <div className="absolute right-3 top-1/2 -translate-y-1/2">
                     <LoadingSpinner size={20} />
                   </div>
                 )}
 
-                {/* Product Browser - แสดงเมื่อยังไม่พิมพ์หรือกดปุ่มเลือกสินค้า */}
-                {showProductBrowser && !productSearch && !productsLoading && selectedStore && (
-                  <div className="absolute z-50 w-full mt-2 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-xl shadow-lg dark:shadow-black/50 max-h-96 overflow-y-auto">
-                    {/* Tabs: Recent, Categories */}
-                    <div className="sticky top-0 bg-white dark:bg-slate-800 border-b border-gray-200 dark:border-slate-700 p-2 flex gap-2 overflow-x-auto">
-                      {recentProductsList.length > 0 && (
-                        <button
-                          onClick={() => setSelectedCategory('recent')}
-                          className={`px-3 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition-colors flex items-center gap-1 ${
-                            selectedCategory === 'recent'
-                              ? 'bg-blue-500 text-white'
-                              : 'bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-slate-600'
-                          }`}
-                        >
-                          <Clock className="w-4 h-4" />
-                          ใช้ล่าสุด ({recentProductsList.length})
-                        </button>
-                      )}
-                      <button
-                        onClick={() => setSelectedCategory('all')}
-                        className={`px-3 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
-                          selectedCategory === 'all'
-                            ? 'bg-blue-500 text-white'
-                            : 'bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-slate-600'
-                        }`}
-                      >
-                        ทั้งหมด
-                      </button>
-                      {categories.map((cat: any) => (
-                        <button
-                          key={cat.id || cat.name}
-                          onClick={() => setSelectedCategory(cat.name || cat.id)}
-                          className={`px-3 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
-                            selectedCategory === (cat.name || cat.id)
-                              ? 'bg-blue-500 text-white'
-                              : 'bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-slate-600'
-                          }`}
-                        >
-                          {cat.name || cat.id}
-                        </button>
-                      ))}
-                    </div>
-
-                    {/* Products Grid */}
-                    <div className="p-4">
-                      {/* แสดงสินค้าที่ใช้ล่าสุด */}
-                      {selectedCategory === 'recent' && recentProductsList.length > 0 && (
-                        <div className="grid grid-cols-1 gap-2 max-h-80 overflow-y-auto">
-                          {recentProductsList.map((product: any) => (
-                            <button
-                              key={product.id}
-                              onClick={() => handleAddProduct(product)}
-                              className="p-3 text-left border border-gray-200 dark:border-slate-700 rounded-lg hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors"
-                            >
-                              <div className="flex items-center justify-between">
-                                <div className="flex-1 min-w-0">
-                                  <div className="flex items-center gap-2 mb-1">
-                                    <p className="font-medium text-gray-900 dark:text-white truncate">{product.product_name}</p>
-                                    {product.unit && (
-                                      <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 text-xs">
-                                        {product.unit}
-                                      </Badge>
-                                    )}
-                                  </div>
-                                  <p className="text-xs text-gray-500 dark:text-gray-400">{product.product_code}</p>
-                                </div>
-                                <p className="text-sm font-semibold text-blue-600 dark:text-blue-400 ml-2">
-                                  {new Intl.NumberFormat('th-TH').format(product.base_price || 0)} ฿
-                                </p>
-                              </div>
-                            </button>
-                          ))}
-                        </div>
-                      )}
-
-                      {/* แสดงสินค้าตามหมวดหมู่ */}
-                      {selectedCategory !== 'recent' && (
-                        <div className="grid grid-cols-1 gap-2 max-h-80 overflow-y-auto">
-                          {filteredProducts.length > 0 ? (
-                            filteredProducts.slice(0, 30).map((product: any) => (
-                              <button
-                                key={product.id}
-                                onClick={() => handleAddProduct(product)}
-                                className="p-3 text-left border border-gray-200 dark:border-slate-700 rounded-lg hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors"
-                              >
-                                <div className="flex items-center justify-between">
-                                  <div className="flex-1 min-w-0">
-                                    <div className="flex items-center gap-2 mb-1">
-                                      <p className="font-medium text-gray-900 dark:text-white truncate">{product.product_name}</p>
-                                      {product.unit && (
-                                        <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 text-xs">
-                                          {product.unit}
-                                        </Badge>
-                                      )}
-                                    </div>
-                                    <p className="text-xs text-gray-500 dark:text-gray-400">{product.product_code}</p>
-                                  </div>
-                                  <p className="text-sm font-semibold text-blue-600 dark:text-blue-400 ml-2">
-                                    {new Intl.NumberFormat('th-TH').format(product.base_price || 0)} ฿
-                                  </p>
-                                </div>
-                              </button>
-                            ))
-                          ) : (
-                            <p className="text-sm text-gray-500 dark:text-gray-400 text-center py-8">
-                              {selectedCategory === 'all' 
-                                ? 'ยังไม่มีสินค้าในระบบ' 
-                                : 'ไม่พบสินค้าในหมวดหมู่นี้'}
-                            </p>
-                          )}
-                        </div>
-                      )}
-
-                      {/* แสดงข้อความเมื่อไม่มีสินค้าที่ใช้ล่าสุด */}
-                      {selectedCategory === 'recent' && recentProductsList.length === 0 && (
-                        <p className="text-sm text-gray-500 dark:text-gray-400 text-center py-8">
-                          ยังไม่มีสินค้าที่ใช้ล่าสุด
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {/* Search Results - แสดงเมื่อพิมพ์ค้นหา */}
                 {productSearch && !productsLoading && (
                   <>
                     {filteredProducts.length > 0 ? (
@@ -680,15 +646,12 @@ export function CreateOrderView() {
                     ) : (
                       <div className="absolute z-50 w-full mt-2 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-xl shadow-lg dark:shadow-black/50 p-4">
                         <p className="text-sm text-gray-500 dark:text-gray-400 text-center">
-                          {products && products.length > 0 
+                          {products && products.length > 0
                             ? `ไม่พบสินค้าที่ค้นหา "${productSearch}"`
-                            : 'ยังไม่มีข้อมูลสินค้าในระบบ กรุณาเพิ่มสินค้าก่อน'}
+                            : 'ยังไม่มีข้อมูลสินค้าในระบบ'}
                         </p>
                       </div>
                     )}
-                    <div className="mt-2 text-xs text-gray-500 dark:text-gray-400 text-right">
-                      ผลลัพธ์: {filteredProducts.length} รายการ
-                    </div>
                   </>
                 )}
               </div>
@@ -722,7 +685,7 @@ export function CreateOrderView() {
                         const qty = Number(item.quantity || 0);
                         const discount = Number(item.discount_percent || 0);
                         const lineTotal = (item.unit_price * qty) - (item.unit_price * qty * discount / 100);
-                        
+
                         return (
                           <tr key={index} className="border-b border-gray-100 dark:border-slate-700">
                             <td className="py-3 px-2 align-top">
@@ -795,7 +758,7 @@ export function CreateOrderView() {
           <Card>
             <div className="p-6">
               <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">สรุปออเดอร์</h3>
-              
+
               <div className="space-y-3 mb-4">
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-600 dark:text-gray-400">ยอดรวม:</span>
@@ -844,19 +807,51 @@ export function CreateOrderView() {
                 </div>
               </div>
 
-              <Button
-                onClick={handleSubmit}
-                disabled={!selectedStore || orderItems.length === 0 || isSubmitting}
-                className="w-full"
-              >
-                {isSubmitting ? 'กำลังบันทึก...' : 'สร้างออเดอร์'}
-              </Button>
+              <div className="flex gap-2">
+                {onCancel && (
+                  <Button
+                    variant="outline"
+                    onClick={onCancel}
+                    disabled={isSubmitting}
+                    className="flex-1"
+                  >
+                    ยกเลิก
+                  </Button>
+                )}
+                <Button
+                  onClick={handleSubmit}
+                  disabled={!selectedStore || orderItems.length === 0 || isSubmitting}
+                  className="flex-1"
+                >
+                  {isSubmitting ? 'กำลังบันทึก...' : 'บันทึกการแก้ไข'}
+                </Button>
+              </div>
             </div>
           </Card>
         </div>
       </div>
-      </PageLayout>
-    </>
+
+      {/* Warning Dialog for Assigned Trip */}
+      <ConfirmDialog
+        isOpen={showWarningDialog}
+        onCancel={() => setShowWarningDialog(false)}
+        onConfirm={performUpdate}
+        title="ยืนยันการแก้ไขออเดอร์"
+        message={
+          <div className="space-y-2">
+            <p className="font-semibold text-orange-600 dark:text-orange-400">
+              ⚠️ ออเดอร์นี้ถูกกำหนดทริปแล้ว
+            </p>
+            <p>คุณแน่ใจหรือไม่ว่าต้องการแก้ไขออเดอร์นี้?</p>
+            <p className="text-sm text-gray-600 dark:text-gray-400">
+              การแก้ไขอาจส่งผลกระทบต่อทริปที่กำหนดไว้แล้ว กรุณาตรวจสอบข้อมูลให้ถูกต้อง
+            </p>
+          </div>
+        }
+        confirmText="ยืนยันแก้ไข"
+        cancelText="ยกเลิก"
+        variant="warning"
+      />
+    </PageLayout>
   );
 }
-

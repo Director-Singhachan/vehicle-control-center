@@ -279,7 +279,7 @@ export const deliveryTripService = {
     const tripIds = trips.map(t => t.id);
     const { data: tripStores } = tripIds.length > 0 ? await supabase
       .from('delivery_trip_stores')
-      .select('id, delivery_trip_store_id:id, delivery_trip_id, store_id, sequence_order') // Minimally select needed fields
+      .select('id, delivery_trip_id, store_id, sequence_order, invoice_status, delivery_status') // Include invoice_status and delivery_status
       .in('delivery_trip_id', tripIds)
       .order('sequence_order', { ascending: true }) : { data: [] };
 
@@ -293,8 +293,9 @@ export const deliveryTripService = {
     });
 
     let storeMap = new Map<string, any>();
+    let itemsMap = new Map<string, DeliveryTripItemWithProduct[]>(); // Map: trip_store_id -> items[]
 
-    // In FULL mode only, fetch detailed store info
+    // In FULL mode only, fetch detailed store info and items
     if (!lite) {
       const storeIds = [...new Set((tripStores || []).map(ts => ts.store_id).filter(Boolean))];
       const { data: stores } = storeIds.length > 0 ? await supabase
@@ -303,6 +304,53 @@ export const deliveryTripService = {
         .in('id', storeIds) : { data: [] };
 
       storeMap = new Map((stores || []).map(s => [s.id, s]));
+
+      // Fetch items for all trip stores
+      // Note: tripStores has 'id' field (which is delivery_trip_stores.id) and 'delivery_trip_store_id' alias
+      // We need to use the actual 'id' field from delivery_trip_stores table
+      const tripStoreIds = (tripStores || []).map(ts => {
+        // ts.id is the delivery_trip_stores.id (the primary key)
+        // ts.delivery_trip_store_id is an alias for ts.id (from the select statement)
+        return ts.id || (ts as any).delivery_trip_store_id;
+      }).filter(Boolean) as string[];
+      
+      if (tripStoreIds.length > 0) {
+        const { data: tripItems, error: itemsError } = await supabase
+          .from('delivery_trip_items')
+          .select('id, delivery_trip_store_id, product_id, quantity, notes')
+          .in('delivery_trip_store_id', tripStoreIds);
+        
+        if (itemsError) {
+          console.error('[deliveryTripService] Error fetching trip items:', itemsError, {
+            tripStoreIds,
+            tripStoreIdsLength: tripStoreIds.length,
+            sampleTripStore: tripStores[0],
+          });
+          // Don't throw - continue without items to avoid breaking the whole query
+        }
+
+        // Fetch products
+        if (tripItems && tripItems.length > 0) {
+          const productIds = [...new Set(tripItems.map(item => item.product_id).filter(Boolean))];
+          const { data: products } = productIds.length > 0 ? await supabase
+            .from('products')
+            .select('id, product_code, product_name, category, unit, base_price')
+            .in('id', productIds) : { data: [] };
+
+          const productMap = new Map((products || []).map(p => [p.id, p]));
+
+          // Group items by trip_store_id
+          (tripItems || []).forEach(item => {
+            if (!itemsMap.has(item.delivery_trip_store_id)) {
+              itemsMap.set(item.delivery_trip_store_id, []);
+            }
+            itemsMap.get(item.delivery_trip_store_id)!.push({
+              ...item,
+              product: productMap.get(item.product_id),
+            });
+          });
+        }
+      }
     }
 
     // In FULL mode only, fetch crews for trips
@@ -341,12 +389,18 @@ export const deliveryTripService = {
     // Combine data
     const combinedTrips = trips.map(trip => {
       const tripStoresForTrip = tripStoresMap.get(trip.id) || [];
-      const storesWithDetails: DeliveryTripStoreWithDetails[] = tripStoresForTrip.map(ts => ({
-        ...ts,
-        // In lite mode, store detail will be undefined, which is fine for list view specific needs
-        // The list view primarily checks `stores.length`
-        store: storeMap.get(ts.store_id),
-      }));
+      const storesWithDetails: DeliveryTripStoreWithDetails[] = tripStoresForTrip.map(ts => {
+        // ts.id is the delivery_trip_stores.id (primary key)
+        const tripStoreId = ts.id || (ts as any).delivery_trip_store_id;
+        return {
+          ...ts,
+          // In lite mode, store detail will be undefined, which is fine for list view specific needs
+          // The list view primarily checks `stores.length`
+          store: storeMap.get(ts.store_id),
+          // Add items if in full mode - use tripStoreId to lookup items
+          items: !lite ? (itemsMap.get(tripStoreId) || []) : undefined,
+        };
+      });
 
       return {
         ...trip,
@@ -591,11 +645,25 @@ export const deliveryTripService = {
           if (driverProfile?.full_name) {
             const driverName = driverProfile.full_name.trim();
 
-            const { data: staffMatches, error: staffError } = await supabase
+            // Try exact match first
+            let { data: staffMatches, error: staffError } = await supabase
               .from('service_staff')
               .select('id, name, status')
               .eq('name', driverName)
               .limit(5);
+
+            // If no exact match, try case-insensitive match
+            if (!staffError && (!staffMatches || staffMatches.length === 0)) {
+              const { data: caseInsensitiveMatches, error: caseError } = await supabase
+                .from('service_staff')
+                .select('id, name, status')
+                .ilike('name', driverName)
+                .limit(5);
+              
+              if (!caseError && caseInsensitiveMatches && caseInsensitiveMatches.length > 0) {
+                staffMatches = caseInsensitiveMatches;
+              }
+            }
 
             if (staffError) {
               console.error('[deliveryTripService] Error matching driver to service_staff:', staffError);
@@ -627,14 +695,18 @@ export const deliveryTripService = {
                     trip_id: trip.id,
                     driver_profile_id: trip.driver_id,
                     staff_id: staff.id,
+                    staff_name: staff.name,
                   });
                 }
               }
             } else {
-              console.warn('[deliveryTripService] No matching service_staff found for driver profile name. Driver will not be included in crew automatically.', {
+              // Only log as debug, not warning - this is expected if driver is not in service_staff table
+              // Many drivers may not be in service_staff if they're not part of the commission system
+              console.debug('[deliveryTripService] Driver not found in service_staff table (this is normal if driver is not part of commission system):', {
                 trip_id: trip.id,
                 driver_profile_id: trip.driver_id,
                 driver_name: driverName,
+                note: 'Driver can still be assigned manually via crew management if needed',
               });
             }
           }
@@ -668,7 +740,54 @@ export const deliveryTripService = {
     }
 
     // 2. Create delivery trip stores and items
+    // Check for duplicate stores before inserting
+    const storeIds = new Set<string>();
     for (const storeData of data.stores) {
+      if (storeIds.has(storeData.store_id)) {
+        throw new Error(`ร้านค้าซ้ำกันในรายการ: store_id ${storeData.store_id} ปรากฏมากกว่า 1 ครั้ง`);
+      }
+      storeIds.add(storeData.store_id);
+    }
+
+    for (const storeData of data.stores) {
+      // Check if store already exists in this trip (defensive check)
+      const { data: existingStore } = await supabase
+        .from('delivery_trip_stores')
+        .select('id')
+        .eq('delivery_trip_id', trip.id)
+        .eq('store_id', storeData.store_id)
+        .maybeSingle();
+
+      if (existingStore) {
+        console.warn('[deliveryTripService] Store already exists in trip, skipping:', {
+          trip_id: trip.id,
+          store_id: storeData.store_id,
+        });
+        // Use existing store instead of creating new one
+        const tripStore = existingStore;
+        
+        // Still create items for this store
+        if (storeData.items && storeData.items.length > 0) {
+          const itemsData = storeData.items.map(item => ({
+            delivery_trip_id: trip.id,
+            delivery_trip_store_id: tripStore.id,
+            product_id: item.product_id,
+            quantity: item.quantity,
+            notes: item.notes,
+          }));
+
+          const { error: itemsError } = await supabase
+            .from('delivery_trip_items')
+            .insert(itemsData);
+
+          if (itemsError) {
+            console.error('[deliveryTripService] Error creating trip items:', itemsError);
+            throw itemsError;
+          }
+        }
+        continue;
+      }
+
       // Create trip store
       const { data: tripStore, error: storeError } = await supabase
         .from('delivery_trip_stores')
@@ -682,6 +801,10 @@ export const deliveryTripService = {
 
       if (storeError) {
         console.error('[deliveryTripService] Error creating trip store:', storeError);
+        // Provide more helpful error message for 409 conflict
+        if (storeError.code === '23505' || storeError.message?.includes('duplicate') || storeError.message?.includes('unique')) {
+          throw new Error(`ไม่สามารถเพิ่มร้านค้านี้ได้: ร้านค้านี้มีอยู่ในทริปนี้แล้ว (store_id: ${storeData.store_id})`);
+        }
         throw storeError;
       }
 
@@ -1227,6 +1350,44 @@ export const deliveryTripService = {
 
   // Delete delivery trip
   delete: async (id: string): Promise<void> => {
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (!user) {
+      throw new Error('User not authenticated');
+    }
+
+    // 1. หาออเดอร์ทั้งหมดที่เชื่อมกับทริปนี้
+    const { data: orders, error: ordersError } = await supabase
+      .from('orders')
+      .select('id')
+      .eq('delivery_trip_id', id);
+
+    if (ordersError) {
+      console.error('[deliveryTripService] Error fetching orders:', ordersError);
+      throw ordersError;
+    }
+
+    // 2. อัพเดทออเดอร์ทั้งหมดกลับเป็น 'confirmed' และตั้ง delivery_trip_id เป็น null
+    if (orders && orders.length > 0) {
+      const orderIds = orders.map(o => o.id);
+      const { error: updateOrdersError } = await supabase
+        .from('orders')
+        .update({
+          delivery_trip_id: null,
+          status: 'confirmed',
+          updated_by: user.id,
+        })
+        .in('id', orderIds);
+
+      if (updateOrdersError) {
+        console.error('[deliveryTripService] Error updating orders:', updateOrdersError);
+        throw updateOrdersError;
+      }
+
+      console.log(`[deliveryTripService] Updated ${orderIds.length} orders back to 'confirmed' status`);
+    }
+
+    // 3. ลบทริป (CASCADE จะลบข้อมูลที่เกี่ยวข้องอัตโนมัติ)
     const { error } = await supabase
       .from('delivery_trips')
       .delete()
@@ -1336,6 +1497,30 @@ export const deliveryTripService = {
 
     console.log('[deliveryTripService] Cancel completed successfully');
     return updatedTrip;
+  },
+
+  // Update store invoice status
+  updateStoreInvoiceStatus: async (
+    tripId: string,
+    storeId: string,
+    status: 'pending' | 'issued'
+  ): Promise<void> => {
+    // We need to find the delivery_trip_store record first
+    const { data: tripStore, error: findError } = await supabase
+      .from('delivery_trip_stores')
+      .select('id')
+      .eq('delivery_trip_id', tripId)
+      .eq('store_id', storeId)
+      .single();
+
+    if (findError) throw findError;
+
+    const { error } = await supabase
+      .from('delivery_trip_stores')
+      .update({ invoice_status: status })
+      .eq('id', tripStore.id);
+
+    if (error) throw error;
   },
 
   // Get aggregated products for a trip (all products across all stores)

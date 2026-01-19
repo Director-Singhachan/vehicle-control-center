@@ -30,14 +30,30 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
 
       // Check if input is a phone number (digits only, 9-10 digits)
       const phoneRegex = /^[0-9]{9,10}$/;
-      if (phoneRegex.test(emailToUse)) {
-        // Append domain for driver login
-        emailToUse = `${emailToUse}@driver.local`;
-      }
 
-      await signIn(emailToUse, password);
-      if (onLoginSuccess) {
-        onLoginSuccess();
+      if (phoneRegex.test(emailToUse)) {
+        // Try multiple domains for phone number login
+        // Priority 1: @driver.local (Existing behavior, optimized for drivers)
+        try {
+          await signIn(`${emailToUse}@driver.local`, password);
+          if (onLoginSuccess) onLoginSuccess();
+          return;
+        } catch (driverError) {
+          // Priority 2: @sales.local (New request)
+          try {
+            await signIn(`${emailToUse}@sales.local`, password);
+            if (onLoginSuccess) onLoginSuccess();
+            return;
+          } catch (salesError) {
+            // Both failed
+            throw salesError;
+          }
+        }
+      } else {
+        await signIn(emailToUse, password);
+        if (onLoginSuccess) {
+          onLoginSuccess();
+        }
       }
     } catch (err: any) {
       setLocalError(err.message || 'เกิดข้อผิดพลาดในการเข้าสู่ระบบ');
@@ -83,7 +99,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
                 type="text"
                 value={identifier}
                 onChange={(e) => setIdentifier(e.target.value)}
-                placeholder="อีเมล หรือ เบอร์โทรศัพท์ (สำหรับคนขับ)"
+                placeholder="อีเมล หรือ เบอร์โทรศัพท์"
                 className="pl-10"
                 required
                 disabled={loading}

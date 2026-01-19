@@ -19,6 +19,7 @@ import {
   Download,
   History,
   XCircle,
+  Trash2,
 } from 'lucide-react';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
@@ -93,6 +94,9 @@ export const DeliveryTripListView: React.FC<DeliveryTripListViewProps> = ({
   const [cancelTripId, setCancelTripId] = useState<string | null>(null);
   const [cancelReason, setCancelReason] = useState('');
   const [isCancelling, setIsCancelling] = useState(false);
+  const [deleteTripId, setDeleteTripId] = useState<string | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const { isAdmin, isManager } = useAuth();
   const [selectedImage, setSelectedImage] = useState<{ url: string; alt: string } | null>(null);
 
   const { trips, total, loading, error, refetch, prefetch } = useDeliveryTrips({
@@ -472,22 +476,39 @@ export const DeliveryTripListView: React.FC<DeliveryTripListViewProps> = ({
                     <Eye size={16} className="mr-1" />
                     ดูรายละเอียด
                   </Button>
-                  {(trip.status === 'planned' || trip.status === 'in_progress') && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={isReadOnly}
-                      onClick={() => {
-                        if (isReadOnly) return;
-                        console.log('[DeliveryTripListView] Cancel button clicked for trip:', trip.id);
-                        setCancelTripId(trip.id);
-                      }}
-                      className="text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
-                    >
-                      <XCircle size={16} className="mr-1" />
-                      ยกเลิก
-                    </Button>
-                  )}
+                  <div className="flex items-center gap-2">
+                    {(trip.status === 'planned' || trip.status === 'in_progress') && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={isReadOnly}
+                        onClick={() => {
+                          if (isReadOnly) return;
+                          console.log('[DeliveryTripListView] Cancel button clicked for trip:', trip.id);
+                          setCancelTripId(trip.id);
+                        }}
+                        className="text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
+                      >
+                        <XCircle size={16} className="mr-1" />
+                        ยกเลิก
+                      </Button>
+                    )}
+                    {(isAdmin || isManager) && trip.status !== 'completed' && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={isReadOnly || isDeleting}
+                        onClick={() => {
+                          if (isReadOnly) return;
+                          setDeleteTripId(trip.id);
+                        }}
+                        className="text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 border-red-300 dark:border-red-700"
+                      >
+                        <Trash2 size={16} className="mr-1" />
+                        ลบ
+                      </Button>
+                    )}
+                  </div>
                 </div>
               </Card>
             ))}
@@ -654,6 +675,51 @@ export const DeliveryTripListView: React.FC<DeliveryTripListViewProps> = ({
           </div>
         }
         confirmText="ยืนยันยกเลิกทริป"
+        cancelText="ยกเลิก"
+        variant="danger"
+      />
+
+      {/* Delete Trip Dialog */}
+      <ConfirmDialog
+        isOpen={deleteTripId !== null}
+        onCancel={() => {
+          setDeleteTripId(null);
+        }}
+        onConfirm={async () => {
+          if (isReadOnly) return;
+          if (!deleteTripId) return;
+          console.log('[DeliveryTripListView] Confirming delete for trip:', deleteTripId);
+          setIsDeleting(true);
+          try {
+            await deliveryTripService.delete(deleteTripId);
+            console.log('[DeliveryTripListView] Trip deleted successfully');
+            setDeleteTripId(null);
+            // Wait a bit before refetching to ensure database is updated
+            setTimeout(async () => {
+              await refetch();
+            }, 500);
+          } catch (err: any) {
+            console.error('[DeliveryTripListView] Error deleting trip:', err);
+            const errorMessage = err.message || 'เกิดข้อผิดพลาดในการลบทริป';
+            alert(errorMessage);
+            // Don't close dialog on error so user can see the error message
+          } finally {
+            setIsDeleting(false);
+          }
+        }}
+        title="ลบทริปส่งสินค้า"
+        message={
+          <div className="space-y-2">
+            <p className="font-semibold text-red-600 dark:text-red-400">
+              ⚠️ คำเตือน: การลบทริปนี้จะลบข้อมูลทั้งหมดและไม่สามารถกู้คืนได้!
+            </p>
+            <p>คุณแน่ใจหรือไม่ว่าต้องการลบทริปส่งสินค้านี้?</p>
+            <p className="text-sm text-slate-600 dark:text-slate-400">
+              ข้อมูลที่จะถูกลบ: ทริป, ร้านค้า, สินค้า, และประวัติทั้งหมด
+            </p>
+          </div>
+        }
+        confirmText={isDeleting ? 'กำลังลบ...' : 'ยืนยันลบทริป'}
         cancelText="ยกเลิก"
         variant="danger"
       />

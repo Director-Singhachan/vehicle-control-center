@@ -154,6 +154,8 @@ export const ProfileView: React.FC = () => {
     manager: 'ผู้จัดการ',
     executive: 'ผู้บริหาร',
     admin: 'ผู้ดูแลระบบ',
+    sales: 'ฝ่ายขาย',
+    driver: 'พนักงานขับรถ',
   };
 
   return (

@@ -1,12 +1,73 @@
 import { supabase } from '../lib/supabase';
-import type { Database } from '../types/database';
 
-type Order = Database['public']['Tables']['orders']['Row'];
-type OrderInsert = Database['public']['Tables']['orders']['Insert'];
-type OrderUpdate = Database['public']['Tables']['orders']['Update'];
+// Temporary types until database.ts is regenerated
+type Order = {
+  id: string;
+  order_number: string | null;
+  store_id: string;
+  customer_id: string | null;
+  sales_person_id: string | null;
+  order_date: string;
+  delivery_date: string | null;
+  delivery_address: string | null;
+  status: string;
+  total_amount: number | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+  created_by: string | null;
+  updated_by: string | null;
+  approved_by: string | null;
+  approved_at: string | null;
+  delivery_trip_id: string | null;
+};
 
-type OrderItem = Database['public']['Tables']['order_items']['Row'];
-type OrderItemInsert = Database['public']['Tables']['order_items']['Insert'];
+type OrderInsert = {
+  id?: string;
+  order_number?: string | null;
+  store_id: string; // Required
+  customer_id?: string | null;
+  sales_person_id?: string | null;
+  order_date: string; // Required
+  delivery_date?: string | null;
+  delivery_address?: string | null;
+  status: string; // Required
+  total_amount?: number | null;
+  notes?: string | null;
+  created_at?: string;
+  updated_at?: string;
+  created_by?: string | null;
+  updated_by?: string | null;
+  approved_by?: string | null;
+  approved_at?: string | null;
+  delivery_trip_id?: string | null;
+  warehouse_id?: string | null;
+};
+
+type OrderUpdate = Partial<OrderInsert>;
+
+type OrderItem = {
+  id: string;
+  order_id: string;
+  product_id: string;
+  quantity: number;
+  unit_price: number | null;
+  discount_percent: number | null;
+  discount_amount: number | null;
+  line_total: number | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type OrderItemInsert = Omit<OrderItem, 'id' | 'created_at' | 'updated_at' | 'discount_amount' | 'line_total' | 'notes'> & {
+  id?: string;
+  created_at?: string;
+  updated_at?: string;
+  discount_amount?: number | null;
+  line_total?: number | null;
+  notes?: string | null;
+};
 
 // ========================================
 // Orders Service
@@ -77,7 +138,7 @@ export const ordersService = {
    * สร้างออเดอร์ใหม่พร้อมรายการสินค้า
    */
   async createWithItems(
-    orderData: Omit<OrderInsert, 'id' | 'created_at' | 'updated_at'>,
+    orderData: Omit<OrderInsert, 'id' | 'created_at' | 'updated_at'> & { warehouse_id?: string },
     items: Array<{
       product_id: string;
       quantity: number;
@@ -88,7 +149,7 @@ export const ordersService = {
     // สร้างออเดอร์
     const { data: order, error: orderError } = await supabase
       .from('orders')
-      .insert(orderData)
+      .insert(orderData as any)
       .select()
       .single();
 
@@ -166,9 +227,11 @@ export const ordersService = {
 
   /**
    * กำหนดออเดอร์ให้กับทริป
+   * ระบบจะสร้าง order_number อัตโนมัติตามลำดับ sequence_order ในทริป
    */
   async assignToTrip(orderIds: string[], tripId: string, updatedBy: string) {
-    const { error } = await supabase
+    // 1. Update orders to assign to trip (trigger will generate order_number)
+    const { error: updateError } = await supabase
       .from('orders')
       .update({
         delivery_trip_id: tripId,
@@ -177,7 +240,35 @@ export const ordersService = {
       })
       .in('id', orderIds);
 
-    if (error) throw error;
+    if (updateError) throw updateError;
+
+    // 2. Generate order numbers for all orders in trip (ตามลำดับ sequence_order)
+    // ใช้ database function เพื่อให้แน่ใจว่าเรียงตามลำดับที่ถูกต้อง
+    const { data: orderNumbers, error: generateError } = await supabase
+      .rpc('generate_order_numbers_for_trip', {
+        p_trip_id: tripId,
+      });
+
+    if (generateError) {
+      console.error('[ordersService] Error generating order numbers:', generateError);
+      // ไม่ throw error เพราะ order อาจมี order_number อยู่แล้ว
+      // แต่ log เพื่อ debug
+    }
+
+    // 3. Verify that all orders have order_numbers
+    const { data: ordersWithoutNumber, error: checkError } = await supabase
+      .from('orders')
+      .select('id')
+      .in('id', orderIds)
+      .or('order_number.is.null,order_number.eq.');
+
+    if (checkError) {
+      console.warn('[ordersService] Error checking order numbers:', checkError);
+    } else if (ordersWithoutNumber && ordersWithoutNumber.length > 0) {
+      console.warn(
+        `[ordersService] ${ordersWithoutNumber.length} orders still missing order_number after assignment`
+      );
+    }
   },
 
   /**
@@ -194,6 +285,70 @@ export const ordersService = {
       .in('id', orderIds);
 
     if (error) throw error;
+  },
+
+  /**
+   * ลบออเดอร์
+   */
+  async delete(id: string) {
+    const { error } = await supabase.from('orders').delete().eq('id', id);
+    if (error) throw error;
+  },
+
+  /**
+   * ลบออเดอร์หลายรายการ
+   */
+  async deleteMany(ids: string[]) {
+    if (!ids || ids.length === 0) {
+      throw new Error('ไม่มีออเดอร์ที่ต้องการลบ');
+    }
+
+    // ลบทีละรายการเพื่อให้เห็น error ที่ชัดเจนขึ้น
+    const deletedIds: string[] = [];
+    const errors: Array<{ id: string; error: string }> = [];
+
+    for (const id of ids) {
+      try {
+        const { data, error } = await supabase
+          .from('orders')
+          .delete()
+          .eq('id', id)
+          .select('id')
+          .single();
+
+        if (error) {
+          console.error(`[ordersService] Error deleting order ${id}:`, error);
+          errors.push({ id, error: error.message });
+        } else if (data) {
+          deletedIds.push(id);
+        } else {
+          errors.push({ id, error: 'ไม่พบออเดอร์หรือไม่มีสิทธิ์ลบ' });
+        }
+      } catch (err: any) {
+        console.error(`[ordersService] Exception deleting order ${id}:`, err);
+        errors.push({ id, error: err.message || 'เกิดข้อผิดพลาดไม่ทราบสาเหตุ' });
+      }
+    }
+
+    // ถ้ามี error บางรายการ แสดง error message
+    if (errors.length > 0 && deletedIds.length === 0) {
+      const errorMessages = errors.map(e => `- ${e.id}: ${e.error}`).join('\n');
+      throw new Error(
+        `ไม่สามารถลบออเดอร์ได้:\n${errorMessages}\n\n` +
+        `กรุณาตรวจสอบ:\n` +
+        `1. สิทธิ์การลบ (ต้องเป็น Admin/Manager)\n` +
+        `2. ออเดอร์ไม่ถูกกำหนดทริปแล้ว (delivery_trip_id = null)\n` +
+        `3. ไม่มี foreign key constraint ที่ป้องกันการลบ`
+      );
+    }
+
+    // ถ้าลบได้บางรายการ แสดง warning
+    if (errors.length > 0 && deletedIds.length > 0) {
+      const errorMessages = errors.map(e => `- ${e.id}: ${e.error}`).join('\n');
+      console.warn(`[ordersService] Some orders failed to delete:\n${errorMessages}`);
+    }
+
+    return deletedIds.map(id => ({ id }));
   },
 };
 

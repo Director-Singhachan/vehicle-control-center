@@ -64,6 +64,7 @@ import { CreateOrderView } from './views/CreateOrderView';
 import { PendingOrdersView } from './views/PendingOrdersView';
 import { TrackOrdersView } from './views/TrackOrdersView';
 import { SalesTripsView } from './views/SalesTripsView';
+import { CleanupTestOrdersView } from './views/CleanupTestOrdersView';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { useAuth, usePendingTickets } from './hooks';
 import { ticketService, type TicketWithRelations } from './services/ticketService';
@@ -102,7 +103,7 @@ const SubSidebarItem = ({ label, active, onClick, isCollapsed, isFlyout }: any) 
 
 // Main App Content (wrapped in ProtectedRoute)
 const AppContent = () => {
-  const { user, profile, signOut, isAdmin, isManager, isInspector, isExecutive, isDriver, loading: authLoading, refreshProfile } = useAuth();
+  const { user, profile, signOut, isAdmin, isManager, isInspector, isExecutive, isDriver, isSales, loading: authLoading, refreshProfile } = useAuth();
 
   // Don't wait for profile - show UI immediately if user exists
   // Profile will load in background and update when ready
@@ -134,20 +135,20 @@ const AppContent = () => {
 
   // Track previous activeTab to detect tab changes
   const prevActiveTabRef = React.useRef(activeTab);
-  
+
   // Reset ticketView to 'list' when switching to maintenance tab
   // This ensures we always start with the list view when opening maintenance tab
   // BUT only if we're not navigating to a specific ticket
   useEffect(() => {
     const prevTab = prevActiveTabRef.current;
     prevActiveTabRef.current = activeTab;
-    
+
     // If we're navigating to a ticket, skip the reset
     if (isNavigatingToTicketRef.current) {
       isNavigatingToTicketRef.current = false;
       return;
     }
-    
+
     // Only reset if we're switching TO maintenance tab from a different tab
     // AND we don't have a selectedTicketId (meaning we're not navigating to a specific ticket)
     if (activeTab === 'maintenance' && prevTab !== 'maintenance') {
@@ -209,7 +210,7 @@ const AppContent = () => {
   const [isCommissionOpen, setIsCommissionOpen] = useState(false);
   const [isCommissionHovered, setIsCommissionHovered] = useState(false);
   const commissionMenuRef = React.useRef<HTMLDivElement>(null);
-  
+
   const [isOrdersOpen, setIsOrdersOpen] = useState(false);
   const [isOrdersHovered, setIsOrdersHovered] = useState(false);
   const ordersMenuRef = React.useRef<HTMLDivElement>(null);
@@ -238,18 +239,18 @@ const AppContent = () => {
       clearTimeout(commissionTimeoutRef.current);
       commissionTimeoutRef.current = null;
     }
-    
+
     const rect = e.currentTarget.getBoundingClientRect();
     const viewportHeight = window.innerHeight;
     const flyoutEstimatedHeight = 200; // Estimated height of flyout menu
-    
+
     // Check if flyout will overflow bottom of viewport
     let topPosition = rect.top;
     if (rect.top + flyoutEstimatedHeight > viewportHeight) {
       // Position flyout so it ends at the bottom with some margin
       topPosition = Math.max(10, viewportHeight - flyoutEstimatedHeight - 10);
     }
-    
+
     setFlyoutPosition({
       top: topPosition,
       left: rect.right + 8,
@@ -281,13 +282,13 @@ const AppContent = () => {
   // Orders menu handlers
   const [ordersFlyoutPosition, setOrdersFlyoutPosition] = useState({ top: 0, left: 0 });
   const ordersTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
-  
+
   const handleOrdersMouseEnter = (e: React.MouseEvent) => {
     if (ordersTimeoutRef.current) {
       clearTimeout(ordersTimeoutRef.current);
       ordersTimeoutRef.current = null;
     }
-    
+
     const rect = e.currentTarget.getBoundingClientRect();
     const viewportHeight = window.innerHeight;
     // Estimate flyout height (menu + padding). Keep conservative to reduce upward shift.
@@ -299,12 +300,12 @@ const AppContent = () => {
     if (overflow > 0) {
       top = Math.max(12, top - overflow);
     }
-    
+
     setOrdersFlyoutPosition({
       top,
       left: rect.right + 8,
     });
-    
+
     setIsOrdersHovered(true);
   };
 
@@ -329,27 +330,27 @@ const AppContent = () => {
   // Stock menu handlers
   const [stockFlyoutPosition, setStockFlyoutPosition] = useState({ top: 0, left: 0 });
   const stockTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
-  
+
   const handleStockMouseEnter = (e: React.MouseEvent) => {
     if (stockTimeoutRef.current) {
       clearTimeout(stockTimeoutRef.current);
       stockTimeoutRef.current = null;
     }
-    
+
     const rect = e.currentTarget.getBoundingClientRect();
     const viewportHeight = window.innerHeight;
     const flyoutEstimatedHeight = 200;
-    
+
     let top = rect.top;
     if (top + flyoutEstimatedHeight > viewportHeight - 10) {
       top = Math.max(10, viewportHeight - flyoutEstimatedHeight - 10);
     }
-    
+
     setStockFlyoutPosition({
       top,
       left: rect.right + 8,
     });
-    
+
     setIsStockHovered(true);
   };
 
@@ -374,27 +375,27 @@ const AppContent = () => {
   // Trips menu handlers
   const [tripsFlyoutPosition, setTripsFlyoutPosition] = useState({ top: 0, left: 0 });
   const tripsTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
-  
+
   const handleTripsMouseEnter = (e: React.MouseEvent) => {
     if (tripsTimeoutRef.current) {
       clearTimeout(tripsTimeoutRef.current);
       tripsTimeoutRef.current = null;
     }
-    
+
     const rect = e.currentTarget.getBoundingClientRect();
     const viewportHeight = window.innerHeight;
     const flyoutEstimatedHeight = 150;
-    
+
     let top = rect.top;
     if (top + flyoutEstimatedHeight > viewportHeight - 10) {
       top = Math.max(10, viewportHeight - flyoutEstimatedHeight - 10);
     }
-    
+
     setTripsFlyoutPosition({
       top,
       left: rect.right + 8,
     });
-    
+
     setIsTripsHovered(true);
   };
 
@@ -422,18 +423,18 @@ const AppContent = () => {
       clearTimeout(settingsTimeoutRef.current);
       settingsTimeoutRef.current = null;
     }
-    
+
     const rect = e.currentTarget.getBoundingClientRect();
     const viewportHeight = window.innerHeight;
     const flyoutEstimatedHeight = 250; // Estimated height of flyout menu
-    
+
     // Check if flyout will overflow bottom of viewport
     let topPosition = rect.top;
     if (rect.top + flyoutEstimatedHeight > viewportHeight) {
       // Position flyout so it ends at the bottom with some margin
       topPosition = Math.max(10, viewportHeight - flyoutEstimatedHeight - 10);
     }
-    
+
     setSettingsFlyoutPosition({
       top: topPosition,
       left: rect.right + 8,
@@ -526,6 +527,28 @@ const AppContent = () => {
     }
   }, [isDriver, activeTab, fuelLogView]);
 
+  // Redirect sales to create-order page when they access restricted areas
+  // Sales can access: create-order, track-orders, sales-trips, products, product-pricing, customer-tiers, profile, settings
+  useEffect(() => {
+    if (isSales) {
+      const allowedTabs = [
+        'create-order',
+        'track-orders',
+        'sales-trips',
+        'products',
+        'product-pricing',
+        'customer-tiers',
+        'profile',
+        'settings'
+      ];
+
+      // If sales tries to access restricted areas, redirect to create-order
+      if (!allowedTabs.includes(activeTab)) {
+        setActiveTab('create-order');
+      }
+    }
+  }, [isSales, activeTab]);
+
   // Set initial tab for drivers when profile loads - go directly to form
   useEffect(() => {
     if (isDriver && activeTab === 'dashboard') {
@@ -534,6 +557,13 @@ const AppContent = () => {
       setTripLogMode('checkout');
     }
   }, [isDriver, profile]);
+
+  // Set initial tab for sales when profile loads - go directly to create-order
+  useEffect(() => {
+    if (isSales && activeTab === 'dashboard') {
+      setActiveTab('create-order');
+    }
+  }, [isSales, profile]);
 
   // Force refresh profile on mount to ensure role is up to date
   useEffect(() => {
@@ -696,7 +726,7 @@ const AppContent = () => {
         </div>
 
         <div className="flex-1 px-3 space-y-1 mt-4 overflow-y-auto overflow-x-clip scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-700 scrollbar-track-transparent hover:scrollbar-thumb-gray-400 dark:hover:scrollbar-thumb-gray-600 [&:has(.group\/menu:hover)]:overflow-x-visible">
-          {!isDriver && (
+          {!isDriver && !isSales && (
             <SidebarItem
               icon={LayoutDashboard}
               label={isSidebarOpen ? "แดชบอร์ด" : ""}
@@ -706,7 +736,7 @@ const AppContent = () => {
               isCollapsed={!isSidebarOpen}
             />
           )}
-          {!isDriver && (
+          {!isDriver && !isSales && (
             <SidebarItem
               icon={Truck}
               label={isSidebarOpen ? "ยานพาหนะ" : ""}
@@ -716,35 +746,41 @@ const AppContent = () => {
               isCollapsed={!isSidebarOpen}
             />
           )}
-          <SidebarItem
-            icon={Wrench}
-            label={isSidebarOpen ? "การซ่อมบำรุง" : ""}
-            active={activeTab === 'maintenance'}
-            onClick={() => setActiveTab('maintenance')}
-            onMouseEnter={() => prefetchService.prefetchTicketsWithRelations()}
-            isCollapsed={!isSidebarOpen}
-          />
-          <SidebarItem
-            icon={Route}
-            label={isSidebarOpen ? "บันทึกการใช้งานรถ" : ""}
-            active={activeTab === 'triplogs'}
-            onClick={() => {
-              setActiveTab('triplogs');
-              setTripLogView('list');
-            }}
-            isCollapsed={!isSidebarOpen}
-          />
-          <SidebarItem
-            icon={Droplet}
-            label={isSidebarOpen ? "บันทึกการเติมน้ำมัน" : ""}
-            active={activeTab === 'fuellogs'}
-            onClick={() => {
-              setActiveTab('fuellogs');
-              // Drivers go directly to form, others go to list
-              setFuelLogView(isDriver ? 'form' : 'list');
-            }}
-            isCollapsed={!isSidebarOpen}
-          />
+          {!isSales && (
+            <SidebarItem
+              icon={Wrench}
+              label={isSidebarOpen ? "การซ่อมบำรุง" : ""}
+              active={activeTab === 'maintenance'}
+              onClick={() => setActiveTab('maintenance')}
+              onMouseEnter={() => prefetchService.prefetchTicketsWithRelations()}
+              isCollapsed={!isSidebarOpen}
+            />
+          )}
+          {!isSales && (
+            <SidebarItem
+              icon={Route}
+              label={isSidebarOpen ? "บันทึกการใช้งานรถ" : ""}
+              active={activeTab === 'triplogs'}
+              onClick={() => {
+                setActiveTab('triplogs');
+                setTripLogView('list');
+              }}
+              isCollapsed={!isSidebarOpen}
+            />
+          )}
+          {!isSales && (
+            <SidebarItem
+              icon={Droplet}
+              label={isSidebarOpen ? "บันทึกการเติมน้ำมัน" : ""}
+              active={activeTab === 'fuellogs'}
+              onClick={() => {
+                setActiveTab('fuellogs');
+                // Drivers go directly to form, others go to list
+                setFuelLogView(isDriver ? 'form' : 'list');
+              }}
+              isCollapsed={!isSidebarOpen}
+            />
+          )}
           {/* Show approval board menu - check role directly for reliability */}
           {(() => {
             const userRole = profile?.role?.toLowerCase();
@@ -765,7 +801,7 @@ const AppContent = () => {
               />
             ) : null;
           })()}
-          {!isDriver && (
+          {!isDriver && !isSales && (
             <SidebarItem
               icon={Calendar}
               label={isSidebarOpen ? "สรุปการใช้รถรายวัน" : ""}
@@ -774,7 +810,7 @@ const AppContent = () => {
               isCollapsed={!isSidebarOpen}
             />
           )}
-          {!isDriver && (
+          {!isDriver && !isSales && (
             <SidebarItem
               icon={FileText}
               label={isSidebarOpen ? "รายงาน" : ""}
@@ -783,8 +819,8 @@ const AppContent = () => {
               isCollapsed={!isSidebarOpen}
             />
           )}
-          {!isDriver && (
-            <div 
+          {!isDriver && !isSales && (
+            <div
               ref={tripsMenuRef}
               className="relative group/menu"
               onMouseEnter={handleTripsMouseEnter}
@@ -811,7 +847,7 @@ const AppContent = () => {
 
           {/* Flyout Submenu for Trips */}
           {isTripsHovered && (
-            <div 
+            <div
               className="fixed z-[100]"
               style={{
                 top: `${tripsFlyoutPosition.top}px`,
@@ -852,7 +888,7 @@ const AppContent = () => {
               </div>
             </div>
           )}
-          {!isDriver && (
+          {!isDriver && !isSales && (
             <SidebarItem
               icon={Users}
               label={isSidebarOpen ? "จัดการพนักงาน" : ""}
@@ -863,9 +899,9 @@ const AppContent = () => {
           )}
 
           {/* Commission Section - kept inside main menu but allow flyout */}
-          {!isDriver && (
+          {!isDriver && !isSales && (
             <>
-              <div 
+              <div
                 ref={commissionMenuRef}
                 className="relative group/menu"
                 onMouseEnter={handleCommissionMouseEnter}
@@ -888,7 +924,7 @@ const AppContent = () => {
 
               {/* Flyout Submenu - Rendered using Portal (fixed position) */}
               {isCommissionHovered && (
-                <div 
+                <div
                   className="fixed z-[100]"
                   style={{
                     top: `${flyoutPosition.top}px`,
@@ -931,9 +967,9 @@ const AppContent = () => {
           )}
 
           {/* Stock Management Section with Submenu */}
-          {!isDriver && (
+          {!isDriver && !isSales && (
             <>
-              <div 
+              <div
                 ref={stockMenuRef}
                 className="relative group/menu"
                 onMouseEnter={handleStockMouseEnter}
@@ -956,7 +992,7 @@ const AppContent = () => {
 
               {/* Flyout Submenu for Stock */}
               {isStockHovered && (
-                <div 
+                <div
                   className="fixed z-[100]"
                   style={{
                     top: `${stockFlyoutPosition.top}px`,
@@ -1009,9 +1045,9 @@ const AppContent = () => {
           )}
 
           {/* Orders Menu with Submenu (Sales) */}
-          {!isDriver && (
+          {(!isDriver || isSales) && (
             <>
-              <div 
+              <div
                 ref={ordersMenuRef}
                 className="relative group/menu"
                 onMouseEnter={handleOrdersMouseEnter}
@@ -1026,7 +1062,8 @@ const AppContent = () => {
                     activeTab === 'sales-trips' ||
                     activeTab === 'products' ||
                     activeTab === 'product-pricing' ||
-                    activeTab === 'customer-tiers'
+                    activeTab === 'customer-tiers' ||
+                    activeTab === 'cleanup-test-orders'
                   }
                   onClick={() => {
                     if (activeTab !== 'create-order') {
@@ -1041,7 +1078,7 @@ const AppContent = () => {
 
               {/* Flyout Submenu for Orders */}
               {isOrdersHovered && (
-                <div 
+                <div
                   className="fixed z-[100]"
                   style={{
                     top: `${ordersFlyoutPosition.top}px`,
@@ -1116,6 +1153,18 @@ const AppContent = () => {
                         isCollapsed={false}
                         isFlyout={true}
                       />
+                      {(isAdmin || isManager) && (
+                        <SubSidebarItem
+                          label="จัดการออเดอร์"
+                          active={activeTab === 'cleanup-test-orders'}
+                          onClick={() => {
+                            setActiveTab('cleanup-test-orders');
+                            setIsOrdersHovered(false);
+                          }}
+                          isCollapsed={false}
+                          isFlyout={true}
+                        />
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1127,7 +1176,7 @@ const AppContent = () => {
         <div className="p-3 border-t border-slate-200 dark:border-slate-800/50 space-y-1">
           {/* Settings Menu with Submenu */}
           <>
-            <div 
+            <div
               ref={settingsMenuRef}
               className="relative group/menu"
               onMouseEnter={handleSettingsMouseEnter}
@@ -1177,7 +1226,7 @@ const AppContent = () => {
 
             {/* Flyout Submenu - Rendered using Portal (fixed position) */}
             {isSettingsHovered && (
-              <div 
+              <div
                 className="fixed z-[100]"
                 style={{
                   top: `${settingsFlyoutPosition.top}px`,
@@ -1398,7 +1447,8 @@ const AppContent = () => {
                           profile.role === 'inspector' ? 'ผู้ตรวจสอบ' :
                             profile.role === 'executive' ? 'ผู้บริหาร' :
                               profile.role === 'driver' ? 'พนักงานขับรถ' :
-                                'ผู้ใช้';
+                                profile.role === 'sales' ? 'ฝ่ายขาย' :
+                                  'ผู้ใช้';
                     }
                     // If we have user but no profile AND not loading anymore, show default
                     if (user && !profile && !authLoading) {
@@ -1956,6 +2006,8 @@ const AppContent = () => {
             <PendingOrdersView />
           ) : activeTab === 'sales-trips' ? (
             <SalesTripsView />
+          ) : activeTab === 'cleanup-test-orders' ? (
+            <CleanupTestOrdersView />
           ) : (
             <div className="flex flex-col items-center justify-center h-[60vh] text-slate-400">
               <Wrench size={48} className="mb-4 opacity-50" />

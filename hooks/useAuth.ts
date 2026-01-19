@@ -23,6 +23,7 @@ export const useAuth = () => {
     isInspector: store.isInspector,
     isExecutive: store.isExecutive,
     isDriver: store.isDriver,
+    isSales: store.isSales,
     isReadOnly: store.isReadOnly,
     signIn: store.signIn,
     signOut: store.signOut,
