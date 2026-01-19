@@ -135,20 +135,20 @@ const AppContent = () => {
 
   // Track previous activeTab to detect tab changes
   const prevActiveTabRef = React.useRef(activeTab);
-  
+
   // Reset ticketView to 'list' when switching to maintenance tab
   // This ensures we always start with the list view when opening maintenance tab
   // BUT only if we're not navigating to a specific ticket
   useEffect(() => {
     const prevTab = prevActiveTabRef.current;
     prevActiveTabRef.current = activeTab;
-    
+
     // If we're navigating to a ticket, skip the reset
     if (isNavigatingToTicketRef.current) {
       isNavigatingToTicketRef.current = false;
       return;
     }
-    
+
     // Only reset if we're switching TO maintenance tab from a different tab
     // AND we don't have a selectedTicketId (meaning we're not navigating to a specific ticket)
     if (activeTab === 'maintenance' && prevTab !== 'maintenance') {
@@ -210,7 +210,7 @@ const AppContent = () => {
   const [isCommissionOpen, setIsCommissionOpen] = useState(false);
   const [isCommissionHovered, setIsCommissionHovered] = useState(false);
   const commissionMenuRef = React.useRef<HTMLDivElement>(null);
-  
+
   const [isOrdersOpen, setIsOrdersOpen] = useState(false);
   const [isOrdersHovered, setIsOrdersHovered] = useState(false);
   const ordersMenuRef = React.useRef<HTMLDivElement>(null);
@@ -239,18 +239,18 @@ const AppContent = () => {
       clearTimeout(commissionTimeoutRef.current);
       commissionTimeoutRef.current = null;
     }
-    
+
     const rect = e.currentTarget.getBoundingClientRect();
     const viewportHeight = window.innerHeight;
     const flyoutEstimatedHeight = 200; // Estimated height of flyout menu
-    
+
     // Check if flyout will overflow bottom of viewport
     let topPosition = rect.top;
     if (rect.top + flyoutEstimatedHeight > viewportHeight) {
       // Position flyout so it ends at the bottom with some margin
       topPosition = Math.max(10, viewportHeight - flyoutEstimatedHeight - 10);
     }
-    
+
     setFlyoutPosition({
       top: topPosition,
       left: rect.right + 8,
@@ -282,13 +282,13 @@ const AppContent = () => {
   // Orders menu handlers
   const [ordersFlyoutPosition, setOrdersFlyoutPosition] = useState({ top: 0, left: 0 });
   const ordersTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
-  
+
   const handleOrdersMouseEnter = (e: React.MouseEvent) => {
     if (ordersTimeoutRef.current) {
       clearTimeout(ordersTimeoutRef.current);
       ordersTimeoutRef.current = null;
     }
-    
+
     const rect = e.currentTarget.getBoundingClientRect();
     const viewportHeight = window.innerHeight;
     // Estimate flyout height (menu + padding). Keep conservative to reduce upward shift.
@@ -300,12 +300,12 @@ const AppContent = () => {
     if (overflow > 0) {
       top = Math.max(12, top - overflow);
     }
-    
+
     setOrdersFlyoutPosition({
       top,
       left: rect.right + 8,
     });
-    
+
     setIsOrdersHovered(true);
   };
 
@@ -330,27 +330,27 @@ const AppContent = () => {
   // Stock menu handlers
   const [stockFlyoutPosition, setStockFlyoutPosition] = useState({ top: 0, left: 0 });
   const stockTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
-  
+
   const handleStockMouseEnter = (e: React.MouseEvent) => {
     if (stockTimeoutRef.current) {
       clearTimeout(stockTimeoutRef.current);
       stockTimeoutRef.current = null;
     }
-    
+
     const rect = e.currentTarget.getBoundingClientRect();
     const viewportHeight = window.innerHeight;
     const flyoutEstimatedHeight = 200;
-    
+
     let top = rect.top;
     if (top + flyoutEstimatedHeight > viewportHeight - 10) {
       top = Math.max(10, viewportHeight - flyoutEstimatedHeight - 10);
     }
-    
+
     setStockFlyoutPosition({
       top,
       left: rect.right + 8,
     });
-    
+
     setIsStockHovered(true);
   };
 
@@ -375,27 +375,27 @@ const AppContent = () => {
   // Trips menu handlers
   const [tripsFlyoutPosition, setTripsFlyoutPosition] = useState({ top: 0, left: 0 });
   const tripsTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
-  
+
   const handleTripsMouseEnter = (e: React.MouseEvent) => {
     if (tripsTimeoutRef.current) {
       clearTimeout(tripsTimeoutRef.current);
       tripsTimeoutRef.current = null;
     }
-    
+
     const rect = e.currentTarget.getBoundingClientRect();
     const viewportHeight = window.innerHeight;
     const flyoutEstimatedHeight = 150;
-    
+
     let top = rect.top;
     if (top + flyoutEstimatedHeight > viewportHeight - 10) {
       top = Math.max(10, viewportHeight - flyoutEstimatedHeight - 10);
     }
-    
+
     setTripsFlyoutPosition({
       top,
       left: rect.right + 8,
     });
-    
+
     setIsTripsHovered(true);
   };
 
@@ -423,18 +423,18 @@ const AppContent = () => {
       clearTimeout(settingsTimeoutRef.current);
       settingsTimeoutRef.current = null;
     }
-    
+
     const rect = e.currentTarget.getBoundingClientRect();
     const viewportHeight = window.innerHeight;
     const flyoutEstimatedHeight = 250; // Estimated height of flyout menu
-    
+
     // Check if flyout will overflow bottom of viewport
     let topPosition = rect.top;
     if (rect.top + flyoutEstimatedHeight > viewportHeight) {
       // Position flyout so it ends at the bottom with some margin
       topPosition = Math.max(10, viewportHeight - flyoutEstimatedHeight - 10);
     }
-    
+
     setSettingsFlyoutPosition({
       top: topPosition,
       left: rect.right + 8,
@@ -541,7 +541,7 @@ const AppContent = () => {
         'profile',
         'settings'
       ];
-      
+
       // If sales tries to access restricted areas, redirect to create-order
       if (!allowedTabs.includes(activeTab)) {
         setActiveTab('create-order');
@@ -820,7 +820,7 @@ const AppContent = () => {
             />
           )}
           {!isDriver && !isSales && (
-            <div 
+            <div
               ref={tripsMenuRef}
               className="relative group/menu"
               onMouseEnter={handleTripsMouseEnter}
@@ -847,7 +847,7 @@ const AppContent = () => {
 
           {/* Flyout Submenu for Trips */}
           {isTripsHovered && (
-            <div 
+            <div
               className="fixed z-[100]"
               style={{
                 top: `${tripsFlyoutPosition.top}px`,
@@ -901,7 +901,7 @@ const AppContent = () => {
           {/* Commission Section - kept inside main menu but allow flyout */}
           {!isDriver && !isSales && (
             <>
-              <div 
+              <div
                 ref={commissionMenuRef}
                 className="relative group/menu"
                 onMouseEnter={handleCommissionMouseEnter}
@@ -924,7 +924,7 @@ const AppContent = () => {
 
               {/* Flyout Submenu - Rendered using Portal (fixed position) */}
               {isCommissionHovered && (
-                <div 
+                <div
                   className="fixed z-[100]"
                   style={{
                     top: `${flyoutPosition.top}px`,
@@ -969,7 +969,7 @@ const AppContent = () => {
           {/* Stock Management Section with Submenu */}
           {!isDriver && !isSales && (
             <>
-              <div 
+              <div
                 ref={stockMenuRef}
                 className="relative group/menu"
                 onMouseEnter={handleStockMouseEnter}
@@ -992,7 +992,7 @@ const AppContent = () => {
 
               {/* Flyout Submenu for Stock */}
               {isStockHovered && (
-                <div 
+                <div
                   className="fixed z-[100]"
                   style={{
                     top: `${stockFlyoutPosition.top}px`,
@@ -1047,7 +1047,7 @@ const AppContent = () => {
           {/* Orders Menu with Submenu (Sales) */}
           {(!isDriver || isSales) && (
             <>
-              <div 
+              <div
                 ref={ordersMenuRef}
                 className="relative group/menu"
                 onMouseEnter={handleOrdersMouseEnter}
@@ -1078,7 +1078,7 @@ const AppContent = () => {
 
               {/* Flyout Submenu for Orders */}
               {isOrdersHovered && (
-                <div 
+                <div
                   className="fixed z-[100]"
                   style={{
                     top: `${ordersFlyoutPosition.top}px`,
@@ -1176,7 +1176,7 @@ const AppContent = () => {
         <div className="p-3 border-t border-slate-200 dark:border-slate-800/50 space-y-1">
           {/* Settings Menu with Submenu */}
           <>
-            <div 
+            <div
               ref={settingsMenuRef}
               className="relative group/menu"
               onMouseEnter={handleSettingsMouseEnter}
@@ -1226,7 +1226,7 @@ const AppContent = () => {
 
             {/* Flyout Submenu - Rendered using Portal (fixed position) */}
             {isSettingsHovered && (
-              <div 
+              <div
                 className="fixed z-[100]"
                 style={{
                   top: `${settingsFlyoutPosition.top}px`,
@@ -1447,7 +1447,8 @@ const AppContent = () => {
                           profile.role === 'inspector' ? 'ผู้ตรวจสอบ' :
                             profile.role === 'executive' ? 'ผู้บริหาร' :
                               profile.role === 'driver' ? 'พนักงานขับรถ' :
-                                'ผู้ใช้';
+                                profile.role === 'sales' ? 'ฝ่ายขาย' :
+                                  'ผู้ใช้';
                     }
                     // If we have user but no profile AND not loading anymore, show default
                     if (user && !profile && !authLoading) {
