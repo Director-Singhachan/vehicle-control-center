@@ -31,6 +31,7 @@ interface StoreDelivery {
   order_number: string;
   total_amount: number;
   sequence: number;
+  delivery_date: string | null;
 }
 
 export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: CreateTripFromOrdersViewProps) {
@@ -73,6 +74,7 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
         order_number: order.order_number,
         total_amount: order.total_amount,
         sequence: index + 1,
+        delivery_date: order.delivery_date || null,
       };
     });
   });
@@ -519,6 +521,18 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
                           <MapPin className="w-4 h-4 mt-0.5 flex-shrink-0" />
                           <p className="line-clamp-1">{delivery.address || 'ไม่มีที่อยู่'}</p>
                         </div>
+                        {delivery.delivery_date && (
+                          <div className="flex items-center gap-2 text-sm mt-1">
+                            <Calendar className="w-4 h-4 text-orange-600 flex-shrink-0" />
+                            <span className="font-medium text-orange-600">
+                              วันที่ลูกค้านัดส่ง: {new Date(delivery.delivery_date).toLocaleDateString('th-TH', {
+                                year: 'numeric',
+                                month: 'long',
+                                day: 'numeric',
+                              })}
+                            </span>
+                          </div>
+                        )}
                       </div>
 
                       {/* Amount */}
