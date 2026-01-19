@@ -34,7 +34,8 @@ export function PendingOrdersView() {
         order.customer_code?.toLowerCase().includes(searchQuery.toLowerCase()) ||
         order.order_number?.toLowerCase().includes(searchQuery.toLowerCase());
 
-      const matchesDate = !dateFilter || order.order_date === dateFilter;
+      // กรอกวันที่ใน filter แล้วให้กรองตามวันที่นัดส่ง ถ้ามี
+      const matchesDate = !dateFilter || order.delivery_date === dateFilter;
 
       return matchesSearch && matchesDate;
     });
@@ -430,17 +431,28 @@ export function PendingOrdersView() {
                           className="w-5 h-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
                         />
                         <div className="flex-1 grid grid-cols-4 gap-4 items-center">
-                          <div>
-                            <div className="font-mono text-sm font-semibold text-blue-700">
-                              {order.order_number}
-                            </div>
-                            <div className="text-xs text-gray-500">
-                              {new Date(order.order_date).toLocaleDateString('th-TH', {
-                                day: 'numeric',
-                                month: 'short',
-                              })}
-                            </div>
+                        <div>
+                          <div className="font-mono text-sm font-semibold text-blue-700">
+                            {order.order_number}
                           </div>
+                          <div className="text-xs text-gray-500">
+                            {new Date(order.order_date).toLocaleDateString('th-TH', {
+                              day: 'numeric',
+                              month: 'short',
+                            })}
+                          </div>
+                          {order.delivery_date && (
+                            <div className="flex items-center gap-1 mt-1">
+                              <Calendar className="w-3 h-3 text-orange-600" />
+                              <span className="text-xs font-medium text-orange-600">
+                                นัดส่ง: {new Date(order.delivery_date).toLocaleDateString('th-TH', {
+                                  day: 'numeric',
+                                  month: 'short',
+                                })}
+                              </span>
+                            </div>
+                          )}
+                        </div>
                           <div>
                             <div className="font-medium text-blue-900 dark:text-blue-100">{order.customer_name}</div>
                             <div className="text-xs text-blue-700 dark:text-blue-300">{order.customer_code}</div>
@@ -621,7 +633,28 @@ export function PendingOrdersView() {
                       {order.delivery_address && (
                         <div className="flex items-start gap-3 mb-4">
                           <MapPin className="w-5 h-5 text-gray-400 dark:text-gray-500 mt-0.5" />
-                          <p className="text-sm text-gray-700 dark:text-gray-300">{order.delivery_address}</p>
+                          <div>
+                            <p className="text-sm text-gray-700 dark:text-gray-300">{order.delivery_address}</p>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Delivery Date - แสดงเด่นชัดด้วยสีส้ม */}
+                      {order.delivery_date && (
+                        <div className="flex items-center gap-2 mb-4 p-3 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-lg">
+                          <Calendar className="w-5 h-5 text-orange-600 dark:text-orange-400 flex-shrink-0" />
+                          <div>
+                            <p className="text-sm font-semibold text-orange-900 dark:text-orange-100">
+                              วันที่ลูกค้านัดส่ง
+                            </p>
+                            <p className="text-sm font-medium text-orange-700 dark:text-orange-300">
+                              {new Date(order.delivery_date).toLocaleDateString('th-TH', {
+                                year: 'numeric',
+                                month: 'long',
+                                day: 'numeric',
+                              })}
+                            </p>
+                          </div>
                         </div>
                       )}
 

@@ -18,6 +18,7 @@ interface Order {
   created_at: string;
   status: string;
   store_id: string;
+  delivery_date?: string | null;
 }
 
 export function TrackOrdersView() {
@@ -226,6 +227,7 @@ export function TrackOrdersView() {
                   <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700 dark:text-gray-300">ร้านค้า</th>
                   <th className="text-right py-3 px-4 text-sm font-semibold text-gray-700 dark:text-gray-300">ยอดรวม</th>
                   <th className="text-center py-3 px-4 text-sm font-semibold text-gray-700 dark:text-gray-300">สถานะ</th>
+                  <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700 dark:text-gray-300">วันที่นัดส่ง</th>
                   <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700 dark:text-gray-300">วันที่สร้าง</th>
                   <th className="text-center py-3 px-4 text-sm font-semibold text-gray-700 dark:text-gray-300">จัดการ</th>
                 </tr>
@@ -242,6 +244,15 @@ export function TrackOrdersView() {
                       ฿{order.total_amount.toLocaleString()}
                     </td>
                     <td className="py-3 px-4 text-center">{getStatusBadge(order.status)}</td>
+                    <td className="py-3 px-4 text-sm text-gray-600 dark:text-gray-400">
+                      {order.delivery_date
+                        ? new Date(order.delivery_date).toLocaleDateString('th-TH', {
+                            year: 'numeric',
+                            month: 'short',
+                            day: 'numeric',
+                          })
+                        : '-'}
+                    </td>
                     <td className="py-3 px-4 text-sm text-gray-600 dark:text-gray-400">
                       {new Date(order.created_at).toLocaleDateString('th-TH', {
                         year: 'numeric',
@@ -303,15 +314,27 @@ export function TrackOrdersView() {
               </div>
               <div className="flex items-center gap-3 flex-wrap">
                 {getStatusBadge(detailOrder.status)}
-                <div className="text-sm text-gray-600 dark:text-gray-400">
-                  วันที่สร้าง:{' '}
-                  {new Date(detailOrder.created_at).toLocaleDateString('th-TH', {
-                    year: 'numeric',
-                    month: 'short',
-                    day: 'numeric',
-                    hour: '2-digit',
-                    minute: '2-digit',
-                  })}
+                <div className="text-sm text-gray-600 dark:text-gray-400 space-y-1">
+                  <div>
+                    วันที่สร้าง:{' '}
+                    {new Date(detailOrder.created_at).toLocaleDateString('th-TH', {
+                      year: 'numeric',
+                      month: 'short',
+                      day: 'numeric',
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })}
+                  </div>
+                  {detailOrder.delivery_date && (
+                    <div>
+                      วันที่ลูกค้านัดส่ง:{' '}
+                      {new Date(detailOrder.delivery_date).toLocaleDateString('th-TH', {
+                        year: 'numeric',
+                        month: 'short',
+                        day: 'numeric',
+                      })}
+                    </div>
+                  )}
                 </div>
                 <div className="text-sm font-semibold text-gray-900 dark:text-white">
                   ยอดรวม ฿{detailOrder.total_amount?.toLocaleString()}

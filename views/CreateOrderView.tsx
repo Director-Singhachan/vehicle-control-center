@@ -383,6 +383,8 @@ export function CreateOrderView() {
           status: 'confirmed',
           notes: notes || null,
           delivery_address: selectedStore.address || null,
+          // บันทึกวันที่ต้องการส่ง (ถ้าไม่ได้เลือก ให้เป็น null)
+          delivery_date: deliveryDate || null,
           created_by: user?.id,
           warehouse_id: selectedWarehouse?.id || null,
         },
