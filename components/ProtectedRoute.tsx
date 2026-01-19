@@ -7,8 +7,8 @@ import { Card } from './ui/Card';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
-  requiredRole?: 'user' | 'inspector' | 'manager' | 'executive' | 'admin';
-  requiredRoles?: ('user' | 'inspector' | 'manager' | 'executive' | 'admin')[];
+  requiredRole?: 'user' | 'inspector' | 'manager' | 'executive' | 'admin' | 'sales';
+  requiredRoles?: ('user' | 'inspector' | 'manager' | 'executive' | 'admin' | 'sales')[];
   fallback?: React.ReactNode;
 }
 
@@ -124,6 +124,8 @@ VITE_SUPABASE_ANON_KEY=your-anon-key-here`}
           return userRole === 'executive' || isAdmin;
         case 'driver':
           return userRole === 'driver' || isAdmin;
+        case 'sales':
+          return userRole === 'sales' || isAdmin;
         case 'user':
           return true; // All authenticated users
         default:

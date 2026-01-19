@@ -103,7 +103,7 @@ const SubSidebarItem = ({ label, active, onClick, isCollapsed, isFlyout }: any) 
 
 // Main App Content (wrapped in ProtectedRoute)
 const AppContent = () => {
-  const { user, profile, signOut, isAdmin, isManager, isInspector, isExecutive, isDriver, loading: authLoading, refreshProfile } = useAuth();
+  const { user, profile, signOut, isAdmin, isManager, isInspector, isExecutive, isDriver, isSales, loading: authLoading, refreshProfile } = useAuth();
 
   // Don't wait for profile - show UI immediately if user exists
   // Profile will load in background and update when ready
@@ -527,6 +527,28 @@ const AppContent = () => {
     }
   }, [isDriver, activeTab, fuelLogView]);
 
+  // Redirect sales to create-order page when they access restricted areas
+  // Sales can access: create-order, track-orders, sales-trips, products, product-pricing, customer-tiers, profile, settings
+  useEffect(() => {
+    if (isSales) {
+      const allowedTabs = [
+        'create-order',
+        'track-orders',
+        'sales-trips',
+        'products',
+        'product-pricing',
+        'customer-tiers',
+        'profile',
+        'settings'
+      ];
+      
+      // If sales tries to access restricted areas, redirect to create-order
+      if (!allowedTabs.includes(activeTab)) {
+        setActiveTab('create-order');
+      }
+    }
+  }, [isSales, activeTab]);
+
   // Set initial tab for drivers when profile loads - go directly to form
   useEffect(() => {
     if (isDriver && activeTab === 'dashboard') {
@@ -535,6 +557,13 @@ const AppContent = () => {
       setTripLogMode('checkout');
     }
   }, [isDriver, profile]);
+
+  // Set initial tab for sales when profile loads - go directly to create-order
+  useEffect(() => {
+    if (isSales && activeTab === 'dashboard') {
+      setActiveTab('create-order');
+    }
+  }, [isSales, profile]);
 
   // Force refresh profile on mount to ensure role is up to date
   useEffect(() => {
@@ -697,7 +726,7 @@ const AppContent = () => {
         </div>
 
         <div className="flex-1 px-3 space-y-1 mt-4 overflow-y-auto overflow-x-clip scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-700 scrollbar-track-transparent hover:scrollbar-thumb-gray-400 dark:hover:scrollbar-thumb-gray-600 [&:has(.group\/menu:hover)]:overflow-x-visible">
-          {!isDriver && (
+          {!isDriver && !isSales && (
             <SidebarItem
               icon={LayoutDashboard}
               label={isSidebarOpen ? "แดชบอร์ด" : ""}
@@ -707,7 +736,7 @@ const AppContent = () => {
               isCollapsed={!isSidebarOpen}
             />
           )}
-          {!isDriver && (
+          {!isDriver && !isSales && (
             <SidebarItem
               icon={Truck}
               label={isSidebarOpen ? "ยานพาหนะ" : ""}
@@ -717,35 +746,41 @@ const AppContent = () => {
               isCollapsed={!isSidebarOpen}
             />
           )}
-          <SidebarItem
-            icon={Wrench}
-            label={isSidebarOpen ? "การซ่อมบำรุง" : ""}
-            active={activeTab === 'maintenance'}
-            onClick={() => setActiveTab('maintenance')}
-            onMouseEnter={() => prefetchService.prefetchTicketsWithRelations()}
-            isCollapsed={!isSidebarOpen}
-          />
-          <SidebarItem
-            icon={Route}
-            label={isSidebarOpen ? "บันทึกการใช้งานรถ" : ""}
-            active={activeTab === 'triplogs'}
-            onClick={() => {
-              setActiveTab('triplogs');
-              setTripLogView('list');
-            }}
-            isCollapsed={!isSidebarOpen}
-          />
-          <SidebarItem
-            icon={Droplet}
-            label={isSidebarOpen ? "บันทึกการเติมน้ำมัน" : ""}
-            active={activeTab === 'fuellogs'}
-            onClick={() => {
-              setActiveTab('fuellogs');
-              // Drivers go directly to form, others go to list
-              setFuelLogView(isDriver ? 'form' : 'list');
-            }}
-            isCollapsed={!isSidebarOpen}
-          />
+          {!isSales && (
+            <SidebarItem
+              icon={Wrench}
+              label={isSidebarOpen ? "การซ่อมบำรุง" : ""}
+              active={activeTab === 'maintenance'}
+              onClick={() => setActiveTab('maintenance')}
+              onMouseEnter={() => prefetchService.prefetchTicketsWithRelations()}
+              isCollapsed={!isSidebarOpen}
+            />
+          )}
+          {!isSales && (
+            <SidebarItem
+              icon={Route}
+              label={isSidebarOpen ? "บันทึกการใช้งานรถ" : ""}
+              active={activeTab === 'triplogs'}
+              onClick={() => {
+                setActiveTab('triplogs');
+                setTripLogView('list');
+              }}
+              isCollapsed={!isSidebarOpen}
+            />
+          )}
+          {!isSales && (
+            <SidebarItem
+              icon={Droplet}
+              label={isSidebarOpen ? "บันทึกการเติมน้ำมัน" : ""}
+              active={activeTab === 'fuellogs'}
+              onClick={() => {
+                setActiveTab('fuellogs');
+                // Drivers go directly to form, others go to list
+                setFuelLogView(isDriver ? 'form' : 'list');
+              }}
+              isCollapsed={!isSidebarOpen}
+            />
+          )}
           {/* Show approval board menu - check role directly for reliability */}
           {(() => {
             const userRole = profile?.role?.toLowerCase();
@@ -766,7 +801,7 @@ const AppContent = () => {
               />
             ) : null;
           })()}
-          {!isDriver && (
+          {!isDriver && !isSales && (
             <SidebarItem
               icon={Calendar}
               label={isSidebarOpen ? "สรุปการใช้รถรายวัน" : ""}
@@ -775,7 +810,7 @@ const AppContent = () => {
               isCollapsed={!isSidebarOpen}
             />
           )}
-          {!isDriver && (
+          {!isDriver && !isSales && (
             <SidebarItem
               icon={FileText}
               label={isSidebarOpen ? "รายงาน" : ""}
@@ -784,7 +819,7 @@ const AppContent = () => {
               isCollapsed={!isSidebarOpen}
             />
           )}
-          {!isDriver && (
+          {!isDriver && !isSales && (
             <div 
               ref={tripsMenuRef}
               className="relative group/menu"
@@ -853,7 +888,7 @@ const AppContent = () => {
               </div>
             </div>
           )}
-          {!isDriver && (
+          {!isDriver && !isSales && (
             <SidebarItem
               icon={Users}
               label={isSidebarOpen ? "จัดการพนักงาน" : ""}
@@ -864,7 +899,7 @@ const AppContent = () => {
           )}
 
           {/* Commission Section - kept inside main menu but allow flyout */}
-          {!isDriver && (
+          {!isDriver && !isSales && (
             <>
               <div 
                 ref={commissionMenuRef}
@@ -932,7 +967,7 @@ const AppContent = () => {
           )}
 
           {/* Stock Management Section with Submenu */}
-          {!isDriver && (
+          {!isDriver && !isSales && (
             <>
               <div 
                 ref={stockMenuRef}
@@ -1010,7 +1045,7 @@ const AppContent = () => {
           )}
 
           {/* Orders Menu with Submenu (Sales) */}
-          {!isDriver && (
+          {(!isDriver || isSales) && (
             <>
               <div 
                 ref={ordersMenuRef}
