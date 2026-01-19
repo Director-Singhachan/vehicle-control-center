@@ -2,7 +2,7 @@ import React from 'react';
 
 interface PageLayoutProps {
   title?: string;
-  children: React.ReactNode;
+  children?: React.ReactNode;
   actions?: React.ReactNode;
 }
 
@@ -15,7 +15,7 @@ export function PageLayout({ title, children, actions }: PageLayoutProps) {
           {actions && <div>{actions}</div>}
         </div>
       )}
-      <div>{children}</div>
+      {children && <div>{children}</div>}
     </div>
   );
 }
