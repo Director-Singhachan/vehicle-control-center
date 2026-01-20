@@ -185,20 +185,12 @@ export const fuelService = {
       delete (updates as any).odometer;
     }
 
-    // Recalculate total_cost if liters or price_per_liter changed
-    if (updates.liters !== undefined || updates.price_per_liter !== undefined) {
-      // Get current values to fill gaps
-      const { data: current } = await supabase
-        .from('fuel_records')
-        .select('liters, price_per_liter')
-        .eq('id', id)
-        .single();
+    // Note: total_cost is a generated column, so we don't need to calculate or send it
+    // It will be automatically calculated by the database as: liters * price_per_liter
 
-      if (current) {
-        const liters = updates.liters !== undefined ? Number(updates.liters) : Number(current.liters);
-        const pricePerLiter = updates.price_per_liter !== undefined ? Number(updates.price_per_liter) : Number(current.price_per_liter);
-        (updates as any).total_cost = liters * pricePerLiter;
-      }
+    // Remove total_cost from updates if it exists (it's a generated column)
+    if ('total_cost' in updates) {
+      delete (updates as any).total_cost;
     }
 
     const { data, error } = await supabase

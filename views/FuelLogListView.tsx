@@ -484,6 +484,7 @@ export const FuelLogListView: React.FC<FuelLogListViewProps> = ({
                     <tr className="border-b border-slate-200 dark:border-slate-700">
                       <th className="text-left py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">อันดับ</th>
                       <th className="text-left py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">ทะเบียน</th>
+                      <th className="text-left py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">สาขา</th>
                       <th className="text-left py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">ยี่ห้อ/รุ่น</th>
                       <th className="text-right py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">ประสิทธิภาพ (km/L)</th>
                       <th className="text-right py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">ระยะทางรวม (km)</th>
@@ -520,6 +521,18 @@ export const FuelLogListView: React.FC<FuelLogListViewProps> = ({
                         </td>
                         <td className="py-3 px-4 text-slate-900 dark:text-slate-100 font-medium">
                           {vehicle.plate}
+                        </td>
+                        <td className="py-3 px-4">
+                          {(() => {
+                            const vehicleData = vehicles.find(v => v.id === vehicle.vehicle_id);
+                            return vehicleData?.branch ? (
+                              <span className="inline-flex items-center px-2 py-1 bg-enterprise-100 dark:bg-enterprise-900 text-enterprise-700 dark:text-enterprise-300 rounded text-xs font-medium">
+                                {vehicleData.branch}
+                              </span>
+                            ) : (
+                              <span className="text-slate-400 dark:text-slate-500 text-sm">-</span>
+                            );
+                          })()}
                         </td>
                         <td className="py-3 px-4 text-slate-600 dark:text-slate-400">
                           {vehicle.make && vehicle.model ? `${vehicle.make} ${vehicle.model}` : '-'}
@@ -719,6 +732,14 @@ export const FuelLogListView: React.FC<FuelLogListViewProps> = ({
                               {vehicle?.plate || (record as any).vehicle?.plate || 'N/A'}
                             </h3>
                             <p className="text-sm text-slate-500 dark:text-slate-400">
+                              {vehicle?.branch || (record as any).vehicle?.branch ? (
+                                <span className="inline-flex items-center gap-1">
+                                  <span className="px-2 py-0.5 bg-enterprise-100 dark:bg-enterprise-900 text-enterprise-700 dark:text-enterprise-300 rounded text-xs font-medium">
+                                    {vehicle?.branch || (record as any).vehicle?.branch}
+                                  </span>
+                                  <span>•</span>
+                                </span>
+                              ) : null}
                               {FUEL_TYPE_LABELS[record.fuel_type] || record.fuel_type} • {formatDateOnly(record.filled_at)}
                             </p>
                           </div>
