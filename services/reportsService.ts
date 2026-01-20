@@ -400,20 +400,39 @@ export const reportsService = {
       queryStartDate.setMonth(queryStartDate.getMonth() - months);
     }
 
-    let query = supabase
-      .from('fuel_efficiency_summary')
-      .select('*')
-      .gte('month', queryStartDate.toISOString().split('T')[0]);
+    // Query from fuel_records directly to support branch filtering
+    let query;
+    
+    if (branch) {
+      // Filter by branch using vehicle join
+      query = supabase
+        .from('fuel_records')
+        .select(`
+          filled_at,
+          liters,
+          total_cost,
+          fuel_efficiency,
+          vehicle:vehicles!inner(branch)
+        `)
+        .eq('vehicle.branch', branch)
+        .gte('filled_at', queryStartDate.toISOString());
+    } else {
+      // Use view for better performance when no branch filter
+      query = supabase
+        .from('fuel_efficiency_summary')
+        .select('*')
+        .gte('month', queryStartDate.toISOString().split('T')[0]);
+    }
 
     if (endDate) {
-      query = query.lte('month', endDate.toISOString().split('T')[0]);
+      if (branch) {
+        query = query.lte('filled_at', endDate.toISOString());
+      } else {
+        query = query.lte('month', endDate.toISOString().split('T')[0]);
+      }
     }
 
-    if (branch) {
-      query = query.eq('branch', branch);
-    }
-
-    const { data, error } = await query.order('month', { ascending: true });
+    const { data, error } = await (branch ? query.order('filled_at', { ascending: true }) : query.order('month', { ascending: true }));
 
     if (error) throw error;
 
@@ -426,27 +445,54 @@ export const reportsService = {
       efficiencies: number[];
     }>();
 
-    data?.forEach(record => {
-      const monthKey = record.month.toString().substring(0, 7); // YYYY-MM
+    if (branch) {
+      // Process fuel_records data when filtering by branch
+      data?.forEach((record: any) => {
+        const filledAt = new Date(record.filled_at);
+        const monthKey = `${filledAt.getFullYear()}-${String(filledAt.getMonth() + 1).padStart(2, '0')}`;
 
-      if (!monthMap.has(monthKey)) {
-        monthMap.set(monthKey, {
-          totalLiters: 0,
-          totalCost: 0,
-          totalPrice: 0,
-          fillCount: 0,
-          efficiencies: [],
-        });
-      }
+        if (!monthMap.has(monthKey)) {
+          monthMap.set(monthKey, {
+            totalLiters: 0,
+            totalCost: 0,
+            totalPrice: 0,
+            fillCount: 0,
+            efficiencies: [],
+          });
+        }
 
-      const entry = monthMap.get(monthKey)!;
-      entry.totalLiters += record.total_liters || 0;
-      entry.totalCost += record.total_cost || 0;
-      entry.fillCount += record.fill_count || 0;
-      if (record.avg_efficiency) {
-        entry.efficiencies.push(record.avg_efficiency);
-      }
-    });
+        const entry = monthMap.get(monthKey)!;
+        entry.totalLiters += Number(record.liters) || 0;
+        entry.totalCost += Number(record.total_cost) || 0;
+        entry.fillCount += 1;
+        if (record.fuel_efficiency) {
+          entry.efficiencies.push(Number(record.fuel_efficiency));
+        }
+      });
+    } else {
+      // Process fuel_efficiency_summary data
+      data?.forEach((record: any) => {
+        const monthKey = record.month.toString().substring(0, 7); // YYYY-MM
+
+        if (!monthMap.has(monthKey)) {
+          monthMap.set(monthKey, {
+            totalLiters: 0,
+            totalCost: 0,
+            totalPrice: 0,
+            fillCount: 0,
+            efficiencies: [],
+          });
+        }
+
+        const entry = monthMap.get(monthKey)!;
+        entry.totalLiters += Number(record.total_liters) || 0;
+        entry.totalCost += Number(record.total_cost) || 0;
+        entry.fillCount += Number(record.fill_count) || 0;
+        if (record.avg_efficiency) {
+          entry.efficiencies.push(Number(record.avg_efficiency));
+        }
+      });
+    }
 
     // Convert to array
     const sortedMonths = Array.from(monthMap.entries()).sort();
@@ -574,7 +620,14 @@ export const reportsService = {
 
   // Get fuel trend (for charts)
   getFuelTrend: async (months: number = 6, startDate?: Date, endDate?: Date, branch?: string): Promise<FuelTrend> => {
-    const report = await reportsService.getMonthlyFuelReport(months, startDate, endDate, branch);
+    // ดึงรายงาน 6 เดือนล่าสุด (หรือช่วงวันที่ที่ระบุ)
+    let report = await reportsService.getMonthlyFuelReport(months, startDate, endDate, branch);
+
+    // ถ้าไม่มีข้อมูลเลย และไม่ได้กำหนดช่วงวันที่ -> ลองขยายช่วงเป็น 24 เดือน
+    if (report.length === 0 && !startDate && !endDate) {
+      const fallbackMonths = 24;
+      report = await reportsService.getMonthlyFuelReport(fallbackMonths, undefined, undefined, branch);
+    }
 
     return {
       labels: report.map(r => r.monthLabel),
