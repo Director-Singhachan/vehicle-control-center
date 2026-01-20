@@ -79,6 +79,7 @@ export const FuelLogListView: React.FC<FuelLogListViewProps> = ({
   const [expandedImage, setExpandedImage] = useState<{ src: string; alt: string } | null>(null);
   const [selectedVehicleImage, setSelectedVehicleImage] = useState<{ url: string; alt: string } | null>(null);
   const [editFuelRecordId, setEditFuelRecordId] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
 
   const [filters, setFilters] = useState<{
     vehicle_id?: string;
