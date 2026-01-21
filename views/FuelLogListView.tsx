@@ -27,7 +27,9 @@ import { ImageModal } from '../components/ui/ImageModal';
 import { useFuelLogs, useFuelStats, useVehicles, useVehicleEfficiencyComparison } from '../hooks';
 import { useVehicleFuelComparison, useFuelTrend } from '../hooks/useReports';
 import type { Database } from '../types/database';
+import { fuelService } from '../services/fuelService';
 import { FuelLogEditView } from './FuelLogEditView';
+import { excelExport } from '../utils/excelExport';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -77,6 +79,7 @@ export const FuelLogListView: React.FC<FuelLogListViewProps> = ({
   const [expandedImage, setExpandedImage] = useState<{ src: string; alt: string } | null>(null);
   const [selectedVehicleImage, setSelectedVehicleImage] = useState<{ url: string; alt: string } | null>(null);
   const [editFuelRecordId, setEditFuelRecordId] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
 
   const [filters, setFilters] = useState<{
     vehicle_id?: string;
@@ -175,9 +178,48 @@ export const FuelLogListView: React.FC<FuelLogListViewProps> = ({
     });
   };
 
-  const handleExport = () => {
-    // TODO: Implement Excel export
-    alert('ฟีเจอร์ Export to Excel กำลังพัฒนา');
+  const handleExport = async () => {
+    try {
+      setExporting(true);
+      // Fetch all data matching current filters
+      const { data } = await fuelService.getFuelHistory({
+        ...filters,
+        limit: 10000, // Large limit to get all records
+        offset: 0
+      });
+
+      // Prepare columns
+      const columns = [
+        { key: 'filled_at', label: 'วันที่เติม', format: excelExport.formatDateTime },
+        { key: 'plate', label: 'ทะเบียนรถ' },
+        { key: 'branch', label: 'สาขา' },
+        { key: 'fuel_type', label: 'ประเภทน้ำมัน', format: (v: string) => FUEL_TYPE_LABELS[v] || v },
+        { key: 'odometer', label: 'เลขไมล์ (km)', format: excelExport.formatNumber },
+        { key: 'distance_since_last_fill', label: 'ระยะทางที่วิ่งได้ (km)', format: excelExport.formatNumber },
+        { key: 'liters', label: 'จำนวนลิตร', format: (v: number) => excelExport.formatNumber(v, 2) },
+        { key: 'price_per_liter', label: 'ราคา/ลิตร', format: (v: number) => excelExport.formatCurrency(v) },
+        { key: 'total_cost', label: 'ราคารวม', format: (v: number) => excelExport.formatCurrency(v) },
+        { key: 'fuel_efficiency', label: 'อัตราสิ้นเปลือง (km/L)', format: (v: number) => excelExport.formatNumber(v, 2) },
+        { key: 'fuel_station', label: 'สถานีบริการ' },
+        { key: 'full_name', label: 'ผู้เติม' },
+        { key: 'notes', label: 'หมายเหตุ' }
+      ];
+
+      // Map data to flat structure for export
+      const exportData = data.map(record => ({
+        ...record,
+        plate: record.vehicle?.plate || 'N/A',
+        branch: record.vehicle?.branch || '-',
+        full_name: record.user?.full_name || 'N/A',
+      }));
+
+      excelExport.exportToExcel(exportData, columns, 'fuel_history_export.xlsx', 'Fuel History');
+    } catch (error) {
+      console.error('Export failed:', error);
+      alert('เกิดข้อผิดพลาดในการ Export ข้อมูล');
+    } finally {
+      setExporting(false);
+    }
   };
 
   const selectedVehicle = vehicles.find(v => v.id === filters.vehicle_id);
@@ -233,9 +275,9 @@ export const FuelLogListView: React.FC<FuelLogListViewProps> = ({
               บันทึกการเติมน้ำมัน
             </Button>
           )}
-          <Button variant="outline" onClick={handleExport}>
-            <Download className="w-4 h-4 mr-2" />
-            Export Excel
+          <Button variant="outline" onClick={handleExport} disabled={exporting}>
+            <Download className={`w-4 h-4 mr-2 ${exporting ? 'animate-bounce' : ''}`} />
+            {exporting ? 'กำลัง Export...' : 'Export Excel'}
           </Button>
         </div>
       }
@@ -484,6 +526,7 @@ export const FuelLogListView: React.FC<FuelLogListViewProps> = ({
                     <tr className="border-b border-slate-200 dark:border-slate-700">
                       <th className="text-left py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">อันดับ</th>
                       <th className="text-left py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">ทะเบียน</th>
+                      <th className="text-left py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">สาขา</th>
                       <th className="text-left py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">ยี่ห้อ/รุ่น</th>
                       <th className="text-right py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">ประสิทธิภาพ (km/L)</th>
                       <th className="text-right py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">ระยะทางรวม (km)</th>
@@ -520,6 +563,18 @@ export const FuelLogListView: React.FC<FuelLogListViewProps> = ({
                         </td>
                         <td className="py-3 px-4 text-slate-900 dark:text-slate-100 font-medium">
                           {vehicle.plate}
+                        </td>
+                        <td className="py-3 px-4">
+                          {(() => {
+                            const vehicleData = vehicles.find(v => v.id === vehicle.vehicle_id);
+                            return vehicleData?.branch ? (
+                              <span className="inline-flex items-center px-2 py-1 bg-enterprise-100 dark:bg-enterprise-900 text-enterprise-700 dark:text-enterprise-300 rounded text-xs font-medium">
+                                {vehicleData.branch}
+                              </span>
+                            ) : (
+                              <span className="text-slate-400 dark:text-slate-500 text-sm">-</span>
+                            );
+                          })()}
                         </td>
                         <td className="py-3 px-4 text-slate-600 dark:text-slate-400">
                           {vehicle.make && vehicle.model ? `${vehicle.make} ${vehicle.model}` : '-'}
@@ -719,6 +774,14 @@ export const FuelLogListView: React.FC<FuelLogListViewProps> = ({
                               {vehicle?.plate || (record as any).vehicle?.plate || 'N/A'}
                             </h3>
                             <p className="text-sm text-slate-500 dark:text-slate-400">
+                              {vehicle?.branch || (record as any).vehicle?.branch ? (
+                                <span className="inline-flex items-center gap-1">
+                                  <span className="px-2 py-0.5 bg-enterprise-100 dark:bg-enterprise-900 text-enterprise-700 dark:text-enterprise-300 rounded text-xs font-medium">
+                                    {vehicle?.branch || (record as any).vehicle?.branch}
+                                  </span>
+                                  <span>•</span>
+                                </span>
+                              ) : null}
                               {FUEL_TYPE_LABELS[record.fuel_type] || record.fuel_type} • {formatDateOnly(record.filled_at)}
                             </p>
                           </div>

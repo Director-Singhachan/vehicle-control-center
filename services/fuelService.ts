@@ -185,20 +185,12 @@ export const fuelService = {
       delete (updates as any).odometer;
     }
 
-    // Recalculate total_cost if liters or price_per_liter changed
-    if (updates.liters !== undefined || updates.price_per_liter !== undefined) {
-      // Get current values to fill gaps
-      const { data: current } = await supabase
-        .from('fuel_records')
-        .select('liters, price_per_liter')
-        .eq('id', id)
-        .single();
+    // Note: total_cost is a generated column, so we don't need to calculate or send it
+    // It will be automatically calculated by the database as: liters * price_per_liter
 
-      if (current) {
-        const liters = updates.liters !== undefined ? Number(updates.liters) : Number(current.liters);
-        const pricePerLiter = updates.price_per_liter !== undefined ? Number(updates.price_per_liter) : Number(current.price_per_liter);
-        (updates as any).total_cost = liters * pricePerLiter;
-      }
+    // Remove total_cost from updates if it exists (it's a generated column)
+    if ('total_cost' in updates) {
+      delete (updates as any).total_cost;
     }
 
     const { data, error } = await supabase
@@ -311,12 +303,12 @@ export const fuelService = {
     if (filters?.branch) {
       query = supabase
         .from('fuel_records')
-        .select('total_cost, liters, price_per_liter, fuel_efficiency, vehicle:vehicles!inner(branch)')
+        .select('vehicle_id, total_cost, liters, price_per_liter, fuel_efficiency, distance_since_last_fill, odometer, vehicle:vehicles!inner(branch)')
         .eq('vehicle.branch', filters.branch);
     } else {
       query = supabase
         .from('fuel_records')
-        .select('total_cost, liters, price_per_liter, fuel_efficiency');
+        .select('vehicle_id, total_cost, liters, price_per_liter, fuel_efficiency, distance_since_last_fill, odometer');
     }
 
     if (filters?.vehicle_id) {
@@ -337,14 +329,101 @@ export const fuelService = {
     const totalCost = records.reduce((sum, r) => sum + (Number(r.total_cost) || 0), 0);
     const totalLiters = records.reduce((sum, r) => sum + (Number(r.liters) || 0), 0);
     const totalPrice = records.reduce((sum, r) => sum + (Number(r.price_per_liter) || 0), 0);
-    const efficiencyRecords = records.filter(r => r.fuel_efficiency !== null);
-    const totalEfficiency = efficiencyRecords.reduce((sum, r) => sum + (Number(r.fuel_efficiency) || 0), 0);
+    
+    // คำนวณประสิทธิภาพเฉลี่ย
+    let averageEfficiency: number | null = null;
+    
+    // วิธีที่ 1: ใช้ distance_since_last_fill (แม่นยำที่สุด)
+    // สูตร: totalDistance / totalLiters
+    const totalDistance = records.reduce((sum, r) => sum + (Number(r.distance_since_last_fill) || 0), 0);
+    if (totalDistance > 0 && totalLiters > 0) {
+      averageEfficiency = totalDistance / totalLiters;
+    } else {
+      // วิธีที่ 2: ใช้ weighted average ของ fuel_efficiency
+      // สูตร: Σ(fuel_efficiency_i × liters_i) / Σ(liters_i)
+      const efficiencyRecords = records.filter(r => {
+        const efficiency = Number(r.fuel_efficiency);
+        const liters = Number(r.liters);
+        return efficiency !== null && !isNaN(efficiency) && efficiency > 0 && efficiency < 100 && liters > 0;
+      });
+      
+      if (efficiencyRecords.length > 0) {
+        // Weighted average: คำนวณจาก fuel_efficiency × liters
+        const totalWeightedEfficiency = efficiencyRecords.reduce((sum, r) => {
+          const efficiency = Number(r.fuel_efficiency);
+          const liters = Number(r.liters);
+          return sum + (efficiency * liters);
+        }, 0);
+        
+        const totalEfficiencyLiters = efficiencyRecords.reduce((sum, r) => sum + (Number(r.liters) || 0), 0);
+        
+        if (totalEfficiencyLiters > 0) {
+          averageEfficiency = totalWeightedEfficiency / totalEfficiencyLiters;
+        }
+      } else {
+        // วิธีที่ 3: คำนวณจาก odometer range แยกตาม vehicle_id
+        // Group by vehicle_id
+        const vehicleData = new Map<string, {
+          odometers: number[];
+          liters: number[];
+        }>();
+        
+        records.forEach(r => {
+          const vehicleId = (r as any).vehicle_id || 'unknown';
+          const odometer = Number((r as any).odometer) || 0;
+          const liters = Number(r.liters) || 0;
+          
+          if (odometer > 0 && liters > 0) {
+            if (!vehicleData.has(vehicleId)) {
+              vehicleData.set(vehicleId, { odometers: [], liters: [] });
+            }
+            const data = vehicleData.get(vehicleId)!;
+            data.odometers.push(odometer);
+            data.liters.push(liters);
+          }
+        });
+        
+        // คำนวณประสิทธิภาพแยกตาม vehicle แล้วหาค่าเฉลี่ยแบบ weighted
+        let totalWeightedEfficiency = 0;
+        let totalWeightedLiters = 0;
+        
+        vehicleData.forEach((data, vehicleId) => {
+          if (data.odometers.length >= 2) {
+            const minOdo = Math.min(...data.odometers);
+            const maxOdo = Math.max(...data.odometers);
+            const vehicleLiters = data.liters.reduce((sum, l) => sum + l, 0);
+            const odometerRange = maxOdo - minOdo;
+            
+            if (odometerRange > 0 && vehicleLiters > 0) {
+              const vehicleEfficiency = odometerRange / vehicleLiters;
+              // Weighted by liters
+              totalWeightedEfficiency += vehicleEfficiency * vehicleLiters;
+              totalWeightedLiters += vehicleLiters;
+            }
+          }
+        });
+        
+        if (totalWeightedLiters > 0) {
+          averageEfficiency = totalWeightedEfficiency / totalWeightedLiters;
+        }
+      }
+    }
+    
+    // Debug logging
+    console.log('[fuelService.getFuelStats]', {
+      totalRecords: records.length,
+      totalLiters,
+      totalDistance,
+      averageEfficiency,
+      hasDistanceData: totalDistance > 0,
+      hasEfficiencyData: records.some(r => r.fuel_efficiency !== null),
+    });
 
     return {
       totalCost,
       totalLiters,
       averagePricePerLiter: records.length > 0 ? totalPrice / records.length : 0,
-      averageEfficiency: efficiencyRecords.length > 0 ? totalEfficiency / efficiencyRecords.length : null,
+      averageEfficiency,
       totalRecords: records.length,
     };
   },
