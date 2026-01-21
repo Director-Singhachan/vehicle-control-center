@@ -14,6 +14,7 @@ export interface UseDeliveryTripsOptions {
   page?: number;
   pageSize?: number;
   lite?: boolean;
+  sortAscending?: boolean; // If true, sort by planned_date/created_at ASC (oldest first)
 }
 
 export const useDeliveryTrips = (options: UseDeliveryTripsOptions = { autoFetch: true }) => {
@@ -46,6 +47,7 @@ export const useDeliveryTrips = (options: UseDeliveryTripsOptions = { autoFetch:
         page,
         pageSize,
         lite: options.lite !== false, // Default to true (lite mode) if not specified
+        sortAscending: options.sortAscending === true,
       });
       setTrips(data);
       setTotal(total);
@@ -78,6 +80,7 @@ export const useDeliveryTrips = (options: UseDeliveryTripsOptions = { autoFetch:
     options.page,
     options.pageSize,
     options.lite,
+    options.sortAscending,
   ]);
 
   // Prefetch next page (basic implementation)
@@ -98,6 +101,7 @@ export const useDeliveryTrips = (options: UseDeliveryTripsOptions = { autoFetch:
         page,
         pageSize: options.pageSize || 20,
         lite: options.lite !== false,
+        sortAscending: options.sortAscending === true,
       });
     } catch (err) {
       // Ignore prefetch errors
@@ -113,6 +117,7 @@ export const useDeliveryTrips = (options: UseDeliveryTripsOptions = { autoFetch:
     options.search,
     options.pageSize,
     options.lite,
+    options.sortAscending,
   ]);
 
   useEffect(() => {

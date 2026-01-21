@@ -25,6 +25,7 @@ export function SalesTripsView() {
     planned_date_from: dateFilter,
     planned_date_to: dateFilter,
     lite: false, // Fetch full store details
+    sortAscending: true, // Oldest trips first (created earlier at top)
   });
 
   // Show all trips that are ready for invoicing
