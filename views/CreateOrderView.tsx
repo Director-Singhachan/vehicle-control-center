@@ -356,17 +356,22 @@ export function CreateOrderView() {
 
   // บันทึกออเดอร์
   const handleSubmit = async () => {
+    if (!selectedWarehouse) {
+      error('กรุณาเลือกคลังสินค้าก่อนสร้างออเดอร์');
+      return;
+    }
+
     if (!selectedStore) {
       error('กรุณาเลือกร้านค้า');
       return;
     }
 
-  // validate quantities > 0
-  const hasInvalidQuantity = orderItems.some(item => Number(item.quantity || 0) <= 0);
-  if (hasInvalidQuantity) {
-    error('กรุณาใส่จำนวนสินค้ามากกว่า 0');
-    return;
-  }
+    // validate quantities > 0
+    const hasInvalidQuantity = orderItems.some(item => Number(item.quantity || 0) <= 0);
+    if (hasInvalidQuantity) {
+      error('กรุณาใส่จำนวนสินค้ามากกว่า 0');
+      return;
+    }
 
     if (orderItems.length === 0) {
       error('กรุณาเพิ่มสินค้าอย่างน้อย 1 รายการ');
@@ -966,7 +971,7 @@ export function CreateOrderView() {
 
               <Button
                 onClick={handleSubmit}
-                disabled={!selectedStore || orderItems.length === 0 || isSubmitting}
+        disabled={!selectedWarehouse || !selectedStore || orderItems.length === 0 || isSubmitting}
                 className="w-full"
               >
                 {isSubmitting ? 'กำลังบันทึก...' : 'สร้างออเดอร์'}
