@@ -787,18 +787,6 @@ export const FuelLogListView: React.FC<FuelLogListViewProps> = ({
                           </div>
                         </div>
 
-                        <div className="absolute top-6 right-6 flex items-center gap-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => setEditFuelRecordId(record.id)}
-                            className="flex items-center gap-1"
-                          >
-                            <Edit2 size={16} />
-                            แก้ไขข้อมูล
-                          </Button>
-                        </div>
-
                         <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mt-4 text-sm">
                           <div>
                             <p className="text-slate-500 dark:text-slate-400 mb-1 flex items-center gap-1">
@@ -952,6 +940,15 @@ export const FuelLogListView: React.FC<FuelLogListViewProps> = ({
                       </div>
 
                       <div className="flex flex-col gap-2 items-end">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setEditFuelRecordId(record.id)}
+                          className="flex items-center gap-1"
+                        >
+                          <Edit2 size={16} />
+                          แก้ไขข้อมูล
+                        </Button>
                         <div className="text-xs text-slate-500 dark:text-slate-400">
                           {formatDate(record.filled_at)}
                         </div>
