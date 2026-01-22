@@ -7,6 +7,7 @@ export * from './useAuth';
 export * from './useApprovalHistory';
 export * from './useTripLogs';
 export * from './usePendingTickets';
+export * from './usePendingBillingTrips';
 export * from './useFuelLogs';
 export * from './useReports';
 export * from './useMaintenanceHistory';

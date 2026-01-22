@@ -5,7 +5,7 @@ interface ModalProps {
   isOpen: boolean;
   onClose: () => void;
   title: string;
-  children: React.ReactNode;
+  children?: React.ReactNode; // Optional to fix TypeScript JSX children detection
   size?: 'small' | 'medium' | 'large';
 }
 

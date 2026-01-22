@@ -10,6 +10,8 @@ export interface UseDeliveryTripsOptions {
   planned_date_to?: string;
   search?: string;
   autoFetch?: boolean;
+  autoRefresh?: boolean; // Enable/disable auto-refresh (default: true)
+  autoRefreshInterval?: number; // Auto-refresh interval in milliseconds (default: 30000)
   has_item_changes?: boolean;
   page?: number;
   pageSize?: number;
@@ -130,14 +132,15 @@ export const useDeliveryTrips = (options: UseDeliveryTripsOptions = { autoFetch:
   // even if the user keeps the page open for a long time.
   useEffect(() => {
     if (options.autoFetch === false) return;
+    if (options.autoRefresh === false) return; // Allow disabling auto-refresh
 
     const interval = setInterval(() => {
       // Use the memoized fetchTrips (no cache layer here)
       fetchTrips();
-    }, 30000); // refresh every 30 seconds
+    }, options.autoRefreshInterval || 60000); // Default to 60 seconds (longer interval for better performance)
 
     return () => clearInterval(interval);
-  }, [fetchTrips, options.autoFetch]);
+  }, [fetchTrips, options.autoFetch, options.autoRefresh, options.autoRefreshInterval]);
 
   return {
     trips,
