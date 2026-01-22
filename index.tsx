@@ -67,6 +67,7 @@ import { SalesTripsView } from './views/SalesTripsView';
 import { CleanupTestOrdersView } from './views/CleanupTestOrdersView';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { useAuth, usePendingTickets } from './hooks';
+import { usePendingBillingTrips } from './hooks/usePendingBillingTrips';
 import { ticketService, type TicketWithRelations } from './services/ticketService';
 import { prefetchService } from './services/prefetchService';
 import { Avatar } from './components/ui/Avatar';
@@ -107,7 +108,11 @@ const AppContent = () => {
 
   // Don't wait for profile - show UI immediately if user exists
   // Profile will load in background and update when ready
-  const { count: pendingCount } = usePendingTickets();
+  const { count: pendingTicketsCount } = usePendingTickets();
+  const { count: pendingBillingTripsCount, trips: pendingBillingTrips } = usePendingBillingTrips();
+  
+  // Combine counts for notification badge
+  const pendingCount = isSales ? pendingBillingTripsCount : pendingTicketsCount;
   const [isDark, setIsDark] = useState(true);
   const [isSidebarOpen, setSidebarOpen] = useState(() => {
     if (typeof window === 'undefined') {
@@ -572,7 +577,7 @@ const AppContent = () => {
     }
   }, [user]);
 
-  // Load pending tickets for notification dropdown when opened
+  // Load pending tickets or billing trips for notification dropdown when opened
   useEffect(() => {
     const loadNotifications = async () => {
       if (!showNotifications) return;
@@ -580,29 +585,36 @@ const AppContent = () => {
 
       setLoadingNotifications(true);
       try {
-        let statusFilter: string[] = [];
-        const role = profile.role;
-
-        if (role === 'inspector') {
-          statusFilter = ['pending'];
-        } else if (role === 'manager') {
-          statusFilter = ['approved_inspector'];
-        } else if (role === 'executive') {
-          statusFilter = ['approved_manager'];
+        // For sales role, trips are already loaded by usePendingBillingTrips hook
+        // We don't need to fetch again, just set loading to false
+        if (isSales) {
+          setNotificationItems([]); // Clear ticket items, we'll show trips from hook instead
         } else {
-          statusFilter = [];
-        }
+          // For other roles, show pending tickets
+          let statusFilter: string[] = [];
+          const role = profile.role;
 
-        if (statusFilter.length === 0) {
-          setNotificationItems([]);
-          return;
-        }
+          if (role === 'inspector') {
+            statusFilter = ['pending'];
+          } else if (role === 'manager') {
+            statusFilter = ['approved_inspector'];
+          } else if (role === 'executive') {
+            statusFilter = ['approved_manager'];
+          } else {
+            statusFilter = [];
+          }
 
-        const { data } = await ticketService.getWithRelations({
-          status: statusFilter,
-          limit: 10,
-        });
-        setNotificationItems(data);
+          if (statusFilter.length === 0) {
+            setNotificationItems([]);
+            return;
+          }
+
+          const { data } = await ticketService.getWithRelations({
+            status: statusFilter,
+            limit: 10,
+          });
+          setNotificationItems(data);
+        }
       } catch (err) {
         console.error('[AppContent] Failed to load notification items:', err);
         setNotificationItems([]);
@@ -612,7 +624,7 @@ const AppContent = () => {
     };
 
     loadNotifications();
-  }, [showNotifications, profile]);
+  }, [showNotifications, profile, isSales]);
 
   // Close notification dropdown when clicking outside
   useEffect(() => {
@@ -1326,7 +1338,7 @@ const AppContent = () => {
                 data-notification-bell
                 onClick={() => setShowNotifications((prev) => !prev)}
                 className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400 relative"
-                title={pendingCount > 0 ? `${pendingCount} ตั๋วรออนุมัติ` : 'การแจ้งเตือน'}
+                title={pendingCount > 0 ? (isSales ? `${pendingCount} ทริปรอออกบิล` : `${pendingCount} ตั๋วรออนุมัติ`) : 'การแจ้งเตือน'}
               >
                 <Bell size={20} />
                 {pendingCount > 0 && (
@@ -1348,8 +1360,12 @@ const AppContent = () => {
                     <button
                       className="text-xs text-enterprise-600 dark:text-enterprise-400 hover:underline"
                       onClick={() => {
-                        setActiveTab('maintenance');
-                        setTicketView('list');
+                        if (isSales) {
+                          setActiveTab('sales-trips');
+                        } else {
+                          setActiveTab('maintenance');
+                          setTicketView('list');
+                        }
                         setShowNotifications(false);
                       }}
                     >
@@ -1362,68 +1378,120 @@ const AppContent = () => {
                         <span className="inline-block w-4 h-4 border-2 border-slate-300 border-t-transparent rounded-full animate-spin" />
                         กำลังโหลดรายการ...
                       </div>
-                    ) : notificationItems.length === 0 ? (
-                      <div className="px-4 py-6 text-sm text-slate-500 dark:text-slate-400 text-center">
-                        ไม่มีตั๋วที่รออนุมัติ
-                      </div>
-                    ) : (
-                      notificationItems.map((ticket) => (
-                        <button
-                          key={ticket.id}
-                          className="w-full text-left px-4 py-3 hover:bg-slate-50 dark:hover:bg-slate-800/70 border-b border-slate-100 dark:border-slate-800 last:border-b-0"
-                          onClick={() => {
-                            // Set flag to prevent useEffect from resetting
-                            isNavigatingToTicketRef.current = true;
-                            // Set selectedTicketId and view first, then change tab
-                            // This prevents the useEffect from resetting the view
-                            setSelectedTicketId(ticket.id.toString());
-                            setTicketView('detail');
-                            setActiveTab('maintenance');
-                            setShowNotifications(false);
-                          }}
-                        >
-                          <div className="flex items-start gap-3">
-                            {/* Vehicle Image */}
-                            {(ticket as any).vehicle_image_url ? (
-                              <div className="w-12 h-12 rounded-lg overflow-hidden bg-slate-100 dark:bg-slate-800 flex-shrink-0">
-                                <img
-                                  src={(ticket as any).vehicle_image_url}
-                                  alt={ticket.vehicle_plate || 'Vehicle'}
-                                  className="w-full h-full object-cover"
-                                  onError={(e) => {
-                                    e.currentTarget.style.display = 'none';
-                                    e.currentTarget.nextElementSibling?.classList.remove('hidden');
-                                  }}
-                                />
-                                <div className="hidden w-full h-full flex items-center justify-center bg-enterprise-100 dark:bg-enterprise-900">
-                                  <Truck className="w-5 h-5 text-enterprise-600 dark:text-enterprise-400" />
+                    ) : isSales ? (
+                      // Sales: Show pending billing trips
+                      pendingBillingTrips.length === 0 ? (
+                        <div className="px-4 py-6 text-sm text-slate-500 dark:text-slate-400 text-center">
+                          ไม่มีทริปที่รอออกบิล
+                        </div>
+                      ) : (
+                        pendingBillingTrips.map((trip) => {
+                          const pendingStores = trip.stores?.filter((store: any) => store.invoice_status !== 'issued').length || 0;
+                          const totalStores = trip.stores?.length || 0;
+                          const plannedDate = new Date(trip.planned_date).toLocaleDateString('th-TH', {
+                            day: 'numeric',
+                            month: 'short',
+                          });
+                          
+                          return (
+                            <button
+                              key={trip.id}
+                              className="w-full text-left px-4 py-3 hover:bg-slate-50 dark:hover:bg-slate-800/70 border-b border-slate-100 dark:border-slate-800 last:border-b-0"
+                              onClick={() => {
+                                setActiveTab('sales-trips');
+                                setShowNotifications(false);
+                              }}
+                            >
+                              <div className="flex items-start gap-3">
+                                <div className="w-12 h-12 rounded-lg overflow-hidden bg-blue-100 dark:bg-blue-900/30 flex-shrink-0 flex items-center justify-center">
+                                  <Package className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                                </div>
+                                <div className="flex-1 min-w-0 flex justify-between items-start gap-2">
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-sm font-medium text-slate-900 dark:text-slate-100 truncate">
+                                      {trip.trip_number || `ทริป #${trip.sequence_order || 'N/A'}`}
+                                    </p>
+                                    <p className="text-xs text-slate-600 dark:text-slate-400 truncate mt-0.5">
+                                      {trip.vehicle?.plate || 'ไม่ระบุ'} · {plannedDate}
+                                    </p>
+                                    <p className="text-[11px] text-slate-500 dark:text-slate-500 mt-0.5 truncate">
+                                      รอออกบิล {pendingStores}/{totalStores} ร้าน
+                                    </p>
+                                  </div>
+                                  <span className="ml-2 inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium bg-orange-50 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300 flex-shrink-0">
+                                    รอออกบิล
+                                  </span>
                                 </div>
                               </div>
-                            ) : (
-                              <div className="w-12 h-12 rounded-lg overflow-hidden bg-slate-100 dark:bg-slate-800 flex-shrink-0 flex items-center justify-center">
-                                <Truck className="w-5 h-5 text-slate-400" />
+                            </button>
+                          );
+                        })
+                      )
+                    ) : (
+                      // Other roles: Show pending tickets
+                      notificationItems.length === 0 ? (
+                        <div className="px-4 py-6 text-sm text-slate-500 dark:text-slate-400 text-center">
+                          ไม่มีตั๋วที่รออนุมัติ
+                        </div>
+                      ) : (
+                        notificationItems.map((ticket) => (
+                          <button
+                            key={ticket.id}
+                            className="w-full text-left px-4 py-3 hover:bg-slate-50 dark:hover:bg-slate-800/70 border-b border-slate-100 dark:border-slate-800 last:border-b-0"
+                            onClick={() => {
+                              // Set flag to prevent useEffect from resetting
+                              isNavigatingToTicketRef.current = true;
+                              // Set selectedTicketId and view first, then change tab
+                              // This prevents the useEffect from resetting the view
+                              setSelectedTicketId(ticket.id.toString());
+                              setTicketView('detail');
+                              setActiveTab('maintenance');
+                              setShowNotifications(false);
+                            }}
+                          >
+                            <div className="flex items-start gap-3">
+                              {/* Vehicle Image */}
+                              {(ticket as any).vehicle_image_url ? (
+                                <div className="w-12 h-12 rounded-lg overflow-hidden bg-slate-100 dark:bg-slate-800 flex-shrink-0">
+                                  <img
+                                    src={(ticket as any).vehicle_image_url}
+                                    alt={ticket.vehicle_plate || 'Vehicle'}
+                                    className="w-full h-full object-cover"
+                                    onError={(e) => {
+                                      e.currentTarget.style.display = 'none';
+                                      e.currentTarget.nextElementSibling?.classList.remove('hidden');
+                                    }}
+                                  />
+                                  <div className="hidden w-full h-full flex items-center justify-center bg-enterprise-100 dark:bg-enterprise-900">
+                                    <Truck className="w-5 h-5 text-enterprise-600 dark:text-enterprise-400" />
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="w-12 h-12 rounded-lg overflow-hidden bg-slate-100 dark:bg-slate-800 flex-shrink-0 flex items-center justify-center">
+                                  <Truck className="w-5 h-5 text-slate-400" />
+                                </div>
+                              )}
+                              <div className="flex-1 min-w-0 flex justify-between items-start gap-2">
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm font-medium text-slate-900 dark:text-slate-100 truncate">
+                                    {ticket.ticket_number || `ตั๋ว #${ticket.id}`}
+                                  </p>
+                                  <p className="text-xs text-slate-600 dark:text-slate-400 truncate mt-0.5">
+                                    {ticket.repair_type || 'ตั๋วซ่อมบำรุง'} ·{' '}
+                                    {ticket.vehicle_plate || '-'}
+                                  </p>
+                                  <p className="text-[11px] text-slate-500 dark:text-slate-500 mt-0.5 truncate">
+                                    {ticket.problem_description || 'ไม่มีคำอธิบาย'}
+                                  </p>
+                                </div>
+                                <span className="ml-2 inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300 flex-shrink-0">
+                                  รออนุมัติ
+                                </span>
                               </div>
-                            )}
-                            <div className="flex-1 min-w-0 flex justify-between items-start gap-2">
-                              <div className="flex-1 min-w-0">
-                                <p className="text-sm font-medium text-slate-900 dark:text-slate-100 truncate">
-                                  {ticket.ticket_number || `ตั๋ว #${ticket.id}`}
-                                </p>
-                                <p className="text-xs text-slate-600 dark:text-slate-400 truncate mt-0.5">
-                                  {ticket.repair_type || 'ตั๋วซ่อมบำรุง'} ·{' '}
-                                  {ticket.vehicle_plate || '-'}
-                                </p>
-                                <p className="text-[11px] text-slate-500 dark:text-slate-500 mt-0.5 truncate">
-                                  {ticket.problem_description || 'ไม่มีคำอธิบาย'}
-                                </p>
-                              </div>
-                              <span className="ml-2 inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300 flex-shrink-0">
-                                รออนุมัติ
-                              </span>
                             </div>
-                          </div>
-                        </button>
-                      ))
+                          </button>
+                        ))
+                      )
                     )}
                   </div>
                 </div>
