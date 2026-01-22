@@ -12,6 +12,8 @@ import { Badge } from '../components/ui/Badge';
 import { PageLayout } from '../components/ui/PageLayout';
 import { LoadingSpinner } from '../components/ui/LoadingSpinner';
 import { useAuth } from '../hooks';
+import { useToast } from '../hooks/useToast';
+import { ToastContainer } from '../components/ui/Toast';
 
 interface CreateTripFromOrdersViewProps {
   selectedOrders: any[];
@@ -38,6 +40,7 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
   const { user } = useAuth();
   const { vehicles, loading: vehiclesLoading } = useVehicles();
   const { warehouses, loading: warehousesLoading } = useWarehouses();
+  const { toasts, success, error, warning, dismissToast } = useToast();
 
   const [drivers, setDrivers] = useState<Array<{ id: string; full_name: string }>>([]);
   const [driversLoading, setDriversLoading] = useState(false);
@@ -214,21 +217,21 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
   const handleSubmit = async () => {
     // ถ้าต้องการตัดสต๊อก ต้องเลือกคลังสินค้า
     if (!skipStockDeduction && !selectedWarehouseId) {
-      alert('กรุณาเลือกคลังสินค้าต้นทาง (เมื่อต้องการตัดสต๊อก)');
+      warning('กรุณาเลือกคลังสินค้าต้นทาง (เมื่อต้องการตัดสต๊อก)');
       return;
     }
     if (!selectedVehicleId) {
-      alert('กรุณาเลือกรถ');
+      warning('กรุณาเลือกรถ');
       return;
     }
 
     if (!selectedDriverId) {
-      alert('กรุณาเลือกพนักงานขับรถ');
+      warning('กรุณาเลือกพนักงานขับรถ');
       return;
     }
 
     if (storeDeliveries.length === 0) {
-      alert('กรุณาเลือกร้านค้าอย่างน้อย 1 ร้าน');
+      warning('กรุณาเลือกร้านค้าอย่างน้อย 1 ร้าน');
       return;
     }
 
@@ -278,22 +281,24 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
       const orderIds = storeDeliveries.map(d => d.order_id);
       await ordersService.assignToTrip(orderIds, trip.id, user?.id!);
 
-      alert('✅ สร้างทริปเรียบร้อย');
+      success('สร้างทริปเรียบร้อย');
       onSuccess();
-    } catch (error: any) {
-      console.error('Error creating trip:', error);
-      alert(`❌ เกิดข้อผิดพลาด: ${error.message}`);
+    } catch (err: any) {
+      console.error('Error creating trip:', err);
+      error(`เกิดข้อผิดพลาด: ${err.message || 'ไม่สามารถสร้างทริปได้'}`);
     } finally {
       setIsSubmitting(false);
     }
   };
 
   return (
-    <PageLayout
-      title="สร้างทริปจากออเดอร์"
-      actions={
-        <Button onClick={onBack} variant="outline">
-          <ArrowLeft className="w-4 h-4 mr-2" />
+    <>
+      <ToastContainer toasts={toasts} onDismiss={dismissToast} />
+      <PageLayout
+        title="สร้างทริปจากออเดอร์"
+        actions={
+          <Button onClick={onBack} variant="outline">
+            <ArrowLeft className="w-4 h-4 mr-2" />
           ย้อนกลับ
         </Button>
       }
@@ -633,6 +638,7 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
         </div>
       </div>
     </PageLayout>
+    </>
   );
 }
 
