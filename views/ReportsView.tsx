@@ -296,6 +296,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ isDark = false, onNavi
             onChange={(e) => setMonths(Number(e.target.value))}
             className="px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
           >
+            <option value={1}>1 เดือนล่าสุด</option>
             <option value={3}>3 เดือนล่าสุด</option>
             <option value={6}>6 เดือนล่าสุด</option>
             <option value={12}>12 เดือนล่าสุด</option>
@@ -2521,6 +2522,7 @@ const DeliveryReportsTab: React.FC<{
                   onChange={(e) => setMonthlyMonths(Number(e.target.value))}
                   className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
                 >
+                  <option value={1}>1 เดือนล่าสุด</option>
                   <option value={3}>3 เดือนล่าสุด</option>
                   <option value={6}>6 เดือนล่าสุด</option>
                   <option value={12}>12 เดือนล่าสุด</option>

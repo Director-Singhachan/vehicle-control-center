@@ -532,6 +532,8 @@ export const reportsService = {
         liters,
         total_cost,
         fuel_efficiency,
+        distance_since_last_fill,
+        odometer,
         vehicle:vehicles!inner(
           id,
           plate,
@@ -569,11 +571,18 @@ export const reportsService = {
       model: string | null;
       totalLiters: number;
       totalCost: number;
+      totalDistance: number;
       fillCount: number;
-      efficiencies: number[];
+      // สำหรับกรณีที่ไม่มี distance ให้ใช้ weighted avg ของ fuel_efficiency แทน
+      weightedEfficiencySum: number;
+      weightedEfficiencyLiters: number;
+      // สำรองสุดท้าย: ใช้ช่วงค่า odometer ต่อคัน
+      minOdometer: number | null;
+      maxOdometer: number | null;
+      odoLiters: number;
     }>();
 
-    fuelRecords.forEach(record => {
+    fuelRecords.forEach((record: any) => {
       const vehicleId = record.vehicle_id;
       const vehicle = record.vehicle as { id: string; plate: string; make: string | null; model: string | null } | null;
 
@@ -586,34 +595,85 @@ export const reportsService = {
           model: vehicle.model,
           totalLiters: 0,
           totalCost: 0,
+          totalDistance: 0,
           fillCount: 0,
-          efficiencies: [],
+          weightedEfficiencySum: 0,
+          weightedEfficiencyLiters: 0,
+          minOdometer: null,
+          maxOdometer: null,
+          odoLiters: 0,
         });
       }
 
       const entry = vehicleMap.get(vehicleId)!;
-      entry.totalLiters += Number(record.liters) || 0;
-      entry.totalCost += Number(record.total_cost) || 0;
+      const liters = Number(record.liters) || 0;
+      const cost = Number(record.total_cost) || 0;
+      const distance = Number(record.distance_since_last_fill) || 0;
+      const odometer = Number(record.odometer) || 0;
+      const efficiency = record.fuel_efficiency !== null && record.fuel_efficiency !== undefined
+        ? Number(record.fuel_efficiency)
+        : null;
+
+      entry.totalLiters += liters;
+      entry.totalCost += cost;
       entry.fillCount += 1;
-      if (record.fuel_efficiency) {
-        entry.efficiencies.push(Number(record.fuel_efficiency));
+
+      // ถ้ามี distance_since_last_fill ให้สะสมระยะทางรวมไว้ใช้คำนวณประสิทธิภาพ
+      if (distance > 0 && liters > 0) {
+        entry.totalDistance += distance;
+      }
+
+      // ถ้ามี fuel_efficiency ที่สมเหตุสมผลให้ใช้เป็น weighted average สำรอง
+      if (efficiency !== null && !isNaN(efficiency) && efficiency > 0 && efficiency < 1000 && liters > 0) {
+        entry.weightedEfficiencySum += efficiency * liters;
+        entry.weightedEfficiencyLiters += liters;
+      }
+
+      // ถ้ามีค่า odometer และลิตร ให้ใช้เป็นข้อมูลสำรองในการคำนวณประสิทธิภาพ
+      if (odometer > 0 && liters > 0) {
+        if (entry.minOdometer === null || odometer < entry.minOdometer) {
+          entry.minOdometer = odometer;
+        }
+        if (entry.maxOdometer === null || odometer > entry.maxOdometer) {
+          entry.maxOdometer = odometer;
+        }
+        entry.odoLiters += liters;
       }
     });
 
     // Convert to array and calculate averages
     return Array.from(vehicleMap.entries())
-      .map(([vehicle_id, data]) => ({
-        vehicle_id,
-        plate: data.plate,
-        make: data.make,
-        model: data.model,
-        totalLiters: data.totalLiters,
-        totalCost: data.totalCost,
-        averageEfficiency: data.efficiencies.length > 0
-          ? data.efficiencies.reduce((sum, eff) => sum + eff, 0) / data.efficiencies.length
-          : null,
-        fillCount: data.fillCount,
-      }))
+      .map(([vehicle_id, data]) => {
+        let averageEfficiency: number | null = null;
+
+        // วิธีที่ 1: ใช้ระยะทางรวม / ปริมาณรวม (แม่นยำที่สุด)
+        if (data.totalDistance > 0 && data.totalLiters > 0) {
+          averageEfficiency = data.totalDistance / data.totalLiters;
+        } else if (data.weightedEfficiencyLiters > 0) {
+          // วิธีที่ 2: ใช้ weighted average ของ fuel_efficiency
+          averageEfficiency = data.weightedEfficiencySum / data.weightedEfficiencyLiters;
+        } else if (
+          data.minOdometer !== null &&
+          data.maxOdometer !== null &&
+          data.maxOdometer > data.minOdometer &&
+          data.odoLiters > 0
+        ) {
+          // วิธีที่ 3: ใช้ความต่างของเลขไมล์ / ปริมาณน้ำมันรวม
+          const odoDistance = data.maxOdometer - data.minOdometer;
+          averageEfficiency = odoDistance / data.odoLiters;
+        }
+
+        return {
+          vehicle_id,
+          plate: data.plate,
+          make: data.make,
+          model: data.model,
+          totalLiters: data.totalLiters,
+          totalCost: data.totalCost,
+          averageEfficiency,
+          fillCount: data.fillCount,
+        };
+      })
       .filter(vehicle => vehicle.totalCost > 0 || vehicle.totalLiters > 0) // Only show vehicles with fuel data
       .sort((a, b) => b.totalCost - a.totalCost);
   },

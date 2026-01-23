@@ -461,10 +461,11 @@ export const FuelLogListView: React.FC<FuelLogListViewProps> = ({
                         callbacks: {
                           label: function (context) {
                             const vehicle = vehicleFuelComparison[context.dataIndex];
+                            const hasEfficiency = vehicle.averageEfficiency !== null && vehicle.averageEfficiency !== undefined && !isNaN(vehicle.averageEfficiency);
                             return [
                               `ค่าใช้จ่าย: ฿${vehicle.totalCost.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
                               `จำนวนลิตร: ${vehicle.totalLiters.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} L`,
-                              `ประสิทธิภาพ: ${vehicle.averageEfficiency ? vehicle.averageEfficiency.toFixed(2) : 'N/A'} km/L`,
+                              `ประสิทธิภาพ: ${hasEfficiency ? vehicle.averageEfficiency!.toFixed(2) : 'N/A'} km/L`,
                             ];
                           },
                         },
