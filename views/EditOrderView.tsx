@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { ShoppingCart, Plus, Trash2, Search, Check, Edit, AlertTriangle } from 'lucide-react';
-import { useProducts, useWarehouses } from '../hooks/useInventory';
+import { ShoppingCart, Plus, Trash2, Search, Check, Edit, AlertTriangle, Grid3x3, Clock, Gift } from 'lucide-react';
+import { useProducts, useWarehouses, useProductCategories } from '../hooks/useInventory';
 import { ordersService, orderItemsService } from '../services/ordersService';
 import { productTierPriceService } from '../services/customerTierService';
 import { Card } from '../components/ui/Card';
@@ -19,7 +19,12 @@ interface OrderItem {
   quantity: number | '';
   unit_price: number;
   discount_percent: number | '';
+  is_bonus?: boolean; // ของแถม
 }
+
+// LocalStorage keys
+const RECENT_PRODUCTS_KEY = 'recent_products';
+const MAX_RECENT_PRODUCTS = 20;
 
 interface EditOrderViewProps {
   orderId: string;
@@ -30,6 +35,7 @@ interface EditOrderViewProps {
 export function EditOrderView({ orderId, onSave, onCancel }: EditOrderViewProps) {
   const { products, loading: productsLoading } = useProducts();
   const { warehouses, loading: warehousesLoading } = useWarehouses();
+  const { categories, loading: categoriesLoading } = useProductCategories();
   const { user } = useAuth();
 
   const showNotification = (type: 'success' | 'error' | 'warning', message: string) => {
@@ -52,6 +58,9 @@ export function EditOrderView({ orderId, onSave, onCancel }: EditOrderViewProps)
 
   const [orderItems, setOrderItems] = useState<OrderItem[]>([]);
   const [productSearch, setProductSearch] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [showProductBrowser, setShowProductBrowser] = useState(false);
+  const [recentProducts, setRecentProducts] = useState<string[]>([]);
   const [notes, setNotes] = useState('');
   const [deliveryDate, setDeliveryDate] = useState('');
 
@@ -110,6 +119,7 @@ export function EditOrderView({ orderId, onSave, onCancel }: EditOrderViewProps)
           quantity: item.quantity,
           unit_price: item.unit_price || 0,
           discount_percent: item.discount_percent || '',
+          is_bonus: item.is_bonus || false,
         }))
       );
 
@@ -120,6 +130,30 @@ export function EditOrderView({ orderId, onSave, onCancel }: EditOrderViewProps)
       console.error('Error loading order:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // โหลด recent products จาก localStorage
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(RECENT_PRODUCTS_KEY);
+      if (stored) {
+        setRecentProducts(JSON.parse(stored));
+      }
+    } catch (err) {
+      console.error('Error loading recent products:', err);
+    }
+  }, []);
+
+  // เก็บ recent product เมื่อเพิ่มสินค้า
+  const addToRecentProducts = (productId: string) => {
+    try {
+      const updated = [productId, ...recentProducts.filter(id => id !== productId)]
+        .slice(0, MAX_RECENT_PRODUCTS);
+      setRecentProducts(updated);
+      localStorage.setItem(RECENT_PRODUCTS_KEY, JSON.stringify(updated));
+    } catch (err) {
+      console.error('Error saving recent products:', err);
     }
   };
 
@@ -182,52 +216,102 @@ export function EditOrderView({ orderId, onSave, onCancel }: EditOrderViewProps)
     setStoreSearch('');
   };
 
-  // กรองสินค้า
+  // กรองสินค้า - ค้นหาทั้งชื่อ, รหัส, barcode, description
   const filteredProducts = useMemo(() => {
-    if (!productSearch) return [];
-
     if (!products || products.length === 0) return [];
+    
+    // ถ้ามีการค้นหา ให้ค้นหาตามคำค้นหา
+    if (productSearch) {
+      const searchLower = productSearch.toLowerCase();
+      const filtered = products.filter((product: any) => 
+        product.product_name?.toLowerCase().includes(searchLower) ||
+        product.product_code?.toLowerCase().includes(searchLower) ||
+        product.barcode?.toLowerCase().includes(searchLower) ||
+        product.description?.toLowerCase().includes(searchLower) ||
+        product.category?.toLowerCase().includes(searchLower)
+      );
+      
+      // เรียงลำดับ: ตรงกับรหัสสินค้า > ตรงกับชื่อ > อื่นๆ
+      const sorted = filtered.sort((a: any, b: any) => {
+        const aCodeMatch = a.product_code?.toLowerCase().startsWith(searchLower) ? 0 : 1;
+        const bCodeMatch = b.product_code?.toLowerCase().startsWith(searchLower) ? 0 : 1;
+        if (aCodeMatch !== bCodeMatch) return aCodeMatch - bCodeMatch;
+        
+        const aNameMatch = a.product_name?.toLowerCase().startsWith(searchLower) ? 0 : 1;
+        const bNameMatch = b.product_name?.toLowerCase().startsWith(searchLower) ? 0 : 1;
+        if (aNameMatch !== bNameMatch) return aNameMatch - bNameMatch;
+        
+        return 0;
+      });
+      
+      return sorted.slice(0, 20); // แสดงสูงสุด 20 รายการ
+    }
+    
+    // ถ้ายังไม่พิมพ์ แสดงสินค้าตามหมวดหมู่ที่เลือก
+    if (selectedCategory === 'all') {
+      return products?.slice(0, 50) || []; // แสดง 50 รายการแรก
+    }
+    
+    if (selectedCategory === 'recent') {
+      return []; // recent products จะแสดงแยก
+    }
+    
+    return products?.filter((p: any) => p.category === selectedCategory).slice(0, 50) || [];
+  }, [products, productSearch, selectedCategory]);
 
-    const filtered = products.filter((product: any) =>
-      product.product_name?.toLowerCase().includes(productSearch.toLowerCase()) ||
-      product.product_code?.toLowerCase().includes(productSearch.toLowerCase())
-    ).slice(0, 10);
-
-    return filtered;
-  }, [products, productSearch]);
+  // สินค้าที่ใช้ล่าสุด
+  const recentProductsList = useMemo(() => {
+    if (!products || recentProducts.length === 0) return [];
+    return recentProducts
+      .map(id => products.find((p: any) => p.id === id))
+      .filter(Boolean)
+      .slice(0, 10);
+  }, [products, recentProducts]);
 
   // เพิ่มสินค้า
-  const handleAddProduct = async (product: any) => {
+  const handleAddProduct = async (product: any, asBonus: boolean = false) => {
     if (!selectedStore) {
       showNotification('error', 'กรุณาเลือกร้านค้าก่อน');
       return;
     }
 
-    // ตรวจสอบว่ามีสินค้านี้แล้วหรือไม่
-    const existingItem = orderItems.find(item => item.product_id === product.id);
-    if (existingItem) {
-      showNotification('warning', 'สินค้านี้มีในรายการแล้ว');
-      return;
+    // ตรวจสอบว่ามีสินค้านี้แล้วหรือไม่ (ถ้าไม่ใช่ของแถม)
+    if (!asBonus) {
+      const existingItem = orderItems.find(
+        item => item.product_id === product.id && !item.is_bonus
+      );
+      if (existingItem) {
+        showNotification('warning', 'สินค้านี้มีในรายการแล้ว (สามารถเพิ่มเป็นของแถมได้)');
+        return;
+      }
     }
 
     try {
-      // คำนวณราคาตาม tier
-      const price = await productTierPriceService.calculatePriceForStore(
-        product.id,
-        selectedStore.id,
-        1
-      );
+      // คำนวณราคาตาม tier (ถ้าไม่ใช่ของแถม)
+      let price = 0;
+      if (!asBonus) {
+        price = await productTierPriceService.calculatePriceForStore(
+          product.id,
+          selectedStore.id,
+          1
+        ) || product.base_price || 0;
+      }
 
       const newItem: OrderItem = {
         product_id: product.id,
         product: product,
-        quantity: '',
-        unit_price: price || product.base_price || 0,
-        discount_percent: '',
+        quantity: '', // let user type freely
+        unit_price: price,
+        discount_percent: '', // let user type freely
+        is_bonus: asBonus,
       };
 
       setOrderItems([...orderItems, newItem]);
       setProductSearch('');
+      setShowProductBrowser(false);
+      
+      // เก็บ recent product
+      addToRecentProducts(product.id);
     } catch (error: any) {
       showNotification('error', 'ไม่สามารถดึงราคาสินค้าได้');
     }
@@ -292,18 +376,55 @@ export function EditOrderView({ orderId, onSave, onCancel }: EditOrderViewProps)
     setOrderItems(orderItems.filter((_, i) => i !== index));
   };
 
-  // คำนวณยอดรวม
-  const calculateTotal = useMemo(() => {
-    const subtotal = orderItems.reduce((sum, item) => {
+  // Toggle ของแถม
+  const handleToggleBonus = (index: number) => {
+    const updated = [...orderItems];
+    const item = updated[index];
+    const newIsBonus = !item.is_bonus;
+    
+    updated[index] = {
+      ...item,
+      is_bonus: newIsBonus,
+      unit_price: newIsBonus ? 0 : (item.product?.base_price || 0), // ถ้าเป็นของแถมให้ราคาเป็น 0
+    };
+    
+    setOrderItems(updated);
+    
+    // ถ้าเปลี่ยนจากของแถมเป็นปกติ ต้องคำนวณราคาใหม่
+    if (!newIsBonus && selectedStore && item.product_id) {
       const qty = Number(item.quantity || 0);
-      return sum + (item.unit_price * qty);
-    }, 0);
+      if (qty > 0) {
+        productTierPriceService.calculatePriceForStore(
+          item.product_id,
+          selectedStore.id,
+          qty
+        ).then(price => {
+          setOrderItems(prev => prev.map((p, i) => 
+            i === index ? { ...p, unit_price: price || p.product?.base_price || 0 } : p
+          ));
+        }).catch(err => {
+          console.error('Error updating price:', err);
+        });
+      }
+    }
+  };
 
-    const discountAmount = orderItems.reduce((sum, item) => {
-      const qty = Number(item.quantity || 0);
-      const discount = Number(item.discount_percent || 0);
-      return sum + (item.unit_price * qty * discount / 100);
-    }, 0);
+  // คำนวณยอดรวม (ไม่นับของแถม)
+  const calculateTotal = useMemo(() => {
+    const subtotal = orderItems
+      .filter(item => !item.is_bonus) // ไม่นับของแถม
+      .reduce((sum, item) => {
+        const qty = Number(item.quantity || 0);
+        return sum + (item.unit_price * qty);
+      }, 0);
+
+    const discountAmount = orderItems
+      .filter(item => !item.is_bonus) // ไม่นับของแถม
+      .reduce((sum, item) => {
+        const qty = Number(item.quantity || 0);
+        const discount = Number(item.discount_percent || 0);
+        return sum + (item.unit_price * qty * discount / 100);
+      }, 0);
 
     const total = subtotal - discountAmount;
 
@@ -368,8 +489,9 @@ export function EditOrderView({ orderId, onSave, onCancel }: EditOrderViewProps)
             data: {
               product_id: item.product_id,
               quantity: Number(item.quantity || 0),
-              unit_price: item.unit_price,
+              unit_price: item.is_bonus ? 0 : item.unit_price, // ของแถมราคาเป็น 0
               discount_percent: Number(item.discount_percent || 0),
+              is_bonus: item.is_bonus || false,
             },
           });
         } else if (!item.id) {
@@ -404,8 +526,9 @@ export function EditOrderView({ orderId, onSave, onCancel }: EditOrderViewProps)
             order_id: orderId,
             product_id: item.product_id,
             quantity: Number(item.quantity || 0),
-            unit_price: item.unit_price,
+            unit_price: item.is_bonus ? 0 : item.unit_price, // ของแถมราคาเป็น 0
             discount_percent: Number(item.discount_percent || 0),
+            is_bonus: item.is_bonus || false,
           });
         }
       }
@@ -595,63 +718,257 @@ export function EditOrderView({ orderId, onSave, onCancel }: EditOrderViewProps)
           </Card>
 
           {/* Products Selection */}
-          <Card className={`overflow-visible ${productSearch && filteredProducts.length > 0 ? 'relative z-50' : ''}`}>
+          <Card className={`overflow-visible ${(productSearch || showProductBrowser) && filteredProducts.length > 0 ? 'relative z-50' : ''}`}>
             <div className="p-6">
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">3. จัดการสินค้า</h3>
-
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">3. เพิ่มสินค้า</h3>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowProductBrowser(!showProductBrowser)}
+                  disabled={!selectedStore}
+                  className="flex items-center gap-2"
+                >
+                  <Grid3x3 className="w-4 h-4" />
+                  {showProductBrowser ? 'ซ่อน' : 'เลือกสินค้า'}
+                </Button>
+              </div>
+              
               <div className="relative mb-4" ref={productDropdownRef}>
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 dark:text-gray-500" />
                 <input
                   type="text"
-                  placeholder="ค้นหาสินค้า (ชื่อหรือรหัส)..."
+                  placeholder="ค้นหาสินค้า (ชื่อ, รหัส, หรือบาร์โค้ด)..."
                   value={productSearch}
-                  onChange={(e) => setProductSearch(e.target.value)}
+                  onChange={(e) => {
+                    setProductSearch(e.target.value);
+                    if (e.target.value) {
+                      setShowProductBrowser(false);
+                    }
+                  }}
+                  onFocus={() => {
+                    if (!productSearch) {
+                      setShowProductBrowser(true);
+                    }
+                  }}
                   className="w-full pl-10 pr-4 py-3 border border-gray-300 dark:border-slate-600 rounded-xl bg-white dark:bg-slate-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 disabled:opacity-50 disabled:cursor-not-allowed"
                   disabled={!selectedStore}
                 />
 
+                {/* Loading indicator */}
                 {productsLoading && productSearch && (
                   <div className="absolute right-3 top-1/2 -translate-y-1/2">
                     <LoadingSpinner size={20} />
                   </div>
                 )}
 
+                {/* Product Browser - แสดงเมื่อยังไม่พิมพ์หรือกดปุ่มเลือกสินค้า */}
+                {showProductBrowser && !productSearch && !productsLoading && selectedStore && (
+                  <div className="absolute z-50 w-full mt-2 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-xl shadow-lg dark:shadow-black/50 max-h-96 overflow-y-auto">
+                    {/* Tabs: Recent, Categories */}
+                    <div className="sticky top-0 bg-white dark:bg-slate-800 border-b border-gray-200 dark:border-slate-700 p-2 flex gap-2 overflow-x-auto">
+                      {recentProductsList.length > 0 && (
+                        <button
+                          onClick={() => setSelectedCategory('recent')}
+                          className={`px-3 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition-colors flex items-center gap-1 ${
+                            selectedCategory === 'recent'
+                              ? 'bg-blue-500 text-white'
+                              : 'bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-slate-600'
+                          }`}
+                        >
+                          <Clock className="w-4 h-4" />
+                          ใช้ล่าสุด ({recentProductsList.length})
+                        </button>
+                      )}
+                      <button
+                        onClick={() => setSelectedCategory('all')}
+                        className={`px-3 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
+                          selectedCategory === 'all'
+                            ? 'bg-blue-500 text-white'
+                            : 'bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-slate-600'
+                        }`}
+                      >
+                        ทั้งหมด
+                      </button>
+                      {categories.map((cat: any) => (
+                        <button
+                          key={cat.id || cat.name}
+                          onClick={() => setSelectedCategory(cat.name || cat.id)}
+                          className={`px-3 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
+                            selectedCategory === (cat.name || cat.id)
+                              ? 'bg-blue-500 text-white'
+                              : 'bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-slate-600'
+                          }`}
+                        >
+                          {cat.name || cat.id}
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Products Grid */}
+                    <div className="p-4">
+                      {/* แสดงสินค้าที่ใช้ล่าสุด */}
+                      {selectedCategory === 'recent' && recentProductsList.length > 0 && (
+                        <div className="grid grid-cols-1 gap-2 max-h-80 overflow-y-auto">
+                          {recentProductsList.map((product: any) => (
+                            <div
+                              key={product.id}
+                              className="p-3 border border-gray-200 dark:border-slate-700 rounded-lg hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors"
+                            >
+                              <div className="flex items-center justify-between mb-2">
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2 mb-1">
+                                    <p className="font-medium text-gray-900 dark:text-white truncate">{product.product_name}</p>
+                                    {product.unit ? (
+                                      <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 text-xs">
+                                        {product.unit}
+                                      </Badge>
+                                    ) : null}
+                                  </div>
+                                  <p className="text-xs text-gray-500 dark:text-gray-400">{product.product_code}</p>
+                                </div>
+                                <p className="text-sm font-semibold text-blue-600 dark:text-blue-400 ml-2">
+                                  {new Intl.NumberFormat('th-TH').format(product.base_price || 0)} ฿
+                                </p>
+                              </div>
+                              <div className="flex gap-2">
+                                <button
+                                  onClick={() => handleAddProduct(product, false)}
+                                  className="flex-1 px-3 py-1.5 text-xs font-medium bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
+                                >
+                                  เพิ่ม
+                                </button>
+                                <button
+                                  onClick={() => handleAddProduct(product, true)}
+                                  className="flex-1 px-3 py-1.5 text-xs font-medium bg-green-500 text-white rounded hover:bg-green-600 transition-colors flex items-center justify-center gap-1"
+                                >
+                                  <Gift className="w-3 h-3" />
+                                  เพิ่มเป็นของแถม
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* แสดงสินค้าตามหมวดหมู่ */}
+                      {selectedCategory !== 'recent' && (
+                        <div className="grid grid-cols-1 gap-2 max-h-80 overflow-y-auto">
+                          {filteredProducts.length > 0 ? (
+                            filteredProducts.slice(0, 30).map((product: any) => (
+                              <div
+                                key={product.id}
+                                className="p-3 border border-gray-200 dark:border-slate-700 rounded-lg hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors"
+                              >
+                                <div className="flex items-center justify-between mb-2">
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-2 mb-1">
+                                      <p className="font-medium text-gray-900 dark:text-white truncate">{product.product_name}</p>
+                                      {product.unit ? (
+                                        <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 text-xs">
+                                          {product.unit}
+                                        </Badge>
+                                      ) : null}
+                                    </div>
+                                    <p className="text-xs text-gray-500 dark:text-gray-400">{product.product_code}</p>
+                                  </div>
+                                  <p className="text-sm font-semibold text-blue-600 dark:text-blue-400 ml-2">
+                                    {new Intl.NumberFormat('th-TH').format(product.base_price || 0)} ฿
+                                  </p>
+                                </div>
+                                <div className="flex gap-2">
+                                  <button
+                                    onClick={() => handleAddProduct(product, false)}
+                                    className="flex-1 px-3 py-1.5 text-xs font-medium bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
+                                  >
+                                    เพิ่ม
+                                  </button>
+                                  <button
+                                    onClick={() => handleAddProduct(product, true)}
+                                    className="flex-1 px-3 py-1.5 text-xs font-medium bg-green-500 text-white rounded hover:bg-green-600 transition-colors flex items-center justify-center gap-1"
+                                  >
+                                    <Gift className="w-3 h-3" />
+                                    เพิ่มเป็นของแถม
+                                  </button>
+                                </div>
+                              </div>
+                            ))
+                          ) : (
+                            <p className="text-sm text-gray-500 dark:text-gray-400 text-center py-8">
+                              {selectedCategory === 'all' 
+                                ? 'ยังไม่มีสินค้าในระบบ' 
+                                : 'ไม่พบสินค้าในหมวดหมู่นี้'}
+                            </p>
+                          )}
+                        </div>
+                      )}
+
+                      {/* แสดงข้อความเมื่อไม่มีสินค้าที่ใช้ล่าสุด */}
+                      {selectedCategory === 'recent' && recentProductsList.length === 0 && (
+                        <p className="text-sm text-gray-500 dark:text-gray-400 text-center py-8">
+                          ยังไม่มีสินค้าที่ใช้ล่าสุด
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Search Results - แสดงเมื่อพิมพ์ค้นหา */}
                 {productSearch && !productsLoading && (
                   <>
                     {filteredProducts.length > 0 ? (
                       <div className="absolute z-50 w-full mt-2 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-xl shadow-lg dark:shadow-black/50 max-h-60 overflow-y-auto">
                         {filteredProducts.map((product: any) => (
-                          <button
+                          <div
                             key={product.id}
-                            onClick={() => handleAddProduct(product)}
-                            className="w-full p-4 text-left hover:bg-gray-50 dark:hover:bg-slate-700/50 border-b border-gray-100 dark:border-slate-700 last:border-b-0 flex items-center justify-between gap-3"
+                            className="w-full p-4 hover:bg-gray-50 dark:hover:bg-slate-700/50 border-b border-gray-100 dark:border-slate-700 last:border-b-0"
                           >
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2 mb-1">
-                                <p className="font-medium text-gray-900 dark:text-white truncate">{product.product_name}</p>
-                                {product.unit && (
-                                  <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 text-xs flex-shrink-0">
-                                    {product.unit}
-                                  </Badge>
-                                )}
+                            <div className="flex items-center justify-between mb-2">
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <p className="font-medium text-gray-900 dark:text-white truncate">{product.product_name}</p>
+                                  {product.unit ? (
+                                    <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 text-xs flex-shrink-0">
+                                      {product.unit}
+                                    </Badge>
+                                  ) : null}
+                                </div>
+                                <p className="text-sm text-gray-500 dark:text-gray-400">{product.product_code}</p>
                               </div>
-                              <p className="text-sm text-gray-500 dark:text-gray-400">{product.product_code}</p>
+                              <p className="text-sm font-semibold text-blue-600 dark:text-blue-400 flex-shrink-0">
+                                {new Intl.NumberFormat('th-TH').format(product.base_price || 0)} ฿
+                              </p>
                             </div>
-                            <p className="text-sm font-semibold text-blue-600 dark:text-blue-400 flex-shrink-0">
-                              {new Intl.NumberFormat('th-TH').format(product.base_price || 0)} ฿
-                            </p>
-                          </button>
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() => handleAddProduct(product, false)}
+                                className="flex-1 px-3 py-1.5 text-xs font-medium bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
+                              >
+                                เพิ่ม
+                              </button>
+                              <button
+                                onClick={() => handleAddProduct(product, true)}
+                                className="flex-1 px-3 py-1.5 text-xs font-medium bg-green-500 text-white rounded hover:bg-green-600 transition-colors flex items-center justify-center gap-1"
+                              >
+                                <Gift className="w-3 h-3" />
+                                เพิ่มเป็นของแถม
+                              </button>
+                            </div>
+                          </div>
                         ))}
                       </div>
                     ) : (
                       <div className="absolute z-50 w-full mt-2 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-xl shadow-lg dark:shadow-black/50 p-4">
                         <p className="text-sm text-gray-500 dark:text-gray-400 text-center">
-                          {products && products.length > 0
+                          {products && products.length > 0 
                             ? `ไม่พบสินค้าที่ค้นหา "${productSearch}"`
-                            : 'ยังไม่มีข้อมูลสินค้าในระบบ'}
+                            : 'ยังไม่มีข้อมูลสินค้าในระบบ กรุณาเพิ่มสินค้าก่อน'}
                         </p>
                       </div>
                     )}
+                    <div className="mt-2 text-xs text-gray-500 dark:text-gray-400 text-right">
+                      ผลลัพธ์: {filteredProducts.length} รายการ
+                    </div>
                   </>
                 )}
               </div>
@@ -687,10 +1004,29 @@ export function EditOrderView({ orderId, onSave, onCancel }: EditOrderViewProps)
                         const lineTotal = (item.unit_price * qty) - (item.unit_price * qty * discount / 100);
 
                         return (
-                          <tr key={index} className="border-b border-gray-100 dark:border-slate-700">
+                          <tr key={index} className={`border-b border-gray-100 dark:border-slate-700 ${item.is_bonus ? 'bg-green-50 dark:bg-green-900/10' : ''}`}>
                             <td className="py-3 px-2 align-top">
-                              <p className="font-medium text-gray-900 dark:text-white text-sm">{item.product?.product_name}</p>
-                              <p className="text-xs text-gray-500 dark:text-gray-400">{item.product?.product_code}</p>
+                              <div className="flex items-start gap-2">
+                                <div className="flex-1">
+                                  <div className="flex items-center gap-2 mb-1">
+                                    <p className="font-medium text-gray-900 dark:text-white text-sm">{item.product?.product_name}</p>
+                                    {item.is_bonus ? (
+                                      <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300 text-xs flex items-center gap-1">
+                                        <Gift className="w-3 h-3" />
+                                        ของแถม
+                                      </Badge>
+                                    ) : null}
+                                  </div>
+                                  <p className="text-xs text-gray-500 dark:text-gray-400">{item.product?.product_code}</p>
+                                </div>
+                                <button
+                                  onClick={() => handleToggleBonus(index)}
+                                  className="mt-1 p-1 text-gray-400 hover:text-green-600 dark:hover:text-green-400 transition-colors"
+                                  title={item.is_bonus ? 'ยกเลิกของแถม' : 'ทำเป็นของแถม'}
+                                >
+                                  <Gift className={`w-4 h-4 ${item.is_bonus ? 'text-green-600 dark:text-green-400' : ''}`} />
+                                </button>
+                              </div>
                             </td>
                             <td className="py-3 px-2 text-center align-top">
                               <span className="inline-block px-2 py-1 text-xs font-medium bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded">
@@ -698,7 +1034,11 @@ export function EditOrderView({ orderId, onSave, onCancel }: EditOrderViewProps)
                               </span>
                             </td>
                             <td className="py-3 px-2 text-right text-sm align-top text-gray-900 dark:text-white">
-                              {new Intl.NumberFormat('th-TH').format(item.unit_price)} ฿
+                              {item.is_bonus ? (
+                                <span className="text-green-600 dark:text-green-400 font-medium">ของแถม</span>
+                              ) : (
+                                <span>{new Intl.NumberFormat('th-TH').format(item.unit_price)} ฿</span>
+                              )}
                             </td>
                             <td className="py-3 px-2 text-center align-top">
                               <input
@@ -724,7 +1064,11 @@ export function EditOrderView({ orderId, onSave, onCancel }: EditOrderViewProps)
                               />
                             </td>
                             <td className="py-3 px-2 text-right font-semibold text-gray-900 dark:text-white align-top">
-                              {new Intl.NumberFormat('th-TH').format(lineTotal)} ฿
+                              {item.is_bonus ? (
+                                <span className="text-green-600 dark:text-green-400">0 ฿</span>
+                              ) : (
+                                <span>{new Intl.NumberFormat('th-TH').format(lineTotal)} ฿</span>
+                              )}
                             </td>
                             <td className="py-3 px-2 text-center align-top">
                               <button

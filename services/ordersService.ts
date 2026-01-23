@@ -56,6 +56,7 @@ type OrderItem = {
   discount_amount: number | null;
   line_total: number | null;
   notes: string | null;
+  is_bonus?: boolean;
   created_at: string;
   updated_at: string;
 };
