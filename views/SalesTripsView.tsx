@@ -338,6 +338,20 @@ export function SalesTripsView() {
   const [selectedStoreDetail, setSelectedStoreDetail] = useState<{ tripId: string; store: any } | null>(null);
   const [checkedItems, setCheckedItems] = useState<Set<string>>(new Set()); // Track checked items in modal
   
+  // Auto-check all items when invoice_status is 'issued'
+  useEffect(() => {
+    if (selectedStoreDetail && selectedStoreDetail.store.invoice_status === 'issued') {
+      // Auto-check all items when invoice is already issued
+      const allItemKeys = selectedStoreDetail.store.items.map((item: any) => {
+        return `${selectedStoreDetail.tripId}-${selectedStoreDetail.store.store_id}-${item.id}`;
+      });
+      setCheckedItems(new Set(allItemKeys));
+    } else if (selectedStoreDetail && selectedStoreDetail.store.invoice_status !== 'issued') {
+      // Reset checked items when invoice is not issued
+      setCheckedItems(new Set());
+    }
+  }, [selectedStoreDetail]);
+  
   // Fetch trips with full details for invoicing
   // Sales view needs items data to display and manage invoices
   const { trips, loading, error: tripsError, refetch } = useDeliveryTrips({
@@ -881,7 +895,7 @@ export function SalesTripsView() {
                                 // Close modal after updating
                                 setTimeout(() => {
                                   setSelectedStoreDetail(null);
-                                  setCheckedItems(new Set());
+                                  // Don't reset checkedItems here - let useEffect handle it based on invoice_status
                                 }, 1000);
                               }}
                               disabled={isUpdating}
@@ -929,7 +943,7 @@ export function SalesTripsView() {
                                 // Close modal after a short delay to show success
                                 setTimeout(() => {
                                   setSelectedStoreDetail(null);
-                                  setCheckedItems(new Set());
+                                  // Don't reset checkedItems here - let useEffect handle it based on invoice_status
                                 }, 1500);
                               }}
                               disabled={!allChecked || isUpdating}
