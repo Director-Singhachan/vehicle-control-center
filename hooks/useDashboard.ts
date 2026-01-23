@@ -7,7 +7,8 @@ import { ticketService } from '../services/ticketService';
 import { useDataCacheStore, createCacheKey } from '../stores/dataCacheStore';
 import type { Database } from '../types/database';
 
-type VehicleDashboard = Database['public']['Views']['vehicle_dashboard']['Row'];
+// Use any type for vehicle_dashboard since it may not exist in all database schemas
+type VehicleDashboard = any; // Database['public']['Views']['vehicle_dashboard']['Row'];
 type TicketWithRelations = Database['public']['Views']['tickets_with_relations']['Row'];
 
 export interface DashboardData {
@@ -20,6 +21,12 @@ export interface DashboardData {
   recentTickets: TicketWithRelations[];
   pendingTicketsCount: number;
 }
+
+// Circuit breaker to prevent repeated failed requests
+let circuitBreakerOpen = false;
+let circuitBreakerFailures = 0;
+const CIRCUIT_BREAKER_THRESHOLD = 3; // Open after 3 consecutive failures
+const CIRCUIT_BREAKER_RESET_TIME = 60000; // Reset after 60 seconds
 
 export const useDashboard = () => {
   const cache = useDataCacheStore();
@@ -44,6 +51,18 @@ export const useDashboard = () => {
   const [error, setError] = useState<Error | null>(null);
 
   const fetchDashboardData = async (useCache = true, forceLoading = false) => {
+    // Check circuit breaker
+    if (circuitBreakerOpen) {
+      console.warn('[useDashboard] Circuit breaker is OPEN - skipping fetch, using cache only');
+      const cached = cache.get<DashboardData>(cacheKey);
+      if (cached) {
+        setData(cached);
+      }
+      setError(new Error('ระบบไม่สามารถเชื่อมต่อกับ Supabase ได้ชั่วคราว กรุณาลองใหม่ในภายหลัง'));
+      setLoading(false);
+      return;
+    }
+
     // Check cache first
     if (useCache) {
       const cached = cache.get<DashboardData>(cacheKey);
@@ -51,8 +70,10 @@ export const useDashboard = () => {
         console.log('[useDashboard] Using cached data');
         setData(cached);
         setLoading(false);
-        // Fetch in background to update cache
-        setTimeout(() => fetchDashboardData(false, false), 100);
+        // Fetch in background to update cache (only if circuit breaker is closed)
+        if (!circuitBreakerOpen) {
+          setTimeout(() => fetchDashboardData(false, false), 100);
+        }
         return;
       }
     }
@@ -64,7 +85,7 @@ export const useDashboard = () => {
     }
     setError(null);
     
-    // Add timeout to prevent hanging (reduced to 30s - individual queries have 15s timeout)
+    // Add timeout to prevent hanging (reduced to 30s - individual queries have 20s timeout)
     // Total timeout should be longer than individual query timeouts to allow for parallel execution
     const timeoutPromise = new Promise<null>((resolve) => {
       setTimeout(() => {
@@ -147,17 +168,31 @@ export const useDashboard = () => {
       console.log('[useDashboard] Starting Tier 1 (Critical) data fetch...');
       
       // Tier 1: Critical data - Load first (most important for UI)
+      // Reduced timeout to 10s and no retries for faster failure detection
       const tier1Promise = Promise.all([
-        withTimeout(vehicleService.getSummary(), 20000, 'Summary', 1),
-        withTimeout(ticketService.getRecentTickets(10), 20000, 'RecentTickets', 1),
-        withTimeout(getPendingTicketsCount(), 20000, 'PendingTicketsCount', 1),
+        withTimeout(vehicleService.getSummary(), 10000, 'Summary', 0), // No retries for faster failure
+        withTimeout(ticketService.getRecentTickets(10), 10000, 'RecentTickets', 0),
+        withTimeout(getPendingTicketsCount(), 10000, 'PendingTicketsCount', 0),
       ]);
 
       const tier1Result = await Promise.race([tier1Promise, timeoutPromise]);
       
       if (tier1Result === null) {
         console.error('[useDashboard] Tier 1 timeout - possible connection issue');
+        circuitBreakerFailures++;
+        if (circuitBreakerFailures >= CIRCUIT_BREAKER_THRESHOLD) {
+          circuitBreakerOpen = true;
+          console.error('[useDashboard] Circuit breaker OPENED after', circuitBreakerFailures, 'failures');
+          // Reset circuit breaker after timeout
+          setTimeout(() => {
+            circuitBreakerOpen = false;
+            circuitBreakerFailures = 0;
+            console.log('[useDashboard] Circuit breaker RESET');
+          }, CIRCUIT_BREAKER_RESET_TIME);
+        }
       } else {
+        // Reset failure count on success
+        circuitBreakerFailures = 0;
         const [summary, recentTickets, pendingTicketsCount] = tier1Result;
         // Update UI immediately with Tier 1 data
         setData(prev => ({
@@ -169,25 +204,33 @@ export const useDashboard = () => {
         console.log('[useDashboard] Tier 1 data loaded, updating UI...');
       }
 
+      // Only continue if Tier 1 succeeded and circuit breaker is closed
+      if (circuitBreakerOpen) {
+        setLoading(false);
+        setError(new Error('ระบบไม่สามารถเชื่อมต่อกับ Supabase ได้ กรุณาตรวจสอบการเชื่อมต่ออินเทอร์เน็ต'));
+        return;
+      }
+
       // Wait a bit before loading Tier 2 to avoid overwhelming the connection pool
       await new Promise(resolve => setTimeout(resolve, 500));
 
       console.log('[useDashboard] Starting Tier 2 (Secondary) data fetch...');
       
       // Tier 2: Secondary data - Load after Tier 1
+      // Reduced timeout to 10s, no retries
       const tier2Promise = Promise.all([
-        withTimeout(reportsService.getFinancials(), 20000, 'Financials', 1),
-        withTimeout(usageService.getDailyUsage(7), 20000, 'Usage', 1),
-        withTimeout(vehicleService.getLocations(), 20000, 'Locations', 1),
+        withTimeout(reportsService.getFinancials(), 10000, 'Financials', 0),
+        withTimeout(usageService.getDailyUsage(7), 10000, 'Usage', 0),
+        withTimeout(vehicleService.getLocations(), 10000, 'Locations', 0),
       ]);
 
       const tier2Result = await Promise.race([
         tier2Promise,
         new Promise<null>((resolve) => {
           setTimeout(() => {
-            console.warn('[useDashboard] Tier 2 timeout after 25s');
+            console.warn('[useDashboard] Tier 2 timeout after 15s');
             resolve(null);
-          }, 25000);
+          }, 15000);
         }),
       ]);
 
@@ -208,18 +251,19 @@ export const useDashboard = () => {
       console.log('[useDashboard] Starting Tier 3 (Optional) data fetch...');
       
       // Tier 3: Optional data - Load last (can be slow, less critical)
+      // Reduced timeout to 10s, no retries
       const tier3Promise = Promise.all([
-        withTimeout(reportsService.getMaintenanceTrends(6), 20000, 'Trends', 1),
-        withTimeout(vehicleService.getDashboardData(), 20000, 'Dashboard', 1),
+        withTimeout(reportsService.getMaintenanceTrends(6), 10000, 'Trends', 0),
+        withTimeout(vehicleService.getDashboardData(), 10000, 'Dashboard', 0),
       ]);
 
       const tier3Result = await Promise.race([
         tier3Promise,
         new Promise<null>((resolve) => {
           setTimeout(() => {
-            console.warn('[useDashboard] Tier 3 timeout after 25s');
+            console.warn('[useDashboard] Tier 3 timeout after 15s');
             resolve(null);
-          }, 25000);
+          }, 15000);
         }),
       ]);
 
@@ -292,6 +336,16 @@ export const useDashboard = () => {
       }
     } catch (err) {
       console.error('[useDashboard] Fatal error:', err);
+      circuitBreakerFailures++;
+      if (circuitBreakerFailures >= CIRCUIT_BREAKER_THRESHOLD) {
+        circuitBreakerOpen = true;
+        console.error('[useDashboard] Circuit breaker OPENED after', circuitBreakerFailures, 'failures');
+        setTimeout(() => {
+          circuitBreakerOpen = false;
+          circuitBreakerFailures = 0;
+          console.log('[useDashboard] Circuit breaker RESET');
+        }, CIRCUIT_BREAKER_RESET_TIME);
+      }
       setError(err instanceof Error ? err : new Error('Failed to fetch dashboard data'));
       // Set empty data on error to prevent infinite loading
       setData({
@@ -427,6 +481,3 @@ export const useMaintenanceTrends = (months: number = 6) => {
     refetch: fetchTrends,
   };
 };
-
-
-
