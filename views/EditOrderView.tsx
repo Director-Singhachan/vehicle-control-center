@@ -1172,6 +1172,64 @@ export function EditOrderView({ orderId, onSave, onCancel }: EditOrderViewProps)
               </div>
             </div>
           </Card>
+
+          {/* รายการสินค้าที่เลือก */}
+          {orderItems.length > 0 && (
+            <Card>
+              <div className="p-6">
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+                  รายการสินค้า ({orderItems.length} รายการ)
+                </h3>
+                
+                <div className="space-y-2 max-h-[600px] overflow-y-auto">
+                  {orderItems.map((item, index) => {
+                    const qty = Number(item.quantity || 0);
+                    
+                    return (
+                      <div
+                        key={index}
+                        className={`p-3 rounded-lg border transition-all ${
+                          item.is_bonus
+                            ? 'border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-900/20'
+                            : 'border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:border-blue-300 dark:hover:border-blue-700'
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-1">
+                              <p className="font-medium text-gray-900 dark:text-white text-sm truncate">
+                                {item.product?.product_name || 'ไม่ระบุชื่อ'}
+                              </p>
+                              {item.is_bonus && (
+                                <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300 text-xs flex items-center gap-1 flex-shrink-0">
+                                  <Gift className="w-3 h-3" />
+                                  ของแถม
+                                </Badge>
+                              )}
+                            </div>
+                            <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
+                              {item.product?.product_code || '-'}
+                            </p>
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm text-gray-600 dark:text-gray-400">จำนวน:</span>
+                              <span className="font-semibold text-gray-900 dark:text-white">
+                                {qty > 0 ? new Intl.NumberFormat('th-TH').format(qty) : '-'}
+                              </span>
+                              {item.product?.unit && (
+                                <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 text-xs">
+                                  {item.product.unit}
+                                </Badge>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </Card>
+          )}
         </div>
       </div>
 
