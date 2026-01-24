@@ -135,39 +135,26 @@ export const vehicleService = {
       console.log('[vehicleService] Checking authentication...');
       const sessionStartTime = Date.now();
 
-      // Add timeout to getSession to prevent hanging
-      const getSessionPromise = supabase.auth.getSession();
-      const timeoutPromise = new Promise<{ data: { session: any }, error: any }>((resolve) => {
-        setTimeout(() => {
-          console.warn('[vehicleService] getSession timeout after 5s');
-          resolve({ data: { session: null }, error: null }); // Resolve with null session on timeout
-        }, 5000);
-      });
-
-      let { data: { session }, error: sessionError } = await Promise.race([getSessionPromise, timeoutPromise]);
+      // Use getCurrentUser helper which has localStorage fallback and shorter timeout
+      const { getCurrentUser } = await import('../lib/supabase');
+      const user = await getCurrentUser();
 
       const sessionElapsed = Date.now() - sessionStartTime;
-      console.log(`[vehicleService] getSession() took ${sessionElapsed}ms`);
+      console.log(`[vehicleService] getCurrentUser() took ${sessionElapsed}ms`);
 
-      if (sessionError) {
-        console.error('[vehicleService] Session error:', sessionError);
-        // Don't throw yet, try fallback
-      }
-
-      // Fallback: Check authStore if session is missing (e.g. timeout or error)
-      if (!session) {
+      if (!user) {
+        // Fallback: Check authStore if user is missing
         const storeUser = useAuthStore.getState().user;
         if (storeUser) {
           console.log('[vehicleService] Using user from store as fallback');
-          // Create a minimal session object with just the user
-          session = { user: storeUser } as any;
+          // Continue with storeUser - queries will use RLS which checks auth.uid()
         } else {
-          console.error('[vehicleService] No session and no store user - user not authenticated');
+          console.error('[vehicleService] No user and no store user - user not authenticated');
           throw new Error('User not authenticated');
         }
+      } else {
+        console.log('[vehicleService] User authenticated:', user.id);
       }
-
-      console.log('[vehicleService] User authenticated:', session.user.id);
 
       // Use Promise.all for parallel execution
       const [totalResult, activeResult, maintenanceResult] = await Promise.all([

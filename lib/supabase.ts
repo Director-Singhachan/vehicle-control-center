@@ -79,8 +79,36 @@ export const supabase = (() => {
   return supabaseInstance;
 })();
 
+// Helper function to get session from localStorage directly (fast, no network call)
+const getSessionFromStorage = (): { data: { session: any }; error: any } | null => {
+  if (typeof window === 'undefined') return null;
+  
+  try {
+    const storageKey = 'vehicle-control-center-auth';
+    const stored = window.localStorage.getItem(storageKey);
+    
+    if (!stored) return null;
+    
+    const parsed = JSON.parse(stored);
+    const session = parsed?.currentSession || parsed?.session || null;
+    
+    // Check if session is expired
+    if (session?.expires_at) {
+      const expiresAt = session.expires_at * 1000; // Convert to milliseconds
+      if (Date.now() > expiresAt) {
+        return null; // Session expired
+      }
+    }
+    
+    return { data: { session }, error: null };
+  } catch (err) {
+    console.warn('[getSessionFromStorage] Error reading from localStorage:', err);
+    return null;
+  }
+};
+
 // Helper function to get current user
-// Uses getSession() for fast local storage read instead of getUser() which makes API call
+// Uses localStorage directly first (FAST!), then falls back to getSession() if needed
 export const getCurrentUser = async () => {
   if (supabaseConfigError) {
     // Return null instead of throwing to prevent infinite loading
@@ -95,16 +123,23 @@ export const getCurrentUser = async () => {
   }
 
   try {
+    // Try localStorage first (FAST - no network call, no timeout risk)
+    const storageResult = getSessionFromStorage();
+    if (storageResult?.data?.session?.user) {
+      console.log('[getCurrentUser] Using session from localStorage (fast path)');
+      return storageResult.data.session.user;
+    }
 
-    // Use getSession() - reads from localStorage (FAST!)
-    // Instead of getUser() which makes API call (SLOW - can timeout)
-    // Add timeout to prevent hanging
+    // Fallback to getSession() with shorter timeout (2s instead of 5s)
+    // This should rarely be needed if localStorage has valid session
     const getSessionPromise = supabase.auth.getSession();
     const timeoutPromise = new Promise<{ data: { session: any }, error: any }>((resolve) => {
       setTimeout(() => {
-        console.warn('getSession timeout in getCurrentUser after 5s');
-        resolve({ data: { session: null }, error: new Error('Session check timeout') });
-      }, 5000);
+        console.warn('getSession timeout in getCurrentUser after 2s - using localStorage fallback');
+        // Try localStorage one more time as fallback
+        const fallback = getSessionFromStorage();
+        resolve(fallback || { data: { session: null }, error: new Error('Session check timeout') });
+      }, 2000); // Reduced from 5s to 2s
     });
 
     const { data: { session }, error: sessionError } = await Promise.race([getSessionPromise, timeoutPromise]);
@@ -123,8 +158,10 @@ export const getCurrentUser = async () => {
   } catch (err) {
     // Check for connection errors
     if (err instanceof Error && (err.message.includes('fetch') || err.message.includes('network'))) {
-      console.warn('Connection error - returning null user');
-      return null; // Return null instead of throwing to prevent infinite loading
+      console.warn('Connection error - trying localStorage fallback');
+      // Try localStorage as last resort
+      const fallback = getSessionFromStorage();
+      return fallback?.data?.session?.user ?? null;
     }
     // If it's a session-related error, just return null (user not logged in)
     if (err instanceof Error && (err.message.includes('session') || err.message.includes('JWT'))) {
@@ -146,55 +183,77 @@ export const getCurrentProfile = async () => {
   const user = await getCurrentUser();
   if (!user) return null;
 
-  // Add timeout to prevent hanging (10 seconds for profile fetch - increased from 5s)
-  const timeoutPromise = new Promise<null>((resolve) => {
-    setTimeout(() => {
-      console.warn('Profile fetch timeout after 10s - returning null');
-      resolve(null);
-    }, 10000);
-  });
+  // Add timeout to prevent hanging (reduced to 5 seconds, with retry logic)
+  const fetchWithRetry = async (retries = 2): Promise<any> => {
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      try {
+        const timeoutPromise = new Promise<null>((resolve) => {
+          setTimeout(() => {
+            if (attempt < retries) {
+              console.warn(`Profile fetch timeout after 5s (attempt ${attempt + 1}/${retries + 1}) - retrying...`);
+            } else {
+              console.warn('Profile fetch timeout after 5s - all retries exhausted, returning null');
+            }
+            resolve(null);
+          }, 5000); // Reduced from 10s to 5s
+        });
 
-  try {
-    const profilePromise = supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', user.id)
-      .single();
+        const profilePromise = supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', user.id)
+          .single();
 
-    const result = await Promise.race([profilePromise, timeoutPromise]);
+        const result = await Promise.race([profilePromise, timeoutPromise]);
 
-    // If timeout, return null
-    if (result === null) {
-      return null;
-    }
+        // If timeout and we have retries left, continue loop
+        if (result === null && attempt < retries) {
+          await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1s before retry
+          continue;
+        }
 
-    const { data, error } = result as any;
+        // If timeout and no retries left, return null
+        if (result === null) {
+          return null;
+        }
 
-    if (error) {
-      // Check for connection errors
-      if (error.message.includes('fetch') || error.message.includes('network')) {
-        console.warn('Connection error fetching profile - returning null');
-        return null;
+        const { data, error } = result as any;
+
+        if (error) {
+          // Check for connection errors - retry if we have attempts left
+          if ((error.message.includes('fetch') || error.message.includes('network')) && attempt < retries) {
+            console.warn(`Connection error fetching profile (attempt ${attempt + 1}/${retries + 1}) - retrying...`);
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            continue;
+          }
+          // "No rows returned" is normal if profile doesn't exist yet
+          if (error.code === 'PGRST116' || error.message.includes('No rows')) {
+            console.warn('Profile not found for user - returning null');
+            return null;
+          }
+          console.warn('Error fetching profile:', error.message);
+          return null;
+        }
+
+        return data;
+      } catch (err) {
+        // Check for connection errors - retry if we have attempts left
+        if (err instanceof Error && (err.message.includes('fetch') || err.message.includes('network')) && attempt < retries) {
+          console.warn(`Connection error fetching profile (attempt ${attempt + 1}/${retries + 1}) - retrying...`);
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          continue;
+        }
+        // If last attempt, return null
+        if (attempt === retries) {
+          console.warn('Unexpected error fetching profile:', err);
+          return null;
+        }
       }
-      // "No rows returned" is normal if profile doesn't exist yet
-      if (error.code === 'PGRST116' || error.message.includes('No rows')) {
-        console.warn('Profile not found for user - returning null');
-        return null;
-      }
-      console.warn('Error fetching profile:', error.message);
-      return null;
     }
-
-    return data;
-  } catch (err) {
-    // Check for connection errors
-    if (err instanceof Error && (err.message.includes('fetch') || err.message.includes('network'))) {
-      console.warn('Connection error fetching profile - returning null');
-      return null;
-    }
-    console.warn('Unexpected error fetching profile:', err);
     return null;
-  }
+  };
+
+  return fetchWithRetry();
 };
 
 // Export error for UI to check
