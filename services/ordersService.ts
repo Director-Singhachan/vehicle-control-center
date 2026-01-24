@@ -242,16 +242,75 @@ export const ordersService = {
    */
   async assignToTrip(orderIds: string[], tripId: string, updatedBy: string) {
     // 1. Update orders to assign to trip (trigger will generate order_number)
-    const { error: updateError } = await supabase
+    let updatedOrders: Array<{ id: string; status: string; delivery_trip_id: string }> | null = null;
+    
+    const { data: initialUpdated, error: updateError } = await supabase
       .from('orders')
       .update({
         delivery_trip_id: tripId,
         status: 'assigned',
         updated_by: updatedBy,
       })
-      .in('id', orderIds);
+      .in('id', orderIds)
+      .select('id, status, delivery_trip_id');
 
-    if (updateError) throw updateError;
+    if (updateError) {
+      console.error('[ordersService] Failed to update orders:', {
+        error: updateError,
+        orderIds,
+        tripId,
+        code: updateError.code,
+        message: updateError.message,
+        details: updateError.details,
+        hint: updateError.hint,
+      });
+      
+      // Provide more helpful error message
+      if (updateError.code === 'PGRST116') {
+        throw new Error('ไม่สามารถอัปเดตออเดอร์ได้: ไม่พบข้อมูลหรือไม่มีสิทธิ์ (RLS Policy) - กรุณารัน migration ใน Supabase Dashboard');
+      } else if (updateError.code === '42883') {
+        // Function doesn't exist - this might be from a trigger
+        // Try to update without triggering the function by updating directly
+        console.warn('[ordersService] Function missing, trying direct update without trigger...');
+        
+        // Retry update - this time it should work if RLS is fixed
+        const { data: retryUpdated, error: retryError } = await supabase
+          .from('orders')
+          .update({
+            delivery_trip_id: tripId,
+            status: 'assigned',
+            updated_by: updatedBy,
+          })
+          .in('id', orderIds)
+          .select('id, status, delivery_trip_id');
+        
+        if (retryError) {
+          throw new Error(`ไม่สามารถอัปเดตออเดอร์ได้: ${retryError.message || 'Unknown error'} - กรุณารัน migration: sql/FINAL_FIX.sql`);
+        }
+        
+        // Use retry result - set updatedOrders to continue
+        if (retryUpdated && retryUpdated.length > 0) {
+          updatedOrders = retryUpdated;
+          console.log(`[ordersService] Successfully updated ${retryUpdated.length} orders after retry`);
+        } else {
+          throw new Error('ไม่สามารถอัปเดตออเดอร์ได้: กรุณารัน migration: sql/FINAL_FIX.sql');
+        }
+      } else {
+        throw new Error(`ไม่สามารถอัปเดตออเดอร์ได้: ${updateError.message || 'Unknown error'}`);
+      }
+    } else {
+      updatedOrders = initialUpdated;
+    }
+
+    // Verify that orders were actually updated
+    if (!updatedOrders || updatedOrders.length === 0) {
+      console.warn('[ordersService] No orders were updated. This might be an RLS policy issue.');
+      throw new Error('ไม่สามารถอัปเดตออเดอร์ได้: อาจเป็นปัญหา RLS Policy - กรุณารัน migration: sql/FINAL_FIX.sql');
+    }
+
+    if (updatedOrders.length !== orderIds.length) {
+      console.warn(`[ordersService] Only ${updatedOrders.length} of ${orderIds.length} orders were updated`);
+    }
 
     // 2. Generate order numbers for all orders in trip (ตามลำดับ sequence_order)
     // ใช้ database function เพื่อให้แน่ใจว่าเรียงตามลำดับที่ถูกต้อง
@@ -261,9 +320,21 @@ export const ordersService = {
       });
 
     if (generateError) {
-      console.error('[ordersService] Error generating order numbers:', generateError);
-      // ไม่ throw error เพราะ order อาจมี order_number อยู่แล้ว
-      // แต่ log เพื่อ debug
+      console.error('[ordersService] Error generating order numbers:', {
+        error: generateError,
+        tripId,
+        code: generateError.code,
+        message: generateError.message,
+      });
+      
+      // If function doesn't exist, provide helpful message
+      if (generateError.code === '42883') {
+        console.error('[ordersService] ⚠️ CRITICAL: Function generate_order_numbers_for_trip does not exist!');
+        console.error('[ordersService] ⚠️ Please run migration in Supabase Dashboard: sql/EXECUTE_THIS_NOW.sql');
+      }
+      // Don't throw - order_number generation is not critical if orders are already assigned
+    } else if (orderNumbers && orderNumbers.length > 0) {
+      console.log(`[ordersService] Generated ${orderNumbers.length} order numbers`);
     }
 
     // 3. Verify that all orders have order_numbers
@@ -280,6 +351,11 @@ export const ordersService = {
         `[ordersService] ${ordersWithoutNumber.length} orders still missing order_number after assignment`
       );
     }
+
+    return {
+      updated: updatedOrders.length,
+      orderNumbersGenerated: orderNumbers?.length || 0,
+    };
   },
 
   /**
