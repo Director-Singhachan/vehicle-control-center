@@ -1,5 +1,5 @@
 // Delivery Trip List View - Display all delivery trips
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Package,
   Plus,
@@ -63,6 +63,7 @@ export const DeliveryTripListView: React.FC<DeliveryTripListViewProps> = ({
   const [showFilters, setShowFilters] = useState(() => getInitialState('showFilters', false));
   const [onlyChanged, setOnlyChanged] = useState(() => getInitialState('onlyChanged', false));
   const [currentPage, setCurrentPage] = useState(() => getInitialState('currentPage', 1));
+  const [pageInput, setPageInput] = useState('');
 
   const itemsPerPage = 20;
 
@@ -112,25 +113,8 @@ export const DeliveryTripListView: React.FC<DeliveryTripListViewProps> = ({
     lite: true, // Use lite mode for list view optimization (fetches less data)
   });
 
-  // Auto-refetch when component becomes visible (e.g., after check-in)
-  // Use useRef to store refetch function to avoid infinite loop
-  const refetchRef = useRef(refetch);
-  refetchRef.current = refetch;
-
-  useEffect(() => {
-    // Refetch immediately when component mounts (in case status was updated)
-    refetchRef.current();
-
-    // Refetch on window focus (user comes back to tab)
-    const handleFocus = () => {
-      refetchRef.current();
-    };
-    window.addEventListener('focus', handleFocus);
-
-    return () => {
-      window.removeEventListener('focus', handleFocus);
-    };
-  }, []); // Empty dependency array - only run once on mount
+  // Note: Removed auto-refetch on mount and window focus to avoid unnecessary reloads
+  // Data will be fetched automatically by useDeliveryTrips hook when needed
 
   // Use trips directly - filtering is now done at database level
   const filteredTrips = trips;
@@ -150,24 +134,11 @@ export const DeliveryTripListView: React.FC<DeliveryTripListViewProps> = ({
     // Session storage will be updated by the effect
   };
 
+  // Reset to page 1 when filters or search change (like TripLogListView)
+  // Use searchTerm (debounced) instead of searchInput to avoid resetting on every keystroke
   useEffect(() => {
-    // Reset to page 1 ONLY if we are NOT restoring state (which is handled by initial state)
-    // AND IF the filters actually change interactively.
-    // However, simply resetting whenever filters change is tricky with persistence.
-    // We should only reset page if the filter change came from user interaction, not from mounting.
-
-    // Actually, for standard behavior: changing a filter *should* reset to page 1.
-    // The issue with persistence is distinguishing "restore" from "change".
-    // Since we initialize state from storage, the first render has the restored values.
-    // Any SUBSEQUENT change to filters should trigger page reset.
-    // We can't easily detect "mount" vs "update" in this single effect without a ref.
-  }, [/* dependencies removed - we will handle page reset manually in handlers if needed, or accept that changing filters might stay on page X if it exists */]);
-
-  // Handler for filter changes to ensure page reset
-  const handleFilterChange = (setter: any, value: any) => {
-    setter(value);
     setCurrentPage(1);
-  };
+  }, [statusFilter, vehicleFilter, dateFrom, dateTo, onlyChanged, searchTerm]); // Use debounced searchTerm, not searchInput
 
   const getStatusBadge = (status: string) => {
     const badges = {
@@ -266,7 +237,7 @@ export const DeliveryTripListView: React.FC<DeliveryTripListViewProps> = ({
                 value={Array.isArray(statusFilter) ? statusFilter.join(',') : statusFilter}
                 onChange={(e) => {
                   const value = e.target.value;
-                  handleFilterChange(setStatusFilter, value === 'all' ? 'all' : value.split(','));
+                  setStatusFilter(value === 'all' ? 'all' : value.split(','));
                 }}
                 className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
               >
@@ -284,7 +255,7 @@ export const DeliveryTripListView: React.FC<DeliveryTripListViewProps> = ({
               </label>
               <select
                 value={vehicleFilter}
-                onChange={(e) => handleFilterChange(setVehicleFilter, e.target.value)}
+                onChange={(e) => setVehicleFilter(e.target.value)}
                 className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
               >
                 <option value="">ทั้งหมด</option>
@@ -303,7 +274,7 @@ export const DeliveryTripListView: React.FC<DeliveryTripListViewProps> = ({
               <Input
                 type="date"
                 value={dateFrom}
-                onChange={(e) => handleFilterChange(setDateFrom, e.target.value)}
+                onChange={(e) => setDateFrom(e.target.value)}
               />
             </div>
 
@@ -314,7 +285,7 @@ export const DeliveryTripListView: React.FC<DeliveryTripListViewProps> = ({
               <Input
                 type="date"
                 value={dateTo}
-                onChange={(e) => handleFilterChange(setDateTo, e.target.value)}
+                onChange={(e) => setDateTo(e.target.value)}
               />
             </div>
 
@@ -324,7 +295,7 @@ export const DeliveryTripListView: React.FC<DeliveryTripListViewProps> = ({
                   type="checkbox"
                   className="rounded border-slate-300 dark:border-slate-600 text-enterprise-600 focus:ring-enterprise-500"
                   checked={onlyChanged}
-                  onChange={(e) => handleFilterChange(setOnlyChanged, e.target.checked)}
+                  onChange={(e) => setOnlyChanged(e.target.checked)}
                 />
                 แสดงเฉพาะทริปที่มีการแก้ไขสินค้า
               </label>
@@ -337,7 +308,7 @@ export const DeliveryTripListView: React.FC<DeliveryTripListViewProps> = ({
             label="ค้นหา"
             placeholder="ค้นหาจากรหัสทริป, ป้ายทะเบียน, ชื่อคนขับ..."
             value={searchInput}
-            onChange={(e) => handleFilterChange(setSearchInput, e.target.value)}
+            onChange={(e) => setSearchInput(e.target.value)}
             icon={<Search size={18} />}
           />
         </div>
@@ -602,6 +573,46 @@ export const DeliveryTripListView: React.FC<DeliveryTripListViewProps> = ({
                       });
                     })()}
                   </div>
+
+                  {/* Jump to Page Input */}
+                  {totalPages > 1 && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm text-slate-600 dark:text-slate-400">ไปที่หน้า:</span>
+                      <input
+                        type="number"
+                        min="1"
+                        max={totalPages}
+                        value={pageInput}
+                        onChange={(e) => setPageInput(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            const page = parseInt(pageInput);
+                            if (page >= 1 && page <= totalPages) {
+                              setCurrentPage(page);
+                              setPageInput('');
+                            }
+                          }
+                        }}
+                        className="w-20 px-2 py-1 text-sm border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-enterprise-500 focus:border-transparent"
+                        placeholder={`1-${totalPages}`}
+                      />
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          const page = parseInt(pageInput);
+                          if (page >= 1 && page <= totalPages) {
+                            setCurrentPage(page);
+                            setPageInput('');
+                          }
+                        }}
+                        disabled={!pageInput || parseInt(pageInput) < 1 || parseInt(pageInput) > totalPages}
+                      >
+                        ไป
+                      </Button>
+                    </div>
+                  )}
+
                   <Button
                     variant="outline"
                     size="sm"
