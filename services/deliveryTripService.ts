@@ -1088,7 +1088,7 @@ export const deliveryTripService = {
             delivery_trip_store_id,
             delivery_trip_item_id,
             product_id,
-            change_type: action,
+            action: action, // Use 'action' column name to match database schema
             old_quantity,
             new_quantity,
             reason: changeReason || null,
