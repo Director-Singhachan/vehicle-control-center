@@ -1038,7 +1038,7 @@ export interface Database {
           delivery_trip_store_id: string | null;
           delivery_trip_item_id: string | null;
           product_id: string | null;
-          change_type: 'add' | 'update' | 'remove';
+          action: 'add' | 'update' | 'remove'; // Column name matches database schema
           old_quantity: number | null;
           new_quantity: number | null;
           reason: string | null;
@@ -1051,7 +1051,7 @@ export interface Database {
           delivery_trip_store_id?: string | null;
           delivery_trip_item_id?: string | null;
           product_id?: string | null;
-          change_type: 'add' | 'update' | 'remove';
+          action: 'add' | 'update' | 'remove'; // Column name matches database schema
           old_quantity?: number | null;
           new_quantity?: number | null;
           reason?: string | null;
@@ -1064,7 +1064,7 @@ export interface Database {
           delivery_trip_store_id?: string | null;
           delivery_trip_item_id?: string | null;
           product_id?: string | null;
-          change_type?: 'add' | 'update' | 'remove';
+          action?: 'add' | 'update' | 'remove'; // Column name matches database schema
           old_quantity?: number | null;
           new_quantity?: number | null;
           reason?: string | null;
