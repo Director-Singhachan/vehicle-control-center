@@ -161,6 +161,7 @@ export const deliveryTripService = {
     planned_date_to?: string;
     has_item_changes?: boolean;
     search?: string; // Search term for trip_number, notes
+    branch?: string; // Filter by branch: 'HQ' (สำนักงานใหญ่), 'SD' (สอยดาว), or 'ALL' (default shows all)
     page?: number;
     pageSize?: number;
     lite?: boolean;
@@ -216,6 +217,11 @@ export const deliveryTripService = {
         query = query.or(
           `trip_number.ilike.${searchPattern},notes.ilike.${searchPattern}`
         );
+      }
+
+      // Filter by branch
+      if (filters?.branch && filters.branch !== 'ALL') {
+        query = query.eq('branch', filters.branch);
       }
 
       // Apply pagination AFTER all filters
@@ -315,13 +321,13 @@ export const deliveryTripService = {
         // ts.delivery_trip_store_id is an alias for ts.id (from the select statement)
         return ts.id || (ts as any).delivery_trip_store_id;
       }).filter(Boolean) as string[];
-      
+
       if (tripStoreIds.length > 0) {
         const { data: tripItems, error: itemsError } = await supabase
           .from('delivery_trip_items')
           .select('id, delivery_trip_store_id, product_id, quantity, notes, is_bonus')
           .in('delivery_trip_store_id', tripStoreIds);
-        
+
         if (itemsError) {
           console.error('[deliveryTripService] Error fetching trip items:', itemsError, {
             tripStoreIds,
@@ -661,7 +667,7 @@ export const deliveryTripService = {
                 .select('id, name, status')
                 .ilike('name', driverName)
                 .limit(5);
-              
+
               if (!caseError && caseInsensitiveMatches && caseInsensitiveMatches.length > 0) {
                 staffMatches = caseInsensitiveMatches;
               }
@@ -767,7 +773,7 @@ export const deliveryTripService = {
         });
         // Use existing store instead of creating new one
         const tripStore = existingStore;
-        
+
         // Still create items for this store
         if (storeData.items && storeData.items.length > 0) {
           const itemsData = storeData.items.map(item => ({
@@ -1378,13 +1384,15 @@ export const deliveryTripService = {
       throw ordersError;
     }
 
-    // 2. อัพเดทออเดอร์ทั้งหมดกลับเป็น 'confirmed' และตั้ง delivery_trip_id เป็น null
+    // 2. อัพเดทออเดอร์ทั้งหมดกลับเป็น 'confirmed' และตั้ง delivery_trip_id และ order_number เป็น null
+    //    เพื่อให้สามารถสร้างทริปใหม่และสร้าง order_number ใหม่ได้
     if (orders && orders.length > 0) {
       const orderIds = orders.map(o => o.id);
       const { error: updateOrdersError } = await supabase
         .from('orders')
         .update({
           delivery_trip_id: null,
+          order_number: null, // Clear order_number so it can be regenerated for new trip
           status: 'confirmed',
           updated_by: user.id,
         })
@@ -1395,7 +1403,7 @@ export const deliveryTripService = {
         throw updateOrdersError;
       }
 
-      console.log(`[deliveryTripService] Updated ${orderIds.length} orders back to 'confirmed' status`);
+      console.log(`[deliveryTripService] Reset ${orderIds.length} orders (cleared delivery_trip_id and order_number)`);
     }
 
     // 3. ลบทริป (CASCADE จะลบข้อมูลที่เกี่ยวข้องอัตโนมัติ)
@@ -1498,6 +1506,35 @@ export const deliveryTripService = {
     }
 
     console.log('[deliveryTripService] Trip updated successfully:', updatedData?.[0]?.id);
+
+    // Reset orders: clear delivery_trip_id and order_number so they can be reassigned to a new trip
+    const { data: orders, error: ordersError } = await supabase
+      .from('orders')
+      .select('id')
+      .eq('delivery_trip_id', id);
+
+    if (ordersError) {
+      console.error('[deliveryTripService] Error fetching orders:', ordersError);
+      // Don't throw - trip is already cancelled, just log the error
+    } else if (orders && orders.length > 0) {
+      const orderIds = orders.map(o => o.id);
+      const { error: updateOrdersError } = await supabase
+        .from('orders')
+        .update({
+          delivery_trip_id: null,
+          order_number: null, // Clear order_number so it can be regenerated for new trip
+          status: 'confirmed',
+          updated_by: user.id,
+        })
+        .in('id', orderIds);
+
+      if (updateOrdersError) {
+        console.error('[deliveryTripService] Error resetting orders:', updateOrdersError);
+        // Don't throw - trip is already cancelled, just log the error
+      } else {
+        console.log(`[deliveryTripService] Reset ${orderIds.length} orders (cleared delivery_trip_id and order_number)`);
+      }
+    }
 
     // Return updated trip
     const updatedTrip = await deliveryTripService.getById(id);
