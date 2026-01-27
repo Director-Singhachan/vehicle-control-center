@@ -40,7 +40,7 @@ export const DeliveryTripListView: React.FC<DeliveryTripListViewProps> = ({
   onCreate,
 }) => {
   const { vehicles } = useVehicles();
-  const { isReadOnly } = useAuth();
+  const { isReadOnly, profile } = useAuth(); // Get user profile for branch info
   // State for filters and pagination
   // Initialize from sessionStorage if available to persist state across navigation (e.g. back button)
   const getInitialState = <T,>(key: string, defaultValue: T): T => {
@@ -58,6 +58,12 @@ export const DeliveryTripListView: React.FC<DeliveryTripListViewProps> = ({
   const [searchTerm, setSearchTerm] = useState<string>(''); // Debounced search term (for query)
   const [statusFilter, setStatusFilter] = useState<string[] | 'all'>(() => getInitialState('statusFilter', 'all'));
   const [vehicleFilter, setVehicleFilter] = useState<string>(() => getInitialState('vehicleFilter', ''));
+  const [branchFilter, setBranchFilter] = useState<string>(() => {
+    // Default to user's branch, or 'ALL' if user is admin/manager
+    const saved = getInitialState('branchFilter', '');
+    if (saved) return saved;
+    return profile?.branch || 'ALL';
+  });
   const [dateFrom, setDateFrom] = useState<string>(() => getInitialState('dateFrom', ''));
   const [dateTo, setDateTo] = useState<string>(() => getInitialState('dateTo', ''));
   const [showFilters, setShowFilters] = useState(() => getInitialState('showFilters', false));
@@ -82,6 +88,7 @@ export const DeliveryTripListView: React.FC<DeliveryTripListViewProps> = ({
       sessionStorage.setItem('deliveryTrips_searchInput', JSON.stringify(searchInput));
       sessionStorage.setItem('deliveryTrips_statusFilter', JSON.stringify(statusFilter));
       sessionStorage.setItem('deliveryTrips_vehicleFilter', JSON.stringify(vehicleFilter));
+      sessionStorage.setItem('deliveryTrips_branchFilter', JSON.stringify(branchFilter));
       sessionStorage.setItem('deliveryTrips_dateFrom', JSON.stringify(dateFrom));
       sessionStorage.setItem('deliveryTrips_dateTo', JSON.stringify(dateTo));
       sessionStorage.setItem('deliveryTrips_showFilters', JSON.stringify(showFilters));
@@ -90,7 +97,7 @@ export const DeliveryTripListView: React.FC<DeliveryTripListViewProps> = ({
     } catch (e) {
       console.error('Error saving state to sessionStorage:', e);
     }
-  }, [searchInput, statusFilter, vehicleFilter, dateFrom, dateTo, showFilters, onlyChanged, currentPage]);
+  }, [searchInput, statusFilter, vehicleFilter, branchFilter, dateFrom, dateTo, showFilters, onlyChanged, currentPage]);
 
   const [cancelTripId, setCancelTripId] = useState<string | null>(null);
   const [cancelReason, setCancelReason] = useState('');
@@ -107,6 +114,7 @@ export const DeliveryTripListView: React.FC<DeliveryTripListViewProps> = ({
     planned_date_to: dateTo || undefined,
     has_item_changes: onlyChanged ? true : undefined,
     search: searchTerm || undefined, // Pass search term to hook for database-level filtering
+    branch: branchFilter || undefined, // Pass branch filter
     autoFetch: true,
     page: currentPage,
     pageSize: itemsPerPage,
@@ -127,6 +135,7 @@ export const DeliveryTripListView: React.FC<DeliveryTripListViewProps> = ({
     setSearchInput(''); // Clear input (will trigger debounce to clear searchTerm)
     setStatusFilter('all');
     setVehicleFilter('');
+    setBranchFilter(profile?.branch || 'ALL'); // Reset to user's branch
     setDateFrom('');
     setDateTo('');
     setOnlyChanged(false);
@@ -138,7 +147,7 @@ export const DeliveryTripListView: React.FC<DeliveryTripListViewProps> = ({
   // Use searchTerm (debounced) instead of searchInput to avoid resetting on every keystroke
   useEffect(() => {
     setCurrentPage(1);
-  }, [statusFilter, vehicleFilter, dateFrom, dateTo, onlyChanged, searchTerm]); // Use debounced searchTerm, not searchInput
+  }, [statusFilter, vehicleFilter, branchFilter, dateFrom, dateTo, onlyChanged, searchTerm]); // Use debounced searchTerm, not searchInput
 
   const getStatusBadge = (status: string) => {
     const badges = {
@@ -209,7 +218,7 @@ export const DeliveryTripListView: React.FC<DeliveryTripListViewProps> = ({
             ตัวกรอง
           </h3>
           <div className="flex items-center gap-4">
-            {(statusFilter !== 'all' || vehicleFilter || dateFrom || dateTo || onlyChanged || searchInput) && (
+            {(statusFilter !== 'all' || vehicleFilter || branchFilter !== (profile?.branch || 'ALL') || dateFrom || dateTo || onlyChanged || searchInput) && (
               <button
                 onClick={clearFilters}
                 className="text-sm text-red-600 dark:text-red-400 hover:underline flex items-center gap-1"
@@ -228,7 +237,22 @@ export const DeliveryTripListView: React.FC<DeliveryTripListViewProps> = ({
         </div>
 
         {showFilters && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4 mb-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                สาขา
+              </label>
+              <select
+                value={branchFilter}
+                onChange={(e) => setBranchFilter(e.target.value)}
+                className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
+              >
+                <option value="ALL">ทั้งหมด</option>
+                <option value="HQ">สำนักงานใหญ่</option>
+                <option value="SD">สาขาสอยดาว</option>
+              </select>
+            </div>
+
             <div>
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                 สถานะ
@@ -337,7 +361,7 @@ export const DeliveryTripListView: React.FC<DeliveryTripListViewProps> = ({
         <Card className="p-12 text-center">
           <Package className="mx-auto mb-4 text-slate-400" size={48} />
           <p className="text-slate-600 dark:text-slate-400">
-            {searchInput || statusFilter !== 'all' || vehicleFilter || dateFrom || dateTo
+            {searchInput || statusFilter !== 'all' || vehicleFilter || branchFilter !== (profile?.branch || 'ALL') || dateFrom || dateTo
               ? 'ไม่พบข้อมูลที่ค้นหา'
               : 'ยังไม่มีทริปส่งสินค้า'}
           </p>
@@ -358,7 +382,7 @@ export const DeliveryTripListView: React.FC<DeliveryTripListViewProps> = ({
                   <div>
                     <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-2">
                       <span>
-                        {trip.trip_number || 
+                        {trip.trip_number ||
                           (trip.sequence_order ? `ทริป #${trip.sequence_order}` : `ทริป #${trip.id.substring(0, 8)}`)}
                       </span>
                       {trip.has_item_changes && (

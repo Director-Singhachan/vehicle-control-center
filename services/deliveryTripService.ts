@@ -161,6 +161,7 @@ export const deliveryTripService = {
     planned_date_to?: string;
     has_item_changes?: boolean;
     search?: string; // Search term for trip_number, notes
+    branch?: string; // Filter by branch: 'HQ' (สำนักงานใหญ่), 'SD' (สอยดาว), or 'ALL' (default shows all)
     page?: number;
     pageSize?: number;
     lite?: boolean;
@@ -216,6 +217,11 @@ export const deliveryTripService = {
         query = query.or(
           `trip_number.ilike.${searchPattern},notes.ilike.${searchPattern}`
         );
+      }
+
+      // Filter by branch
+      if (filters?.branch && filters.branch !== 'ALL') {
+        query = query.eq('branch', filters.branch);
       }
 
       // Apply pagination AFTER all filters
@@ -315,13 +321,13 @@ export const deliveryTripService = {
         // ts.delivery_trip_store_id is an alias for ts.id (from the select statement)
         return ts.id || (ts as any).delivery_trip_store_id;
       }).filter(Boolean) as string[];
-      
+
       if (tripStoreIds.length > 0) {
         const { data: tripItems, error: itemsError } = await supabase
           .from('delivery_trip_items')
           .select('id, delivery_trip_store_id, product_id, quantity, notes, is_bonus')
           .in('delivery_trip_store_id', tripStoreIds);
-        
+
         if (itemsError) {
           console.error('[deliveryTripService] Error fetching trip items:', itemsError, {
             tripStoreIds,
@@ -661,7 +667,7 @@ export const deliveryTripService = {
                 .select('id, name, status')
                 .ilike('name', driverName)
                 .limit(5);
-              
+
               if (!caseError && caseInsensitiveMatches && caseInsensitiveMatches.length > 0) {
                 staffMatches = caseInsensitiveMatches;
               }
@@ -767,7 +773,7 @@ export const deliveryTripService = {
         });
         // Use existing store instead of creating new one
         const tripStore = existingStore;
-        
+
         // Still create items for this store
         if (storeData.items && storeData.items.length > 0) {
           const itemsData = storeData.items.map(item => ({
