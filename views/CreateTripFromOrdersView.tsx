@@ -42,7 +42,7 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
   const { warehouses, loading: warehousesLoading } = useWarehouses();
   const { toasts, success, error, warning, dismissToast } = useToast();
 
-  const [drivers, setDrivers] = useState<Array<{ id: string; full_name: string }>>([]);
+  const [drivers, setDrivers] = useState<Array<{ id: string; full_name: string; branch?: string | null }>>([]);
   const [driversLoading, setDriversLoading] = useState(false);
   const [selectedVehicleId, setSelectedVehicleId] = useState('');
   const [selectedWarehouseId, setSelectedWarehouseId] = useState('');
@@ -94,8 +94,14 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
       try {
         setDriversLoading(true);
         const profiles = await profileService.getAll();
-        const driverProfiles = profiles.filter(p => p.role === 'driver');
-        setDrivers(driverProfiles.map(p => ({ id: p.id, full_name: p.full_name || '' })));
+        const driverProfiles = profiles.filter((p: any) => p.role === 'driver');
+        setDrivers(
+          driverProfiles.map((p: any) => ({
+            id: p.id,
+            full_name: p.full_name || '',
+            branch: (p.branch as string | null) ?? null,
+          }))
+        );
       } catch (err) {
         console.error('Error fetching drivers:', err);
         setDrivers([]);
@@ -164,6 +170,13 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
     
     return filtered;
   }, [vehicles, selectedBranch, vehicleSearch]);
+
+  // Filter drivers by selected branch (ถ้าเลือกสาขา ให้แสดงเฉพาะพนักงานของสาขานั้น)
+  const filteredDrivers = useMemo(() => {
+    if (!drivers) return [];
+    if (!selectedBranch) return drivers;
+    return drivers.filter((d) => d.branch === selectedBranch);
+  }, [drivers, selectedBranch]);
 
   // Drag & Drop handlers
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
@@ -398,10 +411,17 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                     disabled={driversLoading}
                   >
-                    <option value="">-- เลือกพนักงาน --</option>
-                    {drivers?.map((driver: any) => (
+                    <option value="">
+                      {driversLoading
+                        ? 'กำลังโหลดพนักงาน...'
+                        : selectedBranch && filteredDrivers.length === 0
+                          ? 'ไม่พบพนักงานขับรถในสาขานี้'
+                          : '-- เลือกพนักงาน --'}
+                    </option>
+                    {filteredDrivers.map((driver) => (
                       <option key={driver.id} value={driver.id}>
                         {driver.full_name}
+                        {driver.branch ? ` [${driver.branch}]` : ''}
                       </option>
                     ))}
                   </select>
