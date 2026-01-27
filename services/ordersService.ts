@@ -1,5 +1,54 @@
 import { supabase } from '../lib/supabase';
 
+// Helper: แปลง Supabase/Postgres error เกี่ยวกับ RLS ให้เป็นข้อความที่อ่านง่าย
+function mapOrdersError(error: any, action: 'create' | 'update' | 'assign' | 'unassign' | 'delete') {
+  const message: string = error?.message || '';
+  const code: string | undefined = error?.code;
+
+  const isRlsViolation =
+    code === '42501' || // Postgres insufficient_privilege (มักใช้กับ RLS)
+    message.includes('violates row-level security policy');
+
+  if (isRlsViolation) {
+    if (action === 'create') {
+      return new Error(
+        'คุณไม่มีสิทธิ์สร้างออเดอร์ในตารางนี้หรือสาขานี้\n' +
+          'กรุณาติดต่อผู้ดูแลระบบหรือผู้ดูแลสาขาให้เพิ่มสิทธิ์การเข้าถึงก่อน'
+      );
+    }
+
+    if (action === 'assign') {
+      return new Error(
+        'คุณไม่มีสิทธิ์จัดทริปให้กับออเดอร์เหล่านี้\n' +
+          'กรุณาติดต่อผู้ดูแลระบบหรือผู้ดูแลสาขาให้ตรวจสอบสิทธิ์การใช้งาน'
+      );
+    }
+
+    if (action === 'unassign') {
+      return new Error(
+        'คุณไม่มีสิทธิ์ยกเลิกการกำหนดทริปของออเดอร์นี้\n' +
+          'กรุณาติดต่อผู้ดูแลระบบหรือผู้ดูแลสาขาให้ตรวจสอบสิทธิ์การใช้งาน'
+      );
+    }
+
+    if (action === 'delete') {
+      return new Error(
+        'คุณไม่มีสิทธิ์ลบออเดอร์ในระบบ\n' +
+          'หากต้องการลบออเดอร์ กรุณาติดต่อผู้จัดการหรือผู้ดูแลระบบ'
+      );
+    }
+
+    // default สำหรับ update ทั่วไป
+    return new Error(
+      'คุณไม่มีสิทธิ์แก้ไขออเดอร์นี้\n' +
+        'กรุณาติดต่อผู้ดูแลระบบหรือผู้ดูแลสาขาให้ตรวจสอบสิทธิ์การใช้งาน'
+    );
+  }
+
+  // ถ้าไม่ใช่ RLS error ให้คืน error เดิม
+  return error;
+}
+
 // Temporary types until database.ts is regenerated
 type Order = {
   id: string;
@@ -155,7 +204,9 @@ export const ordersService = {
       .select()
       .single();
 
-    if (orderError) throw orderError;
+    if (orderError) {
+      throw mapOrdersError(orderError, 'create');
+    }
 
     // สร้างรายการสินค้า
     const orderItems = items.map((item) => {
@@ -202,7 +253,9 @@ export const ordersService = {
       .select()
       .single();
 
-    if (error) throw error;
+    if (error) {
+      throw mapOrdersError(error, 'update');
+    }
     return data;
   },
 
@@ -285,7 +338,14 @@ export const ordersService = {
           .select('id, status, delivery_trip_id');
         
         if (retryError) {
-          throw new Error(`ไม่สามารถอัปเดตออเดอร์ได้: ${retryError.message || 'Unknown error'} - กรุณารัน migration: sql/FINAL_FIX.sql`);
+          const mapped = mapOrdersError(retryError, 'assign');
+          // ถ้าเป็น RLS error ให้โยนข้อความสวยงาม แทนข้อความ migration
+          if (mapped !== retryError) {
+            throw mapped;
+          }
+          throw new Error(
+            `ไม่สามารถอัปเดตออเดอร์ได้: ${retryError.message || 'Unknown error'} - กรุณารัน migration: sql/FINAL_FIX.sql`
+          );
         }
         
         // Use retry result - set updatedOrders to continue
@@ -296,6 +356,10 @@ export const ordersService = {
           throw new Error('ไม่สามารถอัปเดตออเดอร์ได้: กรุณารัน migration: sql/FINAL_FIX.sql');
         }
       } else {
+        const mapped = mapOrdersError(updateError, 'assign');
+        if (mapped !== updateError) {
+          throw mapped;
+        }
         throw new Error(`ไม่สามารถอัปเดตออเดอร์ได้: ${updateError.message || 'Unknown error'}`);
       }
     } else {
@@ -371,7 +435,9 @@ export const ordersService = {
       })
       .in('id', orderIds);
 
-    if (error) throw error;
+    if (error) {
+      throw mapOrdersError(error, 'unassign');
+    }
   },
 
   /**
@@ -379,7 +445,9 @@ export const ordersService = {
    */
   async delete(id: string) {
     const { error } = await supabase.from('orders').delete().eq('id', id);
-    if (error) throw error;
+    if (error) {
+      throw mapOrdersError(error, 'delete');
+    }
   },
 
   /**
@@ -404,8 +472,9 @@ export const ordersService = {
           .single();
 
         if (error) {
-          console.error(`[ordersService] Error deleting order ${id}:`, error);
-          errors.push({ id, error: error.message });
+          const mapped = mapOrdersError(error, 'delete');
+          console.error(`[ordersService] Error deleting order ${id}:`, mapped);
+          errors.push({ id, error: mapped.message });
         } else if (data) {
           deletedIds.push(id);
         } else {
