@@ -1,5 +1,5 @@
-import React, { useState, useMemo } from 'react';
-import { Package, Plus, Search, Edit2, Trash2, Filter, Download } from 'lucide-react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { Package, Plus, Search, Edit2, Trash2, Filter, Download, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useProducts, useProductCategories } from '../hooks/useInventory';
 import { productService } from '../services/inventoryService';
 import { Card } from '../components/ui/Card';
@@ -21,6 +21,9 @@ export function ProductsManagementView() {
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageInput, setPageInput] = useState('');
+  const [itemsPerPage, setItemsPerPage] = useState(100);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<any>(null);
   const [formData, setFormData] = useState<{
@@ -62,6 +65,19 @@ export function ProductsManagementView() {
       return matchesSearch && matchesCategory;
     });
   }, [products, searchQuery, selectedCategory]);
+
+  // Pagination (client-side)
+  const totalCount = filteredProducts.length;
+  const totalPages = Math.max(1, Math.ceil(totalCount / itemsPerPage));
+  const offset = (currentPage - 1) * itemsPerPage;
+  const paginatedProducts = filteredProducts.slice(offset, offset + itemsPerPage);
+  const startIndex = totalCount === 0 ? 0 : offset;
+  const endIndex = totalCount === 0 ? 0 : Math.min(offset + itemsPerPage, totalCount);
+
+  // Reset page when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, selectedCategory, itemsPerPage]);
 
   const handleOpenModal = (product?: any) => {
     if (product) {
@@ -111,7 +127,8 @@ export function ProductsManagementView() {
         return isNaN(n) ? null : n;
       };
 
-      const payload: Partial<ProductInsert> = {
+      // ใช้ any เพื่อรองรับฟิลด์เสริมอย่าง min_stock_level ที่อาจยังไม่อยู่ใน type ที่ gen มาจาก DB
+      const payload: any = {
         product_code: formData.product_code,
         product_name: formData.product_name,
         description: formData.description || null,
@@ -176,28 +193,43 @@ export function ProductsManagementView() {
           />
         </div>
 
-        {/* Category Filter */}
-        <div className="relative">
-          <Filter className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 dark:text-gray-500" />
-          <select
-            value={selectedCategory}
-            onChange={(e) => setSelectedCategory(e.target.value)}
-            className="pl-10 pr-8 py-2.5 border border-gray-300 dark:border-slate-600 rounded-xl bg-white dark:bg-slate-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-transparent appearance-none"
-          >
-            <option value="all">ทุกหมวดหมู่</option>
-            {categories.map((cat) => (
-              <option key={cat.id} value={cat.id}>
-                {cat.name}
-              </option>
-            ))}
-          </select>
-        </div>
+        {/* Category Filter + Page size */}
+        <div className="flex items-center gap-3">
+          <div className="relative">
+            <Filter className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 dark:text-gray-500" />
+            <select
+              value={selectedCategory}
+              onChange={(e) => setSelectedCategory(e.target.value)}
+              className="pl-10 pr-8 py-2.5 border border-gray-300 dark:border-slate-600 rounded-xl bg-white dark:bg-slate-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-transparent appearance-none"
+            >
+              <option value="all">ทุกหมวดหมู่</option>
+              {categories.map((cat) => (
+                <option key={cat.id} value={cat.id}>
+                  {cat.name}
+                </option>
+              ))}
+            </select>
+          </div>
 
-        {/* Add Button */}
-        <Button onClick={() => handleOpenModal()} className="flex items-center gap-2">
-          <Plus className="w-5 h-5" />
-          <span>เพิ่มสินค้า</span>
-        </Button>
+          <select
+            value={itemsPerPage}
+            onChange={(e) => {
+              setItemsPerPage(Number(e.target.value));
+              setCurrentPage(1);
+            }}
+            className="px-2 py-2 text-xs border border-gray-300 dark:border-slate-600 rounded-xl bg-white dark:bg-slate-800 text-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value={20}>20 รายการ/หน้า</option>
+            <option value={50}>50 รายการ/หน้า</option>
+            <option value={100}>100 รายการ/หน้า</option>
+          </select>
+
+          {/* Add Button */}
+          <Button onClick={() => handleOpenModal()} className="flex items-center gap-2">
+            <Plus className="w-5 h-5" />
+            <span>เพิ่มสินค้า</span>
+          </Button>
+        </div>
       </div>
 
       {/* Products Table */}
@@ -217,14 +249,14 @@ export function ProductsManagementView() {
               </tr>
             </thead>
             <tbody>
-              {filteredProducts.length === 0 && (
+              {paginatedProducts.length === 0 && (
                 <tr>
                   <td colSpan={8} className="py-6 px-6 text-center text-gray-500 dark:text-gray-400">
                     ไม่พบสินค้าที่ค้นหา (ทั้งหมด {products.length} รายการ)
                   </td>
                 </tr>
               )}
-              {filteredProducts.map((product: any) => (
+              {paginatedProducts.map((product: any) => (
                 <tr key={product.id} className="border-b border-gray-100 dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors">
                   <td className="py-4 px-6">
                     <code className="text-sm font-mono bg-gray-100 dark:bg-slate-800 text-gray-900 dark:text-white px-2 py-1 rounded">
@@ -286,15 +318,136 @@ export function ProductsManagementView() {
               ))}
             </tbody>
           </table>
-
-          {filteredProducts.length === 0 && (
-            <div className="text-center py-16 text-gray-500 dark:text-gray-400">
-              <Package className="w-16 h-16 mx-auto mb-4 opacity-50" />
-              <p className="text-lg font-medium">ไม่พบสินค้า</p>
-              <p className="text-sm mt-1">ลองค้นหาด้วยคำอื่นหรือเพิ่มสินค้าใหม่</p>
-            </div>
-          )}
         </div>
+
+        {/* Pagination */}
+        {totalCount > 0 && (
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 px-4 py-4 border-t border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800/40">
+            <div className="text-sm text-gray-600 dark:text-gray-400">
+              แสดง {startIndex + 1} - {endIndex} จาก {totalCount.toLocaleString('th-TH')} รายการ
+            </div>
+
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+                disabled={currentPage === 1}
+                className="flex items-center gap-1"
+              >
+                <ChevronLeft size={16} />
+                ก่อนหน้า
+              </Button>
+
+              {/* Page Numbers */}
+              <div className="flex items-center gap-1 flex-wrap">
+                {(() => {
+                  const pages: (number | string)[] = [];
+
+                  if (totalPages <= 7) {
+                    for (let i = 1; i <= totalPages; i++) {
+                      pages.push(i);
+                    }
+                  } else {
+                    pages.push(1);
+
+                    const startPage = Math.max(2, currentPage - 2);
+                    const endPage = Math.min(totalPages - 1, currentPage + 2);
+
+                    if (startPage > 2) {
+                      pages.push('ellipsis-start');
+                    }
+
+                    for (let i = startPage; i <= endPage; i++) {
+                      if (i !== 1 && i !== totalPages) {
+                        pages.push(i);
+                      }
+                    }
+
+                    if (endPage < totalPages - 1) {
+                      pages.push('ellipsis-end');
+                    }
+
+                    pages.push(totalPages);
+                  }
+
+                  return pages.map((page) => {
+                    if (typeof page === 'string') {
+                      return (
+                        <span key={page} className="px-2 text-gray-400">
+                          ...
+                        </span>
+                      );
+                    }
+
+                    return (
+                      <button
+                        key={page}
+                        onClick={() => setCurrentPage(page)}
+                        className={`px-3 py-1 rounded-lg text-sm font-medium transition-colors ${
+                          currentPage === page
+                            ? 'bg-blue-600 text-white'
+                            : 'bg-white dark:bg-slate-800 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-slate-700 hover:bg-gray-100 dark:hover:bg-slate-700'
+                        }`}
+                      >
+                        {page.toLocaleString('th-TH')}
+                      </button>
+                    );
+                  });
+                })()}
+              </div>
+
+              {/* Jump to page when many pages */}
+              {totalPages > 10 && (
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-gray-600 dark:text-gray-400">ไปที่หน้า:</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={totalPages}
+                    value={pageInput}
+                    onChange={(e) => setPageInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        const page = parseInt(pageInput);
+                        if (page >= 1 && page <= totalPages) {
+                          setCurrentPage(page);
+                          setPageInput('');
+                        }
+                      }
+                    }}
+                    placeholder={`1-${totalPages}`}
+                    className="w-20 px-2 py-1 text-sm border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      const page = parseInt(pageInput);
+                      if (page >= 1 && page <= totalPages) {
+                        setCurrentPage(page);
+                        setPageInput('');
+                      }
+                    }}
+                  >
+                    ไป
+                  </Button>
+                </div>
+              )}
+
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
+                disabled={currentPage === totalPages}
+                className="flex items-center gap-1"
+              >
+                ถัดไป
+                <ChevronRight size={16} />
+              </Button>
+            </div>
+          </div>
+        )}
       </Card>
 
       {/* Add/Edit Modal */}
