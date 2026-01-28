@@ -61,6 +61,7 @@ import { CustomerTiersManagementView } from './views/CustomerTiersManagementView
 import { ProductTierPricingView } from './views/ProductTierPricingView';
 import { InventoryReceiptsView } from './views/InventoryReceiptsView';
 import { CreateOrderView } from './views/CreateOrderView';
+import { CustomerManagementView } from './views/CustomerManagementView';
 import { PendingOrdersView } from './views/PendingOrdersView';
 import { TrackOrdersView } from './views/TrackOrdersView';
 import { SalesTripsView } from './views/SalesTripsView';
@@ -296,14 +297,18 @@ const AppContent = () => {
 
     const rect = e.currentTarget.getBoundingClientRect();
     const viewportHeight = window.innerHeight;
-    // Estimate flyout height (menu + padding). Keep conservative to reduce upward shift.
-    const flyoutEstimatedHeight = 320;
-    // Start aligned to trigger top
+    // ประเมินความสูงของเมนูฝ่ายขายให้เผื่อเคสที่มีหลายเมนู (เช่น เพิ่ม "จัดการลูกค้า")
+    // แล้วบังคับไม่ให้เกินขอบล่างของหน้าจอ เพื่อให้เมนูล่างสุดยังมองเห็นได้
+    const estimatedHeight = 380; // สูงกว่าเดิมเล็กน้อยเผื่อหลายเมนู
+    const margin = 12;
+
+    // เริ่มจากยึด top ตามปุ่มเมนูใน sidebar
     let top = rect.top;
-    // If it would overflow bottom, shift up just enough
-    const overflow = top + flyoutEstimatedHeight - (viewportHeight - 12);
-    if (overflow > 0) {
-      top = Math.max(12, top - overflow);
+
+    // ถ้าเมนูจะล้นด้านล่าง ให้ขยับขึ้น แต่ไม่ให้ล้นด้านบน
+    const maxTop = viewportHeight - estimatedHeight - margin;
+    if (top > maxTop) {
+      top = Math.max(margin, maxTop);
     }
 
     setOrdersFlyoutPosition({
@@ -543,6 +548,7 @@ const AppContent = () => {
         'products',
         'product-pricing',
         'customer-tiers',
+        'customers',
         'profile',
         'settings'
       ];
@@ -1075,6 +1081,7 @@ const AppContent = () => {
                     activeTab === 'products' ||
                     activeTab === 'product-pricing' ||
                     activeTab === 'customer-tiers' ||
+                    activeTab === 'customers' ||
                     activeTab === 'cleanup-test-orders'
                   }
                   onClick={() => {
@@ -1110,6 +1117,16 @@ const AppContent = () => {
                         active={activeTab === 'create-order'}
                         onClick={() => {
                           setActiveTab('create-order');
+                          setIsOrdersHovered(false);
+                        }}
+                        isCollapsed={false}
+                        isFlyout={true}
+                      />
+                      <SubSidebarItem
+                        label="จัดการลูกค้า"
+                        active={activeTab === 'customers'}
+                        onClick={() => {
+                          setActiveTab('customers');
                           setIsOrdersHovered(false);
                         }}
                         isCollapsed={false}
@@ -2066,6 +2083,8 @@ const AppContent = () => {
             <CustomerTiersManagementView />
           ) : activeTab === 'product-pricing' ? (
             <ProductTierPricingView />
+          ) : activeTab === 'customers' ? (
+            <CustomerManagementView />
           ) : activeTab === 'create-order' ? (
             <CreateOrderView />
           ) : activeTab === 'track-orders' ? (
