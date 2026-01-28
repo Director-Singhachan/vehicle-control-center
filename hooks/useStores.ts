@@ -4,6 +4,7 @@ import { storeService, type Store, type StoreFilters } from '../services/storeSe
 
 export const useStores = (filters?: StoreFilters) => {
   const [stores, setStores] = useState<Store[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
 
@@ -12,8 +13,9 @@ export const useStores = (filters?: StoreFilters) => {
       try {
         setLoading(true);
         setError(null);
-        const data = await storeService.getAll(filters);
-        setStores(data);
+        const result = await storeService.getAll(filters);
+        setStores(result.data);
+        setTotalCount(result.totalCount);
       } catch (err) {
         setError(err as Error);
         console.error('[useStores] Error:', err);
@@ -23,15 +25,17 @@ export const useStores = (filters?: StoreFilters) => {
     };
 
     fetchStores();
-  }, [filters?.search, filters?.is_active]);
+  }, [filters?.search, filters?.is_active, filters?.branch, filters?.limit, filters?.offset]);
 
   return {
     stores,
+    totalCount,
     loading,
     error,
     refetch: async () => {
-      const data = await storeService.getAll(filters);
-      setStores(data);
+      const result = await storeService.getAll(filters);
+      setStores(result.data);
+      setTotalCount(result.totalCount);
     },
   };
 };
