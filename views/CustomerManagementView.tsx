@@ -1,5 +1,5 @@
-import React, { useMemo, useState } from 'react';
-import { Users, Edit2, Search, AlertCircle } from 'lucide-react';
+import React, { useMemo, useState, useEffect } from 'react';
+import { Users, Edit2, Search, AlertCircle, ChevronLeft, ChevronRight, Trash2, Plus } from 'lucide-react';
 import { PageLayout } from '../components/ui/PageLayout';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
@@ -15,20 +15,40 @@ export function CustomerManagementView() {
   const { isSales, isAdmin } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
   const [onlyActive, setOnlyActive] = useState(true);
+  const [branchFilter, setBranchFilter] = useState<'ALL' | 'HQ' | 'SD'>('ALL');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageInput, setPageInput] = useState('');
+  const [itemsPerPage, setItemsPerPage] = useState(100);
   const [editingCustomer, setEditingCustomer] = useState<any | null>(null);
   const [formData, setFormData] = useState<any>({});
   const [saving, setSaving] = useState(false);
+
+  // Calculate pagination offset
+  const offset = (currentPage - 1) * itemsPerPage;
 
   const filters = useMemo(
     () => ({
       search: searchTerm.trim() || undefined,
       is_active: onlyActive ? true : undefined,
+      branch: branchFilter === 'ALL' ? undefined : branchFilter,
+      limit: itemsPerPage,
+      offset: offset,
     }),
-    [searchTerm, onlyActive],
+    [searchTerm, onlyActive, branchFilter, itemsPerPage, offset],
   );
 
-  const { stores, loading, error, refetch } = useStores(filters);
+  const { stores, totalCount, loading, error, refetch } = useStores(filters);
   const { showNotification } = useNotification();
+
+  // Reset to page 1 when filters or search change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, onlyActive, branchFilter, itemsPerPage]);
+
+  // Calculate pagination
+  const totalPages = Math.ceil(totalCount / itemsPerPage) || 1;
+  const startIndex = offset;
+  const endIndex = Math.min(startIndex + itemsPerPage, totalCount);
 
   // Restrict access to Sales & Admin only (ตาม requirement)
   if (!isSales && !isAdmin) {
@@ -59,6 +79,22 @@ export function CustomerManagementView() {
     });
   };
 
+  const handleOpenCreate = () => {
+    setEditingCustomer({ id: null });
+    setFormData({
+      customer_code: '',
+      customer_name: '',
+      branch: branchFilter === 'ALL' ? 'HQ' : branchFilter,
+      address: '',
+      phone: '',
+      email: '',
+      contact_person: '',
+      notes: '',
+      is_active: true,
+      tier_id: null,
+    });
+  };
+
   const handleCloseEdit = () => {
     setEditingCustomer(null);
     setFormData({});
@@ -82,20 +118,47 @@ export function CustomerManagementView() {
         }
       }
 
-      const payload: any = {
-        customer_name: formData.customer_name,
-        branch,
-        address: formData.address || null,
-        phone: formData.phone || null,
-        email: formData.email || null,
-        contact_person: formData.contact_person || null,
-        notes: formData.notes || null,
-        is_active: !!formData.is_active,
-        tier_id: formData.tier_id || null,
-      };
+      if (!formData.customer_name || !formData.customer_code) {
+        showNotification('warning', 'กรุณากรอกรหัสลูกค้าและชื่อลูกค้าให้ครบถ้วน');
+        setSaving(false);
+        return;
+      }
 
-      await storeService.update(editingCustomer.id, payload);
-      showNotification('success', 'บันทึกข้อมูลลูกค้าเรียบร้อยแล้ว');
+      if (editingCustomer.id) {
+        // Update existing customer
+        const payload: any = {
+          customer_name: formData.customer_name,
+          branch,
+          address: formData.address || null,
+          phone: formData.phone || null,
+          email: formData.email || null,
+          contact_person: formData.contact_person || null,
+          notes: formData.notes || null,
+          is_active: !!formData.is_active,
+          tier_id: formData.tier_id || null,
+        };
+
+        await storeService.update(editingCustomer.id, payload);
+        showNotification('success', 'บันทึกข้อมูลลูกค้าเรียบร้อยแล้ว');
+      } else {
+        // Create new customer
+        const createPayload: any = {
+          customer_code: String(formData.customer_code).trim(),
+          customer_name: String(formData.customer_name).trim(),
+          branch,
+          address: formData.address || null,
+          phone: formData.phone || null,
+          email: formData.email || null,
+          contact_person: formData.contact_person || null,
+          notes: formData.notes || null,
+          is_active: !!formData.is_active,
+          tier_id: formData.tier_id || null,
+        };
+
+        await storeService.create(createPayload);
+        showNotification('success', 'เพิ่มลูกค้าใหม่เรียบร้อยแล้ว');
+      }
+
       handleCloseEdit();
       await refetch();
     } catch (err: any) {
@@ -135,11 +198,42 @@ export function CustomerManagementView() {
         </div>
         <div className="flex items-center gap-3 text-xs md:text-sm text-slate-500 dark:text-slate-400">
           <Badge variant="info">
-            ทั้งหมด {stores.length.toLocaleString('th-TH')} ราย
+            ทั้งหมด {totalCount.toLocaleString('th-TH')} ราย
           </Badge>
-          <Badge variant="success">
-            ใช้งานอยู่ {activeCount.toLocaleString('th-TH')} ราย
-          </Badge>
+          {!onlyActive && (
+            <Badge variant="success">
+              ใช้งานอยู่ {activeCount.toLocaleString('th-TH')} ราย
+            </Badge>
+          )}
+          <select
+            value={branchFilter}
+            onChange={(e) => setBranchFilter(e.target.value as 'ALL' | 'HQ' | 'SD')}
+            className="px-2 py-1 text-xs border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-enterprise-500"
+          >
+            <option value="ALL">ทุกสาขา</option>
+            <option value="HQ">สำนักงานใหญ่ (HQ)</option>
+            <option value="SD">สาขาสอยดาว (SD)</option>
+          </select>
+          <select
+            value={itemsPerPage}
+            onChange={(e) => {
+              setItemsPerPage(Number(e.target.value));
+              setCurrentPage(1);
+            }}
+            className="px-2 py-1 text-xs border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-enterprise-500"
+          >
+            <option value={20}>20 รายการ/หน้า</option>
+            <option value={50}>50 รายการ/หน้า</option>
+            <option value={100}>100 รายการ/หน้า</option>
+          </select>
+          <Button
+            size="sm"
+            onClick={handleOpenCreate}
+            className="flex items-center gap-1"
+          >
+            <Plus className="w-4 h-4" />
+            <span>เพิ่มลูกค้า</span>
+          </Button>
         </div>
       </div>
 
@@ -274,12 +368,169 @@ export function CustomerManagementView() {
                         <Edit2 className="w-4 h-4" />
                         <span>แก้ไข</span>
                       </Button>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          if (!isAdmin && !isSales) return;
+                          if (!confirm(`ต้องการลบลูกค้า "${store.customer_name}" (${store.customer_code}) ใช่หรือไม่?`)) {
+                            return;
+                          }
+                          try {
+                            await storeService.delete(store.id);
+                            showNotification('success', 'ลบลูกค้าเรียบร้อยแล้ว');
+                            await refetch();
+                          } catch (err: any) {
+                            console.error('[CustomerManagementView] Failed to delete customer:', err);
+                            showNotification('error', err.message || 'เกิดข้อผิดพลาดในการลบลูกค้า');
+                          }
+                        }}
+                        className="ml-2 inline-flex items-center justify-center p-2 rounded-lg text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                        title="ลบลูกค้า"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
+
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-4 px-4 py-4 border-t border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/30">
+              <div className="text-sm text-slate-600 dark:text-slate-400">
+                แสดง {startIndex + 1} - {endIndex} จาก {totalCount.toLocaleString('th-TH')} รายการ
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+                  disabled={currentPage === 1 || loading}
+                  className="flex items-center gap-1"
+                >
+                  <ChevronLeft size={16} />
+                  ก่อนหน้า
+                </Button>
+
+                {/* Page Numbers */}
+                <div className="flex items-center gap-1 flex-wrap">
+                  {(() => {
+                    const pages: (number | string)[] = [];
+
+                    // For small number of pages, show all
+                    if (totalPages <= 7) {
+                      for (let i = 1; i <= totalPages; i++) {
+                        pages.push(i);
+                      }
+                    } else {
+                      // Always show first page
+                      pages.push(1);
+
+                      // Calculate range around current page (show 2 pages on each side)
+                      const startPage = Math.max(2, currentPage - 2);
+                      const endPage = Math.min(totalPages - 1, currentPage + 2);
+
+                      // Add ellipsis if needed before current range
+                      if (startPage > 2) {
+                        pages.push('ellipsis-start');
+                      }
+
+                      // Add pages around current page
+                      for (let i = startPage; i <= endPage; i++) {
+                        if (i !== 1 && i !== totalPages) {
+                          pages.push(i);
+                        }
+                      }
+
+                      // Add ellipsis if needed after current range
+                      if (endPage < totalPages - 1) {
+                        pages.push('ellipsis-end');
+                      }
+
+                      // Always show last page
+                      pages.push(totalPages);
+                    }
+
+                    return pages.map((page) => {
+                      if (typeof page === 'string') {
+                        return (
+                          <span key={page} className="px-2 text-slate-400">
+                            ...
+                          </span>
+                        );
+                      }
+
+                      return (
+                        <button
+                          key={page}
+                          onClick={() => setCurrentPage(page)}
+                          className={`px-3 py-1 rounded-lg text-sm font-medium transition-colors ${
+                            currentPage === page
+                              ? 'bg-enterprise-600 text-white'
+                              : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+                          }`}
+                        >
+                          {page.toLocaleString('th-TH')}
+                        </button>
+                      );
+                    });
+                  })()}
+                </div>
+
+                {/* Jump to Page Input (for large page counts) */}
+                {totalPages > 10 && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-slate-600 dark:text-slate-400">ไปที่หน้า:</span>
+                    <input
+                      type="number"
+                      min="1"
+                      max={totalPages}
+                      value={pageInput}
+                      onChange={(e) => setPageInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          const page = parseInt(pageInput);
+                          if (page >= 1 && page <= totalPages) {
+                            setCurrentPage(page);
+                            setPageInput('');
+                          }
+                        }
+                      }}
+                      placeholder={`1-${totalPages}`}
+                      className="w-20 px-2 py-1 text-sm border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-enterprise-500 focus:border-transparent"
+                    />
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        const page = parseInt(pageInput);
+                        if (page >= 1 && page <= totalPages) {
+                          setCurrentPage(page);
+                          setPageInput('');
+                        }
+                      }}
+                    >
+                      ไป
+                    </Button>
+                  </div>
+                )}
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
+                  disabled={currentPage === totalPages || loading}
+                  className="flex items-center gap-1"
+                >
+                  ถัดไป
+                  <ChevronRight size={16} />
+                </Button>
+              </div>
+            </div>
+          )}
         </Card>
       )}
 
@@ -288,9 +539,9 @@ export function CustomerManagementView() {
         isOpen={!!editingCustomer}
         onClose={handleCloseEdit}
         title={
-          editingCustomer
+          editingCustomer?.id
             ? `แก้ไขลูกค้า: ${editingCustomer.customer_code || ''}`
-            : 'แก้ไขข้อมูลลูกค้า'
+            : 'เพิ่มลูกค้าใหม่'
         }
       >
         {editingCustomer && (
@@ -303,8 +554,13 @@ export function CustomerManagementView() {
                 <input
                   type="text"
                   value={formData.customer_code || ''}
-                  disabled
-                  className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 text-sm text-slate-600 dark:text-slate-300 cursor-not-allowed"
+                  onChange={(e) => setFormData({ ...formData, customer_code: e.target.value })}
+                  disabled={!!editingCustomer?.id}
+                  className={`w-full px-3 py-2 rounded-lg border text-sm ${
+                    editingCustomer?.id
+                      ? 'border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 cursor-not-allowed'
+                      : 'border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100'
+                  }`}
                 />
               </div>
               <div>

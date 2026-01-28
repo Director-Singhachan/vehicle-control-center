@@ -51,7 +51,7 @@ export const StoreDeliveryDetailView: React.FC<StoreDeliveryDetailViewProps> = (
     const fetchStore = async () => {
       try {
         setLoadingStore(true);
-        const stores = await storeService.getAll();
+        const { data: stores } = await storeService.getAll();
         const foundStore = stores.find(s => s.id === storeId);
         if (foundStore) {
           setStoreInfo(foundStore);
