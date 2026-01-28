@@ -18,6 +18,7 @@ import {
   ChevronRight,
   Package,
   XCircle,
+  Trash2,
   Edit2,
   ZoomIn,
   X
@@ -27,7 +28,7 @@ import { Input } from '../components/ui/Input';
 import { Card } from '../components/ui/Card';
 import { PageLayout } from '../components/layout/PageLayout';
 import { Avatar } from '../components/ui/Avatar';
-import { useTripLogs, useVehicles } from '../hooks';
+import { useTripLogs, useVehicles, useAuth } from '../hooks';
 import { tripLogService, type TripLogWithRelations } from '../services/tripLogService';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { TripLogEditView } from './TripLogEditView';
@@ -63,6 +64,12 @@ export const TripLogListView: React.FC<TripLogListViewProps> = ({
   const [cancelReason, setCancelReason] = useState('');
   const [isCancelling, setIsCancelling] = useState(false);
   const [editTripId, setEditTripId] = useState<string | null>(null);
+  const [deleteTripId, setDeleteTripId] = useState<string | null>(null);
+  const [deleteReason, setDeleteReason] = useState('');
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const { isAdmin, isManager, isExecutive } = useAuth();
+  const canAdminDelete = isAdmin || isManager || isExecutive;
 
   // Debounce search input (wait 500ms after user stops typing)
   useEffect(() => {
@@ -624,7 +631,7 @@ export const TripLogListView: React.FC<TripLogListViewProps> = ({
                     </div>
 
                     {/* Actions */}
-                    <div className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-700 flex items-center gap-2">
+                    <div className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-700 flex flex-wrap items-center gap-2">
                       {trip.status === 'checked_out' && (
                         <>
                           {onCreateCheckin && (
@@ -659,6 +666,18 @@ export const TripLogListView: React.FC<TripLogListViewProps> = ({
                         >
                           <Edit2 size={16} />
                           แก้ไขข้อมูล
+                        </Button>
+                      )}
+
+                      {canAdminDelete && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setDeleteTripId(trip.id)}
+                          className="flex items-center gap-1 text-red-700 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300 ml-auto"
+                        >
+                          <Trash2 size={16} />
+                          ลบทริป (Admin)
                         </Button>
                       )}
                     </div>
@@ -853,6 +872,60 @@ export const TripLogListView: React.FC<TripLogListViewProps> = ({
           </div>
         }
         confirmText="ยืนยันยกเลิกทริป"
+        cancelText="ยกเลิก"
+        variant="danger"
+      />
+
+      {/* Admin Delete Trip Dialog */}
+      <ConfirmDialog
+        isOpen={deleteTripId !== null}
+        onCancel={() => {
+          setDeleteTripId(null);
+          setDeleteReason('');
+        }}
+        onConfirm={async () => {
+          if (!deleteTripId) return;
+          setIsDeleting(true);
+          try {
+            await tripLogService.deleteTrip(deleteTripId, deleteReason || 'ลบทริปที่บันทึกผิด');
+            setDeleteTripId(null);
+            setDeleteReason('');
+            refetch();
+          } catch (err: any) {
+            alert(err.message || 'เกิดข้อผิดพลาดในการลบทริป');
+          } finally {
+            setIsDeleting(false);
+          }
+        }}
+        title="ลบทริป (สำหรับผู้ดูแลระบบ)"
+        message={
+          <div className="space-y-4" onClick={(e) => e.stopPropagation()}>
+            <p className="text-sm text-slate-700 dark:text-slate-200">
+              การลบทริปจะลบข้อมูลการเดินทางนี้ออกจากระบบอย่างถาวร และไม่สามารถกู้คืนได้
+              กรุณาตรวจสอบให้แน่ใจก่อนดำเนินการ
+            </p>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                เหตุผลในการลบทริป (จำเป็น)
+              </label>
+              <textarea
+                value={deleteReason}
+                onChange={(e) => setDeleteReason(e.target.value)}
+                onClick={(e) => e.stopPropagation()}
+                onMouseDown={(e) => e.stopPropagation()}
+                placeholder="ระบุเหตุผลในการลบทริป เช่น ลงทะเบียนรถผิดคัน, ผูกกับทริปที่ถูกลบไปแล้ว เป็นต้น"
+                className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
+                rows={3}
+              />
+              {isDeleting && (
+                <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                  กำลังลบข้อมูลทริป...
+                </p>
+              )}
+            </div>
+          </div>
+        }
+        confirmText="ยืนยันการลบทริป"
         cancelText="ยกเลิก"
         variant="danger"
       />
