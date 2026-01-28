@@ -1329,5 +1329,93 @@ export const tripLogService = {
 
     return result;
   },
+
+  // Admin-only: Hard delete a trip log with audit reason
+  // ใช้สำหรับลบทริปที่ลงผิดจริง ๆ (เช่น ผูกกับทริปที่ถูกลบไปแล้ว) โดยต้องเป็น Admin/Manager/Executive เท่านั้น
+  deleteTrip: async (tripId: string, reason: string): Promise<void> => {
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (!user) {
+      throw new Error('User not authenticated');
+    }
+
+    if (!reason || !reason.trim()) {
+      throw new Error('กรุณาระบุเหตุผลในการลบทริป');
+    }
+
+    // Load profile to check role
+    const { data: profile, error: profileError } = await supabase
+      .from('profiles')
+      .select('role, full_name')
+      .eq('id', user.id)
+      .single();
+
+    if (profileError) {
+      console.error('[tripLogService] Error loading profile for deleteTrip:', profileError);
+      throw profileError;
+    }
+
+    const allowedRoles = ['admin', 'manager', 'executive'];
+    if (!profile || !allowedRoles.includes(profile.role as string)) {
+      throw new Error('คุณไม่มีสิทธิ์ลบข้อมูลทริป');
+    }
+
+    // Load trip to validate current state
+    const { data: trip, error: fetchError } = await supabase
+      .from('trip_logs')
+      .select('*')
+      .eq('id', tripId)
+      .single();
+
+    if (fetchError) {
+      throw fetchError;
+    }
+
+    if (!trip) {
+      throw new Error('Trip not found');
+    }
+
+    // Safety guard: ไม่ให้ลบทริปที่ยังผูกกับ delivery_trip อยู่
+    // ให้ผู้ใช้ไปแก้/ย้ายลิงก์ก่อน แล้วค่อยลบทริป
+    if ((trip as any).delivery_trip_id) {
+      throw new Error('ไม่สามารถลบทริปที่เชื่อมกับทริปส่งของได้ กรุณาย้าย/แก้ไขการเชื่อมต่อก่อน');
+    }
+
+    // Optional: Save audit log of deletion into trip_edit_history (ถ้ามีตารางนี้)
+    try {
+      const oldValues: Record<string, any> = { ...trip };
+      const newValues: Record<string, any> = { deleted: true };
+
+      const { error: auditError } = await supabase
+        .from('trip_edit_history')
+        .insert({
+          trip_log_id: tripId,
+          delivery_trip_id: null,
+          edited_by: user.id,
+          edit_reason: reason,
+          changes: {
+            old_values: oldValues,
+            new_values: newValues,
+          },
+          edited_at: new Date().toISOString(),
+        });
+
+      if (auditError) {
+        console.warn('[tripLogService] Failed to write delete audit log (trip_edit_history):', auditError);
+      }
+    } catch (auditErr) {
+      console.warn('[tripLogService] Unexpected error while writing delete audit log:', auditErr);
+    }
+
+    const { error: deleteError } = await supabase
+      .from('trip_logs')
+      .delete()
+      .eq('id', tripId);
+
+    if (deleteError) {
+      console.error('[tripLogService] Error deleting trip:', deleteError);
+      throw deleteError;
+    }
+  },
 };
 
