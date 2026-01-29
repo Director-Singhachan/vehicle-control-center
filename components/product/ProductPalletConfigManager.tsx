@@ -70,6 +70,10 @@ export const ProductPalletConfigManager: React.FC<ProductPalletConfigManagerProp
     requires_special_handling: false,
     notes: '',
   });
+  
+  // Separate display values for number inputs to allow deletion
+  const [layersDisplay, setLayersDisplay] = useState<string>('7');
+  const [unitsPerLayerDisplay, setUnitsPerLayerDisplay] = useState<string>('18');
 
   // Load pallets
   useEffect(() => {
@@ -139,6 +143,9 @@ export const ProductPalletConfigManager: React.FC<ProductPalletConfigManagerProp
         requires_special_handling: config.requires_special_handling,
         notes: config.notes || '',
       });
+      // Set display values for editing
+      setLayersDisplay(config.layers.toString());
+      setUnitsPerLayerDisplay(config.units_per_layer.toString());
     } else {
       setEditingConfig(null);
       setFormData({
@@ -156,6 +163,9 @@ export const ProductPalletConfigManager: React.FC<ProductPalletConfigManagerProp
         requires_special_handling: false,
         notes: '',
       });
+      // Reset display values for new config
+      setLayersDisplay('7');
+      setUnitsPerLayerDisplay('18');
     }
     setIsModalOpen(true);
   };
@@ -163,6 +173,9 @@ export const ProductPalletConfigManager: React.FC<ProductPalletConfigManagerProp
   const handleCloseModal = () => {
     setIsModalOpen(false);
     setEditingConfig(null);
+    // Reset display values
+    setLayersDisplay('7');
+    setUnitsPerLayerDisplay('18');
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -471,8 +484,27 @@ export const ProductPalletConfigManager: React.FC<ProductPalletConfigManagerProp
                 type="number"
                 min="1"
                 max="20"
-                value={formData.layers}
-                onChange={(e) => setFormData({ ...formData, layers: parseInt(e.target.value) || 1 })}
+                value={layersDisplay}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  setLayersDisplay(value);
+                  if (value === '') {
+                    setFormData({ ...formData, layers: 0 });
+                  } else {
+                    const numValue = parseInt(value, 10);
+                    if (!isNaN(numValue) && numValue >= 0) {
+                      setFormData({ ...formData, layers: numValue });
+                    }
+                  }
+                }}
+                onBlur={(e) => {
+                  // Ensure valid value on blur
+                  const value = e.target.value;
+                  if (value === '' || parseInt(value, 10) < 1) {
+                    setLayersDisplay('1');
+                    setFormData({ ...formData, layers: 1 });
+                  }
+                }}
                 className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500"
                 required
               />
@@ -485,8 +517,27 @@ export const ProductPalletConfigManager: React.FC<ProductPalletConfigManagerProp
               <input
                 type="number"
                 min="1"
-                value={formData.units_per_layer}
-                onChange={(e) => setFormData({ ...formData, units_per_layer: parseInt(e.target.value) || 1 })}
+                value={unitsPerLayerDisplay}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  setUnitsPerLayerDisplay(value);
+                  if (value === '') {
+                    setFormData({ ...formData, units_per_layer: 0 });
+                  } else {
+                    const numValue = parseInt(value, 10);
+                    if (!isNaN(numValue) && numValue >= 0) {
+                      setFormData({ ...formData, units_per_layer: numValue });
+                    }
+                  }
+                }}
+                onBlur={(e) => {
+                  // Ensure valid value on blur
+                  const value = e.target.value;
+                  if (value === '' || parseInt(value, 10) < 1) {
+                    setUnitsPerLayerDisplay('1');
+                    setFormData({ ...formData, units_per_layer: 1 });
+                  }
+                }}
                 className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500"
                 required
               />

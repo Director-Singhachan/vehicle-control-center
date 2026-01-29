@@ -370,6 +370,7 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
             product_id: item.product_id,
             quantity: Number(item.quantity),
             notes: item.notes || '',
+            selected_pallet_config_id: item.selected_pallet_config_id || undefined,
           })),
         }));
         setSelectedStores(storesWithItems);
@@ -1139,6 +1140,7 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
               product_id: item.product_id,
               quantity: item.quantity,
               notes: item.notes || undefined,
+              selected_pallet_config_id: item.selected_pallet_config_id || undefined,
             })),
           })),
         };
@@ -1159,6 +1161,7 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
               product_id: item.product_id,
               quantity: item.quantity,
               notes: item.notes || undefined,
+              selected_pallet_config_id: item.selected_pallet_config_id || undefined,
             })),
           })),
         };
