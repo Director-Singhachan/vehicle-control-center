@@ -30,6 +30,7 @@ import { productService, type Product } from '../services/productService';
 import { profileService } from '../services/profileService';
 import { serviceStaffService } from '../services/serviceStaffService';
 import type { DeliveryTripWithRelations } from '../services/deliveryTripService';
+import { calculateTripCapacity } from '../utils/tripCapacityValidation';
 
 interface DeliveryTripFormViewProps {
   tripId?: string;
@@ -262,6 +263,69 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
 
   // Edit reason (required for edit mode)
   const [editReason, setEditReason] = useState('');
+
+  // Capacity summary state
+  const [capacitySummary, setCapacitySummary] = useState<{
+    totalPallets: number;
+    totalWeightKg: number;
+    vehicleMaxPallets: number | null;
+    vehicleMaxWeightKg: number | null;
+    loading: boolean;
+    errors: string[];
+    warnings: string[];
+  } | null>(null);
+
+  // Calculate capacity summary when vehicle or items change
+  useEffect(() => {
+    if (!formData.vehicle_id || selectedStores.length === 0) {
+      setCapacitySummary(null);
+      return;
+    }
+
+    // Collect all items from all stores
+    const allItems = selectedStores.flatMap(store =>
+      store.items.map(item => ({
+        product_id: item.product_id,
+        quantity: item.quantity,
+      }))
+    );
+
+    if (allItems.length === 0) {
+      setCapacitySummary(null);
+      return;
+    }
+
+    // Set loading state
+    setCapacitySummary(prev => ({
+      ...prev,
+      loading: true,
+      errors: [],
+      warnings: [],
+    } as any));
+
+    // Calculate capacity
+    calculateTripCapacity(allItems, formData.vehicle_id)
+      .then(result => {
+        setCapacitySummary({
+          totalPallets: result.summary.totalPallets,
+          totalWeightKg: result.summary.totalWeightKg,
+          vehicleMaxPallets: result.summary.vehicleMaxPallets,
+          vehicleMaxWeightKg: result.summary.vehicleMaxWeightKg,
+          loading: false,
+          errors: result.errors,
+          warnings: result.warnings,
+        });
+      })
+      .catch(err => {
+        console.error('[DeliveryTripFormView] Error calculating capacity:', err);
+        setCapacitySummary(prev => ({
+          ...prev,
+          loading: false,
+          errors: ['ไม่สามารถคำนวณความจุได้'],
+          warnings: [],
+        } as any));
+      });
+  }, [formData.vehicle_id, selectedStores]);
 
   // Load trip data when editing
   useEffect(() => {
@@ -1004,6 +1068,49 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
       return;
     }
 
+    // Validate capacity (pallets and weight) - only if vehicle is selected
+    if (formData.vehicle_id) {
+      try {
+        // Collect all items from all stores
+        const allItems = selectedStores.flatMap(store =>
+          store.items.map(item => ({
+            product_id: item.product_id,
+            quantity: item.quantity,
+          }))
+        );
+
+        if (allItems.length > 0) {
+          const capacityResult = await calculateTripCapacity(
+            allItems,
+            formData.vehicle_id
+          );
+
+          if (!capacityResult.valid) {
+            setError(
+              `ไม่สามารถสร้างทริปได้:\n${capacityResult.errors.join('\n')}`
+            );
+            // Show warnings as well
+            if (capacityResult.warnings.length > 0) {
+              console.warn('Capacity warnings:', capacityResult.warnings);
+            }
+            return;
+          }
+
+          // Show warnings if any (but allow submission)
+          if (capacityResult.warnings.length > 0) {
+            console.warn('Capacity warnings:', capacityResult.warnings);
+            // Optionally show warnings to user (non-blocking)
+            // You can uncomment this to show warnings as alerts
+            // alert(`คำเตือน:\n${capacityResult.warnings.join('\n')}`);
+          }
+        }
+      } catch (capacityErr: any) {
+        console.error('[DeliveryTripFormView] Error validating capacity:', capacityErr);
+        // Don't block submission if capacity validation fails (graceful degradation)
+        // Just log the error
+      }
+    }
+
     try {
       setSaving(true);
 
@@ -1395,6 +1502,146 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
             </div>
           )}
         </Card>
+
+        {/* Capacity Summary */}
+        {formData.vehicle_id && selectedStores.length > 0 && (() => {
+          // Check if there are any items in any store
+          const hasItems = selectedStores.some(store => store.items.length > 0);
+          
+          return (
+            <Card>
+              <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-4 flex items-center gap-2">
+                <Package size={20} />
+                สรุปความจุ
+              </h3>
+              {!hasItems ? (
+                <div className="text-center py-4 text-slate-500 dark:text-slate-400">
+                  <p>กรุณาเพิ่มสินค้าในร้านค้าก่อน</p>
+                  <p className="text-xs mt-2">ระบบจะคำนวณความจุอัตโนมัติเมื่อมีการเพิ่มสินค้า</p>
+                </div>
+              ) : capacitySummary?.loading ? (
+                <div className="text-center py-4 text-slate-500 dark:text-slate-400">
+                  กำลังคำนวณ...
+                </div>
+              ) : capacitySummary ? (
+              <div className="space-y-3">
+                {capacitySummary.errors.length > 0 && (
+                  <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+                    <div className="flex items-center gap-2 text-red-800 dark:text-red-200 mb-2">
+                      <AlertCircle size={16} />
+                      <span className="font-medium">ข้อผิดพลาด:</span>
+                    </div>
+                    <ul className="list-disc list-inside text-sm text-red-700 dark:text-red-300 space-y-1">
+                      {capacitySummary.errors.map((error, idx) => (
+                        <li key={idx}>{error}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {capacitySummary.warnings.length > 0 && (
+                  <div className="p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
+                    <div className="flex items-center gap-2 text-amber-800 dark:text-amber-200 mb-2">
+                      <AlertCircle size={16} />
+                      <span className="font-medium">คำเตือน:</span>
+                    </div>
+                    <ul className="list-disc list-inside text-sm text-amber-700 dark:text-amber-300 space-y-1">
+                      {capacitySummary.warnings.map((warning, idx) => (
+                        <li key={idx}>{warning}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="p-3 bg-slate-50 dark:bg-slate-800 rounded-lg">
+                    <div className="text-sm text-slate-600 dark:text-slate-400 mb-1">
+                      จำนวนพาเลท
+                    </div>
+                    <div className="text-2xl font-bold text-slate-900 dark:text-slate-100">
+                      {capacitySummary.totalPallets}
+                      {capacitySummary.vehicleMaxPallets !== null && (
+                        <span className="text-lg font-normal text-slate-500 dark:text-slate-400">
+                          {' '}/ {capacitySummary.vehicleMaxPallets}
+                        </span>
+                      )}
+                    </div>
+                    {capacitySummary.vehicleMaxPallets !== null && (
+                      <div className="mt-2">
+                        <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2">
+                          <div
+                            className={`h-2 rounded-full ${
+                              capacitySummary.totalPallets > capacitySummary.vehicleMaxPallets
+                                ? 'bg-red-500'
+                                : capacitySummary.totalPallets > capacitySummary.vehicleMaxPallets * 0.9
+                                  ? 'bg-amber-500'
+                                  : 'bg-green-500'
+                            }`}
+                            style={{
+                              width: `${Math.min(
+                                100,
+                                (capacitySummary.totalPallets / capacitySummary.vehicleMaxPallets) * 100
+                              )}%`,
+                            }}
+                          />
+                        </div>
+                        <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                          {Math.round(
+                            (capacitySummary.totalPallets / capacitySummary.vehicleMaxPallets) * 100
+                          )}
+                          % ของความจุ
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  <div className="p-3 bg-slate-50 dark:bg-slate-800 rounded-lg">
+                    <div className="text-sm text-slate-600 dark:text-slate-400 mb-1">
+                      น้ำหนักรวม
+                    </div>
+                    <div className="text-2xl font-bold text-slate-900 dark:text-slate-100">
+                      {capacitySummary.totalWeightKg.toFixed(2)} กก.
+                      {capacitySummary.vehicleMaxWeightKg !== null && (
+                        <span className="text-lg font-normal text-slate-500 dark:text-slate-400">
+                          {' '}/ {capacitySummary.vehicleMaxWeightKg} กก.
+                        </span>
+                      )}
+                    </div>
+                    {capacitySummary.vehicleMaxWeightKg !== null && (
+                      <div className="mt-2">
+                        <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2">
+                          <div
+                            className={`h-2 rounded-full ${
+                              capacitySummary.totalWeightKg > capacitySummary.vehicleMaxWeightKg
+                                ? 'bg-red-500'
+                                : capacitySummary.totalWeightKg > capacitySummary.vehicleMaxWeightKg * 0.9
+                                  ? 'bg-amber-500'
+                                  : 'bg-green-500'
+                            }`}
+                            style={{
+                              width: `${Math.min(
+                                100,
+                                (capacitySummary.totalWeightKg / capacitySummary.vehicleMaxWeightKg) * 100
+                              )}%`,
+                            }}
+                          />
+                        </div>
+                        <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                          {Math.round(
+                            (capacitySummary.totalWeightKg / capacitySummary.vehicleMaxWeightKg) * 100
+                          )}
+                          % ของความจุ
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+              ) : (
+                <div className="text-sm text-slate-500 dark:text-slate-400">
+                  กำลังคำนวณความจุ...
+                </div>
+              )}
+            </Card>
+          );
+        })()}
 
         {/* Stores and Products */}
         <Card>

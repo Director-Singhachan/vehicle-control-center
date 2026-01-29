@@ -9,6 +9,7 @@ import { PageLayout } from '../components/ui/PageLayout';
 import { LoadingSpinner } from '../components/ui/LoadingSpinner';
 import { Modal } from '../components/ui/Modal';
 import { useNotification } from '../hooks/useNotification';
+import { ProductPalletConfigManager } from '../components/product/ProductPalletConfigManager';
 import type { Database } from '../types/database';
 
 type ProductInsert = Database['public']['Tables']['products']['Insert'];
@@ -36,6 +37,15 @@ export function ProductsManagementView() {
     cost_per_unit: string;
     barcode: string;
     min_stock_level?: string;
+    // Extra fields for AI/trip optimization
+    weight_kg?: string;
+    length_cm?: string;
+    width_cm?: string;
+    height_cm?: string;
+    is_fragile?: boolean;
+    is_liquid?: boolean;
+    requires_temperature?: string;
+    uses_pallet?: boolean;
   }>({
     product_code: '',
     product_name: '',
@@ -46,6 +56,14 @@ export function ProductsManagementView() {
     cost_per_unit: '',
     barcode: '',
     min_stock_level: '',
+    weight_kg: '',
+    length_cm: '',
+    width_cm: '',
+    height_cm: '',
+    is_fragile: false,
+    is_liquid: false,
+    requires_temperature: '',
+    uses_pallet: false,
   });
 
   // กรองสินค้า (รองรับรหัสสินค้า product_code และชื่อสินค้า product_name)
@@ -94,6 +112,20 @@ export function ProductsManagementView() {
         min_stock_level: product.min_stock_level !== undefined && product.min_stock_level !== null
           ? product.min_stock_level.toString()
           : '',
+        weight_kg: product.weight_kg !== undefined && product.weight_kg !== null ? product.weight_kg.toString() : '',
+        length_cm: (product as any).length_cm !== undefined && (product as any).length_cm !== null
+          ? String((product as any).length_cm)
+          : '',
+        width_cm: (product as any).width_cm !== undefined && (product as any).width_cm !== null
+          ? String((product as any).width_cm)
+          : '',
+        height_cm: (product as any).height_cm !== undefined && (product as any).height_cm !== null
+          ? String((product as any).height_cm)
+          : '',
+        is_fragile: (product as any).is_fragile ?? false,
+        is_liquid: (product as any).is_liquid ?? false,
+        requires_temperature: (product as any).requires_temperature || '',
+        uses_pallet: (product as any).uses_pallet ?? false,
       });
     } else {
       setEditingProduct(null);
@@ -107,6 +139,14 @@ export function ProductsManagementView() {
         cost_per_unit: '',
         barcode: '',
         min_stock_level: '',
+        weight_kg: '',
+        length_cm: '',
+        width_cm: '',
+        height_cm: '',
+        is_fragile: false,
+        is_liquid: false,
+        requires_temperature: '',
+        uses_pallet: false,
       });
     }
     setIsModalOpen(true);
@@ -137,8 +177,23 @@ export function ProductsManagementView() {
         base_price: toNumberOrNull(formData.base_price),
         cost_per_unit: toNumberOrNull(formData.cost_per_unit),
         barcode: formData.barcode || null,
-        min_stock_level: toNumberOrNull(formData.min_stock_level),
+        // Extra fields for AI/trip optimization
+        weight_kg: toNumberOrNull(formData.weight_kg),
+        length_cm: toNumberOrNull(formData.length_cm),
+        width_cm: toNumberOrNull(formData.width_cm),
+        height_cm: toNumberOrNull(formData.height_cm),
+        is_fragile: !!formData.is_fragile,
+        is_liquid: !!formData.is_liquid,
+        requires_temperature: formData.requires_temperature || null,
+        uses_pallet: !!formData.uses_pallet,
       };
+
+      // เพิ่ม min_stock_level เฉพาะถ้ามีค่า (เพื่อหลีกเลี่ยง error ถ้ายังไม่มีคอลัมน์ในฐานข้อมูล)
+      // ถ้าต้องการใช้ min_stock_level ให้รัน migration: sql/add_min_stock_level_to_products.sql ก่อน
+      const minStockLevel = toNumberOrNull(formData.min_stock_level);
+      if (minStockLevel !== null && minStockLevel !== undefined) {
+        payload.min_stock_level = minStockLevel;
+      }
 
       if (editingProduct) {
         await productService.update(editingProduct.id, payload as ProductUpdate);
@@ -490,6 +545,121 @@ export function ProductsManagementView() {
             </div>
           </div>
 
+          {/* Extra fields: dimensions & weight for AI/trip optimization */}
+          <div className="mt-4 border-t border-gray-200 dark:border-slate-700 pt-4">
+            <h3 className="text-sm font-medium text-gray-800 dark:text-gray-200 mb-3">
+              ข้อมูลขนาดและคุณสมบัติ (ใช้ช่วยวางแผนทริป / AI) — ไม่บังคับ
+            </h3>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  น้ำหนักต่อหน่วย (กก.)
+                </label>
+                <input
+                  type="number"
+                  step="0.001"
+                  value={formData.weight_kg}
+                  onChange={(e) => setFormData({ ...formData, weight_kg: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
+                  placeholder="เช่น 0.75"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  ยาว (ซม.)
+                </label>
+                <input
+                  type="number"
+                  step="0.1"
+                  value={formData.length_cm}
+                  onChange={(e) => setFormData({ ...formData, length_cm: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
+                  placeholder="เช่น 30"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  กว้าง (ซม.)
+                </label>
+                <input
+                  type="number"
+                  step="0.1"
+                  value={formData.width_cm}
+                  onChange={(e) => setFormData({ ...formData, width_cm: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
+                  placeholder="เช่น 20"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  สูง (ซม.)
+                </label>
+                <input
+                  type="number"
+                  step="0.1"
+                  value={formData.height_cm}
+                  onChange={(e) => setFormData({ ...formData, height_cm: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
+                  placeholder="เช่น 15"
+                />
+              </div>
+            </div>
+
+            <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
+              <div className="flex items-center gap-2">
+                <input
+                  id="is_fragile"
+                  type="checkbox"
+                  checked={!!formData.is_fragile}
+                  onChange={(e) => setFormData({ ...formData, is_fragile: e.target.checked })}
+                  className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                />
+                <label htmlFor="is_fragile" className="text-sm text-gray-700 dark:text-gray-300">
+                  เป็นของแตกง่าย
+                </label>
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  id="is_liquid"
+                  type="checkbox"
+                  checked={!!formData.is_liquid}
+                  onChange={(e) => setFormData({ ...formData, is_liquid: e.target.checked })}
+                  className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                />
+                <label htmlFor="is_liquid" className="text-sm text-gray-700 dark:text-gray-300">
+                  เป็นของเหลว
+                </label>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  อุณหภูมิที่ต้องการ
+                </label>
+                <select
+                  value={formData.requires_temperature}
+                  onChange={(e) => setFormData({ ...formData, requires_temperature: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
+                >
+                  <option value="">ปกติ (อุณหภูมิห้อง)</option>
+                  <option value="cold">เย็น (Cold)</option>
+                  <option value="frozen">แช่แข็ง (Frozen)</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="mt-4 flex items-center gap-2">
+              <input
+                id="uses_pallet"
+                type="checkbox"
+                checked={!!formData.uses_pallet}
+                onChange={(e) => setFormData({ ...formData, uses_pallet: e.target.checked })}
+                className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+              />
+              <label htmlFor="uses_pallet" className="text-sm text-gray-700 dark:text-gray-300">
+                สินค้านี้วางบนพาเลท (ใช้สำหรับคำนวณการจัดทริป)
+              </label>
+            </div>
+          </div>
+
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
               ชื่อสินค้า <span className="text-red-500">*</span>
@@ -593,6 +763,17 @@ export function ProductsManagementView() {
             </Button>
           </div>
         </form>
+
+        {/* Product Pallet Config Manager - แสดงเฉพาะเมื่อแก้ไขสินค้าที่มี id แล้ว */}
+        {editingProduct?.id && (
+          <div className="mt-6 pt-6 border-t border-gray-200 dark:border-slate-700">
+            <ProductPalletConfigManager
+              productId={editingProduct.id}
+              productName={editingProduct.product_name || formData.product_name || 'สินค้า'}
+              canEdit={true}
+            />
+          </div>
+        )}
       </Modal>
     </PageLayout>
   );
