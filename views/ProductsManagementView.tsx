@@ -185,8 +185,12 @@ export function ProductsManagementView() {
         is_fragile: !!formData.is_fragile,
         is_liquid: !!formData.is_liquid,
         requires_temperature: formData.requires_temperature || null,
-        uses_pallet: !!formData.uses_pallet,
       };
+
+      // NOTE: Database constraint ถูกลบไปแล้ว (20260129000001_remove_pallet_constraint.sql)
+      // ตอนนี้สามารถตั้ง uses_pallet=true ได้โดยไม่จำเป็นต้องมี pallet_id
+      // Logic การคำนวณใน tripCapacityValidation.ts จะดูที่ product_pallet_configs เป็นหลัก
+      payload.uses_pallet = !!formData.uses_pallet;
 
       // เพิ่ม min_stock_level เฉพาะถ้ามีค่า (เพื่อหลีกเลี่ยง error ถ้ายังไม่มีคอลัมน์ในฐานข้อมูล)
       // ถ้าต้องการใช้ min_stock_level ให้รัน migration: sql/add_min_stock_level_to_products.sql ก่อน
@@ -202,7 +206,7 @@ export function ProductsManagementView() {
         await productService.create(payload as ProductInsert);
         showNotification('success', 'เพิ่มสินค้าเรียบร้อย');
       }
-      
+
       refetch();
       handleCloseModal();
     } catch (error: any) {
@@ -321,7 +325,7 @@ export function ProductsManagementView() {
                   <td className="py-4 px-6">
                     <div className="flex items-center gap-3">
                       {product.category?.color && (
-                        <div 
+                        <div
                           className="w-3 h-3 rounded-full flex-shrink-0"
                           style={{ backgroundColor: product.category.color }}
                         />
@@ -335,9 +339,9 @@ export function ProductsManagementView() {
                     </div>
                   </td>
                   <td className="py-4 px-6">
-                  <div className="text-sm text-gray-700 dark:text-gray-300">
-                    {product.category?.name || product.category || '-'}
-                  </div>
+                    <div className="text-sm text-gray-700 dark:text-gray-300">
+                      {product.category?.name || product.category || '-'}
+                    </div>
                   </td>
                   <td className="py-4 px-6 text-right font-medium text-gray-900 dark:text-white">
                     {new Intl.NumberFormat('th-TH').format(product.base_price || product.price_per_unit || 0)} ฿
@@ -439,11 +443,10 @@ export function ProductsManagementView() {
                       <button
                         key={page}
                         onClick={() => setCurrentPage(page)}
-                        className={`px-3 py-1 rounded-lg text-sm font-medium transition-colors ${
-                          currentPage === page
-                            ? 'bg-blue-600 text-white'
-                            : 'bg-white dark:bg-slate-800 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-slate-700 hover:bg-gray-100 dark:hover:bg-slate-700'
-                        }`}
+                        className={`px-3 py-1 rounded-lg text-sm font-medium transition-colors ${currentPage === page
+                          ? 'bg-blue-600 text-white'
+                          : 'bg-white dark:bg-slate-800 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-slate-700 hover:bg-gray-100 dark:hover:bg-slate-700'
+                          }`}
                       >
                         {page.toLocaleString('th-TH')}
                       </button>

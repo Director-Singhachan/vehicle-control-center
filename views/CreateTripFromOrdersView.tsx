@@ -147,6 +147,68 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
     fetchOrderItems();
   }, [selectedOrders]);
 
+  // Calculate capacity summary when vehicle or items change (with debounce)
+  useEffect(() => {
+    if (!selectedVehicleId || storeDeliveries.length === 0) {
+      setCapacitySummary(null);
+      return;
+    }
+
+    // Collect all items from all stores (from order items)
+    const allItems: Array<{ product_id: string; quantity: number }> = [];
+    for (const delivery of storeDeliveries) {
+      const orderItems = orderItemsMap.get(delivery.order_id) || [];
+      for (const item of orderItems) {
+        allItems.push({
+          product_id: item.product_id,
+          quantity: item.quantity,
+        });
+      }
+    }
+
+    if (allItems.length === 0) {
+      setCapacitySummary(null);
+      return;
+    }
+
+    // Set loading state
+    setCapacitySummary(prev => ({
+      ...prev,
+      loading: true,
+      errors: [],
+      warnings: [],
+    } as any));
+
+    // Debounce: wait 500ms before calculating (to avoid too many requests)
+    const timeoutId = setTimeout(() => {
+      // Calculate capacity
+      calculateTripCapacity(allItems, selectedVehicleId)
+        .then(result => {
+          setCapacitySummary({
+            totalPallets: result.summary.totalPallets,
+            totalWeightKg: result.summary.totalWeightKg,
+            vehicleMaxPallets: result.summary.vehicleMaxPallets,
+            vehicleMaxWeightKg: result.summary.vehicleMaxWeightKg,
+            loading: false,
+            errors: result.errors,
+            warnings: result.warnings,
+          });
+        })
+        .catch(err => {
+          console.error('[CreateTripFromOrdersView] Error calculating capacity:', err);
+          setCapacitySummary(prev => ({
+            ...prev,
+            loading: false,
+            errors: [err.message || 'ไม่สามารถคำนวณความจุได้'],
+            warnings: [],
+          } as any));
+        });
+    }, 500);
+
+    // Cleanup: cancel timeout if component unmounts or dependencies change
+    return () => clearTimeout(timeoutId);
+  }, [selectedVehicleId, storeDeliveries, orderItemsMap]);
+
   // Get unique branches from vehicles
   const branches = useMemo(() => {
     if (!vehicles || vehicles.length === 0) return [];

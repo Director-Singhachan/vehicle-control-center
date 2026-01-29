@@ -1,24 +1,24 @@
 // Utility functions for validating trip capacity (pallets and weight)
 import { supabase } from '../lib/supabase';
 
-interface ProductInfo {
+interface ProductData {
   id: string;
-  uses_pallet?: boolean;
+  uses_pallet?: boolean | null;
   pallet_id?: string | null;
   weight_kg?: number | null;
   product_pallet_configs?: Array<{
+    id: string; // Added for Phase 0 - config selection
     pallet_id: string;
     layers: number;
     units_per_layer: number;
     total_units: number;
     total_weight_kg?: number | null;
     is_default: boolean;
-  }>;
+  }> | null;
 }
 
 interface VehicleInfo {
   id: string;
-  max_pallets?: number | null;
   max_weight_kg?: number | null;
   loading_constraints?: {
     max_pallets?: number;
@@ -29,6 +29,7 @@ interface VehicleInfo {
 interface TripItem {
   product_id: string;
   quantity: number;
+  selected_pallet_config_id?: string; // Phase 0: User-selected pallet config
 }
 
 interface ValidationResult {
@@ -54,9 +55,10 @@ export async function calculateTripCapacity(
   const warnings: string[] = [];
 
   // Load vehicle info
+  // Note: max_pallets เก็บไว้ใน loading_constraints JSON (ไม่ใช่ column โดยตรง)
   const { data: vehicle, error: vehicleError } = await supabase
     .from('vehicles')
-    .select('id, max_pallets, max_weight_kg, loading_constraints')
+    .select('id, max_weight_kg, loading_constraints')
     .eq('id', vehicleId)
     .single();
 
@@ -75,18 +77,37 @@ export async function calculateTripCapacity(
   }
 
   const vehicleInfo: VehicleInfo = vehicle;
-  const maxPallets =
-    vehicleInfo.loading_constraints?.max_pallets ??
-    vehicleInfo.max_pallets ??
-    null;
+
+  // อ่าน max_pallets จาก loading_constraints JSON (ไม่ใช่ column โดยตรง)
+  // เพราะ frontend เก็บ max_pallets ไว้ใน loading_constraints.max_pallets
+  const maxPallets = vehicleInfo.loading_constraints?.max_pallets ?? null;
+
+  // อ่าน max_weight_kg จาก column โดยตรง หรือจาก loading_constraints
   const maxWeightKg =
-    vehicleInfo.loading_constraints?.max_weight_kg ??
     vehicleInfo.max_weight_kg ??
+    vehicleInfo.loading_constraints?.max_weight_kg ??
     null;
 
   // Load all products
   const productIds = [...new Set(items.map(item => item.product_id))];
-  const { data: products, error: productsError } = await supabase
+
+  if (productIds.length === 0) {
+    return {
+      valid: true,
+      errors: [],
+      warnings: [],
+      summary: {
+        totalPallets: 0,
+        totalWeightKg: 0,
+        vehicleMaxPallets: maxPallets,
+        vehicleMaxWeightKg: maxWeightKg,
+      },
+    };
+  }
+
+  // Add timeout wrapper
+  // ใช้ left join (ไม่ใส่ !inner) เพื่อให้ได้สินค้าทั้งหมด แม้ไม่มี configs
+  const queryPromise = supabase
     .from('products')
     .select(`
       id,
@@ -94,6 +115,7 @@ export async function calculateTripCapacity(
       pallet_id,
       weight_kg,
       product_pallet_configs (
+        id,
         pallet_id,
         layers,
         units_per_layer,
@@ -104,6 +126,31 @@ export async function calculateTripCapacity(
     `)
     .in('id', productIds)
     .eq('is_active', true);
+
+  // Add timeout (10 seconds)
+  const timeoutPromise = new Promise((_, reject) => {
+    setTimeout(() => reject(new Error('Timeout: การคำนวณความจุใช้เวลานานเกินไป')), 10000);
+  });
+
+  let products, productsError;
+  try {
+    const result = await Promise.race([queryPromise, timeoutPromise]) as any;
+    products = result.data;
+    productsError = result.error;
+  } catch (err: any) {
+    console.error('[calculateTripCapacity] Query timeout or error:', err);
+    return {
+      valid: false,
+      errors: [err.message || 'ไม่สามารถโหลดข้อมูลสินค้าได้ (timeout)'],
+      warnings: [],
+      summary: {
+        totalPallets: 0,
+        totalWeightKg: 0,
+        vehicleMaxPallets: maxPallets,
+        vehicleMaxWeightKg: maxWeightKg,
+      },
+    };
+  }
 
   if (productsError) {
     return {
@@ -119,7 +166,8 @@ export async function calculateTripCapacity(
     };
   }
 
-  const productMap = new Map<string, ProductInfo>();
+  // Fetch all requested products from database
+  const productMap = new Map<string, ProductData>();
   (products || []).forEach((p: any) => {
     productMap.set(p.id, {
       id: p.id,
@@ -142,58 +190,96 @@ export async function calculateTripCapacity(
       continue;
     }
 
-    // Skip if product doesn't use pallet
-    if (!product.uses_pallet) {
-      // Still calculate weight if available
-      if (product.weight_kg) {
-        totalWeightKg += product.weight_kg * item.quantity;
-      }
-      continue;
-    }
+    // NEW LOGIC: Prioritize pallet configs over uses_pallet flag
+    // If product has pallet configs, calculate pallets regardless of uses_pallet
+    const hasValidPalletConfigs = product.product_pallet_configs && product.product_pallet_configs.length > 0;
 
-    // Find default pallet config
-    const defaultConfig = product.product_pallet_configs?.find(
-      config => config.is_default
-    );
+    // PHASE 0: Priority order for config selection:
+    // 1. User-selected config (from selected_pallet_config_id)
+    // 2. Default config (is_default = true)
+    // 3. First available config
+    let configToUse = null;
 
-    if (!defaultConfig && product.product_pallet_configs?.length === 0) {
-      // No config found - try to estimate from pallet_id if exists
-      if (product.pallet_id) {
-        // Use a simple estimation: assume 1 pallet per product (conservative)
-        totalPallets += item.quantity;
+    // 1. Check if user selected a specific config
+    if (item.selected_pallet_config_id && hasValidPalletConfigs) {
+      configToUse = product.product_pallet_configs.find(
+        c => c.id === item.selected_pallet_config_id
+      );
+      if (!configToUse) {
         warnings.push(
-          `สินค้า ${product.id} ไม่มีข้อมูลการจัดเรียงบนพาเลท ใช้ค่าประมาณ 1 พาเลทต่อสินค้า`
+          `สินค้า ${product.id}: config ที่เลือกไว้ไม่พบ จะใช้ default แทน`
         );
-      } else {
-        missingConfigProducts.push(product.id);
       }
-      continue;
     }
 
-    if (defaultConfig) {
+    // 2. Fallback to default config
+    if (!configToUse && hasValidPalletConfigs) {
+      configToUse = product.product_pallet_configs.find(
+        config => config.is_default
+      );
+    }
+
+    // 3. Fallback to first available config
+    if (!configToUse && hasValidPalletConfigs) {
+      configToUse = product.product_pallet_configs[0];
+      warnings.push(
+        `สินค้า ${product.id} ไม่มี default Pallet Config - ใช้ config แรกในการคำนวณ (แนะนำให้เลือก default)`
+      );
+    }
+
+    // Case 1: Product has valid pallet configs - use them!
+    if (hasValidPalletConfigs && configToUse) {
       // Calculate pallets needed
-      const unitsPerPallet = defaultConfig.total_units;
+      const unitsPerPallet = configToUse.total_units;
       const palletsNeeded = Math.ceil(item.quantity / unitsPerPallet);
       totalPallets += palletsNeeded;
 
       // Calculate weight
-      if (defaultConfig.total_weight_kg) {
+      if (configToUse.total_weight_kg) {
         // Use weight from config (includes pallet + products)
-        totalWeightKg += defaultConfig.total_weight_kg * palletsNeeded;
+        totalWeightKg += configToUse.total_weight_kg * palletsNeeded;
       } else if (product.weight_kg) {
         // Fallback: estimate from product weight
         totalWeightKg += product.weight_kg * item.quantity;
         // Add pallet weight estimate (25kg per pallet)
         totalWeightKg += 25 * palletsNeeded;
       }
+
+      // Already warned about config selection issues above if needed
+      continue;
+    }
+
+    // Case 2: Product explicitly uses pallet but has no configs
+    if (product.uses_pallet) {
+      // ใช้ค่าประมาณแบบ conservative: 1 พาเลทต่อ product
+      // (ไม่ว่าจะมี pallet_id หรือไม่ก็ตาม)
+      totalPallets += item.quantity;
+
+      // Calculate weight if available
+      if (product.weight_kg) {
+        totalWeightKg += product.weight_kg * item.quantity;
+        // Add estimated pallet weight (25kg per pallet)
+        totalWeightKg += 25 * item.quantity;
+      }
+
+      warnings.push(
+        `สินค้า ${product.id} ไม่มีข้อมูลการจัดเรียงบนพาเลท ใช้ค่าประมาณ 1 พาเลทต่อสินค้า (แนะนำให้ตั้งค่า Pallet Configuration)`
+      );
+      continue;
+    }
+
+    // Case 3: Product doesn't use pallet - only calculate weight
+    if (product.weight_kg) {
+      totalWeightKg += product.weight_kg * item.quantity;
     }
   }
 
-  // Check for missing configs
+  // Check for missing configs - now just informational, not blocking
+  // (เปลี่ยนจาก error เป็น info เพราะตอนนี้ระบบสามารถประมาณค่าได้)
   if (missingConfigProducts.length > 0) {
-    errors.push(
-      `สินค้าบางรายการไม่มีข้อมูลการจัดเรียงบนพาเลท: ${missingConfigProducts.join(', ')}`
-    );
+    // ไม่ใส่ใน errors อีกต่อไป เพราะไม่ได้ block การสร้างทริป
+    // แค่แจ้งเตือนว่าควรตั้งค่า config ให้ดีกว่า
+    console.warn('[tripCapacityValidation] Products without pallet config:', missingConfigProducts);
   }
 
   // Validate against vehicle capacity

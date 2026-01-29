@@ -20,6 +20,7 @@ import {
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Card } from '../components/ui/Card';
+import { PalletConfigSelector } from '../components/trip/PalletConfigSelector';
 import { PageLayout } from '../components/layout/PageLayout';
 import { useDeliveryTrip, useVehicles, useStores, useProducts } from '../hooks';
 import { deliveryTripService, type CreateDeliveryTripData, type UpdateDeliveryTripData } from '../services/deliveryTripService';
@@ -45,6 +46,7 @@ interface StoreWithItems {
     product_id: string;
     quantity: number;
     notes?: string;
+    selected_pallet_config_id?: string; // Phase 0: User-selected config
   }>;
 }
 
@@ -275,7 +277,7 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
     warnings: string[];
   } | null>(null);
 
-  // Calculate capacity summary when vehicle or items change
+  // Calculate capacity summary when vehicle or items change (with debounce)
   useEffect(() => {
     if (!formData.vehicle_id || selectedStores.length === 0) {
       setCapacitySummary(null);
@@ -303,28 +305,34 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
       warnings: [],
     } as any));
 
-    // Calculate capacity
-    calculateTripCapacity(allItems, formData.vehicle_id)
-      .then(result => {
-        setCapacitySummary({
-          totalPallets: result.summary.totalPallets,
-          totalWeightKg: result.summary.totalWeightKg,
-          vehicleMaxPallets: result.summary.vehicleMaxPallets,
-          vehicleMaxWeightKg: result.summary.vehicleMaxWeightKg,
-          loading: false,
-          errors: result.errors,
-          warnings: result.warnings,
+    // Debounce: wait 500ms before calculating (to avoid too many requests)
+    const timeoutId = setTimeout(() => {
+      // Calculate capacity
+      calculateTripCapacity(allItems, formData.vehicle_id)
+        .then(result => {
+          setCapacitySummary({
+            totalPallets: result.summary.totalPallets,
+            totalWeightKg: result.summary.totalWeightKg,
+            vehicleMaxPallets: result.summary.vehicleMaxPallets,
+            vehicleMaxWeightKg: result.summary.vehicleMaxWeightKg,
+            loading: false,
+            errors: result.errors,
+            warnings: result.warnings,
+          });
+        })
+        .catch(err => {
+          console.error('[DeliveryTripFormView] Error calculating capacity:', err);
+          setCapacitySummary(prev => ({
+            ...prev,
+            loading: false,
+            errors: [err.message || 'ไม่สามารถคำนวณความจุได้'],
+            warnings: [],
+          } as any));
         });
-      })
-      .catch(err => {
-        console.error('[DeliveryTripFormView] Error calculating capacity:', err);
-        setCapacitySummary(prev => ({
-          ...prev,
-          loading: false,
-          errors: ['ไม่สามารถคำนวณความจุได้'],
-          warnings: [],
-        } as any));
-      });
+    }, 500);
+
+    // Cleanup: cancel timeout if component unmounts or dependencies change
+    return () => clearTimeout(timeoutId);
   }, [formData.vehicle_id, selectedStores]);
 
   // Load trip data when editing
@@ -1507,7 +1515,7 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
         {formData.vehicle_id && selectedStores.length > 0 && (() => {
           // Check if there are any items in any store
           const hasItems = selectedStores.some(store => store.items.length > 0);
-          
+
           return (
             <Card>
               <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-4 flex items-center gap-2">
@@ -1524,116 +1532,114 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
                   กำลังคำนวณ...
                 </div>
               ) : capacitySummary ? (
-              <div className="space-y-3">
-                {capacitySummary.errors.length > 0 && (
-                  <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
-                    <div className="flex items-center gap-2 text-red-800 dark:text-red-200 mb-2">
-                      <AlertCircle size={16} />
-                      <span className="font-medium">ข้อผิดพลาด:</span>
+                <div className="space-y-3">
+                  {capacitySummary.errors.length > 0 && (
+                    <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+                      <div className="flex items-center gap-2 text-red-800 dark:text-red-200 mb-2">
+                        <AlertCircle size={16} />
+                        <span className="font-medium">ข้อผิดพลาด:</span>
+                      </div>
+                      <ul className="list-disc list-inside text-sm text-red-700 dark:text-red-300 space-y-1">
+                        {capacitySummary.errors.map((error, idx) => (
+                          <li key={idx}>{error}</li>
+                        ))}
+                      </ul>
                     </div>
-                    <ul className="list-disc list-inside text-sm text-red-700 dark:text-red-300 space-y-1">
-                      {capacitySummary.errors.map((error, idx) => (
-                        <li key={idx}>{error}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-                {capacitySummary.warnings.length > 0 && (
-                  <div className="p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
-                    <div className="flex items-center gap-2 text-amber-800 dark:text-amber-200 mb-2">
-                      <AlertCircle size={16} />
-                      <span className="font-medium">คำเตือน:</span>
+                  )}
+                  {capacitySummary.warnings.length > 0 && (
+                    <div className="p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
+                      <div className="flex items-center gap-2 text-amber-800 dark:text-amber-200 mb-2">
+                        <AlertCircle size={16} />
+                        <span className="font-medium">คำเตือน:</span>
+                      </div>
+                      <ul className="list-disc list-inside text-sm text-amber-700 dark:text-amber-300 space-y-1">
+                        {capacitySummary.warnings.map((warning, idx) => (
+                          <li key={idx}>{warning}</li>
+                        ))}
+                      </ul>
                     </div>
-                    <ul className="list-disc list-inside text-sm text-amber-700 dark:text-amber-300 space-y-1">
-                      {capacitySummary.warnings.map((warning, idx) => (
-                        <li key={idx}>{warning}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="p-3 bg-slate-50 dark:bg-slate-800 rounded-lg">
-                    <div className="text-sm text-slate-600 dark:text-slate-400 mb-1">
-                      จำนวนพาเลท
-                    </div>
-                    <div className="text-2xl font-bold text-slate-900 dark:text-slate-100">
-                      {capacitySummary.totalPallets}
+                  )}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="p-3 bg-slate-50 dark:bg-slate-800 rounded-lg">
+                      <div className="text-sm text-slate-600 dark:text-slate-400 mb-1">
+                        จำนวนพาเลท
+                      </div>
+                      <div className="text-2xl font-bold text-slate-900 dark:text-slate-100">
+                        {capacitySummary.totalPallets}
+                        {capacitySummary.vehicleMaxPallets !== null && (
+                          <span className="text-lg font-normal text-slate-500 dark:text-slate-400">
+                            {' '}/ {capacitySummary.vehicleMaxPallets}
+                          </span>
+                        )}
+                      </div>
                       {capacitySummary.vehicleMaxPallets !== null && (
-                        <span className="text-lg font-normal text-slate-500 dark:text-slate-400">
-                          {' '}/ {capacitySummary.vehicleMaxPallets}
-                        </span>
-                      )}
-                    </div>
-                    {capacitySummary.vehicleMaxPallets !== null && (
-                      <div className="mt-2">
-                        <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2">
-                          <div
-                            className={`h-2 rounded-full ${
-                              capacitySummary.totalPallets > capacitySummary.vehicleMaxPallets
+                        <div className="mt-2">
+                          <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2">
+                            <div
+                              className={`h-2 rounded-full ${capacitySummary.totalPallets > capacitySummary.vehicleMaxPallets
                                 ? 'bg-red-500'
                                 : capacitySummary.totalPallets > capacitySummary.vehicleMaxPallets * 0.9
                                   ? 'bg-amber-500'
                                   : 'bg-green-500'
-                            }`}
-                            style={{
-                              width: `${Math.min(
-                                100,
-                                (capacitySummary.totalPallets / capacitySummary.vehicleMaxPallets) * 100
-                              )}%`,
-                            }}
-                          />
+                                }`}
+                              style={{
+                                width: `${Math.min(
+                                  100,
+                                  (capacitySummary.totalPallets / capacitySummary.vehicleMaxPallets) * 100
+                                )}%`,
+                              }}
+                            />
+                          </div>
+                          <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                            {Math.round(
+                              (capacitySummary.totalPallets / capacitySummary.vehicleMaxPallets) * 100
+                            )}
+                            % ของความจุ
+                          </div>
                         </div>
-                        <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                          {Math.round(
-                            (capacitySummary.totalPallets / capacitySummary.vehicleMaxPallets) * 100
-                          )}
-                          % ของความจุ
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                  <div className="p-3 bg-slate-50 dark:bg-slate-800 rounded-lg">
-                    <div className="text-sm text-slate-600 dark:text-slate-400 mb-1">
-                      น้ำหนักรวม
-                    </div>
-                    <div className="text-2xl font-bold text-slate-900 dark:text-slate-100">
-                      {capacitySummary.totalWeightKg.toFixed(2)} กก.
-                      {capacitySummary.vehicleMaxWeightKg !== null && (
-                        <span className="text-lg font-normal text-slate-500 dark:text-slate-400">
-                          {' '}/ {capacitySummary.vehicleMaxWeightKg} กก.
-                        </span>
                       )}
                     </div>
-                    {capacitySummary.vehicleMaxWeightKg !== null && (
-                      <div className="mt-2">
-                        <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2">
-                          <div
-                            className={`h-2 rounded-full ${
-                              capacitySummary.totalWeightKg > capacitySummary.vehicleMaxWeightKg
+                    <div className="p-3 bg-slate-50 dark:bg-slate-800 rounded-lg">
+                      <div className="text-sm text-slate-600 dark:text-slate-400 mb-1">
+                        น้ำหนักรวม
+                      </div>
+                      <div className="text-2xl font-bold text-slate-900 dark:text-slate-100">
+                        {capacitySummary.totalWeightKg.toFixed(2)} กก.
+                        {capacitySummary.vehicleMaxWeightKg !== null && (
+                          <span className="text-lg font-normal text-slate-500 dark:text-slate-400">
+                            {' '}/ {capacitySummary.vehicleMaxWeightKg} กก.
+                          </span>
+                        )}
+                      </div>
+                      {capacitySummary.vehicleMaxWeightKg !== null && (
+                        <div className="mt-2">
+                          <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2">
+                            <div
+                              className={`h-2 rounded-full ${capacitySummary.totalWeightKg > capacitySummary.vehicleMaxWeightKg
                                 ? 'bg-red-500'
                                 : capacitySummary.totalWeightKg > capacitySummary.vehicleMaxWeightKg * 0.9
                                   ? 'bg-amber-500'
                                   : 'bg-green-500'
-                            }`}
-                            style={{
-                              width: `${Math.min(
-                                100,
-                                (capacitySummary.totalWeightKg / capacitySummary.vehicleMaxWeightKg) * 100
-                              )}%`,
-                            }}
-                          />
+                                }`}
+                              style={{
+                                width: `${Math.min(
+                                  100,
+                                  (capacitySummary.totalWeightKg / capacitySummary.vehicleMaxWeightKg) * 100
+                                )}%`,
+                              }}
+                            />
+                          </div>
+                          <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                            {Math.round(
+                              (capacitySummary.totalWeightKg / capacitySummary.vehicleMaxWeightKg) * 100
+                            )}
+                            % ของความจุ
+                          </div>
                         </div>
-                        <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                          {Math.round(
-                            (capacitySummary.totalWeightKg / capacitySummary.vehicleMaxWeightKg) * 100
-                          )}
-                          % ของความจุ
-                        </div>
-                      </div>
-                    )}
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
               ) : (
                 <div className="text-sm text-slate-500 dark:text-slate-400">
                   กำลังคำนวณความจุ...
@@ -1990,6 +1996,22 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
                                   >
                                     <X size={16} />
                                   </button>
+                                </div>
+
+                                {/* Phase 0: Pallet Config Selector - Full width below */}
+                                <div className="col-span-full">
+                                  <PalletConfigSelector
+                                    productId={item.product_id}
+                                    productName={product.product_name}
+                                    quantity={item.quantity}
+                                    configs={product.product_pallet_configs || []}
+                                    selectedConfigId={item.selected_pallet_config_id}
+                                    onChange={(configId) => {
+                                      const updatedStores = [...selectedStores];
+                                      updatedStores[storeIndex].items[itemIndex].selected_pallet_config_id = configId;
+                                      setSelectedStores(updatedStores);
+                                    }}
+                                  />
                                 </div>
                               </div>
                             );
