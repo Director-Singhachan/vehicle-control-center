@@ -20,6 +20,7 @@ import {
   tripMetricsService,
   type TripMetrics,
 } from '../services/tripMetricsService';
+import { Info } from 'lucide-react';
 
 interface TripMetricsViewProps {
   tripId: string;
@@ -49,12 +50,26 @@ export const TripMetricsView: React.FC<TripMetricsViewProps> = ({
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [basicData, setBasicData] = useState<{
+    total_products_quantity: number;
+    total_items_count: number;
+    stores_count: number;
+    distance_km: number | null;
+    duration_hours: number | null;
+  } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     const load = async () => {
       setLoadingMetrics(true);
       try {
+        // โหลดข้อมูลพื้นฐานที่มีอยู่แล้ว
+        const basic = await tripMetricsService.getTripBasicData(tripId);
+        if (!cancelled) {
+          setBasicData(basic);
+        }
+
+        // โหลดข้อมูล metrics ที่บันทึกไว้แล้ว
         const metrics = await tripMetricsService.getTripMetrics(tripId);
         if (!cancelled && metrics) {
           setForm({
@@ -185,14 +200,72 @@ export const TripMetricsView: React.FC<TripMetricsViewProps> = ({
           </div>
         )}
 
+        {/* แสดงข้อมูลที่มีอยู่แล้ว */}
+        {basicData && (
+          <Card className="p-4 bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800">
+            <div className="flex items-start gap-2">
+              <Info size={18} className="text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" />
+              <div className="flex-1">
+                <h4 className="text-sm font-semibold text-blue-900 dark:text-blue-100 mb-2">
+                  สรุปข้อมูลทริป
+                </h4>
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-3 text-sm">
+                  <div>
+                    <span className="text-blue-700 dark:text-blue-300 font-medium">
+                      {basicData.total_products_quantity.toLocaleString()}
+                    </span>
+                    <div className="text-blue-600 dark:text-blue-400 text-xs">จำนวนสินค้า</div>
+                  </div>
+                  <div>
+                    <span className="text-blue-700 dark:text-blue-300 font-medium">
+                      {basicData.total_items_count}
+                    </span>
+                    <div className="text-blue-600 dark:text-blue-400 text-xs">รายการสินค้า</div>
+                  </div>
+                  <div>
+                    <span className="text-blue-700 dark:text-blue-300 font-medium">
+                      {basicData.stores_count}
+                    </span>
+                    <div className="text-blue-600 dark:text-blue-400 text-xs">จำนวนร้าน</div>
+                  </div>
+                  <div>
+                    <span className="text-blue-700 dark:text-blue-300 font-medium">
+                      {basicData.distance_km !== null
+                        ? `${basicData.distance_km.toLocaleString()} กม.`
+                        : '-'}
+                    </span>
+                    <div className="text-blue-600 dark:text-blue-400 text-xs">ระยะทาง</div>
+                  </div>
+                  <div>
+                    <span className="text-blue-700 dark:text-blue-300 font-medium">
+                      {basicData.duration_hours !== null
+                        ? `${basicData.duration_hours.toFixed(1)} ชม.`
+                        : '-'}
+                    </span>
+                    <div className="text-blue-600 dark:text-blue-400 text-xs">ระยะเวลา</div>
+                  </div>
+                </div>
+                <p className="text-xs text-blue-600 dark:text-blue-400 mt-2">
+                  💡 ข้อมูลเหล่านี้ดึงมาจากทริปอัตโนมัติ และจะถูกใช้ในการเทรน AI
+                </p>
+              </div>
+            </div>
+          </Card>
+        )}
+
         <Card className="p-6">
-          <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-4 flex items-center gap-2">
-            <Package size={20} />
-            การจัดเรียงและน้ำหนัก
-          </h3>
+          <div className="mb-4">
+            <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-2 flex items-center gap-2">
+              <Package size={20} />
+              ข้อมูลที่ต้องบันทึกเพิ่ม (สำหรับ AI)
+            </h3>
+            <p className="text-sm text-slate-600 dark:text-slate-400">
+              ⚠️ ข้อมูลเหล่านี้ไม่มีในระบบ ต้องบันทึกหลังจบทริป
+            </p>
+          </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Input
-              label="จำนวนพาเลทที่ใช้จริง"
+              label="จำนวนพาเลทที่ใช้จริง *"
               type="number"
               min={0}
               step={1}
@@ -204,7 +277,11 @@ export const TripMetricsView: React.FC<TripMetricsViewProps> = ({
                 )
               }
               placeholder="เช่น 12"
+              required
             />
+            <div className="text-xs text-slate-500 dark:text-slate-400 -mt-2">
+              ⚠️ สำคัญมาก - ข้อมูลนี้ไม่มีในระบบ
+            </div>
             <Input
               label="น้ำหนักจริง (กก.)"
               type="number"
@@ -283,39 +360,58 @@ export const TripMetricsView: React.FC<TripMetricsViewProps> = ({
         </Card>
 
         <Card className="p-6">
-          <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-4 flex items-center gap-2">
-            <MapPin size={20} />
-            ระยะทางและเวลา
-          </h3>
+          <div className="mb-4">
+            <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-2 flex items-center gap-2">
+              <MapPin size={20} />
+              ระยะทางและเวลา (ถ้าต้องการบันทึกซ้ำ)
+            </h3>
+            <p className="text-sm text-slate-600 dark:text-slate-400">
+              💡 ข้อมูลนี้มีในระบบแล้ว (จาก trip_logs) แต่สามารถบันทึกซ้ำได้ถ้าต้องการแก้ไข
+            </p>
+          </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Input
-              label="ระยะทางจริง (กม.)"
-              type="number"
-              min={0}
-              step={0.1}
-              value={form.actual_distance_km ?? ''}
-              onChange={(e) =>
-                update(
-                  'actual_distance_km',
-                  e.target.value === '' ? undefined : parseFloat(e.target.value)
-                )
-              }
-              placeholder="เช่น 120.5"
-            />
-            <Input
-              label="เวลาที่ใช้จริง (ชม.)"
-              type="number"
-              min={0}
-              step={0.1}
-              value={form.actual_duration_hours ?? ''}
-              onChange={(e) =>
-                update(
-                  'actual_duration_hours',
-                  e.target.value === '' ? undefined : parseFloat(e.target.value)
-                )
-              }
-              placeholder="เช่น 4.5"
-            />
+            <div>
+              <Input
+                label="ระยะทางจริง (กม.)"
+                type="number"
+                min={0}
+                step={0.1}
+                value={form.actual_distance_km ?? ''}
+                onChange={(e) =>
+                  update(
+                    'actual_distance_km',
+                    e.target.value === '' ? undefined : parseFloat(e.target.value)
+                  )
+                }
+                placeholder={basicData?.distance_km ? `${basicData.distance_km.toFixed(1)} (จากระบบ)` : 'เช่น 120.5'}
+              />
+              {basicData?.distance_km && (
+                <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                  ค่าจากระบบ: {basicData.distance_km.toFixed(1)} กม.
+                </div>
+              )}
+            </div>
+            <div>
+              <Input
+                label="เวลาที่ใช้จริง (ชม.)"
+                type="number"
+                min={0}
+                step={0.1}
+                value={form.actual_duration_hours ?? ''}
+                onChange={(e) =>
+                  update(
+                    'actual_duration_hours',
+                    e.target.value === '' ? undefined : parseFloat(e.target.value)
+                  )
+                }
+                placeholder={basicData?.duration_hours ? `${basicData.duration_hours.toFixed(1)} (จากระบบ)` : 'เช่น 4.5'}
+              />
+              {basicData?.duration_hours && (
+                <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                  ค่าจากระบบ: {basicData.duration_hours.toFixed(1)} ชม.
+                </div>
+              )}
+            </div>
           </div>
         </Card>
 

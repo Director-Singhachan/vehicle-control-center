@@ -378,5 +378,11 @@ export const aiOptimizationService = {
 
 ---
 
+## 📚 เอกสารเพิ่มเติม
+
+- [คำอธิบายข้อมูล Trip Metrics](./TRIP_METRICS_DATA_EXPLANATION.md) - อธิบายว่าข้อมูลอะไรที่มีอยู่แล้ว และอะไรที่ต้องบันทึกเพิ่ม
+
+---
+
 **Last Updated:** 2026-01-30  
 **Next Review:** หลังเริ่มเก็บข้อมูลเมตริกซ์จริง (100+ ทริป)
