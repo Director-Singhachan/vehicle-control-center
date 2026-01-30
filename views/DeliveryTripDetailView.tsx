@@ -36,12 +36,14 @@ interface DeliveryTripDetailViewProps {
   tripId: string;
   onEdit?: (tripId: string) => void;
   onBack?: () => void;
+  onRecordMetrics?: () => void;
 }
 
 export const DeliveryTripDetailView: React.FC<DeliveryTripDetailViewProps> = ({
   tripId,
   onEdit,
   onBack,
+  onRecordMetrics,
 }) => {
   const { trip, loading, error, refetch } = useDeliveryTrip(tripId);
   const [printing, setPrinting] = useState(false);
@@ -259,6 +261,12 @@ export const DeliveryTripDetailView: React.FC<DeliveryTripDetailViewProps> = ({
             <Download size={18} className="mr-2" />
             พิมพ์ A5 (โฟล์คลิฟท์)
           </Button>
+          {onRecordMetrics && (
+            <Button variant="outline" onClick={onRecordMetrics}>
+              <BarChart3 size={18} className="mr-2" />
+              บันทึกเมตริกซ์
+            </Button>
+          )}
           {onEdit && (
             <Button variant="outline" onClick={() => onEdit(trip.id)}>
               <Edit size={18} className="mr-2" />

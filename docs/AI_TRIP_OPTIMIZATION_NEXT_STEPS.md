@@ -1,7 +1,7 @@
 # 🚀 ขั้นตอนต่อไปสำหรับ AI Trip Optimization
 
-**อัปเดตล่าสุด:** 2026-01-29  
-**สถานะปัจจุบัน:** Phase 0 เสร็จสมบูรณ์ ✅ | Phase 1-2 ยังไม่ได้เริ่ม
+**อัปเดตล่าสุด:** 2026-01-30  
+**สถานะปัจจุบัน:** Phase 0 เสร็จสมบูรณ์ ✅ | Priority 1 (Trip Metrics) เสร็จแล้ว ✅ | Vehicles/Products schema มีอยู่แล้ว ✅ | Phase 1-2 ยังไม่ได้เริ่ม
 
 ---
 
@@ -28,9 +28,9 @@
 
 **ทำไมสำคัญ:** ข้อมูลคือหัวใจของ AI/ML - ต้องมีข้อมูลเพียงพอและคุณภาพดีก่อนเริ่ม Phase 2
 
-#### 1.1 เพิ่มการเก็บข้อมูล Trip Metrics
+#### 1.1 เพิ่มการเก็บข้อมูล Trip Metrics ✅ (เสร็จแล้ว)
 
-**สร้าง Migration: `sql/20260130000001_add_trip_metrics_tracking.sql`**
+**Migration: `sql/20260130000001_add_trip_metrics_tracking.sql`** — สร้างแล้ว
 
 ```sql
 -- เพิ่มคอลัมน์สำหรับเก็บ metrics ที่จำเป็นสำหรับ AI
@@ -67,9 +67,9 @@ CREATE INDEX idx_trip_packing_snapshots_trip_id ON public.trip_packing_snapshots
 CREATE INDEX idx_trip_packing_snapshots_vehicle_id ON public.trip_packing_snapshots(vehicle_id);
 ```
 
-#### 1.2 สร้าง UI สำหรับบันทึก Trip Metrics
+#### 1.2 สร้าง UI สำหรับบันทึก Trip Metrics ✅ (เสร็จแล้ว)
 
-**ไฟล์: `views/TripMetricsView.tsx`** (หน้าใหม่)
+**ไฟล์: `views/TripMetricsView.tsx`** — สร้างแล้ว เปิดจากปุ่ม "บันทึกเมตริกซ์" ในหน้ารายละเอียดทริป
 
 ```typescript
 // หน้าที่ให้ driver/staff บันทึกข้อมูลหลังจบทริป:
@@ -84,9 +84,9 @@ CREATE INDEX idx_trip_packing_snapshots_vehicle_id ON public.trip_packing_snapsh
 - Upload รูปภาพการจัดเรียง (optional)
 - Validation และ reminders
 
-#### 1.3 สร้าง Service สำหรับเก็บ Metrics
+#### 1.3 สร้าง Service สำหรับเก็บ Metrics ✅ (เสร็จแล้ว)
 
-**ไฟล์: `services/tripMetricsService.ts`**
+**ไฟล์: `services/tripMetricsService.ts`** — สร้างแล้ว (saveTripMetrics, getTripMetrics, getAggregatedMetrics, savePackingSnapshot, exportTrainingData)
 
 ```typescript
 export const tripMetricsService = {
@@ -108,55 +108,25 @@ export const tripMetricsService = {
 
 ---
 
-### 🟡 Priority 2: Complete Database Schema (1-2 สัปดาห์)
+### 🟡 Priority 2: Complete Database Schema (1-2 สัปดาห์) — ตรวจสอบแล้ว ✅
 
-**ตรวจสอบและเพิ่มข้อมูลพื้นฐานที่จำเป็น:**
+**ตรวจสอบและเพิ่มข้อมูลพื้นฐานที่จำเป็น:** Migration ด้านล่างมีอยู่แล้วในโปรเจกต์
 
-#### 2.1 ตรวจสอบข้อมูล Vehicles
+#### 2.1 ตรวจสอบข้อมูล Vehicles ✅ (มี migration แล้ว)
 
-**ตรวจสอบว่ามีข้อมูลเหล่านี้หรือยัง:**
+**Migration: `sql/20260228000001_add_vehicle_cargo_dimensions.sql`** — มีแล้ว
 - ✅ `max_weight_kg` - มีแล้ว
-- ✅ `loading_constraints.max_pallets` - มีแล้ว
-- ❓ `cargo_length_cm`, `cargo_width_cm`, `cargo_height_cm` - ต้องเพิ่ม
-- ❓ `cargo_volume_liter` - ต้องเพิ่ม
+- ✅ `cargo_length_cm`, `cargo_width_cm`, `cargo_height_cm` - มีแล้ว
+- ✅ `cargo_volume_liter` (คำนวณอัตโนมัติ) - มีแล้ว
+- ✅ `has_shelves`, `shelf_config`, `cargo_shape_type`, `loading_constraints` - มีแล้ว
 
-**Migration: `sql/20260130000002_add_vehicle_cargo_dimensions.sql`**
+#### 2.2 ตรวจสอบข้อมูล Products ✅ (มี migration แล้ว)
 
-```sql
-ALTER TABLE public.vehicles
-ADD COLUMN IF NOT EXISTS cargo_length_cm DECIMAL(10, 2),
-ADD COLUMN IF NOT EXISTS cargo_width_cm DECIMAL(10, 2),
-ADD COLUMN IF NOT EXISTS cargo_height_cm DECIMAL(10, 2),
-ADD COLUMN IF NOT EXISTS cargo_volume_liter DECIMAL(10, 2);
-
--- คำนวณ volume อัตโนมัติ
-UPDATE public.vehicles
-SET cargo_volume_liter = (cargo_length_cm * cargo_width_cm * cargo_height_cm) / 1000
-WHERE cargo_length_cm IS NOT NULL 
-  AND cargo_width_cm IS NOT NULL 
-  AND cargo_height_cm IS NOT NULL;
-```
-
-#### 2.2 ตรวจสอบข้อมูล Products
-
-**ตรวจสอบว่ามีข้อมูลเหล่านี้หรือยัง:**
+**Migration: `sql/20260228000003_add_product_3d_dimensions_and_pallet.sql`** — มีแล้ว
 - ✅ `weight_kg` - มีแล้ว
-- ✅ `uses_pallet` - มีแล้ว
-- ✅ `product_pallet_configs` - มีแล้ว (Phase 0)
-- ❓ `length_cm`, `width_cm`, `height_cm` - ต้องเพิ่ม (ถ้ายังไม่มี)
-- ❓ `is_fragile`, `is_liquid` - ต้องเพิ่ม (สำหรับ constraints)
-
-**Migration: `sql/20260130000003_add_product_3d_dimensions.sql`**
-
-```sql
-ALTER TABLE public.products
-ADD COLUMN IF NOT EXISTS length_cm DECIMAL(10, 2),
-ADD COLUMN IF NOT EXISTS width_cm DECIMAL(10, 2),
-ADD COLUMN IF NOT EXISTS height_cm DECIMAL(10, 2),
-ADD COLUMN IF NOT EXISTS is_fragile BOOLEAN DEFAULT FALSE,
-ADD COLUMN IF NOT EXISTS is_liquid BOOLEAN DEFAULT FALSE,
-ADD COLUMN IF NOT EXISTS stacking_limit INTEGER DEFAULT 5;
-```
+- ✅ `uses_pallet`, `product_pallet_configs` (Phase 0) - มีแล้ว
+- ✅ `length_cm`, `width_cm`, `height_cm` - มีแล้ว
+- ✅ `is_fragile`, `stacking_limit`, `requires_temperature`, `packaging_type` - มีแล้ว
 
 #### 2.3 สร้างตารางสำหรับ AI Recommendations (ถ้ายังไม่มี)
 
@@ -355,11 +325,11 @@ export const aiOptimizationService = {
 ## 📝 Checklist
 
 ### Immediate (Next 2 Weeks)
-- [ ] สร้าง migration สำหรับ trip metrics tracking
-- [ ] สร้าง UI สำหรับบันทึก metrics
-- [ ] สร้าง service สำหรับเก็บ metrics
-- [ ] ตรวจสอบและเพิ่ม vehicle cargo dimensions
-- [ ] ตรวจสอบและเพิ่ม product 3D dimensions
+- [x] สร้าง migration สำหรับ trip metrics tracking ✅
+- [x] สร้าง UI สำหรับบันทึก metrics ✅
+- [x] สร้าง service สำหรับเก็บ metrics ✅
+- [x] ตรวจสอบและเพิ่ม vehicle cargo dimensions (มี migration แล้ว) ✅
+- [x] ตรวจสอบและเพิ่ม product 3D dimensions (มี migration แล้ว) ✅
 
 ### Short-term (1-2 Months)
 - [ ] Implement Smart Packing detection
@@ -382,11 +352,11 @@ export const aiOptimizationService = {
 
 ## 🎯 Recommended Next Steps (This Week)
 
-1. **เริ่ม Priority 1.1** - สร้าง migration สำหรับ trip metrics
-2. **เริ่ม Priority 1.2** - สร้าง UI สำหรับบันทึก metrics
-3. **Review Priority 2** - ตรวจสอบข้อมูล vehicles/products ที่มีอยู่
+1. ~~**Priority 1.1** - สร้าง migration สำหรับ trip metrics~~ ✅ เสร็จแล้ว
+2. ~~**Priority 1.2** - สร้าง UI สำหรับบันทึก metrics~~ ✅ เสร็จแล้ว
+3. ~~**Priority 2** - ตรวจสอบข้อมูล vehicles/products~~ ✅ มี migration อยู่แล้ว
 
-**Estimated Time:** 2-3 สัปดาห์สำหรับ Priority 1-2
+**ขั้นต่อไป:** รัน migration `20260130000001_add_trip_metrics_tracking.sql` บน Supabase แล้วเริ่มเก็บข้อมูลจริง (บันทึกเมตริกซ์หลังจบทริป) เพื่อเตรียมข้อมูลสำหรับ Phase 1 (Smart Packing) และ Phase 2 (AI)
 
 ---
 
@@ -408,5 +378,5 @@ export const aiOptimizationService = {
 
 ---
 
-**Last Updated:** 2026-01-29  
-**Next Review:** หลัง Priority 1-2 เสร็จ
+**Last Updated:** 2026-01-30  
+**Next Review:** หลังเริ่มเก็บข้อมูลเมตริกซ์จริง (100+ ทริป)
