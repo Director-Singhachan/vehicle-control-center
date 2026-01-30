@@ -47,6 +47,24 @@ interface StoreWithItems {
   }>;
 }
 
+/** Deep compare stores+items; used to avoid sending stores on update when user only changed driver/vehicle/date/notes */
+function storesAndItemsEqual(a: StoreWithItems[], b: StoreWithItems[] | null): boolean {
+  if (!b || a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    const sa = a[i], sb = b[i];
+    if (sa.store_id !== sb.store_id || sa.sequence_order !== sb.sequence_order) return false;
+    if (sa.items.length !== sb.items.length) return false;
+    const sortKey = (item: { product_id: string; quantity: number; notes?: string }) =>
+      `${item.product_id}:${item.quantity}:${item.notes ?? ''}`;
+    const aItems = [...sa.items].sort((x, y) => sortKey(x).localeCompare(sortKey(y)));
+    const bItems = [...sb.items].sort((x, y) => sortKey(x).localeCompare(sortKey(y)));
+    for (let j = 0; j < aItems.length; j++) {
+      if (sortKey(aItems[j]) !== sortKey(bItems[j])) return false;
+    }
+  }
+  return true;
+}
+
 export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
   tripId,
   onSave,
@@ -250,6 +268,9 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
   // Refs for dropdown positioning
   const vehicleInputRef = useRef<HTMLDivElement>(null);
   const storeInputRef = useRef<HTMLDivElement>(null);
+
+  // Snapshot of stores when trip is loaded in edit mode — used to avoid sending stores on update when user only changed driver/vehicle/date/notes (prevents accidental deletion of items)
+  const initialStoresRef = useRef<StoreWithItems[] | null>(null);
   const [vehicleDropdownPosition, setVehicleDropdownPosition] = useState<{ top: number; left: number; width: number } | null>(null);
 
   // Helper staff
@@ -301,6 +322,8 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
           })),
         }));
         setSelectedStores(storesWithItems);
+        // Snapshot for "did user change stores/items?" — if unchanged, we won't send stores on update to avoid overwriting/deleting items
+        initialStoresRef.current = JSON.parse(JSON.stringify(storesWithItems));
 
         // Fetch store info and product info for all stores in the trip and cache them
         // This prevents "loading" state when stores/products arrays are empty
@@ -1017,7 +1040,10 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
           notes: formData.notes || undefined,
           edit_reason: editReason, // Required for edit mode
           helpers: selectedHelpers, // Include helpers for update
-          stores: selectedStores.map(store => ({
+        };
+        // Only send stores when user actually changed stores/items — otherwise backend replaces the full list and can delete items the user never touched
+        if (!storesAndItemsEqual(selectedStores, initialStoresRef.current)) {
+          updateData.stores = selectedStores.map(store => ({
             store_id: store.store_id,
             sequence_order: store.sequence_order,
             items: store.items.map(item => ({
@@ -1025,8 +1051,8 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
               quantity: item.quantity,
               notes: item.notes || undefined,
             })),
-          })),
-        };
+          }));
+        }
         await deliveryTripService.update(tripId, updateData);
       } else {
         // For create, use CreateDeliveryTripData
