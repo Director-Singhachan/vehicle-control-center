@@ -224,6 +224,62 @@ export const VehicleDetailView: React.FC<VehicleDetailViewProps> = ({
                   </p>
                 </div>
 
+                {/* Capacity info (if available) */}
+                {((vehicle as any).cargo_length_cm ||
+                  (vehicle as any).cargo_width_cm ||
+                  (vehicle as any).cargo_height_cm ||
+                  (vehicle as any).max_weight_kg ||
+                  ((vehicle as any).loading_constraints && (vehicle as any).loading_constraints.max_pallets)) && (
+                  <div className="md:col-span-2 border-t border-slate-200 dark:border-slate-700 pt-4 mt-2">
+                    <h3 className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-3">
+                      ความจุการบรรทุก
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-sm">
+                      {(vehicle as any).cargo_length_cm && (
+                        <div>
+                          <div className="text-slate-500 dark:text-slate-400 mb-1">ความยาว (ซม.)</div>
+                          <div className="text-slate-900 dark:text-white font-medium">
+                            {(vehicle as any).cargo_length_cm} ซม.
+                          </div>
+                        </div>
+                      )}
+                      {(vehicle as any).cargo_width_cm && (
+                        <div>
+                          <div className="text-slate-500 dark:text-slate-400 mb-1">ความกว้าง (ซม.)</div>
+                          <div className="text-slate-900 dark:text-white font-medium">
+                            {(vehicle as any).cargo_width_cm} ซม.
+                          </div>
+                        </div>
+                      )}
+                      {(vehicle as any).cargo_height_cm && (
+                        <div>
+                          <div className="text-slate-500 dark:text-slate-400 mb-1">ความสูง (ซม.)</div>
+                          <div className="text-slate-900 dark:text-white font-medium">
+                            {(vehicle as any).cargo_height_cm} ซม.
+                          </div>
+                        </div>
+                      )}
+                      {(vehicle as any).max_weight_kg && (
+                        <div>
+                          <div className="text-slate-500 dark:text-slate-400 mb-1">น้ำหนักบรรทุกสูงสุด</div>
+                          <div className="text-slate-900 dark:text-white font-medium">
+                            {(vehicle as any).max_weight_kg.toLocaleString()} กก.
+                          </div>
+                        </div>
+                      )}
+                      {((vehicle as any).loading_constraints &&
+                        (vehicle as any).loading_constraints.max_pallets) && (
+                        <div>
+                          <div className="text-slate-500 dark:text-slate-400 mb-1">จำนวนพาเลทโดยประมาณ</div>
+                          <div className="text-slate-900 dark:text-white font-medium">
+                            {(vehicle as any).loading_constraints.max_pallets} พาเลท
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
                 {vehicle.lat && vehicle.lng && (
                   <div className="md:col-span-2">
                     <label className="block text-sm font-medium text-slate-500 dark:text-slate-400 mb-1">

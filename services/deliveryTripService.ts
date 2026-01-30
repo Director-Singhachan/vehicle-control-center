@@ -103,6 +103,7 @@ export interface CreateDeliveryTripData {
       quantity: number;
       notes?: string;
       is_bonus?: boolean;
+      selected_pallet_config_id?: string; // Phase 0: User-selected pallet config
     }>;
   }>;
 }
@@ -124,6 +125,7 @@ export interface UpdateDeliveryTripData {
       quantity: number;
       notes?: string;
       is_bonus?: boolean;
+      selected_pallet_config_id?: string; // Phase 0: User-selected pallet config
     }>;
   }>;
   helpers?: string[]; // Array of service_staff IDs to add as helpers
@@ -783,6 +785,7 @@ export const deliveryTripService = {
             quantity: item.quantity,
             notes: item.notes,
             is_bonus: item.is_bonus || false,
+            selected_pallet_config_id: item.selected_pallet_config_id || null,
           }));
 
           const { error: itemsError } = await supabase
@@ -826,6 +829,7 @@ export const deliveryTripService = {
           quantity: item.quantity,
           notes: item.notes,
           is_bonus: item.is_bonus || false,
+          selected_pallet_config_id: item.selected_pallet_config_id || null,
         }));
 
         const { error: itemsError } = await supabase
@@ -1052,7 +1056,7 @@ export const deliveryTripService = {
 
       const { data: existingItems, error: existingItemsError } = existingStoreIds.length > 0 ? await supabase
         .from('delivery_trip_items')
-        .select('id, delivery_trip_store_id, product_id, quantity, notes, is_bonus')
+        .select('id, delivery_trip_store_id, product_id, quantity, notes, is_bonus, selected_pallet_config_id')
         .in('delivery_trip_store_id', existingStoreIds) : { data: [] as any[], error: null };
 
       if (existingItemsError) {
@@ -1191,6 +1195,7 @@ export const deliveryTripService = {
           quantity: number;
           notes?: string | null;
           is_bonus: boolean;
+          selected_pallet_config_id?: string | null;
         };
 
         const existingItemsForStore: TripItemRow[] = existingStore
@@ -1257,6 +1262,7 @@ export const deliveryTripService = {
                 quantity: item.quantity,
                 notes: item.notes,
                 is_bonus: item.is_bonus || false,
+                selected_pallet_config_id: item.selected_pallet_config_id || null,
               })
               .select();
 
@@ -1280,7 +1286,10 @@ export const deliveryTripService = {
             const oldQty = Number(existingItem.quantity);
             const newQty = Number(item.quantity);
 
-            const needsUpdate = oldQty !== newQty || (item.notes !== undefined);
+            const needsUpdate = oldQty !== newQty || 
+              (item.notes !== undefined) ||
+              (item.selected_pallet_config_id !== undefined && 
+               item.selected_pallet_config_id !== (existingItem as any).selected_pallet_config_id);
 
             if (needsUpdate) {
               const { error: updateItemError } = await supabase
@@ -1288,6 +1297,7 @@ export const deliveryTripService = {
                 .update({
                   quantity: item.quantity,
                   notes: item.notes,
+                  selected_pallet_config_id: item.selected_pallet_config_id || null,
                 })
                 .eq('id', existingItem.id);
 

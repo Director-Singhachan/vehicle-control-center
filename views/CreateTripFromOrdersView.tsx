@@ -14,6 +14,8 @@ import { LoadingSpinner } from '../components/ui/LoadingSpinner';
 import { useAuth } from '../hooks';
 import { useToast } from '../hooks/useToast';
 import { ToastContainer } from '../components/ui/Toast';
+import { calculateTripCapacity } from '../utils/tripCapacityValidation';
+import { AlertCircle } from 'lucide-react';
 
 interface CreateTripFromOrdersViewProps {
   selectedOrders: any[];
@@ -56,6 +58,17 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
   // Vehicle filtering
   const [selectedBranch, setSelectedBranch] = useState('');
   const [vehicleSearch, setVehicleSearch] = useState('');
+
+  // Capacity summary state
+  const [capacitySummary, setCapacitySummary] = useState<{
+    totalPallets: number;
+    totalWeightKg: number;
+    vehicleMaxPallets: number | null;
+    vehicleMaxWeightKg: number | null;
+    loading: boolean;
+    errors: string[];
+    warnings: string[];
+  } | null>(null);
 
   // สร้างรายการร้านค้าจากออเดอร์ที่เลือก
   const [storeDeliveries, setStoreDeliveries] = useState<StoreDelivery[]>(() => {
@@ -133,6 +146,68 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
 
     fetchOrderItems();
   }, [selectedOrders]);
+
+  // Calculate capacity summary when vehicle or items change (with debounce)
+  useEffect(() => {
+    if (!selectedVehicleId || storeDeliveries.length === 0) {
+      setCapacitySummary(null);
+      return;
+    }
+
+    // Collect all items from all stores (from order items)
+    const allItems: Array<{ product_id: string; quantity: number }> = [];
+    for (const delivery of storeDeliveries) {
+      const orderItems = orderItemsMap.get(delivery.order_id) || [];
+      for (const item of orderItems) {
+        allItems.push({
+          product_id: item.product_id,
+          quantity: item.quantity,
+        });
+      }
+    }
+
+    if (allItems.length === 0) {
+      setCapacitySummary(null);
+      return;
+    }
+
+    // Set loading state
+    setCapacitySummary(prev => ({
+      ...prev,
+      loading: true,
+      errors: [],
+      warnings: [],
+    } as any));
+
+    // Debounce: wait 500ms before calculating (to avoid too many requests)
+    const timeoutId = setTimeout(() => {
+      // Calculate capacity
+      calculateTripCapacity(allItems, selectedVehicleId)
+        .then(result => {
+          setCapacitySummary({
+            totalPallets: result.summary.totalPallets,
+            totalWeightKg: result.summary.totalWeightKg,
+            vehicleMaxPallets: result.summary.vehicleMaxPallets,
+            vehicleMaxWeightKg: result.summary.vehicleMaxWeightKg,
+            loading: false,
+            errors: result.errors,
+            warnings: result.warnings,
+          });
+        })
+        .catch(err => {
+          console.error('[CreateTripFromOrdersView] Error calculating capacity:', err);
+          setCapacitySummary(prev => ({
+            ...prev,
+            loading: false,
+            errors: [err.message || 'ไม่สามารถคำนวณความจุได้'],
+            warnings: [],
+          } as any));
+        });
+    }, 500);
+
+    // Cleanup: cancel timeout if component unmounts or dependencies change
+    return () => clearTimeout(timeoutId);
+  }, [selectedVehicleId, storeDeliveries, orderItemsMap]);
 
   // Get unique branches from vehicles
   const branches = useMemo(() => {
@@ -245,6 +320,12 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
 
     if (storeDeliveries.length === 0) {
       warning('กรุณาเลือกร้านค้าอย่างน้อย 1 ร้าน');
+      return;
+    }
+
+    // Validate capacity if summary exists and has errors
+    if (capacitySummary && capacitySummary.errors.length > 0) {
+      warning(`ไม่สามารถสร้างทริปได้: ${capacitySummary.errors.join(', ')}`);
       return;
     }
 
@@ -638,6 +719,147 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
               </div>
             </div>
           </Card>
+
+          {/* Capacity Summary */}
+          {selectedVehicleId && storeDeliveries.length > 0 && (() => {
+            // Check if there are any items in any order
+            const hasItems = Array.from(orderItemsMap.values()).some((items: any[]) => Array.isArray(items) && items.length > 0);
+            
+            return (
+              <Card>
+                <div className="p-6">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                    <Package size={20} />
+                    สรุปความจุ
+                  </h3>
+                  {!hasItems ? (
+                    <div className="text-center py-4 text-gray-500">
+                      <p>กำลังโหลดข้อมูลสินค้า...</p>
+                    </div>
+                  ) : capacitySummary?.loading ? (
+                    <div className="text-center py-4 text-gray-500">
+                      กำลังคำนวณ...
+                    </div>
+                  ) : capacitySummary ? (
+                    <div className="space-y-3">
+                      {capacitySummary.errors.length > 0 && (
+                        <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+                          <div className="flex items-center gap-2 text-red-800 mb-2">
+                            <AlertCircle size={16} />
+                            <span className="font-medium">ข้อผิดพลาด:</span>
+                          </div>
+                          <ul className="list-disc list-inside text-sm text-red-700 space-y-1">
+                            {capacitySummary.errors.map((error, idx) => (
+                              <li key={idx}>{error}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                      {capacitySummary.warnings.length > 0 && (
+                        <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                          <div className="flex items-center gap-2 text-amber-800 mb-2">
+                            <AlertCircle size={16} />
+                            <span className="font-medium">คำเตือน:</span>
+                          </div>
+                          <ul className="list-disc list-inside text-sm text-amber-700 space-y-1">
+                            {capacitySummary.warnings.map((warning, idx) => (
+                              <li key={idx}>{warning}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="p-3 bg-gray-50 rounded-lg">
+                          <div className="text-sm text-gray-600 mb-1">
+                            จำนวนพาเลท
+                          </div>
+                          <div className="text-2xl font-bold text-gray-900">
+                            {capacitySummary.totalPallets}
+                            {capacitySummary.vehicleMaxPallets !== null && (
+                              <span className="text-lg font-normal text-gray-500">
+                                {' '}/ {capacitySummary.vehicleMaxPallets}
+                              </span>
+                            )}
+                          </div>
+                          {capacitySummary.vehicleMaxPallets !== null && (
+                            <div className="mt-2">
+                              <div className="w-full bg-gray-200 rounded-full h-2">
+                                <div
+                                  className={`h-2 rounded-full ${
+                                    capacitySummary.totalPallets > capacitySummary.vehicleMaxPallets
+                                      ? 'bg-red-500'
+                                      : capacitySummary.totalPallets > capacitySummary.vehicleMaxPallets * 0.9
+                                        ? 'bg-amber-500'
+                                        : 'bg-green-500'
+                                  }`}
+                                  style={{
+                                    width: `${Math.min(
+                                      100,
+                                      (capacitySummary.totalPallets / capacitySummary.vehicleMaxPallets) * 100
+                                    )}%`,
+                                  }}
+                                />
+                              </div>
+                              <div className="text-xs text-gray-500 mt-1">
+                                {Math.round(
+                                  (capacitySummary.totalPallets / capacitySummary.vehicleMaxPallets) * 100
+                                )}
+                                % ของความจุ
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                        <div className="p-3 bg-gray-50 rounded-lg">
+                          <div className="text-sm text-gray-600 mb-1">
+                            น้ำหนักรวม
+                          </div>
+                          <div className="text-2xl font-bold text-gray-900">
+                            {capacitySummary.totalWeightKg.toFixed(2)} กก.
+                            {capacitySummary.vehicleMaxWeightKg !== null && (
+                              <span className="text-lg font-normal text-gray-500">
+                                {' '}/ {capacitySummary.vehicleMaxWeightKg} กก.
+                              </span>
+                            )}
+                          </div>
+                          {capacitySummary.vehicleMaxWeightKg !== null && (
+                            <div className="mt-2">
+                              <div className="w-full bg-gray-200 rounded-full h-2">
+                                <div
+                                  className={`h-2 rounded-full ${
+                                    capacitySummary.totalWeightKg > capacitySummary.vehicleMaxWeightKg
+                                      ? 'bg-red-500'
+                                      : capacitySummary.totalWeightKg > capacitySummary.vehicleMaxWeightKg * 0.9
+                                        ? 'bg-amber-500'
+                                        : 'bg-green-500'
+                                  }`}
+                                  style={{
+                                    width: `${Math.min(
+                                      100,
+                                      (capacitySummary.totalWeightKg / capacitySummary.vehicleMaxWeightKg) * 100
+                                    )}%`,
+                                  }}
+                                />
+                              </div>
+                              <div className="text-xs text-gray-500 mt-1">
+                                {Math.round(
+                                  (capacitySummary.totalWeightKg / capacitySummary.vehicleMaxWeightKg) * 100
+                                )}
+                                % ของความจุ
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-sm text-gray-500">
+                      กำลังคำนวณความจุ...
+                    </div>
+                  )}
+                </div>
+              </Card>
+            );
+          })()}
 
           {/* Selected Orders List */}
           <Card>
