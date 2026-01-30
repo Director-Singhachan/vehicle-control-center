@@ -4,6 +4,7 @@
 -- ========================================
 -- รูปแบบ: SD+YYMMDD+เลข 3 หลัก / HQ+YYMMDD+เลข 3 หลัก (เช่น SD260130001, 002, 003)
 -- แต่ละวันเริ่มจาก 001 ใหม่ (วันใหม่ = เลขเริ่มใหม่)
+-- ใช้วันที่จัดทริป (planned_date) เป็นหลัก — ไม่ยึดวันที่สร้างออเดอร์ (order_date)
 -- หา suffix ถัดไปที่ยังไม่ถูกใช้ (WHILE loop) เพื่อไม่ซ้ำ
 -- ========================================
 
@@ -46,10 +47,11 @@ BEGIN
     RAISE EXCEPTION 'Delivery trip not found: %', p_trip_id;
   END IF;
 
-  IF v_order_record.order_date IS NOT NULL THEN
-    v_order_date := v_order_record.order_date;
-  ELSIF v_trip_record.planned_date IS NOT NULL THEN
+  -- ใช้วันที่จัดทริป (planned_date) เป็นหลัก — เลขออเดอร์เป็นของวันนั้นๆ ที่จัดทริป ไม่ยึดวันที่สร้างรายการ
+  IF v_trip_record.planned_date IS NOT NULL THEN
     v_order_date := v_trip_record.planned_date;
+  ELSIF v_order_record.order_date IS NOT NULL THEN
+    v_order_date := v_order_record.order_date;
   ELSE
     v_order_date := CURRENT_DATE;
   END IF;
@@ -89,4 +91,4 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
 COMMENT ON FUNCTION generate_order_number_for_trip IS
-  'สร้าง order_number รูปแบบ SD/HQ+YYMMDD+เลข 3 หลัก — แต่ละวันเริ่มจาก 001 ใหม่';
+  'สร้าง order_number รูปแบบ SD/HQ+YYMMDD+เลข 3 หลัก — ใช้วันที่จัดทริป (planned_date) เป็นหลัก ไม่ยึดวันที่สร้างออเดอร์ แต่ละวันเริ่มจาก 001 ใหม่';
