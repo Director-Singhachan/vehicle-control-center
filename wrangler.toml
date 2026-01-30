@@ -1,5 +1,0 @@
-# Cloudflare Pages - static site only (Vite SPA, no Pages Functions)
-# See: https://developers.cloudflare.com/pages/functions/wrangler-configuration/
-name = "vehicle-control-center"
-pages_build_output_dir = "./dist"
-compatibility_date = "2024-01-01"
