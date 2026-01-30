@@ -427,6 +427,7 @@ export const MyComponent: React.FC = () => {
 - Use Thai language for user-facing messages
 - Include relevant details (counts, IDs, etc.)
 - For multi-line messages, use `\n` for line breaks
+- **Product-related warnings**: Show product name (or product_code), never raw product_id (UUID). Use `utils/productDisplay.ts`: `formatProductWarning(productId, productNameOrCode, message)` and `getProductDisplayLabel(product)`.
 
 ### Examples
 ```tsx
