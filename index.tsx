@@ -49,6 +49,7 @@ import { SettingsView } from './views/SettingsView';
 import { DeliveryTripListView } from './views/DeliveryTripListView';
 import { DeliveryTripFormView } from './views/DeliveryTripFormView';
 import { DeliveryTripDetailView } from './views/DeliveryTripDetailView';
+import { TripMetricsView } from './views/TripMetricsView';
 import { StoreDeliveryDetailView } from './views/StoreDeliveryDetailView';
 import { ServiceStaffManagementView } from './views/ServiceStaffManagementView';
 import { StaffVehicleUsageView } from './views/StaffVehicleUsageView';
@@ -500,7 +501,7 @@ const AppContent = () => {
       }
     };
   }, []);
-  const [deliveryTripView, setDeliveryTripView] = useState<'list' | 'form' | 'detail'>('list');
+  const [deliveryTripView, setDeliveryTripView] = useState<'list' | 'form' | 'detail' | 'metrics'>('list');
   const [selectedDeliveryTripId, setSelectedDeliveryTripId] = useState<string | null>(null);
   const [deliveryTripReturnContext, setDeliveryTripReturnContext] = useState<
     'delivery-list' | 'triplogs' | 'daily-summary' | 'vehicles'
@@ -1989,6 +1990,15 @@ const AppContent = () => {
             <SettingsView />
           ) : activeTab === 'delivery-trips' ? (
             (() => {
+              if (deliveryTripView === 'metrics' && selectedDeliveryTripId) {
+                return (
+                  <TripMetricsView
+                    tripId={selectedDeliveryTripId}
+                    onSaved={() => setDeliveryTripView('detail')}
+                    onBack={() => setDeliveryTripView('detail')}
+                  />
+                );
+              }
               if (deliveryTripView === 'detail' && selectedDeliveryTripId) {
                 return (
                   <DeliveryTripDetailView
@@ -1997,6 +2007,7 @@ const AppContent = () => {
                       setSelectedDeliveryTripId(tripId);
                       setDeliveryTripView('form');
                     }}
+                    onRecordMetrics={() => setDeliveryTripView('metrics')}
                     onBack={() => {
                       // กลับไปหน้าที่เข้ามาล่าสุด
                       if (deliveryTripReturnContext === 'triplogs') {
