@@ -1831,6 +1831,9 @@ export const deliveryTripService = {
 
   // Sync delivery trips status with completed trip_logs
   // This fixes delivery trips that should be 'completed' but are still 'planned' or 'in_progress'
+  // WARNING: This function links trip_logs to delivery_trips by matching vehicle+date.
+  // It will NOT overwrite existing links (trip_logs already linked to other delivery_trips).
+  // Use carefully as it may link unrelated usage (เคสนอกทริป) to delivery trips.
   syncStatusWithTripLogs: async (): Promise<{
     updated: number;
     details: Array<{
@@ -1930,8 +1933,9 @@ export const deliveryTripService = {
           continue;
         }
 
-        // Link trip_log to delivery_trip if not already linked
-        if (!tripLog.delivery_trip_id || tripLog.delivery_trip_id !== trip.id) {
+        // Link trip_log to delivery_trip ONLY if not already linked to avoid overwriting correct links
+        // If trip_log already has a different delivery_trip_id, skip linking to prevent conflicts
+        if (!tripLog.delivery_trip_id) {
           const { error: linkError } = await supabase
             .from('trip_logs')
             .update({ delivery_trip_id: trip.id })
@@ -1939,7 +1943,11 @@ export const deliveryTripService = {
 
           if (linkError) {
             console.error(`[deliveryTripService] Error linking trip_log to delivery_trip:`, linkError);
+          } else {
+            console.log(`[deliveryTripService] Linked trip_log ${tripLog.id} to delivery_trip ${trip.trip_number}`);
           }
+        } else if (tripLog.delivery_trip_id !== trip.id) {
+          console.warn(`[deliveryTripService] Trip log ${tripLog.id} already linked to different delivery_trip ${tripLog.delivery_trip_id}. Skipping link to avoid conflict.`);
         }
 
         // Update all stores' delivery_status to 'delivered'

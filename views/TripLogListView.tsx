@@ -21,7 +21,8 @@ import {
   Trash2,
   Edit2,
   ZoomIn,
-  X
+  X,
+  Unlink
 } from 'lucide-react';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
@@ -67,6 +68,8 @@ export const TripLogListView: React.FC<TripLogListViewProps> = ({
   const [deleteTripId, setDeleteTripId] = useState<string | null>(null);
   const [deleteReason, setDeleteReason] = useState('');
   const [isDeleting, setIsDeleting] = useState(false);
+  const [unlinkTripId, setUnlinkTripId] = useState<string | null>(null);
+  const [isUnlinking, setIsUnlinking] = useState(false);
 
   const { isAdmin, isManager, isExecutive } = useAuth();
   const canAdminDelete = isAdmin || isManager || isExecutive;
@@ -480,24 +483,37 @@ export const TripLogListView: React.FC<TripLogListViewProps> = ({
                           </p>
                         </div>
                         {trip.delivery_trip?.trip_number && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (trip.delivery_trip?.id && onViewDeliveryTrip) {
-                                onViewDeliveryTrip(trip.delivery_trip.id);
-                              }
-                            }}
-                            className="flex items-center gap-2 mt-2 group focus:outline-none"
-                            title="ดูรายละเอียดทริปส่งสินค้า"
-                          >
-                            <Package
-                              size={14}
-                              className="text-enterprise-600 dark:text-enterprise-400 group-hover:text-enterprise-700 dark:group-hover:text-enterprise-300 transition-colors"
-                            />
-                            <span className="text-xs font-medium text-enterprise-600 dark:text-enterprise-400 bg-enterprise-50 dark:bg-enterprise-900/30 px-2 py-0.5 rounded group-hover:bg-enterprise-100 dark:group-hover:bg-enterprise-900/60 underline-offset-2 group-hover:underline">
-                              {trip.delivery_trip.trip_number}
-                            </span>
-                          </button>
+                          <div className="flex items-center gap-2 mt-2 flex-wrap">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (trip.delivery_trip?.id && onViewDeliveryTrip) {
+                                  onViewDeliveryTrip(trip.delivery_trip.id);
+                                }
+                              }}
+                              className="flex items-center gap-2 group focus:outline-none"
+                              title="ดูรายละเอียดทริปส่งสินค้า"
+                            >
+                              <Package
+                                size={14}
+                                className="text-enterprise-600 dark:text-enterprise-400 group-hover:text-enterprise-700 dark:group-hover:text-enterprise-300 transition-colors"
+                              />
+                              <span className="text-xs font-medium text-enterprise-600 dark:text-enterprise-400 bg-enterprise-50 dark:bg-enterprise-900/30 px-2 py-0.5 rounded group-hover:bg-enterprise-100 dark:group-hover:bg-enterprise-900/60 underline-offset-2 group-hover:underline">
+                                {trip.delivery_trip.trip_number}
+                              </span>
+                            </button>
+                            {trip.status === 'checked_in' && canAdminDelete && (
+                              <button
+                                type="button"
+                                onClick={() => setUnlinkTripId(trip.id)}
+                                className="flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400 hover:underline focus:outline-none"
+                                title="ยกเลิกการผูกกับทริปส่งของ (เคสนอกทริปถูกผูกผิด)"
+                              >
+                                <Unlink size={12} />
+                                ยกเลิกการผูก
+                              </button>
+                            )}
+                          </div>
                         )}
                       </div>
                       <div className="ml-auto">
@@ -666,6 +682,19 @@ export const TripLogListView: React.FC<TripLogListViewProps> = ({
                         >
                           <Edit2 size={16} />
                           แก้ไขข้อมูล
+                        </Button>
+                      )}
+
+                      {trip.status === 'checked_in' && canAdminDelete && (trip.delivery_trip_id || trip.delivery_trip) && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setUnlinkTripId(trip.id)}
+                          className="flex items-center gap-1 text-amber-700 hover:text-amber-800 dark:text-amber-400 dark:hover:text-amber-300"
+                          title="ยกเลิกการผูกกับทริปส่งของ (ใช้เมื่อเคสนอกทริปถูกผูกผิด)"
+                        >
+                          <Unlink size={16} />
+                          ยกเลิกการผูกทริปส่งของ
                         </Button>
                       )}
 
@@ -928,6 +957,39 @@ export const TripLogListView: React.FC<TripLogListViewProps> = ({
         confirmText="ยืนยันการลบทริป"
         cancelText="ยกเลิก"
         variant="danger"
+      />
+
+      {/* Unlink trip log from delivery trip (Admin) */}
+      <ConfirmDialog
+        isOpen={unlinkTripId !== null}
+        onCancel={() => setUnlinkTripId(null)}
+        onConfirm={async () => {
+          if (!unlinkTripId) return;
+          setIsUnlinking(true);
+          try {
+            await tripLogService.unlinkFromDeliveryTrip(unlinkTripId);
+            setUnlinkTripId(null);
+            refetch();
+            alert('ยกเลิกการผูกกับทริปส่งของเรียบร้อย ทริปส่งของถูก reset กลับเป็น planned');
+          } catch (err: any) {
+            alert(err.message || 'เกิดข้อผิดพลาด');
+          } finally {
+            setIsUnlinking(false);
+          }
+        }}
+        title="ยกเลิกการผูกกับทริปส่งของ"
+        message={
+          <p className="text-sm text-slate-700 dark:text-slate-200">
+            การดำเนินการนี้จะยกเลิกการผูก trip log นี้กับ delivery trip และ reset ทริปส่งของกลับเป็นสถานะ planned
+            (ร้านจะกลับเป็น pending) ใช้เมื่อเคสนอกทริปถูกผูกกับทริปส่งของโดยผิดพลาด
+            {isUnlinking && (
+              <span className="block mt-2 text-xs text-slate-500">กำลังดำเนินการ...</span>
+            )}
+          </p>
+        }
+        confirmText="ยืนยัน"
+        cancelText="ยกเลิก"
+        variant="warning"
       />
 
       {expandedImage && (

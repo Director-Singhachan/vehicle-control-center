@@ -390,9 +390,10 @@ export const tripLogService = {
 
       // ========================================
       // Find delivery trip for this checkin
-      // Priority:
-      //   1) If this trip log is already linked to a delivery trip, use that
-      //   2) Otherwise, find by vehicle_id + planned_date
+      // Only use the link that was set at checkout. Do NOT auto-link by vehicle+date on check-in.
+      // Reason: เคสนอกทริป (usage without a delivery trip) must not be linked to a delivery_trip
+      // that was created later (e.g. while the vehicle was out). Linking only at checkout ensures
+      // the trip log was intentionally for that delivery.
       // ========================================
       let deliveryTrip:
         | {
@@ -407,7 +408,6 @@ export const tripLogService = {
         }
         | null = null;
 
-      // 1) Use existing link if present
       if (trip.delivery_trip_id) {
         const { data: linkedTrip, error: linkedError } = await supabase
           .from('delivery_trips')
@@ -425,74 +425,11 @@ export const tripLogService = {
             status: linkedTrip.status,
           });
         }
-      }
-
-      // 2) Fallback: find active delivery trip for this vehicle on the checkout date
-      // This handles cases where the actual driver is different from the planned driver
-      if (!deliveryTrip) {
-        // Match by vehicle_id AND planned_date to ensure correct trip
-        // Extract date from checkout_time (YYYY-MM-DD)
-        const checkoutDate = new Date(trip.checkout_time).toISOString().split('T')[0];
-
-        // First, try to find by vehicle_id + planned_date + status (planned or in_progress)
-        // This will match even if driver_id is different (actual driver vs planned driver)
-        const { data: deliveryTrips, error: findError } = await supabase
-          .from('delivery_trips')
-          .select('id, status, odometer_start, odometer_end, trip_number, sequence_order, planned_date, created_at, driver_id')
-          .eq('vehicle_id', trip.vehicle_id)
-          .eq('planned_date', checkoutDate) // Match by date
-          .in('status', ['planned', 'in_progress'])
-          // Prefer in_progress over planned explicitly (avoid relying on lexical order)
-          .order('status', { ascending: true }) // 'in_progress' before 'planned'
-          .order('sequence_order', { ascending: true, nullsFirst: false }) // Then by sequence
-          .order('created_at', { ascending: true }) // Oldest created first
-          .order('trip_number', { ascending: true }) // Deterministic tie-breaker
-          .limit(1);
-
-        if (findError) {
-          console.error('[tripLogService] Error finding delivery trip by vehicle/date:', findError);
-        } else if (deliveryTrips && deliveryTrips.length > 0) {
-          deliveryTrip = deliveryTrips[0] as any;
-          console.log('[tripLogService] Found delivery trip by vehicle/date for checkin:', {
-            id: deliveryTrip.id,
-            trip_number: deliveryTrip.trip_number,
-            status: deliveryTrip.status,
-            sequence_order: deliveryTrip.sequence_order,
-            planned_date: deliveryTrip.planned_date,
-          });
-        } else {
-          console.log('[tripLogService] No active delivery trip found for vehicle/date on checkin:', {
-            vehicle_id: trip.vehicle_id,
-            checkout_date: checkoutDate,
-            trip_driver_id: trip.driver_id,
-          });
-
-          // Additional fallback: Try to find delivery trip even if status is 'planned' (not yet started)
-          // This handles cases where the actual driver is different and trip wasn't linked during checkout
-          if (!deliveryTrip) {
-            const { data: fallbackTrips, error: fallbackError } = await supabase
-              .from('delivery_trips')
-              .select('id, status, odometer_start, odometer_end, trip_number, sequence_order, planned_date, created_at, driver_id')
-              .eq('vehicle_id', trip.vehicle_id)
-              .eq('planned_date', checkoutDate)
-              .eq('status', 'planned') // Only check 'planned' status as fallback
-              .order('sequence_order', { ascending: true, nullsFirst: false })
-              .order('created_at', { ascending: true })
-              .order('trip_number', { ascending: true })
-              .limit(1);
-
-            if (!fallbackError && fallbackTrips && fallbackTrips.length > 0) {
-              deliveryTrip = fallbackTrips[0] as any;
-              console.log('[tripLogService] Found delivery trip (planned status) as fallback for checkin:', {
-                id: deliveryTrip.id,
-                trip_number: deliveryTrip.trip_number,
-                status: deliveryTrip.status,
-                planned_driver_id: deliveryTrip.driver_id,
-                actual_driver_id: trip.driver_id,
-              });
-            }
-          }
-        }
+      } else {
+        console.log('[tripLogService] Trip log has no delivery_trip_id (e.g. non-delivery usage). Not linking to any delivery trip on check-in.', {
+          vehicle_id: trip.vehicle_id,
+          trip_id: trip.id,
+        });
       }
 
       if (!deliveryTrip) {
@@ -1416,6 +1353,83 @@ export const tripLogService = {
       console.error('[tripLogService] Error deleting trip:', deleteError);
       throw deleteError;
     }
+  },
+
+  /**
+   * ยกเลิกการผูก trip_log กับ delivery_trip และ reset delivery_trip กลับเป็น planned
+   * ใช้เมื่อเคสนอกทริปถูกผูกกับ delivery_trip ผิด (เช่น ลงขากลับแล้วระบบไปผูกกับทริปที่สร้างทีหลัง)
+   * ต้องเป็น Admin/Manager/Executive
+   */
+  unlinkFromDeliveryTrip: async (tripLogId: string): Promise<{ trip_log_id: string; delivery_trip_id: string }> => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error('User not authenticated');
+
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', user.id)
+      .maybeSingle();
+    const allowedRoles = ['admin', 'manager', 'executive'];
+    if (!profile || !allowedRoles.includes((profile.role as string) || '')) {
+      throw new Error('คุณไม่มีสิทธิ์ยกเลิกการผูกทริป');
+    }
+
+    const { data: trip, error: tripError } = await supabase
+      .from('trip_logs')
+      .select('id, delivery_trip_id, status')
+      .eq('id', tripLogId)
+      .maybeSingle();
+
+    if (tripError || !trip) {
+      throw new Error('ไม่พบ trip log');
+    }
+    if (!trip.delivery_trip_id) {
+      throw new Error('Trip log นี้ไม่ได้ผูกกับ delivery trip');
+    }
+    if (trip.status !== 'checked_in') {
+      throw new Error('สามารถยกเลิกการผูกได้เฉพาะ trip log ที่ check-in แล้วเท่านั้น');
+    }
+
+    const deliveryTripId = trip.delivery_trip_id;
+
+    // 1) Unlink trip_log
+    const { error: unlinkError } = await supabase
+      .from('trip_logs')
+      .update({ delivery_trip_id: null })
+      .eq('id', tripLogId);
+
+    if (unlinkError) {
+      console.error('[tripLogService] Error unlinking trip_log:', unlinkError);
+      throw unlinkError;
+    }
+
+    // 2) Reset delivery_trip to planned
+    const { error: tripUpdateError } = await supabase
+      .from('delivery_trips')
+      .update({
+        status: 'planned',
+        odometer_start: null,
+        odometer_end: null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', deliveryTripId);
+
+    if (tripUpdateError) {
+      console.error('[tripLogService] Error resetting delivery_trip:', tripUpdateError);
+      throw tripUpdateError;
+    }
+
+    // 3) Reset delivery_trip_stores to pending
+    const { error: storesError } = await supabase
+      .from('delivery_trip_stores')
+      .update({ delivery_status: 'pending', delivered_at: null })
+      .eq('delivery_trip_id', deliveryTripId);
+
+    if (storesError) {
+      console.warn('[tripLogService] Error resetting delivery_trip_stores (delivery_trip already reset):', storesError);
+    }
+
+    return { trip_log_id: tripLogId, delivery_trip_id: deliveryTripId };
   },
 };
 
