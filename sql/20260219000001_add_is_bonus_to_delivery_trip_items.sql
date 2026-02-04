@@ -123,3 +123,5 @@ CREATE TRIGGER trigger_sync_order_items_to_trip_update
     OR OLD.is_bonus IS DISTINCT FROM NEW.is_bonus -- เพิ่มเช็คการเปลี่ยนแปลง is_bonus
   )
   EXECUTE FUNCTION sync_order_items_to_trip();
+
+
