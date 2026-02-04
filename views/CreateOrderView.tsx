@@ -230,8 +230,6 @@ export function CreateOrderView() {
       };
 
       setOrderItems([...orderItems, newItem]);
-      setProductSearch('');
-      setShowProductBrowser(false);
       
       // เก็บ recent product
       addToRecentProducts(product.id);
