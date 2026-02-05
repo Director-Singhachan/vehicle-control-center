@@ -1,5 +1,5 @@
 // Vehicle Detail View - Show detailed information about a vehicle
-import React from 'react';
+import React, { useState } from 'react';
 import { useVehicle, useMaintenanceHistory } from '../hooks';
 import { useAuth } from '../hooks';
 import {
@@ -22,6 +22,7 @@ import { VehicleDocumentManager } from '../components/vehicle/VehicleDocumentMan
 import { DocumentExpiryAlert } from '../components/vehicle/DocumentExpiryAlert';
 import { VehicleDriverHistory } from '../components/vehicle/VehicleDriverHistory';
 import { useTickets } from '../hooks';
+import { ImageModal } from '../components/ui/ImageModal';
 
 interface VehicleDetailViewProps {
   vehicleId: string;
@@ -38,6 +39,7 @@ export const VehicleDetailView: React.FC<VehicleDetailViewProps> = ({
   onViewTicket,
   onViewDeliveryTrip,
 }) => {
+  const [isImageOpen, setIsImageOpen] = useState(false);
   const { isManager, isAdmin } = useAuth();
   const { vehicle, loading, error } = useVehicle(vehicleId);
   const {
@@ -77,6 +79,10 @@ export const VehicleDetailView: React.FC<VehicleDetailViewProps> = ({
       />
     );
   }
+
+  const fallbackImageUrl =
+    'https://images.unsplash.com/photo-1533473359331-0135ef1b58bf?auto=format&fit=crop&q=80&w=1000';
+  const imageUrl = vehicle.image_url || fallbackImageUrl;
 
   // Get status (simplified - should use vehicles_with_status view)
   const status = 'idle'; // TODO: Get from vehicles_with_status
@@ -129,12 +135,19 @@ export const VehicleDetailView: React.FC<VehicleDetailViewProps> = ({
           <Card className="overflow-hidden">
             <div className="relative h-64 md:h-80 bg-slate-100 dark:bg-slate-800">
               <img
-                src={vehicle.image_url || 'https://images.unsplash.com/photo-1533473359331-0135ef1b58bf?auto=format&fit=crop&q=80&w=1000'}
+                src={imageUrl}
                 alt={vehicle.plate}
-                className="w-full h-full object-cover"
+                className="w-full h-full object-cover cursor-zoom-in"
                 onError={(e) => {
-                  (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1533473359331-0135ef1b58bf?auto=format&fit=crop&q=80&w=1000';
+                  (e.target as HTMLImageElement).src = fallbackImageUrl;
                 }}
+                onClick={() => setIsImageOpen(true)}
+              />
+              <ImageModal
+                isOpen={isImageOpen}
+                imageUrl={imageUrl}
+                alt={vehicle.plate}
+                onClose={() => setIsImageOpen(false)}
               />
               <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-6">
                 <div className="flex items-end justify-between">
