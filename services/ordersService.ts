@@ -378,13 +378,14 @@ export const ordersService = {
   },
 
   /**
-   * ยกเลิกการกำหนดทริป
+   * ยกเลิกการกำหนดทริป และล้างรหัสออเดอร์ (order_number) เพื่อให้สามารถจัดทริปใหม่ได้
    */
   async unassignFromTrip(orderIds: string[], updatedBy: string) {
     const { error } = await supabase
       .from('orders')
       .update({
         delivery_trip_id: null,
+        order_number: null,
         status: 'confirmed',
         updated_by: updatedBy,
       })

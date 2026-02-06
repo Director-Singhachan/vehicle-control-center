@@ -1112,11 +1112,38 @@ export const deliveryTripService = {
       };
 
       // 3) Delete stores (and their items) that are no longer present
-      const storeIdsToRemove = (existingStores || [])
-        .filter(s => !newStoresByStoreId.has(s.store_id))
-        .map(s => s.id);
+      const storesToRemove = (existingStores || []).filter(s => !newStoresByStoreId.has(s.store_id));
+      const storeIdsToRemove = storesToRemove.map(s => s.id);
+      const storeIdsToUnassign = storesToRemove.map((s: any) => s.store_id);
 
       if (storeIdsToRemove.length > 0) {
+        // ยกเลิกการผูกทริปและล้างรหัสออเดอร์สำหรับออเดอร์ของร้านที่ถูกลบออกจากทริป
+        if (storeIdsToUnassign.length > 0) {
+          const { data: ordersToReset } = await supabase
+            .from('orders')
+            .select('id')
+            .eq('delivery_trip_id', id)
+            .in('store_id', storeIdsToUnassign);
+
+          if (ordersToReset && ordersToReset.length > 0) {
+            const orderIdsToReset = ordersToReset.map(o => o.id);
+            const { error: resetOrdersError } = await supabase
+              .from('orders')
+              .update({
+                delivery_trip_id: null,
+                order_number: null,
+                status: 'confirmed',
+                updated_by: user.id,
+              })
+              .in('id', orderIdsToReset);
+
+            if (resetOrdersError) {
+              console.error('[deliveryTripService] Error resetting orders for removed stores:', resetOrdersError);
+              throw resetOrdersError;
+            }
+          }
+        }
+
         // Load items for these stores to log removals
         const { data: removedStoreItems } = await supabase
           .from('delivery_trip_items')

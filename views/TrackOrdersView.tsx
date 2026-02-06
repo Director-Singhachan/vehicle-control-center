@@ -1,5 +1,5 @@
-import React, { useState, useMemo } from 'react';
-import { Package, Search, Filter, Clock, CheckCircle, Truck, Eye, Edit } from 'lucide-react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { Package, Search, Clock, CheckCircle, Eye, Edit, ChevronLeft, ChevronRight } from 'lucide-react';
 import { PageLayout } from '../components/ui/PageLayout';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
@@ -32,9 +32,17 @@ export function TrackOrdersView() {
   const [detailError, setDetailError] = useState<string | null>(null);
   const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
 
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageInput, setPageInput] = useState('');
+  const itemsPerPage = 100;
+
   React.useEffect(() => {
     loadOrders();
   }, []);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, statusFilter]);
 
   const loadOrders = async () => {
     try {
@@ -71,6 +79,15 @@ export function TrackOrdersView() {
       return true;
     });
   }, [orders, searchTerm, statusFilter]);
+
+  const offset = (currentPage - 1) * itemsPerPage;
+  const paginatedOrders = useMemo(
+    () => filteredOrders.slice(offset, offset + itemsPerPage),
+    [filteredOrders, offset, itemsPerPage]
+  );
+  const totalPages = Math.ceil(filteredOrders.length / itemsPerPage) || 1;
+  const startIndex = offset;
+  const endIndex = Math.min(offset + itemsPerPage, filteredOrders.length);
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -219,6 +236,7 @@ export function TrackOrdersView() {
             <p>ไม่พบออเดอร์</p>
           </div>
         ) : (
+          <>
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
@@ -233,7 +251,7 @@ export function TrackOrdersView() {
                 </tr>
               </thead>
               <tbody>
-                {filteredOrders.map((order) => (
+                {paginatedOrders.map((order) => (
                   <tr key={order.id} className="border-b border-gray-100 dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-700/50">
                     <td className="py-3 px-4 font-mono text-sm text-blue-600 dark:text-blue-400">{order.order_number}</td>
                     <td className="py-3 px-4">
@@ -286,6 +304,114 @@ export function TrackOrdersView() {
               </tbody>
             </table>
           </div>
+
+          {/* Pagination - 100 รายการต่อหน้า ตามมาตรฐานหน้าอื่น */}
+          {totalPages > 1 && (
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-4 px-4 py-4 border-t border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800/30">
+              <div className="text-sm text-gray-600 dark:text-gray-400">
+                แสดง {startIndex + 1} - {endIndex} จาก {filteredOrders.length.toLocaleString('th-TH')} รายการ
+              </div>
+
+              <div className="flex items-center gap-2 flex-wrap justify-center">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+                  disabled={currentPage === 1}
+                  className="flex items-center gap-1"
+                >
+                  <ChevronLeft size={16} />
+                  ก่อนหน้า
+                </Button>
+
+                <div className="flex items-center gap-1 flex-wrap">
+                  {(() => {
+                    const pages: (number | string)[] = [];
+                    if (totalPages <= 7) {
+                      for (let i = 1; i <= totalPages; i++) pages.push(i);
+                    } else {
+                      pages.push(1);
+                      const startPage = Math.max(2, currentPage - 2);
+                      const endPage = Math.min(totalPages - 1, currentPage + 2);
+                      if (startPage > 2) pages.push('ellipsis-start');
+                      for (let i = startPage; i <= endPage; i++) {
+                        if (i !== 1 && i !== totalPages) pages.push(i);
+                      }
+                      if (endPage < totalPages - 1) pages.push('ellipsis-end');
+                      pages.push(totalPages);
+                    }
+                    return pages.map((page) => {
+                      if (typeof page === 'string') {
+                        return <span key={page} className="px-2 text-gray-400 dark:text-slate-500">...</span>;
+                      }
+                      return (
+                        <button
+                          key={page}
+                          onClick={() => setCurrentPage(page)}
+                          className={`px-3 py-1 rounded-lg text-sm font-medium transition-colors ${
+                            currentPage === page
+                              ? 'bg-enterprise-600 text-white'
+                              : 'bg-gray-100 dark:bg-slate-800 text-gray-700 dark:text-slate-300 hover:bg-gray-200 dark:hover:bg-slate-700'
+                          }`}
+                        >
+                          {page.toLocaleString('th-TH')}
+                        </button>
+                      );
+                    });
+                  })()}
+                </div>
+
+                {totalPages > 10 && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-gray-600 dark:text-gray-400">ไปที่หน้า:</span>
+                    <input
+                      type="number"
+                      min={1}
+                      max={totalPages}
+                      value={pageInput}
+                      onChange={(e) => setPageInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          const page = parseInt(pageInput, 10);
+                          if (page >= 1 && page <= totalPages) {
+                            setCurrentPage(page);
+                            setPageInput('');
+                          }
+                        }
+                      }}
+                      placeholder={`1-${totalPages}`}
+                      className="w-20 px-2 py-1 text-sm border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-transparent"
+                    />
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        const page = parseInt(pageInput, 10);
+                        if (page >= 1 && page <= totalPages) {
+                          setCurrentPage(page);
+                          setPageInput('');
+                        }
+                      }}
+                    >
+                      ไป
+                    </Button>
+                  </div>
+                )}
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
+                  disabled={currentPage === totalPages}
+                  className="flex items-center gap-1"
+                >
+                  ถัดไป
+                  <ChevronRight size={16} />
+                </Button>
+              </div>
+            </div>
+          )}
+          </>
         )}
       </Card>
 
