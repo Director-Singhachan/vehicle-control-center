@@ -1,7 +1,6 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { ArrowLeft, Truck, Users, MapPin, Calendar, Package, Save, Plus, GripVertical, X, Search, Building2, ChevronDown, ChevronUp, AlertTriangle } from 'lucide-react';
 import { useVehicles } from '../hooks/useVehicles';
-import { useWarehouses } from '../hooks/useInventory';
 import { profileService } from '../services/profileService';
 import { deliveryTripService } from '../services/deliveryTripService';
 import { ordersService, orderItemsService } from '../services/ordersService';
@@ -57,13 +56,11 @@ type CapacitySummary = {
 export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: CreateTripFromOrdersViewProps) {
   const { user } = useAuth();
   const { vehicles, loading: vehiclesLoading } = useVehicles();
-  const { warehouses, loading: warehousesLoading } = useWarehouses();
   const { toasts, success, error, warning, dismissToast } = useToast();
 
   const [drivers, setDrivers] = useState<Array<{ id: string; full_name: string; branch?: string | null }>>([]);
   const [driversLoading, setDriversLoading] = useState(false);
   const [selectedVehicleId, setSelectedVehicleId] = useState('');
-  const [selectedWarehouseId, setSelectedWarehouseId] = useState('');
   const [selectedDriverId, setSelectedDriverId] = useState('');
   const [tripDate, setTripDate] = useState(new Date().toISOString().split('T')[0]);
   const [notes, setNotes] = useState('');
@@ -393,11 +390,6 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
 
   // Submit
   const handleSubmit = async () => {
-    // ถ้าต้องการตัดสต๊อก ต้องเลือกคลังสินค้า
-    if (!skipStockDeduction && !selectedWarehouseId) {
-      warning('กรุณาเลือกคลังสินค้าต้นทาง (เมื่อต้องการตัดสต๊อก)');
-      return;
-    }
     if (!selectedVehicleId) {
       warning('กรุณาเลือกรถ');
       return;
@@ -490,28 +482,6 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
         }
         return Object.values(storesMap);
       };
-
-      // Reserve stock (ใช้จำนวนเดิมทั้งหมด — ไม่ขึ้นกับการแบ่ง)
-      if (!skipStockDeduction) {
-        for (const delivery of storeDeliveries) {
-          const orderItems = orderItemsMap.get(delivery.order_id) || [];
-          for (const item of orderItems) {
-            await inventoryService.reserveStock(
-              selectedWarehouseId,
-              item.product_id,
-              item.quantity
-            );
-          }
-        }
-      }
-
-      if (selectedWarehouseId) {
-        for (const delivery of storeDeliveries) {
-          await ordersService.update(delivery.order_id, {
-            warehouse_id: selectedWarehouseId,
-          });
-        }
-      }
 
       if (splitIntoTwoTrips) {
         const stores1 = buildSplitStoresPayload(1);
@@ -881,28 +851,6 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
                     ลากเพื่อจัดเรียงลำดับ
                   </p>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      คลังสินค้าต้นทาง {!skipStockDeduction && '*'}
-                      {skipStockDeduction && <span className="text-gray-400 text-xs ml-1">(ไม่จำเป็น)</span>}
-                    </label>
-                    <select
-                      value={selectedWarehouseId}
-                      onChange={(e) => setSelectedWarehouseId(e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                      disabled={warehousesLoading}
-                    >
-                      <option value="">-- เลือกคลัง --</option>
-                      {warehouses.map((w: any) => (
-                        <option key={w.id} value={w.id}>
-                          {w.code} - {w.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-
                 {storeDeliveries.length === 0 ? (
                   <div className="text-center py-12 text-gray-500">
                     <Package className="w-12 h-12 mx-auto mb-3 opacity-30" />
@@ -1030,6 +978,7 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
                                                 max={item.quantity}
                                                 step="any"
                                                 value={split.vehicle1Qty}
+                                                onFocus={(e) => e.target.select()}
                                                 onChange={(e) => handleSplitQtyChange(delivery.order_id, item.id, 1, parseFloat(e.target.value) || 0, item.quantity)}
                                                 className="w-20 px-2 py-1 text-center border border-blue-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 bg-blue-50"
                                               />
@@ -1041,6 +990,7 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
                                                 max={item.quantity}
                                                 step="any"
                                                 value={split.vehicle2Qty}
+                                                onFocus={(e) => e.target.select()}
                                                 onChange={(e) => handleSplitQtyChange(delivery.order_id, item.id, 2, parseFloat(e.target.value) || 0, item.quantity)}
                                                 className="w-20 px-2 py-1 text-center border border-emerald-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 bg-emerald-50"
                                               />
