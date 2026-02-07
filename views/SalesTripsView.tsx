@@ -329,6 +329,215 @@ const TripCard = memo(({
 
 TripCard.displayName = 'TripCard';
 
+// โหมดแสดงผล: ดูแบบทริป vs ดูแบบรายร้าน
+type ViewMode = 'by_trip' | 'by_store';
+
+// สินค้ารวมยอด: product_id เดียวกันจากหลายทริป → แสดงเป็นแถวเดียว + breakdown
+interface SummaryItem {
+  product_id: string;
+  product: any;
+  totalQuantity: number;
+  is_bonus: boolean;
+  // breakdown ต่อรถ (เมื่อแบ่งหลายคัน)
+  breakdown: Array<{
+    trip_id: string;
+    trip_number: string;
+    vehicle_plate: string;
+    quantity: number;
+  }>;
+}
+
+// Merged store: ร้านเดียวกันจากหลายทริป รวมเป็นก้อนเดียว
+interface MergedStoreEntry {
+  store_id: string;
+  store: any; // { customer_name, customer_code, address, phone }
+  trips: Array<{
+    trip_id: string;
+    trip_number: string;
+    vehicle_plate: string;
+    driver_name: string;
+    trip_store_id: string; // delivery_trip_stores.id
+    sequence_order: number;
+    delivery_status: string;
+    invoice_status: string;
+    items: any[];
+  }>;
+  allItems: any[]; // รวมสินค้าทุกทริป (มี trip info ติดมาด้วย)
+  summaryItems: SummaryItem[]; // สินค้ารวมยอด (group by product_id + is_bonus)
+  allInvoiced: boolean;
+  anyInvoiced: boolean;
+}
+
+// Memoized StoreCard for by-store view
+interface StoreCardProps {
+  entry: MergedStoreEntry;
+  expandedStores: Set<string>;
+  updatingStatus: Set<string>;
+  onToggleExpand: (storeId: string) => void;
+  onViewDetail: (entry: MergedStoreEntry) => void;
+  onToggleInvoiceStatus: (tripId: string, storeId: string, currentStatus: string) => void;
+}
+
+const StoreCard = memo(({ entry, expandedStores, updatingStatus, onToggleExpand, onViewDetail, onToggleInvoiceStatus }: StoreCardProps) => {
+  const isExpanded = expandedStores.has(entry.store_id);
+  const isSplit = entry.trips.length > 1;
+
+  return (
+    <Card>
+      <div className="p-5">
+        {/* Store Header */}
+        <div className="flex items-start justify-between mb-3">
+          <div className="flex-1">
+            <div className="flex items-center gap-2 mb-1 flex-wrap">
+              <p className="text-lg font-semibold text-gray-900 dark:text-white">
+                {entry.store?.customer_name || 'ไม่ระบุชื่อ'}
+              </p>
+              <Badge variant="info" className="text-xs">{entry.store?.customer_code || '-'}</Badge>
+              {isSplit && (
+                <Badge variant="warning" className="text-xs">
+                  <Truck className="w-3 h-3 mr-1 inline" />
+                  แบ่งส่ง {entry.trips.length} คัน
+                </Badge>
+              )}
+            </div>
+            {entry.store?.address && (
+              <div className="flex items-start gap-2 text-sm text-gray-600 dark:text-gray-400 mb-1">
+                <MapPin className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                <p>{entry.store.address}</p>
+              </div>
+            )}
+            {entry.store?.phone && (
+              <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
+                <Phone className="w-4 h-4" />
+                <p>{entry.store.phone}</p>
+              </div>
+            )}
+          </div>
+
+          {/* Invoice Status (toggle all trips at once for this store) */}
+          <div className="flex-shrink-0 flex flex-col items-end gap-2">
+            {entry.trips.map((t) => {
+              const key = `${t.trip_id}-${entry.store_id}`;
+              const isUpdating = updatingStatus.has(key);
+              return (
+                <button
+                  key={t.trip_id}
+                  onClick={() => onToggleInvoiceStatus(t.trip_id, entry.store_id, t.invoice_status || 'pending')}
+                  disabled={isUpdating}
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                    t.invoice_status === 'issued'
+                      ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300 border border-green-300'
+                      : 'bg-gray-100 text-gray-700 dark:bg-slate-700 dark:text-gray-300 border border-gray-300 hover:bg-gray-200'
+                  } ${isUpdating ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                >
+                  {isUpdating ? (
+                    <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-current" />
+                  ) : t.invoice_status === 'issued' ? (
+                    <CheckSquare className="w-3 h-3" />
+                  ) : (
+                    <Square className="w-3 h-3" />
+                  )}
+                  <span>{isSplit ? `ทริป ${t.trip_number}: ` : ''}{t.invoice_status === 'issued' ? 'ออกบิลแล้ว' : 'ยังไม่ออกบิล'}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Vehicle/Trip info strip */}
+        <div className={`rounded-lg p-3 mb-3 space-y-2 ${isSplit ? 'bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800' : 'bg-gray-50 dark:bg-slate-800/50'}`}>
+          {isSplit && (
+            <p className="text-xs font-semibold text-amber-800 dark:text-amber-300 mb-2">
+              สินค้าร้านนี้แบ่งส่งด้วยรถ {entry.trips.length} คัน (ออกบิลรวมเป็นใบเดียว)
+            </p>
+          )}
+          {entry.trips.map((t) => (
+            <div key={t.trip_id} className="flex items-center gap-4 text-sm flex-wrap">
+              <div className="flex items-center gap-1 text-gray-700 dark:text-gray-300">
+                <Truck className="w-4 h-4 text-blue-500" />
+                <span className="font-medium">{t.vehicle_plate || 'ไม่ระบุ'}</span>
+              </div>
+              <div className="flex items-center gap-1 text-gray-600 dark:text-gray-400">
+                <User className="w-3 h-3" />
+                <span>{t.driver_name || 'ไม่ระบุ'}</span>
+              </div>
+              <Badge variant="default" className="text-xs">{t.trip_number}</Badge>
+              <span className="text-xs text-gray-500">{t.items.length} รายการ</span>
+            </div>
+          ))}
+        </div>
+
+        {/* Items — แสดงเป็นยอดรวม */}
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-xs font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
+              <Package className="w-3 h-3" />
+              รายการสินค้า ({entry.summaryItems.length} รายการ{isSplit ? `, รวมจาก ${entry.trips.length} คัน` : ''})
+            </p>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => onToggleExpand(entry.store_id)}
+                className="text-xs text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 px-2 py-1 rounded hover:bg-blue-50 dark:hover:bg-blue-900/20"
+              >
+                {isExpanded ? <><ChevronUp className="w-3 h-3" />ซ่อน</> : <><ChevronDown className="w-3 h-3" />ดูรายการ</>}
+              </button>
+              <button
+                onClick={() => onViewDetail(entry)}
+                className="text-xs text-purple-600 dark:text-purple-400 hover:underline flex items-center gap-1 px-2 py-1 rounded hover:bg-purple-50 dark:hover:bg-purple-900/20"
+              >
+                <Eye className="w-3 h-3" />ดูทั้งหมด
+              </button>
+            </div>
+          </div>
+
+          {isExpanded && entry.summaryItems.length > 0 && (
+            <div className="p-3 bg-white dark:bg-slate-900/50 rounded-lg border border-gray-200 dark:border-slate-700 space-y-2 max-h-96 overflow-y-auto">
+              {entry.summaryItems.map((si, idx) => (
+                <div key={`${si.product_id}-${si.is_bonus}`} className="py-2 px-2 border-b border-gray-100 dark:border-slate-700 last:border-b-0 hover:bg-gray-50 dark:hover:bg-slate-800/50 rounded">
+                  <div className="flex items-center justify-between text-sm">
+                    <div className="flex items-start gap-3 flex-1 min-w-0">
+                      <span className="text-xs text-gray-400 font-mono w-6 flex-shrink-0">{idx + 1}.</span>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-gray-900 dark:text-white font-medium">
+                            {si.product?.product_name || 'ไม่ระบุชื่อ'}
+                          </span>
+                          {si.product?.product_code && (
+                            <Badge variant="info" className="text-xs font-mono">{si.product.product_code}</Badge>
+                          )}
+                          {si.is_bonus && <Badge variant="success" className="text-xs">ของแถม</Badge>}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="text-right ml-4 flex-shrink-0">
+                      <span className="text-gray-900 dark:text-white font-bold text-sm">
+                        {new Intl.NumberFormat('th-TH').format(si.totalQuantity)} {si.product?.unit || 'ชิ้น'}
+                      </span>
+                    </div>
+                  </div>
+                  {/* breakdown เมื่อแบ่งหลายคัน */}
+                  {isSplit && si.breakdown.length > 1 && (
+                    <div className="ml-9 mt-1 flex flex-wrap gap-2">
+                      {si.breakdown.map((b, bi) => (
+                        <span key={bi} className="inline-flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-slate-800 px-2 py-0.5 rounded">
+                          <Truck className="w-3 h-3" />
+                          {b.vehicle_plate}: {new Intl.NumberFormat('th-TH').format(b.quantity)}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </Card>
+  );
+});
+
+StoreCard.displayName = 'StoreCard';
+
 export function SalesTripsView() {
   const { user } = useAuth();
   const { toasts, success, error, warning, dismissToast } = useToast();
@@ -336,7 +545,10 @@ export function SalesTripsView() {
   const [updatingStatus, setUpdatingStatus] = useState<Set<string>>(new Set());
   const [expandedStores, setExpandedStores] = useState<Set<string>>(new Set());
   const [selectedStoreDetail, setSelectedStoreDetail] = useState<{ tripId: string; store: any } | null>(null);
-  const [checkedItems, setCheckedItems] = useState<Set<string>>(new Set()); // Track checked items in modal
+  const [checkedItems, setCheckedItems] = useState<Set<string>>(new Set());
+  const [viewMode, setViewMode] = useState<ViewMode>('by_store'); // default = รายร้าน
+  // สำหรับ modal แบบ merged store
+  const [selectedMergedStore, setSelectedMergedStore] = useState<MergedStoreEntry | null>(null);
   
   // Auto-check all items when invoice_status is 'issued'
   useEffect(() => {
@@ -402,6 +614,82 @@ export function SalesTripsView() {
   const inProgressCount = useMemo(() => myTrips.filter((t: any) => t.status === 'in_progress').length, [myTrips]);
   const completedCount = useMemo(() => myTrips.filter((t: any) => t.status === 'completed').length, [myTrips]);
   const totalStopsCount = useMemo(() => myTrips.reduce((sum: number, t: any) => sum + (t.stores?.length || 0), 0), [myTrips]);
+
+  // สร้าง merged stores: รวมร้านเดียวกันจากหลายทริปเข้าด้วยกัน
+  const mergedStores = useMemo((): MergedStoreEntry[] => {
+    const map = new Map<string, MergedStoreEntry>();
+
+    for (const trip of myTrips) {
+      for (const store of (trip.stores || [])) {
+        const storeId = store.store_id;
+        if (!map.has(storeId)) {
+          map.set(storeId, {
+            store_id: storeId,
+            store: store.store,
+            trips: [],
+            allItems: [],
+            summaryItems: [],
+            allInvoiced: true,
+            anyInvoiced: false,
+          });
+        }
+        const entry = map.get(storeId)!;
+        const tripInfo = {
+          trip_id: trip.id,
+          trip_number: trip.trip_number || `#${trip.sequence_order}`,
+          vehicle_plate: trip.vehicle?.plate || 'ไม่ระบุ',
+          driver_name: trip.driver?.full_name || 'ไม่ระบุ',
+          trip_store_id: store.id,
+          sequence_order: store.sequence_order,
+          delivery_status: store.delivery_status || 'pending',
+          invoice_status: store.invoice_status || 'pending',
+          items: store.items || [],
+        };
+        entry.trips.push(tripInfo);
+
+        if (tripInfo.invoice_status !== 'issued') entry.allInvoiced = false;
+        if (tripInfo.invoice_status === 'issued') entry.anyInvoiced = true;
+
+        for (const item of (store.items || [])) {
+          entry.allItems.push({
+            ...item,
+            _tripId: trip.id,
+            _tripNumber: tripInfo.trip_number,
+            _vehiclePlate: tripInfo.vehicle_plate,
+            _tripIndex: entry.trips.length - 1,
+          });
+        }
+      }
+    }
+
+    // สร้าง summaryItems: รวมยอดสินค้าตัวเดียวกัน (group by product_id + is_bonus)
+    for (const entry of map.values()) {
+      const productMap = new Map<string, SummaryItem>();
+      for (const item of entry.allItems) {
+        const key = `${item.product_id}_${item.is_bonus ? 'bonus' : 'normal'}`;
+        if (!productMap.has(key)) {
+          productMap.set(key, {
+            product_id: item.product_id,
+            product: item.product,
+            totalQuantity: 0,
+            is_bonus: !!item.is_bonus,
+            breakdown: [],
+          });
+        }
+        const summary = productMap.get(key)!;
+        summary.totalQuantity += item.quantity || 0;
+        summary.breakdown.push({
+          trip_id: item._tripId,
+          trip_number: item._tripNumber,
+          vehicle_plate: item._vehiclePlate,
+          quantity: item.quantity || 0,
+        });
+      }
+      entry.summaryItems = Array.from(productMap.values());
+    }
+
+    return Array.from(map.values());
+  }, [myTrips]);
 
   // Handlers for TripCard
   const handleToggleStoreExpand = useCallback((tripId: string, storeId: string) => {
@@ -493,8 +781,8 @@ export function SalesTripsView() {
     <>
       <ToastContainer toasts={toasts} onDismiss={dismissToast} />
       <PageLayout title="ออกใบแจ้งหนี้ - ทริปส่งสินค้า">
-      {/* Date Filter */}
-      <div className="mb-6 flex items-center gap-4">
+      {/* Date Filter + View Mode Toggle */}
+      <div className="mb-6 flex items-center gap-4 flex-wrap">
         <div className="flex items-center gap-2">
           <Calendar className="w-5 h-5 text-gray-400 dark:text-gray-500" />
           <input
@@ -507,6 +795,32 @@ export function SalesTripsView() {
         <Button onClick={refetch} variant="outline">
           รีเฟรช
         </Button>
+
+        {/* View Mode Toggle */}
+        <div className="flex items-center bg-gray-100 dark:bg-slate-800 rounded-lg p-1 ml-auto">
+          <button
+            onClick={() => setViewMode('by_store')}
+            className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
+              viewMode === 'by_store'
+                ? 'bg-white dark:bg-slate-700 text-blue-700 dark:text-blue-300 shadow-sm'
+                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900'
+            }`}
+          >
+            <MapPin className="w-4 h-4 inline mr-1" />
+            ดูแบบรายร้าน
+          </button>
+          <button
+            onClick={() => setViewMode('by_trip')}
+            className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
+              viewMode === 'by_trip'
+                ? 'bg-white dark:bg-slate-700 text-blue-700 dark:text-blue-300 shadow-sm'
+                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900'
+            }`}
+          >
+            <Truck className="w-4 h-4 inline mr-1" />
+            ดูแบบทริป
+          </button>
+        </div>
       </div>
 
       {/* Stats */}
@@ -597,7 +911,7 @@ export function SalesTripsView() {
         </Card>
       </div>
 
-      {/* Trips List */}
+      {/* Content */}
       {myTrips.length === 0 ? (
         <Card>
           <div className="p-12 text-center text-gray-500 dark:text-gray-400">
@@ -606,7 +920,8 @@ export function SalesTripsView() {
             <p className="text-sm mt-2">เลือกวันอื่นเพื่อดูทริปของคุณ</p>
           </div>
         </Card>
-      ) : (
+      ) : viewMode === 'by_trip' ? (
+        /* === แสดงแบบทริป (เหมือนเดิม) === */
         <div className="space-y-6">
           {myTrips.map((trip: any) => (
             <TripCard
@@ -619,6 +934,37 @@ export function SalesTripsView() {
               onToggleInvoiceStatus={handleToggleInvoiceStatus}
             />
           ))}
+        </div>
+      ) : (
+        /* === แสดงแบบรายร้าน (merged) === */
+        <div className="space-y-4">
+          {mergedStores.length === 0 ? (
+            <Card>
+              <div className="p-8 text-center text-gray-500 dark:text-gray-400">
+                <MapPin className="w-12 h-12 mx-auto mb-3 opacity-30" />
+                <p>ไม่มีร้านค้าในทริปวันนี้</p>
+              </div>
+            </Card>
+          ) : (
+            mergedStores.map((entry) => (
+              <StoreCard
+                key={entry.store_id}
+                entry={entry}
+                expandedStores={expandedStores}
+                updatingStatus={updatingStatus}
+                onToggleExpand={(storeId) => {
+                  setExpandedStores(prev => {
+                    const next = new Set(prev);
+                    if (next.has(storeId)) next.delete(storeId);
+                    else next.add(storeId);
+                    return next;
+                  });
+                }}
+                onViewDetail={(entry) => setSelectedMergedStore(entry)}
+                onToggleInvoiceStatus={handleToggleInvoiceStatus}
+              />
+            ))
+          )}
         </div>
       )}
 
@@ -972,6 +1318,136 @@ export function SalesTripsView() {
                     );
                   })()}
                 </div>
+              </div>
+            ) : (
+              <div className="text-center py-8 text-gray-500 dark:text-gray-400">
+                <Package className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                <p>ยังไม่มีรายการสินค้า</p>
+              </div>
+            )}
+          </div>
+        </Modal>
+      )}
+      {/* Merged Store Detail Modal (แบบรายร้าน) */}
+      {selectedMergedStore && (
+        <Modal
+          isOpen={!!selectedMergedStore}
+          onClose={() => setSelectedMergedStore(null)}
+          title={`รายละเอียดสินค้า - ${selectedMergedStore.store?.customer_name || 'ไม่ระบุชื่อร้าน'}`}
+          size="large"
+        >
+          <div className="space-y-4">
+            {/* Store Info */}
+            <div className="p-4 bg-gray-50 dark:bg-slate-800/50 rounded-lg">
+              <h3 className="font-semibold text-gray-900 dark:text-white mb-3">ข้อมูลร้านค้า</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+                <div>
+                  <span className="text-gray-600 dark:text-gray-400">รหัสลูกค้า:</span>
+                  <span className="ml-2 font-medium text-gray-900 dark:text-white">
+                    {selectedMergedStore.store?.customer_code || 'ไม่ระบุ'}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-gray-600 dark:text-gray-400">ชื่อร้าน:</span>
+                  <span className="ml-2 font-medium text-gray-900 dark:text-white">
+                    {selectedMergedStore.store?.customer_name || 'ไม่ระบุ'}
+                  </span>
+                </div>
+                {selectedMergedStore.store?.address && (
+                  <div className="md:col-span-2">
+                    <span className="text-gray-600 dark:text-gray-400">ที่อยู่:</span>
+                    <span className="ml-2 text-gray-900 dark:text-white">{selectedMergedStore.store.address}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Trip Info */}
+            {selectedMergedStore.trips.length > 1 && (
+              <div className="p-4 bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800 rounded-lg">
+                <p className="text-sm font-semibold text-amber-800 dark:text-amber-300 mb-2">
+                  สินค้าร้านนี้แบ่งส่งด้วยรถ {selectedMergedStore.trips.length} คัน (ออกบิลรวมเป็นใบเดียว)
+                </p>
+                {selectedMergedStore.trips.map((t) => (
+                  <div key={t.trip_id} className="flex items-center gap-4 text-sm py-1 flex-wrap">
+                    <div className="flex items-center gap-1 text-gray-700 dark:text-gray-300">
+                      <Truck className="w-4 h-4 text-blue-500" />
+                      <span className="font-medium">{t.vehicle_plate}</span>
+                    </div>
+                    <div className="flex items-center gap-1 text-gray-600 dark:text-gray-400">
+                      <User className="w-3 h-3" />
+                      <span>{t.driver_name}</span>
+                    </div>
+                    <Badge variant="default" className="text-xs">{t.trip_number}</Badge>
+                    <span className="text-xs text-gray-500">{t.items.length} รายการ</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Items Table — ยอดรวม */}
+            {selectedMergedStore.summaryItems.length > 0 ? (
+              <div>
+                <h3 className="font-semibold text-gray-900 dark:text-white mb-3">
+                  รายการสินค้า ({selectedMergedStore.summaryItems.length} รายการ)
+                </h3>
+                <div className="overflow-x-auto">
+                  <table className="w-full border-collapse">
+                    <thead>
+                      <tr className="border-b-2 border-gray-300 dark:border-slate-600 bg-gray-50 dark:bg-slate-800">
+                        <th className="text-center py-3 px-3 text-sm font-semibold text-gray-700 dark:text-gray-300 w-16">ลำดับ</th>
+                        <th className="text-left py-3 px-3 text-sm font-semibold text-gray-700 dark:text-gray-300">รหัสสินค้า</th>
+                        <th className="text-left py-3 px-3 text-sm font-semibold text-gray-700 dark:text-gray-300">ชื่อสินค้า</th>
+                        <th className="text-right py-3 px-3 text-sm font-semibold text-gray-700 dark:text-gray-300">จำนวนรวม</th>
+                        <th className="text-right py-3 px-3 text-sm font-semibold text-gray-700 dark:text-gray-300">หน่วย</th>
+                        {selectedMergedStore.trips.length > 1 && (
+                          <th className="text-left py-3 px-3 text-sm font-semibold text-gray-700 dark:text-gray-300">แบ่งตามรถ</th>
+                        )}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {selectedMergedStore.summaryItems.map((si, index) => (
+                        <tr key={`${si.product_id}-${si.is_bonus}`} className="border-b border-gray-100 dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-800/50">
+                          <td className="py-3 px-3 text-sm text-center text-gray-600 dark:text-gray-400 font-mono font-semibold">
+                            {index + 1}
+                          </td>
+                          <td className="py-3 px-3 text-sm">
+                            <Badge variant="info" className="text-xs font-mono">{si.product?.product_code || 'ไม่ระบุ'}</Badge>
+                            {si.is_bonus && <Badge variant="success" className="text-xs ml-1">ของแถม</Badge>}
+                          </td>
+                          <td className="py-3 px-3 text-sm font-medium text-gray-900 dark:text-white">
+                            {si.product?.product_name || 'ไม่ระบุชื่อ'}
+                          </td>
+                          <td className="py-3 px-3 text-sm text-right font-bold text-gray-900 dark:text-white">
+                            {new Intl.NumberFormat('th-TH').format(si.totalQuantity)}
+                          </td>
+                          <td className="py-3 px-3 text-sm text-right text-gray-600 dark:text-gray-400">
+                            {si.product?.unit || 'ชิ้น'}
+                          </td>
+                          {selectedMergedStore.trips.length > 1 && (
+                            <td className="py-3 px-3 text-sm">
+                              <div className="flex flex-wrap gap-1.5">
+                                {si.breakdown.map((b, bi) => (
+                                  <span key={bi} className="inline-flex items-center gap-1 text-xs bg-gray-100 dark:bg-slate-800 text-gray-600 dark:text-gray-400 px-2 py-0.5 rounded">
+                                    <Truck className="w-3 h-3" />{b.vehicle_plate}: {new Intl.NumberFormat('th-TH').format(b.quantity)}
+                                  </span>
+                                ))}
+                              </div>
+                            </td>
+                          )}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {selectedMergedStore.trips.length > 1 && (
+                  <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+                    <p className="text-xs text-blue-800 dark:text-blue-300">
+                      <strong>ข้อมูลสำคัญ:</strong> จำนวนที่แสดงคือ <strong>ยอดรวมทั้งหมด</strong> ของร้านนี้ ควรออกเป็น <strong>บิลเดียว</strong> คอลัมน์ "แบ่งตามรถ" แสดงว่าสินค้าถูกส่งไปกับรถทะเบียนใดจำนวนเท่าไร
+                    </p>
+                  </div>
+                )}
               </div>
             ) : (
               <div className="text-center py-8 text-gray-500 dark:text-gray-400">
