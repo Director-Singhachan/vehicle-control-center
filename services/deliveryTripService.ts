@@ -89,6 +89,7 @@ export interface DeliveryTripItemChangeWithDetails extends DeliveryTripItemChang
 export interface CreateDeliveryTripData {
   vehicle_id: string;
   driver_id?: string;
+  driver_staff_id?: string; // Service staff ID for driver (crew/commission system)
   helpers?: string[]; // Array of service_staff IDs
   planned_date: string; // ISO date string
   odometer_start?: number;
@@ -111,6 +112,7 @@ export interface CreateDeliveryTripData {
 export interface UpdateDeliveryTripData {
   vehicle_id?: string;
   driver_id?: string;
+  driver_staff_id?: string; // Service staff ID for driver (crew/commission system)
   planned_date?: string;
   odometer_start?: number;
   odometer_end?: number;
@@ -363,12 +365,12 @@ export const deliveryTripService = {
       }
     }
 
-    // In FULL mode only, fetch crews for trips
+    // Fetch crews for trips (lite mode: basic info for status display, full mode: complete details)
     let tripCrewsMap = new Map<string, DeliveryTripCrewWithDetails[]>();
-    if (!lite && tripIds.length > 0) {
+    if (tripIds.length > 0) {
       const { data: tripCrews } = await supabase
         .from('delivery_trip_crews')
-        .select('*')
+        .select(lite ? 'id, delivery_trip_id, staff_id, role, status' : '*')
         .in('delivery_trip_id', tripIds)
         .eq('status', 'active')
         .order('created_at', { ascending: true });
@@ -632,20 +634,44 @@ export const deliveryTripService = {
 
     // 1.5 Ensure driver is also present in delivery_trip_crews as role = 'driver'
     try {
-      if (trip.driver_id) {
-        // Check if there is already an active driver crew for this trip (in case user added manually)
-        const { data: existingDriverCrews } = await supabase
-          .from('delivery_trip_crews')
-          .select('id')
-          .eq('delivery_trip_id', trip.id)
-          .eq('role', 'driver')
-          .eq('status', 'active')
-          .limit(1);
+      // Check if there is already an active driver crew for this trip (in case user added manually)
+      const { data: existingDriverCrews } = await supabase
+        .from('delivery_trip_crews')
+        .select('id')
+        .eq('delivery_trip_id', trip.id)
+        .eq('role', 'driver')
+        .eq('status', 'active')
+        .limit(1);
 
-        const hasDriverCrew = (existingDriverCrews || []).length > 0;
+      const hasDriverCrew = (existingDriverCrews || []).length > 0;
 
-        if (!hasDriverCrew) {
-          // Find matching service_staff by driver profile name
+      if (!hasDriverCrew) {
+        // Priority 1: Use explicit driver_staff_id if provided (from crew assignment UI)
+        if (data.driver_staff_id) {
+          const now = new Date().toISOString();
+          const { error: insertDriverCrewError } = await supabase
+            .from('delivery_trip_crews')
+            .insert({
+              delivery_trip_id: trip.id,
+              staff_id: data.driver_staff_id,
+              role: 'driver',
+              status: 'active',
+              start_at: now,
+              created_by: user.id,
+              updated_by: user.id,
+            });
+
+          if (insertDriverCrewError) {
+            console.error('[deliveryTripService] Error creating driver crew from driver_staff_id:', insertDriverCrewError);
+          } else {
+            console.log('[deliveryTripService] Created driver crew from explicit driver_staff_id:', {
+              trip_id: trip.id,
+              staff_id: data.driver_staff_id,
+            });
+          }
+        }
+        // Priority 2: Fallback to name-matching from profiles (legacy behavior)
+        else if (trip.driver_id) {
           const { data: driverProfile } = await supabase
             .from('profiles')
             .select('id, full_name')
@@ -655,14 +681,12 @@ export const deliveryTripService = {
           if (driverProfile?.full_name) {
             const driverName = driverProfile.full_name.trim();
 
-            // Try exact match first
             let { data: staffMatches, error: staffError } = await supabase
               .from('service_staff')
               .select('id, name, status')
               .eq('name', driverName)
               .limit(5);
 
-            // If no exact match, try case-insensitive match
             if (!staffError && (!staffMatches || staffMatches.length === 0)) {
               const { data: caseInsensitiveMatches, error: caseError } = await supabase
                 .from('service_staff')
@@ -678,14 +702,9 @@ export const deliveryTripService = {
             if (staffError) {
               console.error('[deliveryTripService] Error matching driver to service_staff:', staffError);
             } else if (staffMatches && staffMatches.length > 0) {
-              // Prefer active staff, fall back to first match
-              const staff =
-                staffMatches.find(s => s.status === 'active') ||
-                staffMatches[0];
-
+              const staff = staffMatches.find(s => s.status === 'active') || staffMatches[0];
               if (staff) {
                 const now = new Date().toISOString();
-
                 const { error: insertDriverCrewError } = await supabase
                   .from('delivery_trip_crews')
                   .insert({
@@ -699,25 +718,9 @@ export const deliveryTripService = {
                   });
 
                 if (insertDriverCrewError) {
-                  console.error('[deliveryTripService] Error creating driver crew from trip driver_id:', insertDriverCrewError);
-                } else {
-                  console.log('[deliveryTripService] Synced driver to delivery_trip_crews as driver role:', {
-                    trip_id: trip.id,
-                    driver_profile_id: trip.driver_id,
-                    staff_id: staff.id,
-                    staff_name: staff.name,
-                  });
+                  console.error('[deliveryTripService] Error creating driver crew from name match:', insertDriverCrewError);
                 }
               }
-            } else {
-              // Only log as debug, not warning - this is expected if driver is not in service_staff table
-              // Many drivers may not be in service_staff if they're not part of the commission system
-              console.debug('[deliveryTripService] Driver not found in service_staff table (this is normal if driver is not part of commission system):', {
-                trip_id: trip.id,
-                driver_profile_id: trip.driver_id,
-                driver_name: driverName,
-                note: 'Driver can still be assigned manually via crew management if needed',
-              });
             }
           }
         }
@@ -1036,6 +1039,66 @@ export const deliveryTripService = {
         } else {
           console.log('[deliveryTripService] Successfully removed helpers:', helpersToRemove);
         }
+      }
+    }
+
+    // Handle driver_staff_id update if provided
+    if (data.driver_staff_id) {
+      try {
+        // Check current driver crew
+        const { data: existingDriverCrews } = await supabase
+          .from('delivery_trip_crews')
+          .select('id, staff_id')
+          .eq('delivery_trip_id', id)
+          .eq('role', 'driver')
+          .eq('status', 'active')
+          .limit(1);
+
+        const currentDriverCrew = existingDriverCrews?.[0];
+
+        if (currentDriverCrew && currentDriverCrew.staff_id !== data.driver_staff_id) {
+          // Swap driver: mark old as replaced, add new
+          const now = new Date().toISOString();
+          await supabase
+            .from('delivery_trip_crews')
+            .update({
+              status: 'replaced',
+              end_at: now,
+              replaced_by_staff_id: data.driver_staff_id,
+              reason_for_change: editReason || 'เปลี่ยนคนขับจากหน้าแก้ไขทริป',
+              updated_by: user.id,
+            })
+            .eq('id', currentDriverCrew.id);
+
+          await supabase
+            .from('delivery_trip_crews')
+            .insert({
+              delivery_trip_id: id,
+              staff_id: data.driver_staff_id,
+              role: 'driver',
+              status: 'active',
+              start_at: now,
+              created_by: user.id,
+              updated_by: user.id,
+            });
+        } else if (!currentDriverCrew) {
+          // No driver crew yet, add new one
+          await supabase
+            .from('delivery_trip_crews')
+            .insert({
+              delivery_trip_id: id,
+              staff_id: data.driver_staff_id,
+              role: 'driver',
+              status: 'active',
+              start_at: new Date().toISOString(),
+              created_by: user.id,
+              updated_by: user.id,
+            });
+        }
+        // If same driver, do nothing
+      } catch (driverCrewError) {
+        console.error('[deliveryTripService] Error updating driver crew:', driverCrewError);
+        // Don't throw - allow trip update to continue
       }
     }
 

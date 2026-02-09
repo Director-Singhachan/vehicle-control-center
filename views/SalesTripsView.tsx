@@ -1,5 +1,5 @@
-import React, { useState, useMemo, useCallback, memo, useEffect } from 'react';
-import { Truck, MapPin, Package, Calendar, User, Phone, CheckCircle, Clock, CheckSquare, Square, Eye, ChevronDown, ChevronUp } from 'lucide-react';
+import React, { useState, useMemo, useCallback, memo, useEffect, useRef } from 'react';
+import { Truck, MapPin, Package, Calendar, User, Phone, CheckCircle, Clock, CheckSquare, Square, Eye, ChevronDown, ChevronUp, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useAuth, useToast } from '../hooks';
 import { useDeliveryTrips } from '../hooks/useDeliveryTrips';
 import { deliveryTripService } from '../services/deliveryTripService';
@@ -48,12 +48,20 @@ const TripCard = memo(({
     return [...trip.stores].sort((a: any, b: any) => a.sequence_order - b.sequence_order);
   }, [trip.stores]);
 
+  // Invoice progress for this trip
+  const tripInvoiceProgress = useMemo(() => {
+    const stores = trip.stores || [];
+    const total = stores.length;
+    const issued = stores.filter((s: any) => s.invoice_status === 'issued').length;
+    return { total, issued, pending: total - issued, percent: total > 0 ? (issued / total) * 100 : 0 };
+  }, [trip.stores]);
+
   return (
     <Card>
       <div className="p-6">
         {/* Trip Header */}
         <div className="flex items-start justify-between mb-4 pb-4 border-b border-gray-200 dark:border-slate-700">
-          <div>
+          <div className="flex-1">
             <div className="flex items-center gap-3 mb-2">
               <h3 className="text-xl font-semibold text-gray-900 dark:text-white">
                 {trip.trip_number || `ทริป #${trip.sequence_order}`}
@@ -104,7 +112,67 @@ const TripCard = memo(({
               </div>
             )}
           </div>
+
+          {/* Invoice Progress Badge */}
+          <div className="flex-shrink-0 ml-4">
+            <div className={`text-center px-4 py-3 rounded-xl border-2 min-w-[120px] ${
+              tripInvoiceProgress.percent === 100
+                ? 'bg-green-50 dark:bg-green-900/20 border-green-300 dark:border-green-700'
+                : tripInvoiceProgress.issued > 0
+                ? 'bg-yellow-50 dark:bg-yellow-900/20 border-yellow-300 dark:border-yellow-700'
+                : 'bg-gray-50 dark:bg-slate-800/50 border-gray-200 dark:border-slate-700'
+            }`}>
+              <div className={`text-2xl font-bold ${
+                tripInvoiceProgress.percent === 100
+                  ? 'text-green-600 dark:text-green-400'
+                  : tripInvoiceProgress.issued > 0
+                  ? 'text-yellow-600 dark:text-yellow-400'
+                  : 'text-gray-600 dark:text-gray-400'
+              }`}>
+                {tripInvoiceProgress.issued}/{tripInvoiceProgress.total}
+              </div>
+              <div className="text-xs text-gray-600 dark:text-gray-400 mt-0.5">ออกบิลแล้ว</div>
+              <div className="w-full bg-gray-200 dark:bg-slate-700 rounded-full h-1.5 mt-2">
+                <div
+                  className={`h-1.5 rounded-full transition-all ${
+                    tripInvoiceProgress.percent === 100 ? 'bg-green-500' :
+                    tripInvoiceProgress.issued > 0 ? 'bg-yellow-500' : 'bg-gray-300 dark:bg-slate-600'
+                  }`}
+                  style={{ width: `${tripInvoiceProgress.percent}%` }}
+                />
+              </div>
+            </div>
+          </div>
         </div>
+
+        {/* Quick Store Index */}
+        {sortedStores.length > 0 && (
+          <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-900/10 border border-blue-200 dark:border-blue-800 rounded-lg">
+            <p className="text-xs font-semibold text-blue-800 dark:text-blue-200 mb-2">
+              ร้านค้าในทริปนี้ ({sortedStores.length} ร้าน)
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {sortedStores.map((store: any, idx: number) => (
+                <span
+                  key={store.id}
+                  className={`inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full font-medium ${
+                    store.invoice_status === 'issued'
+                      ? 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-200'
+                      : 'bg-white dark:bg-slate-800 text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-slate-600'
+                  }`}
+                >
+                  <span className="w-4 h-4 rounded-full bg-blue-500 dark:bg-blue-600 text-white flex items-center justify-center font-bold text-[9px] flex-shrink-0">
+                    {store.sequence_order || idx + 1}
+                  </span>
+                  {store.store?.customer_name || 'ไม่ระบุ'}
+                  {store.invoice_status === 'issued' && (
+                    <CheckCircle className="w-3 h-3 text-green-600 dark:text-green-400" />
+                  )}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Store Deliveries */}
         {sortedStores.length > 0 && (
@@ -546,7 +614,7 @@ export function SalesTripsView() {
   const [expandedStores, setExpandedStores] = useState<Set<string>>(new Set());
   const [selectedStoreDetail, setSelectedStoreDetail] = useState<{ tripId: string; store: any } | null>(null);
   const [checkedItems, setCheckedItems] = useState<Set<string>>(new Set());
-  const [viewMode, setViewMode] = useState<ViewMode>('by_store'); // default = รายร้าน
+  const [viewMode, setViewMode] = useState<ViewMode>('by_trip'); // default = ดูแบบทริป (จัดกลุ่มตามทริป)
   // สำหรับ modal แบบ merged store
   const [selectedMergedStore, setSelectedMergedStore] = useState<MergedStoreEntry | null>(null);
   
@@ -614,6 +682,34 @@ export function SalesTripsView() {
   const inProgressCount = useMemo(() => myTrips.filter((t: any) => t.status === 'in_progress').length, [myTrips]);
   const completedCount = useMemo(() => myTrips.filter((t: any) => t.status === 'completed').length, [myTrips]);
   const totalStopsCount = useMemo(() => myTrips.reduce((sum: number, t: any) => sum + (t.stores?.length || 0), 0), [myTrips]);
+
+  // Per-trip invoice stats (for trip summary index)
+  const tripInvoiceStats = useMemo(() => {
+    return myTrips.map((trip: any) => {
+      const stores = trip.stores || [];
+      const totalStores = stores.length;
+      const issuedStores = stores.filter((s: any) => s.invoice_status === 'issued').length;
+      return {
+        tripId: trip.id,
+        tripNumber: trip.trip_number || `ทริป #${trip.sequence_order}`,
+        vehiclePlate: trip.vehicle?.plate || 'ไม่ระบุ',
+        driverName: trip.driver?.full_name || 'ไม่ระบุ',
+        status: trip.status,
+        totalStores,
+        issuedStores,
+        pendingStores: totalStores - issuedStores,
+        isAllIssued: issuedStores === totalStores && totalStores > 0,
+        stores: stores.map((s: any) => ({
+          storeId: s.store_id,
+          storeName: s.store?.customer_name || 'ไม่ระบุ',
+          storeCode: s.store?.customer_code || '',
+          invoiceStatus: s.invoice_status || 'pending',
+          itemCount: s.items?.length || 0,
+          sequenceOrder: s.sequence_order,
+        })).sort((a: any, b: any) => a.sequenceOrder - b.sequenceOrder),
+      };
+    });
+  }, [myTrips]);
 
   // สร้าง merged stores: รวมร้านเดียวกันจากหลายทริปเข้าด้วยกัน
   const mergedStores = useMemo((): MergedStoreEntry[] => {
@@ -911,6 +1007,159 @@ export function SalesTripsView() {
         </Card>
       </div>
 
+      {/* Trip Summary Index - เลื่อนแนวนอน คลิกเพื่อ scroll ไปที่ทริป */}
+      {myTrips.length > 0 && viewMode === 'by_trip' && (
+        <Card className="mb-6 overflow-hidden">
+          <div className="p-4 pb-3">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+                <Truck className="w-4 h-4 text-blue-500" />
+                สรุปทริปวันนี้ ({myTrips.length} ทริป)
+              </h3>
+              {tripInvoiceStats.length > 2 && (
+                <span className="text-[11px] text-gray-400 dark:text-gray-500 flex items-center gap-1">
+                  เลื่อนเพื่อดูเพิ่ม <ChevronRight className="w-3 h-3" />
+                </span>
+              )}
+            </div>
+
+            {/* Horizontal scroll container */}
+            <div className="relative group">
+              {/* Left scroll button */}
+              <button
+                onClick={() => {
+                  const el = document.getElementById('trip-summary-scroll');
+                  if (el) el.scrollBy({ left: -280, behavior: 'smooth' });
+                }}
+                className="absolute left-0 top-1/2 -translate-y-1/2 z-10 w-8 h-8 rounded-full bg-white dark:bg-slate-800 shadow-lg border border-gray-200 dark:border-slate-600 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-gray-50 dark:hover:bg-slate-700"
+              >
+                <ChevronLeft className="w-4 h-4 text-gray-600 dark:text-gray-300" />
+              </button>
+
+              <div
+                id="trip-summary-scroll"
+                className="flex gap-3 overflow-x-auto pb-2 scroll-smooth"
+                style={{ scrollbarWidth: 'thin' }}
+              >
+                {tripInvoiceStats.map((stat) => {
+                  const progressPercent = stat.totalStores > 0 ? (stat.issuedStores / stat.totalStores) * 100 : 0;
+                  return (
+                    <button
+                      key={stat.tripId}
+                      type="button"
+                      onClick={() => {
+                        const el = document.getElementById(`trip-card-${stat.tripId}`);
+                        if (el) {
+                          el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                          // Flash highlight effect
+                          el.classList.add('ring-2', 'ring-blue-500', 'ring-offset-2');
+                          setTimeout(() => el.classList.remove('ring-2', 'ring-blue-500', 'ring-offset-2'), 2000);
+                        }
+                      }}
+                      className={`flex-shrink-0 w-[260px] p-3 rounded-lg border-2 transition-all text-left hover:shadow-md hover:scale-[1.02] active:scale-[0.98] cursor-pointer ${
+                        stat.isAllIssued
+                          ? 'border-green-300 dark:border-green-700 bg-green-50 dark:bg-green-900/20 hover:border-green-400'
+                          : stat.issuedStores > 0
+                          ? 'border-yellow-300 dark:border-yellow-700 bg-yellow-50 dark:bg-yellow-900/20 hover:border-yellow-400'
+                          : 'border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800/50 hover:border-blue-300 dark:hover:border-blue-600'
+                      }`}
+                    >
+                      {/* Trip Header */}
+                      <div className="flex items-center justify-between mb-1.5">
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-bold text-gray-900 dark:text-white text-sm">{stat.tripNumber}</span>
+                          <Badge
+                            variant={
+                              stat.status === 'completed' ? 'success' :
+                              stat.status === 'in_progress' ? 'warning' :
+                              stat.status === 'cancelled' ? 'error' : 'default'
+                            }
+                          >
+                            {stat.status === 'completed' ? 'เสร็จ' :
+                             stat.status === 'in_progress' ? 'กำลังส่ง' :
+                             stat.status === 'cancelled' ? 'ยกเลิก' : 'รอ'}
+                          </Badge>
+                        </div>
+                        <span className={`text-[11px] font-bold ${
+                          stat.isAllIssued ? 'text-green-600 dark:text-green-400' : 'text-orange-600 dark:text-orange-400'
+                        }`}>
+                          {stat.isAllIssued ? '✅ ครบ' : `${stat.issuedStores}/${stat.totalStores}`}
+                        </span>
+                      </div>
+
+                      {/* Vehicle & Driver */}
+                      <div className="flex items-center gap-2 text-[11px] text-gray-500 dark:text-gray-400 mb-2">
+                        <span className="flex items-center gap-0.5">
+                          <Truck className="w-3 h-3" /> {stat.vehiclePlate}
+                        </span>
+                        <span className="flex items-center gap-0.5 truncate">
+                          <User className="w-3 h-3 flex-shrink-0" /> {stat.driverName}
+                        </span>
+                      </div>
+
+                      {/* Progress Bar */}
+                      <div className="mb-2">
+                        <div className="w-full bg-gray-200 dark:bg-slate-700 rounded-full h-1">
+                          <div
+                            className={`h-1 rounded-full transition-all ${
+                              progressPercent === 100 ? 'bg-green-500' :
+                              progressPercent > 0 ? 'bg-yellow-500' : 'bg-gray-300 dark:bg-slate-600'
+                            }`}
+                            style={{ width: `${progressPercent}%` }}
+                          />
+                        </div>
+                      </div>
+
+                      {/* Store List (compact) */}
+                      <div className="space-y-0.5">
+                        {stat.stores.map((store: any, idx: number) => (
+                          <div
+                            key={store.storeId}
+                            className={`flex items-center gap-1.5 text-[11px] py-0.5 px-1.5 rounded ${
+                              store.invoiceStatus === 'issued'
+                                ? 'text-green-700 dark:text-green-300'
+                                : 'text-gray-600 dark:text-gray-400'
+                            }`}
+                          >
+                            <span className="w-4 h-4 flex-shrink-0 rounded-full bg-blue-500 dark:bg-blue-600 text-white flex items-center justify-center font-bold text-[8px]">
+                              {store.sequenceOrder || idx + 1}
+                            </span>
+                            <span className="flex-1 truncate">{store.storeName}</span>
+                            {store.invoiceStatus === 'issued' ? (
+                              <CheckCircle className="w-3 h-3 text-green-500 flex-shrink-0" />
+                            ) : (
+                              <Clock className="w-3 h-3 text-orange-400 flex-shrink-0" />
+                            )}
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Click hint */}
+                      <div className="mt-2 pt-1.5 border-t border-gray-200 dark:border-slate-700 text-center">
+                        <span className="text-[10px] text-blue-500 dark:text-blue-400 font-medium flex items-center justify-center gap-1">
+                          คลิกเพื่อไปที่ทริปนี้ <ChevronDown className="w-3 h-3" />
+                        </span>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Right scroll button */}
+              <button
+                onClick={() => {
+                  const el = document.getElementById('trip-summary-scroll');
+                  if (el) el.scrollBy({ left: 280, behavior: 'smooth' });
+                }}
+                className="absolute right-0 top-1/2 -translate-y-1/2 z-10 w-8 h-8 rounded-full bg-white dark:bg-slate-800 shadow-lg border border-gray-200 dark:border-slate-600 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-gray-50 dark:hover:bg-slate-700"
+              >
+                <ChevronRight className="w-4 h-4 text-gray-600 dark:text-gray-300" />
+              </button>
+            </div>
+          </div>
+        </Card>
+      )}
+
       {/* Content */}
       {myTrips.length === 0 ? (
         <Card>
@@ -924,15 +1173,16 @@ export function SalesTripsView() {
         /* === แสดงแบบทริป (เหมือนเดิม) === */
         <div className="space-y-6">
           {myTrips.map((trip: any) => (
-            <TripCard
-              key={trip.id}
-              trip={trip}
-              expandedStores={expandedStores}
-              updatingStatus={updatingStatus}
-              onToggleStoreExpand={handleToggleStoreExpand}
-              onViewStoreDetail={handleViewStoreDetail}
-              onToggleInvoiceStatus={handleToggleInvoiceStatus}
-            />
+            <div key={trip.id} id={`trip-card-${trip.id}`} className="scroll-mt-4 transition-all duration-300 rounded-xl">
+              <TripCard
+                trip={trip}
+                expandedStores={expandedStores}
+                updatingStatus={updatingStatus}
+                onToggleStoreExpand={handleToggleStoreExpand}
+                onViewStoreDetail={handleViewStoreDetail}
+                onToggleInvoiceStatus={handleToggleInvoiceStatus}
+              />
+            </div>
           ))}
         </div>
       ) : (

@@ -9,11 +9,13 @@ import {
   Calendar,
   Truck,
   User,
+  Users,
   MapPin,
   CheckCircle,
   Clock,
   X,
   AlertCircle,
+  AlertTriangle,
   ChevronLeft,
   ChevronRight,
   Download,
@@ -450,6 +452,45 @@ export const DeliveryTripListView: React.FC<DeliveryTripListViewProps> = ({
                       <span>{trip.stores.length} ร้าน</span>
                     </div>
                   )}
+
+                  {/* Crew Status */}
+                  {(() => {
+                    const crews = trip.crews || [];
+                    const driverCrew = crews.find(c => c.role === 'driver');
+                    const helperCrews = crews.filter(c => c.role === 'helper');
+                    const hasCrew = crews.length > 0;
+                    const hasDriver = !!driverCrew;
+
+                    if (!hasCrew && trip.status !== 'cancelled') {
+                      return (
+                        <div className="flex items-center gap-2 text-sm">
+                          <AlertTriangle size={16} className="text-red-500" />
+                          <span className="text-red-600 dark:text-red-400 font-medium">
+                            ยังไม่ได้จัดพนักงาน
+                          </span>
+                        </div>
+                      );
+                    }
+
+                    if (hasCrew) {
+                      return (
+                        <div className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400">
+                          <Users size={16} className={hasDriver ? 'text-green-500' : 'text-amber-500'} />
+                          <span>
+                            {hasDriver
+                              ? `${driverCrew?.staff?.name || 'คนขับ'}`
+                              : <span className="text-amber-600 dark:text-amber-400">ยังไม่มีคนขับ</span>
+                            }
+                            {helperCrews.length > 0 && (
+                              <span className="text-slate-400"> + {helperCrews.length} พนักงานบริการ</span>
+                            )}
+                          </span>
+                        </div>
+                      );
+                    }
+
+                    return null;
+                  })()}
 
                   {trip.odometer_start && (
                     <div className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400">
