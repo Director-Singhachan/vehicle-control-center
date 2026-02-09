@@ -1,5 +1,5 @@
-import React, { useState, useMemo, useCallback, memo, useEffect } from 'react';
-import { Truck, MapPin, Package, Calendar, User, Phone, CheckCircle, Clock, CheckSquare, Square, Eye, ChevronDown, ChevronUp } from 'lucide-react';
+import React, { useState, useMemo, useCallback, memo, useEffect, useRef } from 'react';
+import { Truck, MapPin, Package, Calendar, User, Phone, CheckCircle, Clock, CheckSquare, Square, Eye, ChevronDown, ChevronUp, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useAuth, useToast } from '../hooks';
 import { useDeliveryTrips } from '../hooks/useDeliveryTrips';
 import { deliveryTripService } from '../services/deliveryTripService';
@@ -1007,101 +1007,154 @@ export function SalesTripsView() {
         </Card>
       </div>
 
-      {/* Trip Summary Index - แสดงสรุปทริปทั้งหมดว่ามีร้านไหนบ้าง */}
+      {/* Trip Summary Index - เลื่อนแนวนอน คลิกเพื่อ scroll ไปที่ทริป */}
       {myTrips.length > 0 && viewMode === 'by_trip' && (
-        <Card className="mb-6">
-          <div className="p-5">
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
-              <Truck className="w-5 h-5 text-blue-500" />
-              สรุปทริปวันนี้ ({myTrips.length} ทริป)
-            </h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {tripInvoiceStats.map((stat) => {
-                const progressPercent = stat.totalStores > 0 ? (stat.issuedStores / stat.totalStores) * 100 : 0;
-                return (
-                  <div
-                    key={stat.tripId}
-                    className={`p-4 rounded-lg border-2 transition-colors ${
-                      stat.isAllIssued
-                        ? 'border-green-300 dark:border-green-700 bg-green-50 dark:bg-green-900/20'
-                        : stat.issuedStores > 0
-                        ? 'border-yellow-300 dark:border-yellow-700 bg-yellow-50 dark:bg-yellow-900/20'
-                        : 'border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800/50'
-                    }`}
-                  >
-                    {/* Trip Header */}
-                    <div className="flex items-center justify-between mb-2">
-                      <div className="flex items-center gap-2">
-                        <span className="font-bold text-gray-900 dark:text-white text-sm">{stat.tripNumber}</span>
-                        <Badge
-                          variant={
-                            stat.status === 'completed' ? 'success' :
-                            stat.status === 'in_progress' ? 'warning' :
-                            stat.status === 'cancelled' ? 'error' : 'default'
-                          }
-                        >
-                          {stat.status === 'completed' ? 'เสร็จ' :
-                           stat.status === 'in_progress' ? 'กำลังส่ง' :
-                           stat.status === 'cancelled' ? 'ยกเลิก' : 'รอ'}
-                        </Badge>
-                      </div>
-                      <span className={`text-xs font-bold ${
-                        stat.isAllIssued ? 'text-green-600 dark:text-green-400' : 'text-orange-600 dark:text-orange-400'
-                      }`}>
-                        {stat.isAllIssued ? '✅ ครบแล้ว' : `${stat.issuedStores}/${stat.totalStores} ออกบิล`}
-                      </span>
-                    </div>
+        <Card className="mb-6 overflow-hidden">
+          <div className="p-4 pb-3">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+                <Truck className="w-4 h-4 text-blue-500" />
+                สรุปทริปวันนี้ ({myTrips.length} ทริป)
+              </h3>
+              {tripInvoiceStats.length > 2 && (
+                <span className="text-[11px] text-gray-400 dark:text-gray-500 flex items-center gap-1">
+                  เลื่อนเพื่อดูเพิ่ม <ChevronRight className="w-3 h-3" />
+                </span>
+              )}
+            </div>
 
-                    {/* Vehicle & Driver */}
-                    <div className="flex items-center gap-3 text-xs text-gray-600 dark:text-gray-400 mb-3">
-                      <span className="flex items-center gap-1">
-                        <Truck className="w-3 h-3" /> {stat.vehiclePlate}
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <User className="w-3 h-3" /> {stat.driverName}
-                      </span>
-                    </div>
+            {/* Horizontal scroll container */}
+            <div className="relative group">
+              {/* Left scroll button */}
+              <button
+                onClick={() => {
+                  const el = document.getElementById('trip-summary-scroll');
+                  if (el) el.scrollBy({ left: -280, behavior: 'smooth' });
+                }}
+                className="absolute left-0 top-1/2 -translate-y-1/2 z-10 w-8 h-8 rounded-full bg-white dark:bg-slate-800 shadow-lg border border-gray-200 dark:border-slate-600 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-gray-50 dark:hover:bg-slate-700"
+              >
+                <ChevronLeft className="w-4 h-4 text-gray-600 dark:text-gray-300" />
+              </button>
 
-                    {/* Progress Bar */}
-                    <div className="mb-3">
-                      <div className="w-full bg-gray-200 dark:bg-slate-700 rounded-full h-1.5">
-                        <div
-                          className={`h-1.5 rounded-full transition-all ${
-                            progressPercent === 100 ? 'bg-green-500' :
-                            progressPercent > 0 ? 'bg-yellow-500' : 'bg-gray-300 dark:bg-slate-600'
-                          }`}
-                          style={{ width: `${progressPercent}%` }}
-                        />
-                      </div>
-                    </div>
-
-                    {/* Store List */}
-                    <div className="space-y-1">
-                      {stat.stores.map((store: any, idx: number) => (
-                        <div
-                          key={store.storeId}
-                          className={`flex items-center gap-2 text-xs py-1 px-2 rounded ${
-                            store.invoiceStatus === 'issued'
-                              ? 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-200'
-                              : 'bg-gray-100 dark:bg-slate-800 text-gray-700 dark:text-gray-300'
-                          }`}
-                        >
-                          <span className="w-5 h-5 flex-shrink-0 rounded-full bg-blue-500 dark:bg-blue-600 text-white flex items-center justify-center font-bold text-[10px]">
-                            {store.sequenceOrder || idx + 1}
-                          </span>
-                          <span className="flex-1 truncate font-medium">{store.storeName}</span>
-                          <span className="text-[10px] text-gray-500 dark:text-gray-400 flex-shrink-0">{store.storeCode}</span>
-                          {store.invoiceStatus === 'issued' ? (
-                            <CheckCircle className="w-3.5 h-3.5 text-green-600 dark:text-green-400 flex-shrink-0" />
-                          ) : (
-                            <Clock className="w-3.5 h-3.5 text-orange-500 dark:text-orange-400 flex-shrink-0" />
-                          )}
+              <div
+                id="trip-summary-scroll"
+                className="flex gap-3 overflow-x-auto pb-2 scroll-smooth"
+                style={{ scrollbarWidth: 'thin' }}
+              >
+                {tripInvoiceStats.map((stat) => {
+                  const progressPercent = stat.totalStores > 0 ? (stat.issuedStores / stat.totalStores) * 100 : 0;
+                  return (
+                    <button
+                      key={stat.tripId}
+                      type="button"
+                      onClick={() => {
+                        const el = document.getElementById(`trip-card-${stat.tripId}`);
+                        if (el) {
+                          el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                          // Flash highlight effect
+                          el.classList.add('ring-2', 'ring-blue-500', 'ring-offset-2');
+                          setTimeout(() => el.classList.remove('ring-2', 'ring-blue-500', 'ring-offset-2'), 2000);
+                        }
+                      }}
+                      className={`flex-shrink-0 w-[260px] p-3 rounded-lg border-2 transition-all text-left hover:shadow-md hover:scale-[1.02] active:scale-[0.98] cursor-pointer ${
+                        stat.isAllIssued
+                          ? 'border-green-300 dark:border-green-700 bg-green-50 dark:bg-green-900/20 hover:border-green-400'
+                          : stat.issuedStores > 0
+                          ? 'border-yellow-300 dark:border-yellow-700 bg-yellow-50 dark:bg-yellow-900/20 hover:border-yellow-400'
+                          : 'border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800/50 hover:border-blue-300 dark:hover:border-blue-600'
+                      }`}
+                    >
+                      {/* Trip Header */}
+                      <div className="flex items-center justify-between mb-1.5">
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-bold text-gray-900 dark:text-white text-sm">{stat.tripNumber}</span>
+                          <Badge
+                            variant={
+                              stat.status === 'completed' ? 'success' :
+                              stat.status === 'in_progress' ? 'warning' :
+                              stat.status === 'cancelled' ? 'error' : 'default'
+                            }
+                          >
+                            {stat.status === 'completed' ? 'เสร็จ' :
+                             stat.status === 'in_progress' ? 'กำลังส่ง' :
+                             stat.status === 'cancelled' ? 'ยกเลิก' : 'รอ'}
+                          </Badge>
                         </div>
-                      ))}
-                    </div>
-                  </div>
-                );
-              })}
+                        <span className={`text-[11px] font-bold ${
+                          stat.isAllIssued ? 'text-green-600 dark:text-green-400' : 'text-orange-600 dark:text-orange-400'
+                        }`}>
+                          {stat.isAllIssued ? '✅ ครบ' : `${stat.issuedStores}/${stat.totalStores}`}
+                        </span>
+                      </div>
+
+                      {/* Vehicle & Driver */}
+                      <div className="flex items-center gap-2 text-[11px] text-gray-500 dark:text-gray-400 mb-2">
+                        <span className="flex items-center gap-0.5">
+                          <Truck className="w-3 h-3" /> {stat.vehiclePlate}
+                        </span>
+                        <span className="flex items-center gap-0.5 truncate">
+                          <User className="w-3 h-3 flex-shrink-0" /> {stat.driverName}
+                        </span>
+                      </div>
+
+                      {/* Progress Bar */}
+                      <div className="mb-2">
+                        <div className="w-full bg-gray-200 dark:bg-slate-700 rounded-full h-1">
+                          <div
+                            className={`h-1 rounded-full transition-all ${
+                              progressPercent === 100 ? 'bg-green-500' :
+                              progressPercent > 0 ? 'bg-yellow-500' : 'bg-gray-300 dark:bg-slate-600'
+                            }`}
+                            style={{ width: `${progressPercent}%` }}
+                          />
+                        </div>
+                      </div>
+
+                      {/* Store List (compact) */}
+                      <div className="space-y-0.5">
+                        {stat.stores.map((store: any, idx: number) => (
+                          <div
+                            key={store.storeId}
+                            className={`flex items-center gap-1.5 text-[11px] py-0.5 px-1.5 rounded ${
+                              store.invoiceStatus === 'issued'
+                                ? 'text-green-700 dark:text-green-300'
+                                : 'text-gray-600 dark:text-gray-400'
+                            }`}
+                          >
+                            <span className="w-4 h-4 flex-shrink-0 rounded-full bg-blue-500 dark:bg-blue-600 text-white flex items-center justify-center font-bold text-[8px]">
+                              {store.sequenceOrder || idx + 1}
+                            </span>
+                            <span className="flex-1 truncate">{store.storeName}</span>
+                            {store.invoiceStatus === 'issued' ? (
+                              <CheckCircle className="w-3 h-3 text-green-500 flex-shrink-0" />
+                            ) : (
+                              <Clock className="w-3 h-3 text-orange-400 flex-shrink-0" />
+                            )}
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Click hint */}
+                      <div className="mt-2 pt-1.5 border-t border-gray-200 dark:border-slate-700 text-center">
+                        <span className="text-[10px] text-blue-500 dark:text-blue-400 font-medium flex items-center justify-center gap-1">
+                          คลิกเพื่อไปที่ทริปนี้ <ChevronDown className="w-3 h-3" />
+                        </span>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Right scroll button */}
+              <button
+                onClick={() => {
+                  const el = document.getElementById('trip-summary-scroll');
+                  if (el) el.scrollBy({ left: 280, behavior: 'smooth' });
+                }}
+                className="absolute right-0 top-1/2 -translate-y-1/2 z-10 w-8 h-8 rounded-full bg-white dark:bg-slate-800 shadow-lg border border-gray-200 dark:border-slate-600 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-gray-50 dark:hover:bg-slate-700"
+              >
+                <ChevronRight className="w-4 h-4 text-gray-600 dark:text-gray-300" />
+              </button>
             </div>
           </div>
         </Card>
@@ -1120,15 +1173,16 @@ export function SalesTripsView() {
         /* === แสดงแบบทริป (เหมือนเดิม) === */
         <div className="space-y-6">
           {myTrips.map((trip: any) => (
-            <TripCard
-              key={trip.id}
-              trip={trip}
-              expandedStores={expandedStores}
-              updatingStatus={updatingStatus}
-              onToggleStoreExpand={handleToggleStoreExpand}
-              onViewStoreDetail={handleViewStoreDetail}
-              onToggleInvoiceStatus={handleToggleInvoiceStatus}
-            />
+            <div key={trip.id} id={`trip-card-${trip.id}`} className="scroll-mt-4 transition-all duration-300 rounded-xl">
+              <TripCard
+                trip={trip}
+                expandedStores={expandedStores}
+                updatingStatus={updatingStatus}
+                onToggleStoreExpand={handleToggleStoreExpand}
+                onViewStoreDetail={handleViewStoreDetail}
+                onToggleInvoiceStatus={handleToggleInvoiceStatus}
+              />
+            </div>
           ))}
         </div>
       ) : (
