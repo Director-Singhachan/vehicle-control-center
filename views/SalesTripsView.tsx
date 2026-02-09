@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useCallback, memo, useEffect, useRef } from 'react';
-import { Truck, MapPin, Package, Calendar, User, Phone, CheckCircle, Clock, CheckSquare, Square, Eye, ChevronDown, ChevronUp, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Truck, MapPin, Package, Calendar, User, Phone, CheckCircle, Clock, CheckSquare, Square, Eye, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Building2 } from 'lucide-react';
 import { useAuth, useToast } from '../hooks';
 import { useDeliveryTrips } from '../hooks/useDeliveryTrips';
 import { deliveryTripService } from '../services/deliveryTripService';
@@ -607,9 +607,12 @@ const StoreCard = memo(({ entry, expandedStores, updatingStatus, onToggleExpand,
 StoreCard.displayName = 'StoreCard';
 
 export function SalesTripsView() {
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const { toasts, success, error, warning, dismissToast } = useToast();
   const [dateFilter, setDateFilter] = useState(new Date().toISOString().split('T')[0]);
+  const [branchFilter, setBranchFilter] = useState<string>(() => {
+    return profile?.branch || 'ALL';
+  });
   const [updatingStatus, setUpdatingStatus] = useState<Set<string>>(new Set());
   const [expandedStores, setExpandedStores] = useState<Set<string>>(new Set());
   const [selectedStoreDetail, setSelectedStoreDetail] = useState<{ tripId: string; store: any } | null>(null);
@@ -637,6 +640,7 @@ export function SalesTripsView() {
   const { trips, loading, error: tripsError, refetch } = useDeliveryTrips({
     planned_date_from: dateFilter,
     planned_date_to: dateFilter,
+    branch: branchFilter === 'ALL' ? undefined : branchFilter,
     lite: false, // Use full mode to load items data (required for invoicing)
     sortAscending: true, // Oldest trips first (created earlier at top)
     autoFetch: true,
@@ -877,7 +881,7 @@ export function SalesTripsView() {
     <>
       <ToastContainer toasts={toasts} onDismiss={dismissToast} />
       <PageLayout title="ออกใบแจ้งหนี้ - ทริปส่งสินค้า">
-      {/* Date Filter + View Mode Toggle */}
+      {/* Date Filter + Branch Filter + View Mode Toggle */}
       <div className="mb-6 flex items-center gap-4 flex-wrap">
         <div className="flex items-center gap-2">
           <Calendar className="w-5 h-5 text-gray-400 dark:text-gray-500" />
@@ -888,6 +892,21 @@ export function SalesTripsView() {
             className="px-4 py-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
           />
         </div>
+
+        {/* Branch Filter */}
+        <div className="flex items-center gap-2">
+          <Building2 className="w-5 h-5 text-gray-400 dark:text-gray-500" />
+          <select
+            value={branchFilter}
+            onChange={(e) => setBranchFilter(e.target.value)}
+            className="px-4 py-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
+          >
+            <option value="ALL">ทุกสาขา</option>
+            <option value="HQ">สำนักงานใหญ่</option>
+            <option value="SD">สาขาสอยดาว</option>
+          </select>
+        </div>
+
         <Button onClick={refetch} variant="outline">
           รีเฟรช
         </Button>

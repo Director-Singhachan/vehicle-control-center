@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Package, Search, Clock, CheckCircle, Eye, Edit, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Package, Search, Clock, CheckCircle, Eye, Edit, ChevronLeft, ChevronRight, Building2 } from 'lucide-react';
 import { PageLayout } from '../components/ui/PageLayout';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
@@ -8,6 +8,7 @@ import { LoadingSpinner } from '../components/ui/LoadingSpinner';
 import { ordersService, orderItemsService } from '../services/ordersService';
 import { Modal } from '../components/ui/Modal';
 import { EditOrderView } from './EditOrderView';
+import { useAuth } from '../hooks/useAuth';
 
 interface Order {
   id: string;
@@ -19,13 +20,18 @@ interface Order {
   status: string;
   store_id: string;
   delivery_date?: string | null;
+  branch?: string | null;
 }
 
 export function TrackOrdersView() {
+  const { profile } = useAuth();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [branchFilter, setBranchFilter] = useState<string>(() => {
+    return profile?.branch || 'ALL';
+  });
   const [detailOrder, setDetailOrder] = useState<any | null>(null);
   const [detailItems, setDetailItems] = useState<any[]>([]);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -42,7 +48,7 @@ export function TrackOrdersView() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, statusFilter]);
+  }, [searchTerm, statusFilter, branchFilter]);
 
   const loadOrders = async () => {
     try {
@@ -76,9 +82,16 @@ export function TrackOrdersView() {
         return false;
       }
 
+      // Branch filter
+      if (branchFilter && branchFilter !== 'ALL') {
+        if (order.branch !== branchFilter) {
+          return false;
+        }
+      }
+
       return true;
     });
-  }, [orders, searchTerm, statusFilter]);
+  }, [orders, searchTerm, statusFilter, branchFilter]);
 
   const offset = (currentPage - 1) * itemsPerPage;
   const paginatedOrders = useMemo(
@@ -168,6 +181,22 @@ export function TrackOrdersView() {
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
                 />
+              </div>
+            </div>
+
+            {/* Branch Filter */}
+            <div className="w-full md:w-48">
+              <div className="flex items-center gap-2">
+                <Building2 className="w-5 h-5 text-gray-400 dark:text-gray-500 flex-shrink-0" />
+                <select
+                  value={branchFilter}
+                  onChange={(e) => setBranchFilter(e.target.value)}
+                  className="w-full px-4 py-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
+                >
+                  <option value="ALL">ทุกสาขา</option>
+                  <option value="HQ">สำนักงานใหญ่</option>
+                  <option value="SD">สาขาสอยดาว</option>
+                </select>
               </div>
             </div>
 
