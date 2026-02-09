@@ -37,8 +37,11 @@ export const excelExport = {
     }));
     worksheet['!cols'] = colWidths;
 
+    // Ensure filename has .xlsx extension
+    const safeFilename = filename.endsWith('.xlsx') ? filename : `${filename}.xlsx`;
+
     // Generate Excel file and download
-    XLSX.writeFile(workbook, filename);
+    XLSX.writeFile(workbook, safeFilename);
   },
 
   // Format currency (Thai Baht)
