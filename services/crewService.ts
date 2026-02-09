@@ -784,4 +784,371 @@ export const crewService = {
             message: data?.message || data?.error
         };
     },
+
+    /**
+     * Get detailed commission data grouped by staff, with trip-level breakdown.
+     * Used for the commission management dashboard drill-down view.
+     *
+     * @param startDate - Start of date range
+     * @param endDate - End of date range
+     * @returns Array of StaffCommissionDetail objects
+     */
+    getDetailedCommissionByStaff: async (
+        startDate: Date,
+        endDate: Date
+    ): Promise<StaffCommissionDetail[]> => {
+        const formatDate = (d: Date) => {
+            const y = d.getFullYear();
+            const m = String(d.getMonth() + 1).padStart(2, '0');
+            const day = String(d.getDate()).padStart(2, '0');
+            return `${y}-${m}-${day}`;
+        };
+
+        const startStr = formatDate(startDate);
+        const endStr = formatDate(endDate);
+
+        // 1) Get completed trips in date range
+        const { data: trips, error: tripsError } = await supabase
+            .from('delivery_trips')
+            .select(`
+                id,
+                trip_number,
+                planned_date,
+                vehicles (
+                    plate,
+                    type
+                )
+            `)
+            .eq('status', 'completed')
+            .gte('planned_date', startStr)
+            .lte('planned_date', endStr);
+
+        if (tripsError) {
+            console.error('[crewService] getDetailedCommissionByStaff trips error:', tripsError);
+            throw tripsError;
+        }
+
+        if (!trips || trips.length === 0) return [];
+
+        const tripIds = (trips as any[]).map(t => t.id);
+        const tripMap = new Map<string, any>((trips as any[]).map(t => [t.id, t]));
+
+        // 2) Get commission logs for these trips with staff info
+        const { data: logs, error: logsError } = await supabase
+            .from('commission_logs')
+            .select(`
+                id,
+                delivery_trip_id,
+                staff_id,
+                total_items_delivered,
+                rate_applied,
+                commission_amount,
+                work_percentage,
+                actual_commission,
+                calculation_date,
+                created_at,
+                staff:service_staff!commission_logs_staff_id_fkey (
+                    id,
+                    name,
+                    employee_code
+                )
+            `)
+            .in('delivery_trip_id', tripIds);
+
+        if (logsError) {
+            console.error('[crewService] getDetailedCommissionByStaff logs error:', logsError);
+            throw logsError;
+        }
+
+        if (!logs || logs.length === 0) return [];
+
+        // 3) Group by staff
+        const staffMap = new Map<string, StaffCommissionDetail>();
+
+        for (const log of logs as any[]) {
+            const staffId = log.staff_id as string;
+            if (!staffId) continue;
+
+            const staffName = log.staff?.name || 'ไม่ทราบชื่อ';
+            const employeeCode = log.staff?.employee_code || null;
+
+            if (!staffMap.has(staffId)) {
+                staffMap.set(staffId, {
+                    staff_id: staffId,
+                    staff_name: staffName,
+                    employee_code: employeeCode,
+                    totalCommission: 0,
+                    totalTrips: 0,
+                    trips: [],
+                });
+            }
+
+            const entry = staffMap.get(staffId)!;
+            entry.totalCommission += Number(log.actual_commission || 0);
+
+            const trip = tripMap.get(log.delivery_trip_id);
+            entry.trips.push({
+                trip_id: log.delivery_trip_id,
+                trip_number: trip?.trip_number || 'ไม่ทราบ',
+                planned_date: trip?.planned_date || '',
+                vehicle_plate: trip?.vehicles?.plate || 'ไม่ระบุ',
+                vehicle_type: trip?.vehicles?.type || 'ไม่ระบุ',
+                total_items: Number(log.total_items_delivered || 0),
+                rate_applied: Number(log.rate_applied || 0),
+                total_trip_commission: Number(log.commission_amount || 0),
+                work_percentage: Number(log.work_percentage || 0),
+                actual_commission: Number(log.actual_commission || 0),
+                calculated_at: log.calculation_date || log.created_at || '',
+            });
+        }
+
+        // Calculate totalTrips (unique trip count) and sort trips by date
+        for (const entry of staffMap.values()) {
+            const uniqueTripIds = new Set(entry.trips.map(t => t.trip_id));
+            entry.totalTrips = uniqueTripIds.size;
+            entry.trips.sort((a, b) => a.planned_date.localeCompare(b.planned_date));
+            entry.totalCommission = Math.round(entry.totalCommission * 100) / 100;
+        }
+
+        // Sort by highest commission first
+        return Array.from(staffMap.values())
+            .sort((a, b) => b.totalCommission - a.totalCommission);
+    },
+
+    /**
+     * Get all completed trips in a date range with their commission calculation status.
+     * Used for the trip verification tab.
+     *
+     * @param startDate - Start of date range
+     * @param endDate - End of date range
+     * @returns Object with trips array and stats
+     */
+    getTripsWithCommissionStatus: async (
+        startDate: Date,
+        endDate: Date
+    ): Promise<{
+        trips: TripCommissionStatus[];
+        stats: { total: number; calculated: number; pending: number; totalCommission: number };
+    }> => {
+        const formatDate = (d: Date) => {
+            const y = d.getFullYear();
+            const m = String(d.getMonth() + 1).padStart(2, '0');
+            const day = String(d.getDate()).padStart(2, '0');
+            return `${y}-${m}-${day}`;
+        };
+
+        const startStr = formatDate(startDate);
+        const endStr = formatDate(endDate);
+
+        // 1) Get completed trips in date range
+        const { data: trips, error: tripsError } = await supabase
+            .from('delivery_trips')
+            .select(`
+                id,
+                trip_number,
+                planned_date,
+                status,
+                vehicles (
+                    plate,
+                    type
+                )
+            `)
+            .eq('status', 'completed')
+            .gte('planned_date', startStr)
+            .lte('planned_date', endStr)
+            .order('planned_date', { ascending: true });
+
+        if (tripsError) {
+            console.error('[crewService] getTripsWithCommissionStatus error:', tripsError);
+            throw tripsError;
+        }
+
+        if (!trips || trips.length === 0) {
+            return { trips: [], stats: { total: 0, calculated: 0, pending: 0, totalCommission: 0 } };
+        }
+
+        const tripIds = trips.map((t: any) => t.id);
+
+        // 2) Get commission logs for these trips
+        const { data: logs, error: logsError } = await supabase
+            .from('commission_logs')
+            .select(`
+                delivery_trip_id,
+                staff_id,
+                total_items_delivered,
+                rate_applied,
+                commission_amount,
+                work_percentage,
+                actual_commission,
+                staff:service_staff!commission_logs_staff_id_fkey (
+                    id,
+                    name,
+                    employee_code
+                )
+            `)
+            .in('delivery_trip_id', tripIds);
+
+        if (logsError) {
+            console.error('[crewService] getTripsWithCommissionStatus logs error:', logsError);
+            throw logsError;
+        }
+
+        // 3) Get crew info for trips (to know which have crew assigned)
+        const { data: crews, error: crewsError } = await supabase
+            .from('delivery_trip_crews')
+            .select('delivery_trip_id, staff_id, role, status')
+            .in('delivery_trip_id', tripIds)
+            .in('status', ['active', 'replaced']);
+
+        if (crewsError) {
+            console.error('[crewService] getTripsWithCommissionStatus crews error:', crewsError);
+            throw crewsError;
+        }
+
+        // Group logs and crews by trip
+        const logsByTrip = new Map<string, any[]>();
+        for (const log of (logs || []) as any[]) {
+            const tid = log.delivery_trip_id;
+            if (!logsByTrip.has(tid)) logsByTrip.set(tid, []);
+            logsByTrip.get(tid)!.push(log);
+        }
+
+        const crewsByTrip = new Map<string, any[]>();
+        for (const crew of (crews || []) as any[]) {
+            const tid = crew.delivery_trip_id;
+            if (!crewsByTrip.has(tid)) crewsByTrip.set(tid, []);
+            crewsByTrip.get(tid)!.push(crew);
+        }
+
+        // Build result
+        let totalCommission = 0;
+        let calculatedCount = 0;
+
+        const result: TripCommissionStatus[] = trips.map((trip: any) => {
+            const tripLogs = logsByTrip.get(trip.id) || [];
+            const tripCrews = crewsByTrip.get(trip.id) || [];
+            const hasCommission = tripLogs.length > 0;
+            const hasCrew = tripCrews.length > 0;
+
+            if (hasCommission) calculatedCount++;
+
+            const tripTotalCommission = tripLogs.reduce(
+                (sum: number, l: any) => sum + Number(l.actual_commission || 0), 0
+            );
+            totalCommission += tripTotalCommission;
+
+            return {
+                trip_id: trip.id,
+                trip_number: trip.trip_number,
+                planned_date: trip.planned_date,
+                vehicle_plate: trip.vehicles?.plate || 'ไม่ระบุ',
+                vehicle_type: trip.vehicles?.type || 'ไม่ระบุ',
+                has_commission: hasCommission,
+                has_crew: hasCrew,
+                total_commission: Math.round(tripTotalCommission * 100) / 100,
+                crew_breakdown: tripLogs.map((l: any) => ({
+                    staff_id: l.staff_id,
+                    staff_name: l.staff?.name || 'ไม่ทราบ',
+                    employee_code: l.staff?.employee_code || null,
+                    role: '', // Not available in commission_logs directly
+                    total_items: Number(l.total_items_delivered || 0),
+                    rate_applied: Number(l.rate_applied || 0),
+                    work_percentage: Number(l.work_percentage || 0),
+                    actual_commission: Number(l.actual_commission || 0),
+                })),
+            };
+        });
+
+        return {
+            trips: result,
+            stats: {
+                total: trips.length,
+                calculated: calculatedCount,
+                pending: trips.length - calculatedCount,
+                totalCommission: Math.round(totalCommission * 100) / 100,
+            },
+        };
+    },
+
+    /**
+     * Batch calculate commission for multiple trips via the Edge Function.
+     * Calls auto-commission-worker for each trip sequentially.
+     *
+     * @param tripIds - Array of trip IDs to calculate
+     * @param onProgress - Callback for progress updates
+     * @returns Summary of results
+     */
+    batchCalculatePending: async (
+        tripIds: string[],
+        onProgress?: (current: number, total: number, lastTripNumber?: string) => void
+    ): Promise<{ success: number; failed: number; errors: string[] }> => {
+        const total = tripIds.length;
+        let successCount = 0;
+        let failedCount = 0;
+        const errors: string[] = [];
+
+        for (let i = 0; i < tripIds.length; i++) {
+            const tripId = tripIds[i];
+            try {
+                const result = await crewService.calculateCommissionViaFunction(tripId);
+                if (result.success) {
+                    successCount++;
+                } else {
+                    failedCount++;
+                    errors.push(`Trip ${tripId}: ${result.reason || result.message || 'Unknown error'}`);
+                }
+            } catch (err: any) {
+                failedCount++;
+                errors.push(`Trip ${tripId}: ${err.message || 'Unknown error'}`);
+            }
+
+            onProgress?.(i + 1, total);
+        }
+
+        return { success: successCount, failed: failedCount, errors };
+    },
 };
+
+// === Additional Types for Commission Dashboard ===
+
+export interface StaffCommissionDetail {
+    staff_id: string;
+    staff_name: string;
+    employee_code: string | null;
+    totalCommission: number;
+    totalTrips: number;
+    trips: Array<{
+        trip_id: string;
+        trip_number: string;
+        planned_date: string;
+        vehicle_plate: string;
+        vehicle_type: string;
+        total_items: number;
+        rate_applied: number;
+        total_trip_commission: number;
+        work_percentage: number;
+        actual_commission: number;
+        calculated_at: string;
+    }>;
+}
+
+export interface TripCommissionStatus {
+    trip_id: string;
+    trip_number: string;
+    planned_date: string;
+    vehicle_plate: string;
+    vehicle_type: string;
+    has_commission: boolean;
+    has_crew: boolean;
+    total_commission: number;
+    crew_breakdown: Array<{
+        staff_id: string;
+        staff_name: string;
+        employee_code: string | null;
+        role: string;
+        total_items: number;
+        rate_applied: number;
+        work_percentage: number;
+        actual_commission: number;
+    }>;
+}
