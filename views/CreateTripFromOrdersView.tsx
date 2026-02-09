@@ -15,6 +15,10 @@ import { useToast } from '../hooks/useToast';
 import { ToastContainer } from '../components/ui/Toast';
 import { calculateTripCapacity } from '../utils/tripCapacityValidation';
 import { AlertCircle } from 'lucide-react';
+import { useVehicleRecommendation } from '../hooks/useVehicleRecommendation';
+import { VehicleRecommendationPanel } from '../components/trip/VehicleRecommendationPanel';
+import { vehicleRecommendationService, hashRecommendationInput } from '../services/vehicleRecommendationService';
+import type { RecommendationInput } from '../services/vehicleRecommendationService';
 
 interface CreateTripFromOrdersViewProps {
   selectedOrders: any[];
@@ -340,6 +344,52 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
     return drivers.filter((d) => d.branch === selectedBranch);
   }, [drivers, selectedBranch]);
 
+  // ============================================================
+  // AI Vehicle Recommendation
+  // ============================================================
+  const recommendationInput = useMemo<RecommendationInput | null>(() => {
+    if (storeDeliveries.length === 0 || orderItemsMap.size === 0) return null;
+
+    const store_ids = [...new Set(storeDeliveries.map((d) => d.store_id))];
+    const items: RecommendationInput['items'] = [];
+
+    for (const delivery of storeDeliveries) {
+      const orderItems = orderItemsMap.get(delivery.order_id) || [];
+      for (const item of orderItems) {
+        items.push({
+          product_id: item.product_id,
+          quantity: item.quantity,
+          store_id: delivery.store_id,
+        });
+      }
+    }
+
+    if (items.length === 0) return null;
+
+    return {
+      store_ids,
+      items,
+      planned_date: tripDate,
+      branch: selectedBranch || undefined,
+    };
+  }, [storeDeliveries, orderItemsMap, tripDate, selectedBranch]);
+
+  const {
+    recommendations: aiRecommendations,
+    loading: aiLoading,
+    error: aiError,
+    fetch: fetchRecommendations,
+    hasFetched: aiHasFetched,
+  } = useVehicleRecommendation(recommendationInput);
+
+  // Track which recommendation was selected (for feedback recording)
+  const [selectedRecommendationVehicleId, setSelectedRecommendationVehicleId] = useState<string | null>(null);
+
+  const handleAiSelectVehicle = useCallback((vehicleId: string) => {
+    setSelectedVehicleId(vehicleId);
+    setSelectedRecommendationVehicleId(vehicleId);
+  }, []);
+
   // Drag & Drop handlers
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
 
@@ -561,6 +611,28 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
         success('สร้างทริปเรียบร้อย');
       }
 
+      // Record AI recommendation feedback (non-blocking)
+      if (recommendationInput && aiHasFetched && aiRecommendations.length > 0) {
+        const topRec = aiRecommendations[0];
+        const wasAccepted = selectedVehicleId === selectedRecommendationVehicleId;
+        vehicleRecommendationService.recordFeedback({
+          input_hash: hashRecommendationInput(recommendationInput),
+          requested_products: recommendationInput.items,
+          requested_stores: recommendationInput.store_ids,
+          planned_date: recommendationInput.planned_date,
+          recommended_vehicle_id: topRec.vehicle_id,
+          recommended_trips: aiRecommendations.slice(0, 3).map((r) => ({
+            vehicle_id: r.vehicle_id,
+            vehicle_plate: r.vehicle_plate,
+            score: r.overall_score,
+          })),
+          status: wasAccepted ? 'accepted' : 'rejected',
+          confidence_score: topRec.overall_score,
+          reasoning: topRec.reasoning,
+          created_by: user?.id,
+        });
+      }
+
       onSuccess();
     } catch (err: any) {
       console.error('Error creating trip:', err);
@@ -591,6 +663,19 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
                 <h3 className="text-lg font-semibold text-gray-900 mb-4">ข้อมูลทริป</h3>
 
                 <div className="space-y-4">
+                  {/* AI Vehicle Recommendation Panel */}
+                  {!splitIntoTwoTrips && (
+                    <VehicleRecommendationPanel
+                      recommendations={aiRecommendations}
+                      loading={aiLoading}
+                      error={aiError}
+                      hasFetched={aiHasFetched}
+                      onSelectVehicle={handleAiSelectVehicle}
+                      selectedVehicleId={selectedVehicleId}
+                      onRefresh={fetchRecommendations}
+                    />
+                  )}
+
                   {/* Branch & search: always show */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     <div>
