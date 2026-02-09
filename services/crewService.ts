@@ -77,6 +77,25 @@ export const crewService = {
             throw new Error(`Cannot assign crew to ${trip.status} trip`);
         }
 
+        // Enforce 1 driver per trip
+        if (role === 'driver') {
+            const { data: existingDrivers } = await supabase
+                .from('delivery_trip_crews')
+                .select('id, staff_id')
+                .eq('delivery_trip_id', tripId)
+                .eq('role', 'driver')
+                .eq('status', 'active')
+                .limit(1);
+
+            if (existingDrivers && existingDrivers.length > 0) {
+                throw new Error('ทริปนี้มีคนขับแล้ว กรุณาใช้การ "แทน" ถ้าต้องการเปลี่ยนคนขับ');
+            }
+
+            if (staffIds.length > 1) {
+                throw new Error('สามารถกำหนดคนขับได้เพียง 1 คนต่อทริป');
+            }
+        }
+
         // Validate all staff members exist and are active
         const { data: staffMembers, error: staffError } = await supabase
             .from('service_staff')
