@@ -50,8 +50,10 @@ interface ItemSplitQty {
 type CapacitySummary = {
   totalPallets: number;
   totalWeightKg: number;
+  totalHeightCm: number;
   vehicleMaxPallets: number | null;
   vehicleMaxWeightKg: number | null;
+  vehicleMaxHeightCm: number | null;
   loading: boolean;
   errors: string[];
   warnings: string[];
@@ -271,10 +273,10 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
       // Trip 1
       const run1 = items1.length > 0
         ? calculateTripCapacity(items1, selectedVehicleId)
-        : Promise.resolve({ summary: { totalPallets: 0, totalWeightKg: 0, vehicleMaxPallets: null, vehicleMaxWeightKg: null }, errors: [] as string[], warnings: [] as string[] });
+        : Promise.resolve({ summary: { totalPallets: 0, totalWeightKg: 0, totalHeightCm: 0, vehicleMaxPallets: null, vehicleMaxWeightKg: null, vehicleMaxHeightCm: null }, errors: [] as string[], warnings: [] as string[] });
 
       run1.then(r => {
-        setCapacitySummary({ totalPallets: r.summary.totalPallets, totalWeightKg: r.summary.totalWeightKg, vehicleMaxPallets: r.summary.vehicleMaxPallets, vehicleMaxWeightKg: r.summary.vehicleMaxWeightKg, loading: false, errors: r.errors, warnings: r.warnings });
+        setCapacitySummary({ totalPallets: r.summary.totalPallets, totalWeightKg: r.summary.totalWeightKg, totalHeightCm: r.summary.totalHeightCm, vehicleMaxPallets: r.summary.vehicleMaxPallets, vehicleMaxWeightKg: r.summary.vehicleMaxWeightKg, vehicleMaxHeightCm: r.summary.vehicleMaxHeightCm, loading: false, errors: r.errors, warnings: r.warnings });
       }).catch(err => {
         setCapacitySummary(prev => ({ ...prev, loading: false, errors: [err.message || 'ไม่สามารถคำนวณความจุได้'], warnings: [] } as CapacitySummary));
       });
@@ -285,7 +287,7 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
         if (items2.length > 0) {
           setCapacitySummary2(prev => ({ ...prev, loading: true, errors: [], warnings: [] } as CapacitySummary));
           calculateTripCapacity(items2, selectedVehicleId2).then(r => {
-            setCapacitySummary2({ totalPallets: r.summary.totalPallets, totalWeightKg: r.summary.totalWeightKg, vehicleMaxPallets: r.summary.vehicleMaxPallets, vehicleMaxWeightKg: r.summary.vehicleMaxWeightKg, loading: false, errors: r.errors, warnings: r.warnings });
+            setCapacitySummary2({ totalPallets: r.summary.totalPallets, totalWeightKg: r.summary.totalWeightKg, totalHeightCm: r.summary.totalHeightCm, vehicleMaxPallets: r.summary.vehicleMaxPallets, vehicleMaxWeightKg: r.summary.vehicleMaxWeightKg, vehicleMaxHeightCm: r.summary.vehicleMaxHeightCm, loading: false, errors: r.errors, warnings: r.warnings });
           }).catch(err => {
             setCapacitySummary2(prev => ({ ...prev, loading: false, errors: [err.message || 'ไม่สามารถคำนวณความจุได้'], warnings: [] } as CapacitySummary));
           });
@@ -1373,6 +1375,7 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
                               </div>
                             )}
                           </div>
+                          {/* ตัดการแสดงความสูงรวมออกจากหน้านี้ตามคำขอ (ยังคำนวณภายในแต่ไม่แสดง) */}
                         </div>
                       </div>
                     ) : (
@@ -1429,6 +1432,7 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
                             )}
                           </div>
                         </div>
+                        {/* ตัดการแสดงความสูงรวมของคันที่ 2 ออกตามคำขอ */}
                       </div>
                     </div>
                   ) : (
