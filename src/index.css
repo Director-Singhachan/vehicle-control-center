@@ -4,6 +4,8 @@
 
 body {
     font-family: 'Inter', sans-serif;
+    /* ป้องกันไม่ให้หน้าขยายออกด้านขวา ถ้ามี element กว้างเกิน */
+    overflow-x: hidden;
 }
 
 /* Hide number input spinners for manual typing */
