@@ -52,6 +52,10 @@ export const ProductPalletConfigManager: React.FC<ProductPalletConfigManagerProp
 }) => {
   const [configs, setConfigs] = useState<PalletConfig[]>([]);
   const [pallets, setPallets] = useState<Pallet[]>([]);
+  const [productDimensions, setProductDimensions] = useState<{ height_cm: number | null; weight_kg: number | null }>({
+    height_cm: null,
+    weight_kg: null,
+  });
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingConfig, setEditingConfig] = useState<PalletConfig | null>(null);
@@ -93,6 +97,31 @@ export const ProductPalletConfigManager: React.FC<ProductPalletConfigManagerProp
 
     loadPallets();
   }, []);
+
+  // Load product dimensions (height_cm, weight_kg) for auto-calculation
+  useEffect(() => {
+    if (!productId) return;
+
+    const loadProduct = async () => {
+      const { data, error } = await supabase
+        .from('products')
+        .select('height_cm, weight_kg')
+        .eq('id', productId)
+        .single();
+
+      if (error) {
+        console.error('Error loading product dimensions:', error);
+        setProductDimensions({ height_cm: null, weight_kg: null });
+      } else {
+        setProductDimensions({
+          height_cm: data?.height_cm != null ? Number(data.height_cm) : null,
+          weight_kg: data?.weight_kg != null ? Number(data.weight_kg) : null,
+        });
+      }
+    };
+
+    loadProduct();
+  }, [productId]);
 
   // Load configs
   useEffect(() => {
@@ -280,6 +309,41 @@ export const ProductPalletConfigManager: React.FC<ProductPalletConfigManagerProp
 
   // Calculate total units automatically
   const totalUnits = formData.layers * formData.units_per_layer;
+
+  // Auto-calculate total_height_cm and total_weight_kg when layers, units_per_layer or pallet_id change
+  useEffect(() => {
+    if (!isModalOpen || (formData.layers <= 0 && formData.units_per_layer <= 0)) return;
+
+    const totalUnitsCalc = formData.layers * formData.units_per_layer;
+    const pallet = formData.pallet_id ? pallets.find((p) => p.id === formData.pallet_id) : null;
+
+    let newHeight = '';
+    let newWeight = '';
+
+    if (productDimensions.height_cm != null && productDimensions.height_cm > 0 && formData.layers > 0) {
+      const palletH = pallet?.height_cm ?? 0;
+      newHeight = (palletH + formData.layers * productDimensions.height_cm).toFixed(1);
+    }
+    if (productDimensions.weight_kg != null && productDimensions.weight_kg >= 0 && totalUnitsCalc > 0) {
+      newWeight = (totalUnitsCalc * productDimensions.weight_kg).toFixed(2);
+    }
+
+    if (newHeight !== '' || newWeight !== '') {
+      setFormData((prev) => ({
+        ...prev,
+        ...(newHeight !== '' && { total_height_cm: newHeight }),
+        ...(newWeight !== '' && { total_weight_kg: newWeight }),
+      }));
+    }
+  }, [
+    isModalOpen,
+    formData.layers,
+    formData.units_per_layer,
+    formData.pallet_id,
+    productDimensions.height_cm,
+    productDimensions.weight_kg,
+    pallets,
+  ]);
 
   return (
     <div className="space-y-4">
@@ -572,6 +636,11 @@ export const ProductPalletConfigManager: React.FC<ProductPalletConfigManagerProp
                 className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500"
                 placeholder="เช่น 180.5"
               />
+              {productDimensions.height_cm != null && productDimensions.height_cm > 0 && (
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                  คำนวณอัตโนมัติ: ความสูงพาเลท + (จำนวนชั้น × ความสูงต่อหน่วย)
+                </p>
+              )}
             </div>
 
             <div>
@@ -586,6 +655,11 @@ export const ProductPalletConfigManager: React.FC<ProductPalletConfigManagerProp
                 className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500"
                 placeholder="เช่น 850.50"
               />
+              {productDimensions.weight_kg != null && productDimensions.weight_kg >= 0 && (
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                  คำนวณอัตโนมัติ: จำนวนสินค้าทั้งหมด × น้ำหนักต่อหน่วย
+                </p>
+              )}
             </div>
           </div>
 
