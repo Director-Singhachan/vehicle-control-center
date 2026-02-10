@@ -1884,45 +1884,7 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
                         </div>
                       )}
                     </div>
-                    <div className="p-3 bg-slate-50 dark:bg-slate-800 rounded-lg">
-                      <div className="text-sm text-slate-600 dark:text-slate-400 mb-1">
-                        ความสูงรวม
-                      </div>
-                      <div className="text-2xl font-bold text-slate-900 dark:text-slate-100">
-                        {capacitySummary.totalHeightCm.toFixed(1)} ซม.
-                        {capacitySummary.vehicleMaxHeightCm !== null && (
-                          <span className="text-lg font-normal text-slate-500 dark:text-slate-400">
-                            {' '}/ {capacitySummary.vehicleMaxHeightCm} ซม.
-                          </span>
-                        )}
-                      </div>
-                      {capacitySummary.vehicleMaxHeightCm !== null && (
-                        <div className="mt-2">
-                          <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2">
-                            <div
-                              className={`h-2 rounded-full ${capacitySummary.totalHeightCm > capacitySummary.vehicleMaxHeightCm
-                                ? 'bg-red-500'
-                                : capacitySummary.totalHeightCm > capacitySummary.vehicleMaxHeightCm * 0.9
-                                  ? 'bg-amber-500'
-                                  : 'bg-green-500'
-                                }`}
-                              style={{
-                                width: `${Math.min(
-                                  100,
-                                  (capacitySummary.totalHeightCm / capacitySummary.vehicleMaxHeightCm) * 100
-                                )}%`,
-                              }}
-                            />
-                          </div>
-                          <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                            {Math.round(
-                              (capacitySummary.totalHeightCm / capacitySummary.vehicleMaxHeightCm) * 100
-                            )}
-                            % ของความจุ
-                          </div>
-                        </div>
-                      )}
-                    </div>
+                    {/* ตัดการแสดงความสูงรวมออก (ยังคำนวณภายในแต่ไม่แสดง) */}
                   </div>
                 </div>
               ) : (
@@ -2033,34 +1995,34 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
                         ความสูงรวม
                       </div>
                       <div className="text-2xl font-bold text-slate-900 dark:text-slate-100">
-                        {capacitySummary.totalHeightCm.toFixed(1)} ซม.
-                        {capacitySummary.vehicleMaxHeightCm !== null && (
+                        {capacitySummary?.totalHeightCm?.toFixed(1) || '0.0'} ซม.
+                        {capacitySummary && capacitySummary.vehicleMaxHeightCm !== null && (
                           <span className="text-lg font-normal text-slate-500 dark:text-slate-400">
-                            {' '}/ {capacitySummary.vehicleMaxHeightCm} ซม.
+                            {' '}/ {capacitySummary!.vehicleMaxHeightCm} ซม.
                           </span>
                         )}
                       </div>
-                      {capacitySummary.vehicleMaxHeightCm !== null && (
+                      {capacitySummary && capacitySummary.vehicleMaxHeightCm !== null && (
                         <div className="mt-2">
                           <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2">
                             <div
-                              className={`h-2 rounded-full ${capacitySummary.totalHeightCm > capacitySummary.vehicleMaxHeightCm
+                              className={`h-2 rounded-full ${capacitySummary!.totalHeightCm > capacitySummary!.vehicleMaxHeightCm
                                 ? 'bg-red-500'
-                                : capacitySummary.totalHeightCm > capacitySummary.vehicleMaxHeightCm * 0.9
+                                : capacitySummary!.totalHeightCm > capacitySummary!.vehicleMaxHeightCm * 0.9
                                   ? 'bg-amber-500'
                                   : 'bg-green-500'
                                 }`}
                               style={{
                                 width: `${Math.min(
                                   100,
-                                  (capacitySummary.totalHeightCm / capacitySummary.vehicleMaxHeightCm) * 100
+                                  (capacitySummary!.totalHeightCm / capacitySummary!.vehicleMaxHeightCm) * 100
                                 )}%`,
                               }}
                             />
                           </div>
                           <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">
                             {Math.round(
-                              (capacitySummary.totalHeightCm / capacitySummary.vehicleMaxHeightCm) * 100
+                              (capacitySummary!.totalHeightCm / capacitySummary!.vehicleMaxHeightCm) * 100
                             )}
                             % ของความจุ
                           </div>

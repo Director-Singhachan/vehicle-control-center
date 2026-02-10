@@ -70,7 +70,7 @@ export const vehicleDocumentService = {
             .from('vehicle_tax_records')
             .select('*')
             .eq('document_id', doc.id)
-            .single();
+            .maybeSingle();
           details.tax_record = taxData || null;
         }
 
@@ -79,7 +79,7 @@ export const vehicleDocumentService = {
             .from('vehicle_insurance_records')
             .select('*')
             .eq('document_id', doc.id)
-            .single();
+            .maybeSingle();
           details.insurance_record = insuranceData || null;
         }
 
@@ -117,7 +117,7 @@ export const vehicleDocumentService = {
             .from('vehicle_tax_records')
             .select('*')
             .eq('document_id', doc.id)
-            .single();
+            .maybeSingle();
           details.tax_record = taxData || null;
         }
 
@@ -126,7 +126,7 @@ export const vehicleDocumentService = {
             .from('vehicle_insurance_records')
             .select('*')
             .eq('document_id', doc.id)
-            .single();
+            .maybeSingle();
           details.insurance_record = insuranceData || null;
         }
 
@@ -157,7 +157,7 @@ export const vehicleDocumentService = {
         .from('vehicle_tax_records')
         .select('*')
         .eq('document_id', data.id)
-        .single();
+        .maybeSingle();
       details.tax_record = taxData || null;
     }
 
@@ -166,7 +166,7 @@ export const vehicleDocumentService = {
         .from('vehicle_insurance_records')
         .select('*')
         .eq('document_id', data.id)
-        .single();
+        .maybeSingle();
       details.insurance_record = insuranceData || null;
     }
 
@@ -299,7 +299,7 @@ export const vehicleDocumentService = {
         .from('vehicle_tax_records')
         .select('*')
         .eq('document_id', data.id)
-        .single();
+        .maybeSingle();
       details.tax_record = taxData || null;
     }
 
@@ -308,7 +308,7 @@ export const vehicleDocumentService = {
         .from('vehicle_insurance_records')
         .select('*')
         .eq('document_id', data.id)
-        .single();
+        .maybeSingle();
       details.insurance_record = insuranceData || null;
     }
 
@@ -446,7 +446,7 @@ export const vehicleDocumentService = {
             .from('vehicle_tax_records')
             .select('*')
             .eq('document_id', doc.id)
-            .single();
+            .maybeSingle();
           details.tax_record = taxData || null;
         }
 
@@ -455,7 +455,7 @@ export const vehicleDocumentService = {
             .from('vehicle_insurance_records')
             .select('*')
             .eq('document_id', doc.id)
-            .single();
+            .maybeSingle();
           details.insurance_record = insuranceData || null;
         }
 
