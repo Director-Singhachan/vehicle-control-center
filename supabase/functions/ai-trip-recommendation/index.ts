@@ -8,6 +8,23 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+/** รายการสินค้าบนพาเลทใบหนึ่ง (จาก bin packing) */
+interface PalletAllocationItem {
+  product_id: string;
+  product_name?: string | null;
+  product_code?: string | null;
+  quantity: number;
+  weight_kg: number;
+  volume_liter: number;
+}
+
+interface PalletAllocationEntry {
+  pallet_index: number;
+  items: PalletAllocationItem[];
+  total_weight_kg?: number;
+  total_volume_liter?: number;
+}
+
 interface TripSummary {
   estimated_weight_kg?: number;
   estimated_volume_liter?: number;
@@ -15,6 +32,10 @@ interface TripSummary {
   item_count?: number;
   items_summary?: string;
   planned_date?: string;
+  /** จำนวนพาเลทที่ระบบคำนวณ (จาก bin packing จัดรวมหลายชนิดได้) */
+  estimated_pallets?: number;
+  /** การจัดสรรพาเลทจากระบบ — แต่ละใบมีสินค้าอะไรบ้าง เพื่อให้ AI แนะนำวิธีจัดเรียง/ซ้อนได้เฉพาะทาง */
+  pallet_allocation?: PalletAllocationEntry[];
 }
 
 interface VehicleOption {
@@ -47,30 +68,80 @@ function buildPrompt(body: RequestBody): string {
     )
     .join('\n');
 
+  const palletNote = trip.estimated_pallets != null
+    ? `- จำนวนพาเลทที่ระบบคำนวณ (จัดรวมหลายชนิดบนพาเลทเดียวกัน): ${trip.estimated_pallets}\n`
+    : '';
+
+  let palletAllocationBlock = '';
+  if (trip.pallet_allocation && trip.pallet_allocation.length > 0) {
+    palletAllocationBlock = `\nการจัดสรรพาเลทจากระบบ (แต่ละใบมีสินค้าดังนี้ — ใช้เป็นฐานในการแนะนำวิธีจัดเรียง/ซ้อน):
+${trip.pallet_allocation
+  .map(
+    (p) =>
+      `  พาเลทที่ ${p.pallet_index}: ${p.items
+        .map(
+          (i) =>
+            `${i.product_name || i.product_code || i.product_id} (${i.quantity} หน่วย, น้ำหนักรวม ${i.weight_kg.toFixed(1)} กก., ปริมาตร ${i.volume_liter.toFixed(0)} ลิตร)`
+        )
+        .join('; ')}`
+  )
+  .join('\n')}
+
+`;
+  }
+
   return `คุณเป็นผู้ช่วยแนะนำรถบรรทุกและวิธีจัดเรียงสินค้าสำหรับทริปส่งของ
 
 ข้อมูลทริป:
 - น้ำหนักโดยประมาณ: ${trip.estimated_weight_kg ?? 'ไม่ระบุ'} kg
 - ปริมาตรโดยประมาณ: ${trip.estimated_volume_liter ?? 'ไม่ระบุ'} ลิตร
-- จำนวนร้าน: ${trip.store_count ?? 'ไม่ระบุ'}
+${palletNote}- จำนวนร้าน: ${trip.store_count ?? 'ไม่ระบุ'}
 - จำนวนรายการสินค้า: ${trip.item_count ?? 'ไม่ระบุ'}
 ${trip.items_summary ? `- รายการสินค้า (สรุป): ${trip.items_summary}` : ''}
 ${trip.planned_date ? `- วันที่วางแผน: ${trip.planned_date}` : ''}
-
+${palletAllocationBlock}
 รถที่เลือกได้:
 ${vehicleList}
-${historical_context ? `\nประวัติ (เมตริกซ์ที่บันทึก):\n${historical_context}` : ''}
+${historical_context ? `\nทริปคล้ายกันจากประวัติ (สรุปโดยระบบ rule-based):\n${historical_context}` : ''}
 
-กรุณาตอบเป็น JSON เท่านั้น ในรูปแบบนี้ (ไม่ใส่ markdown หรือข้อความอื่น):
-{"suggested_vehicle_id": "uuid ของรถที่แนะนำ", "reasoning": "เหตุผลสั้นๆ 1-2 ประโยค", "packing_tips": "คำแนะนำการจัดเรียง/โหลดสินค้า 2-4 ข้อ เช่น ของหนักไว้ล่าง ใส่ร้านที่ไปก่อนไว้ด้านใน เป็นต้น"}
+คำแนะนำ:
+1) reasoning ต้องอ้างอิงข้อมูลจริง เช่น ทะเบียนรถ ความจุ เปรียบเทียบกับโหลดปัจจุบัน และสถิติจากทริปคล้ายกันด้านบน
+2) packing_tips ต้องเฉพาะทางและอ้างอิงรายการพาเลทด้านบน: แนะนำว่าสินค้าแต่ละชนิดควรไว้ล่างหรือบน ลำดับการซ้อนบนพาเลทเดียวกัน (เช่น พาเลทที่ 1 มี 3 อย่าง — ควรเรียงอย่างไร) และลำดับโหลด/ถอนตามร้าน ของหนัก/เปราะบาง อย่าพูดทั่วไป
+3) ห้ามเปลี่ยนรถที่ระบบหลักเลือกแล้วเอง ให้เสนอเป็น \"ข้อสังเกต/ความเสี่ยง/ข้อเสนอปรับปรุง\" เท่านั้น
 
-ถ้าไม่มีรถที่เหมาะ ให้ suggested_vehicle_id เป็น null และอธิบายใน reasoning.`;
+กรุณาตอบเป็น JSON เท่านั้น (ไม่ใส่ markdown):
+{"suggested_vehicle_id": "uuid ของรถที่แนะนำ", "reasoning": "เหตุผลสั้นๆ อ้างอิงข้อมูลทริป/รถและทริปคล้ายกัน", "packing_tips": "คำแนะนำจัดเรียงเฉพาะทาง เช่น แต่ละพาเลทควรซ้อนอย่างไร สินค้า 3 อย่างบนพาเลทเดียวกันเรียงอย่างไร ลำดับโหลด/ถอนตามร้าน และข้อควรระวังจากประวัติ"}
+
+ถ้าไม่มีรถที่เหมาะ ให้ suggested_vehicle_id เป็น null.`;
 }
 
-// ชื่อโมเดลที่รองรับใน Gemini API (gemini-2.0-flash รองรับกว้าง; ถ้า 404 ลอง gemini-1.5-flash-001)
-const GEMINI_MODEL = 'gemini-2.0-flash';
+// Gemini 2.0 Flash Lite — ราคาถูกกว่า Flash ($0.07/1M input, $0.30/1M output)
+// ถ้า 404 ลอง gemini-2.0-flash หรือ gemini-1.5-flash-001
+const GEMINI_MODEL = 'gemini-2.0-flash-lite';
 
-async function callGemini(apiKey: string, prompt: string): Promise<AIResponse> {
+/** ดึง retryDelay (วินาที) จาก error body ของ Gemini 429 */
+function parseRetryDelaySeconds(errText: string): number {
+  try {
+    const j = JSON.parse(errText);
+    const details = j?.error?.details;
+    if (Array.isArray(details)) {
+      for (const d of details) {
+        if (d['@type']?.includes('RetryInfo') && d.retryDelay) {
+          const s = String(d.retryDelay).replace(/s$/i, '');
+          const sec = parseFloat(s);
+          if (Number.isFinite(sec)) return Math.min(60, Math.ceil(sec));
+        }
+      }
+    }
+    const match = errText.match(/retry in (\d+\.?\d*)\s*s/i);
+    if (match) return Math.min(60, Math.ceil(parseFloat(match[1])));
+  } catch {
+    /* ignore */
+  }
+  return 15;
+}
+
+async function callGeminiOnce(apiKey: string, prompt: string): Promise<{ res: Response; errText: string }> {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${encodeURIComponent(apiKey)}`;
   const res = await fetch(url, {
     method: 'POST',
@@ -79,13 +150,27 @@ async function callGemini(apiKey: string, prompt: string): Promise<AIResponse> {
       contents: [{ role: 'user', parts: [{ text: prompt }] }],
       generationConfig: {
         temperature: 0.3,
-        maxOutputTokens: 1024,
+        maxOutputTokens: 512,
       },
     }),
   });
+  const errText = await res.text();
+  return { res, errText };
+}
+
+async function callGemini(apiKey: string, prompt: string): Promise<AIResponse> {
+  let { res, errText } = await callGeminiOnce(apiKey, prompt);
+
+  if (res.status === 429) {
+    const waitSec = parseRetryDelaySeconds(errText);
+    console.log(`[ai-trip-recommendation] 429 received, retrying after ${waitSec}s`);
+    await new Promise((r) => setTimeout(r, waitSec * 1000));
+    const retry = await callGeminiOnce(apiKey, prompt);
+    res = retry.res;
+    errText = retry.errText;
+  }
 
   if (!res.ok) {
-    const errText = await res.text();
     console.error('[ai-trip-recommendation] Gemini API error:', res.status, errText);
     let userMessage: string;
     if (res.status === 429) {
@@ -103,7 +188,12 @@ async function callGemini(apiKey: string, prompt: string): Promise<AIResponse> {
     };
   }
 
-  const data = await res.json();
+  let data: any;
+  try {
+    data = JSON.parse(errText);
+  } catch {
+    return { suggested_vehicle_id: null, reasoning: null, packing_tips: null, error: 'Invalid response from AI' };
+  }
   const text =
     data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? '';
   if (!text) {

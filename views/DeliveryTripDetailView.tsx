@@ -35,6 +35,7 @@ import type {
   DeliveryTripItemWithProduct,
   DeliveryTripItemChangeWithDetails,
 } from '../services/deliveryTripService';
+import { tripMetricsService, type PostTripAnalysisEntry } from '../services/tripMetricsService';
 
 interface DeliveryTripDetailViewProps {
   tripId: string;
@@ -74,6 +75,11 @@ export const DeliveryTripDetailView: React.FC<DeliveryTripDetailViewProps> = ({
   const [productDistribution, setProductDistribution] = useState<any[]>([]);
   const [distributionLoading, setDistributionLoading] = useState(false);
 
+  // Post-Trip Analysis (AI Insight หลังจบทริป)
+  const [postAnalyses, setPostAnalyses] = useState<PostTripAnalysisEntry[]>([]);
+  const [postAnalysisLoading, setPostAnalysisLoading] = useState(false);
+  const [postAnalysisError, setPostAnalysisError] = useState<string | null>(null);
+
   // เพิ่มร้านในทริป (ออเดอร์ที่ตกหล่น)
   const [addOrderModalOpen, setAddOrderModalOpen] = useState(false);
   const [pendingOrders, setPendingOrders] = useState<any[]>([]);
@@ -109,6 +115,23 @@ export const DeliveryTripDetailView: React.FC<DeliveryTripDetailViewProps> = ({
         })
         .finally(() => {
           setDistributionLoading(false);
+        });
+
+      // Load post-trip analysis (AI insight) ถ้ามี
+      setPostAnalysisLoading(true);
+      setPostAnalysisError(null);
+      tripMetricsService
+        .getPostTripAnalysisForTrip(trip.id)
+        .then((entries) => {
+          setPostAnalyses(entries);
+        })
+        .catch((err: any) => {
+          console.error('[DeliveryTripDetailView] Error loading post-trip analysis:', err);
+          setPostAnalyses([]);
+          setPostAnalysisError(err?.message || 'ไม่สามารถโหลดผลการวิเคราะห์ทริปได้');
+        })
+        .finally(() => {
+          setPostAnalysisLoading(false);
         });
     }
   }, [trip]);
@@ -671,6 +694,45 @@ export const DeliveryTripDetailView: React.FC<DeliveryTripDetailViewProps> = ({
               </div>
             ))}
           </div>
+        </Card>
+      )}
+
+      {/* Post-Trip Analysis (AI Insight) */}
+      {trip.status === 'completed' && !postAnalysisLoading && postAnalyses.length > 0 && (
+        <Card className="mb-6">
+          <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-3 flex items-center gap-2">
+            <BarChart3 size={20} />
+            การวิเคราะห์ทริปโดย AI (Insight หลังจบทริป)
+          </h3>
+          {postAnalysisError && (
+            <div className="mb-3 text-xs text-red-600 dark:text-red-400">
+              <AlertCircle className="w-3.5 h-3.5 inline mr-1" />
+              {postAnalysisError}
+            </div>
+          )}
+          <div className="space-y-3">
+            {postAnalyses.map((entry) => (
+              <div
+                key={entry.id}
+                className="border border-slate-200 dark:border-slate-700 rounded-lg p-3 bg-slate-50/60 dark:bg-slate-900/40"
+              >
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                    ประเภท: {entry.analysis_type}
+                  </span>
+                  <span className="text-[10px] text-slate-400 dark:text-slate-500">
+                    {new Date(entry.created_at).toLocaleString('th-TH')}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-800 dark:text-slate-100 whitespace-pre-wrap">
+                  {entry.ai_summary}
+                </p>
+              </div>
+            ))}
+          </div>
+          <p className="mt-2 text-[10px] text-slate-400 dark:text-slate-500">
+            หมายเหตุ: Insight นี้ใช้เพื่อช่วยทีมปรับปรุงการวางแผน/การจัดของในอนาคต ไม่ได้มีผลย้อนหลังกับทริปนี้
+          </p>
         </Card>
       )}
 

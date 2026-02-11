@@ -202,6 +202,7 @@ export async function calculateTripCapacity(
   });
 
   // รวม quantity ต่อ product (และต่อ config ถ้ามี) — สินค้าเดียวกันจากหลายออเดอร์/ร้านนับเป็นจำนวนรวมแล้วค่อยคำนวณพาเลท
+  // หมายเหตุ: totalPallets ที่ได้เป็น "แยกตามชนิดสินค้า" — การจัดเรียงจริงอาจใช้พาเลทน้อยกว่าถ้านำหลายชนิดมาวางรวม/ซ้อนบนพาเลทเดียวกัน
   const aggregatedMap = new Map<string, { product_id: string; quantity: number; selected_pallet_config_id?: string }>();
   for (const item of items) {
     const key = `${item.product_id}|${item.selected_pallet_config_id ?? ''}`;

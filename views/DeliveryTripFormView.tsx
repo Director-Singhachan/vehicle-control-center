@@ -1809,6 +1809,9 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
                     <div className="p-3 bg-slate-50 dark:bg-slate-800 rounded-lg">
                       <div className="text-sm text-slate-600 dark:text-slate-400 mb-1">
                         จำนวนพาเลท
+                        <span className="block text-xs text-slate-500 dark:text-slate-500 font-normal mt-0.5">
+                          (ค่าประมาณแยกตามชนิดสินค้า การจัดเรียงจริงอาจใช้น้อยกว่าถ้ารวมพาเลทได้)
+                        </span>
                       </div>
                       <div className="text-2xl font-bold text-slate-900 dark:text-slate-100">
                         {capacitySummary.totalPallets}

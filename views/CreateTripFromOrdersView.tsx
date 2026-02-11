@@ -14,11 +14,13 @@ import { useAuth } from '../hooks';
 import { useToast } from '../hooks/useToast';
 import { ToastContainer } from '../components/ui/Toast';
 import { calculateTripCapacity } from '../utils/tripCapacityValidation';
+import { calculatePalletAllocation, type PalletPackingResult } from '../utils/palletPacking';
 import { AlertCircle } from 'lucide-react';
 import { useVehicleRecommendation } from '../hooks/useVehicleRecommendation';
 import { VehicleRecommendationPanel } from '../components/trip/VehicleRecommendationPanel';
 import { vehicleRecommendationService, hashRecommendationInput } from '../services/vehicleRecommendationService';
 import type { RecommendationInput } from '../services/vehicleRecommendationService';
+import { tripMetricsService } from '../services/tripMetricsService';
 
 interface CreateTripFromOrdersViewProps {
   selectedOrders: any[];
@@ -90,6 +92,8 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
   // Capacity summary
   const [capacitySummary, setCapacitySummary] = useState<CapacitySummary | null>(null);
   const [capacitySummary2, setCapacitySummary2] = useState<CapacitySummary | null>(null);
+  /** ผล bin packing (จัดรวมหลายชนิดบนพาเลทเดียวกัน) — ใช้แสดงจำนวนพาเลทที่แม่นยำขึ้น */
+  const [palletPackingResult, setPalletPackingResult] = useState<PalletPackingResult | null>(null);
 
   // สร้างรายการร้านค้าจากออเดอร์ที่เลือก
   const [storeDeliveries, setStoreDeliveries] = useState<StoreDelivery[]>(() => {
@@ -247,6 +251,7 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
     if (!selectedVehicleId || storeDeliveries.length === 0) {
       setCapacitySummary(null);
       setCapacitySummary2(null);
+      setPalletPackingResult(null);
       return;
     }
 
@@ -264,6 +269,7 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
     if (items1.length === 0 && !splitIntoTwoTrips) {
       setCapacitySummary(null);
       setCapacitySummary2(null);
+      setPalletPackingResult(null);
       return;
     }
 
@@ -274,6 +280,14 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
       const run1 = items1.length > 0
         ? calculateTripCapacity(items1, selectedVehicleId)
         : Promise.resolve({ summary: { totalPallets: 0, totalWeightKg: 0, totalHeightCm: 0, vehicleMaxPallets: null, vehicleMaxWeightKg: null, vehicleMaxHeightCm: null }, errors: [] as string[], warnings: [] as string[] });
+
+      if (items1.length > 0) {
+        calculatePalletAllocation(items1).then((packing) => {
+          setPalletPackingResult(packing.errors.length > 0 ? null : packing);
+        }).catch(() => setPalletPackingResult(null));
+      } else {
+        setPalletPackingResult(null);
+      }
 
       run1.then(r => {
         setCapacitySummary({ totalPallets: r.summary.totalPallets, totalWeightKg: r.summary.totalWeightKg, totalHeightCm: r.summary.totalHeightCm, vehicleMaxPallets: r.summary.vehicleMaxPallets, vehicleMaxWeightKg: r.summary.vehicleMaxWeightKg, vehicleMaxHeightCm: r.summary.vehicleMaxHeightCm, loading: false, errors: r.errors, warnings: r.warnings });
@@ -411,6 +425,58 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
     setAiExtraResult(null);
     try {
       const first = aiRecommendations[0];
+      const tripItems = input.items.map(({ product_id, quantity }) => ({ product_id, quantity }));
+      let estimated_pallets: number | undefined;
+      let pallet_allocation: typeof undefined | Array<{ pallet_index: number; items: Array<{ product_id: string; product_name?: string | null; product_code?: string | null; quantity: number; weight_kg: number; volume_liter: number }>; total_weight_kg?: number; total_volume_liter?: number }> = undefined;
+      let historical_context: string | undefined;
+
+      // ดึงทริปที่คล้ายกันจากประวัติ เพื่อใช้เป็น historical_context ให้ AI วิเคราะห์เป็น insight
+      try {
+        const rawProductIds: string[] = input.items.map(
+          (i: any) => i.product_id as string
+        );
+        const productIds = Array.from(new Set<string>(rawProductIds));
+        const similarTrips = await tripMetricsService.getSimilarTripsForLoad({
+          totalWeightKg: first.capacity_info.estimated_weight_kg,
+          totalVolumeLiter: first.capacity_info.estimated_volume_liter,
+          storeIds: input.store_ids,
+          productIds,
+          limit: 8,
+        });
+        const ctx = tripMetricsService.buildSimilarTripsContext(similarTrips);
+        if (ctx.trim().length > 0) {
+          historical_context = ctx;
+        }
+      } catch (err) {
+        console.warn('[CreateTripFromOrdersView] getSimilarTripsForLoad error:', err);
+      }
+      try {
+        const packing = await calculatePalletAllocation(tripItems);
+        if (packing.errors.length === 0) {
+          estimated_pallets = packing.totalPallets;
+          pallet_allocation = packing.palletAllocations.map((p) => ({
+            pallet_index: p.pallet_index,
+            items: p.items.map((i) => ({
+              product_id: i.product_id,
+              product_name: i.product_name,
+              product_code: i.product_code,
+              quantity: i.quantity,
+              weight_kg: i.weight_kg,
+              volume_liter: i.volume_liter,
+            })),
+            total_weight_kg: p.total_weight_kg,
+            total_volume_liter: p.total_volume_liter,
+          }));
+        }
+      } catch {
+        // Fallback: ใช้คำนวณแบบเดิม (แยกตามชนิดสินค้า)
+        try {
+          const cap = await calculateTripCapacity(tripItems, first.vehicle_id);
+          estimated_pallets = cap.summary.totalPallets;
+        } catch {
+          /* ไม่ส่ง estimated_pallets */
+        }
+      }
       const trip = {
         estimated_weight_kg: first.capacity_info.estimated_weight_kg,
         estimated_volume_liter: first.capacity_info.estimated_volume_liter,
@@ -418,6 +484,8 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
         item_count: input.items.length,
         items_summary: `${input.items.length} รายการสินค้า`,
         planned_date: input.planned_date,
+        ...(estimated_pallets != null && { estimated_pallets }),
+        ...(pallet_allocation != null && pallet_allocation.length > 0 && { pallet_allocation }),
       };
       const vehicles = aiRecommendations.slice(0, 5).map((r) => ({
         vehicle_id: r.vehicle_id,
@@ -426,7 +494,11 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
         cargo_volume_liter: r.capacity_info.max_volume_liter,
         branch: null as string | null,
       }));
-      const result = await vehicleRecommendationService.getAIRecommendation({ trip, vehicles });
+      const result = await vehicleRecommendationService.getAIRecommendation({
+        trip,
+        vehicles,
+        historical_context,
+      });
       setAiExtraResult(result ?? null);
       if (result?.suggested_vehicle_id) {
         setSelectedVehicleId(result.suggested_vehicle_id);
@@ -1366,42 +1438,47 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
                         <div className="grid grid-cols-2 gap-4">
                           <div className="p-3 bg-gray-50 rounded-lg">
                             <div className="text-sm text-gray-600 mb-1">
-                              จำนวนพาเลท
+                              {palletPackingResult
+                                ? 'จำนวนพาเลท (จัดรวม)'
+                                : 'จำนวนพาเลท'}
+                              <span className="block text-xs text-gray-500 font-normal mt-0.5">
+                                {palletPackingResult
+                                  ? 'หลายชนิดบนพาเลทเดียวกัน ตามน้ำหนัก/ปริมาตร'
+                                  : '(ค่าประมาณแยกตามชนิดสินค้า การจัดเรียงจริงอาจใช้น้อยกว่าถ้ารวมพาเลทได้)'}
+                              </span>
                             </div>
                             <div className="text-2xl font-bold text-gray-900">
-                              {capacitySummary.totalPallets}
+                              {palletPackingResult ? palletPackingResult.totalPallets : capacitySummary.totalPallets}
                               {capacitySummary.vehicleMaxPallets !== null && (
                                 <span className="text-lg font-normal text-gray-500">
                                   {' '}/ {capacitySummary.vehicleMaxPallets}
                                 </span>
                               )}
                             </div>
-                            {capacitySummary.vehicleMaxPallets !== null && (
-                              <div className="mt-2">
-                                <div className="w-full bg-gray-200 rounded-full h-2">
-                                  <div
-                                    className={`h-2 rounded-full ${capacitySummary.totalPallets > capacitySummary.vehicleMaxPallets
-                                        ? 'bg-red-500'
-                                        : capacitySummary.totalPallets > capacitySummary.vehicleMaxPallets * 0.9
-                                          ? 'bg-amber-500'
-                                          : 'bg-green-500'
-                                      }`}
-                                    style={{
-                                      width: `${Math.min(
-                                        100,
-                                        (capacitySummary.totalPallets / capacitySummary.vehicleMaxPallets) * 100
-                                      )}%`,
-                                    }}
-                                  />
+                            {capacitySummary.vehicleMaxPallets !== null && (() => {
+                              const displayPallets = palletPackingResult ? palletPackingResult.totalPallets : capacitySummary.totalPallets;
+                              const pct = (displayPallets / capacitySummary.vehicleMaxPallets) * 100;
+                              return (
+                                <div className="mt-2">
+                                  <div className="w-full bg-gray-200 rounded-full h-2">
+                                    <div
+                                      className={`h-2 rounded-full ${displayPallets > capacitySummary.vehicleMaxPallets
+                                          ? 'bg-red-500'
+                                          : displayPallets > capacitySummary.vehicleMaxPallets * 0.9
+                                            ? 'bg-amber-500'
+                                            : 'bg-green-500'
+                                        }`}
+                                      style={{
+                                        width: `${Math.min(100, pct)}%`,
+                                      }}
+                                    />
+                                  </div>
+                                  <div className="text-xs text-gray-500 mt-1">
+                                    {Math.round(pct)}% ของความจุ
+                                  </div>
                                 </div>
-                                <div className="text-xs text-gray-500 mt-1">
-                                  {Math.round(
-                                    (capacitySummary.totalPallets / capacitySummary.vehicleMaxPallets) * 100
-                                  )}
-                                  % ของความจุ
-                                </div>
-                              </div>
-                            )}
+                              );
+                            })()}
                           </div>
                           <div className="p-3 bg-gray-50 rounded-lg">
                             <div className="text-sm text-gray-600 mb-1">

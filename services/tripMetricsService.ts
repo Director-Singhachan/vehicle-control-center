@@ -42,6 +42,38 @@ export interface AggregatedMetricsResult {
   trips_with_metrics_count: number;
 }
 
+export interface SimilarTripSummary {
+  delivery_trip_id: string;
+  trip_number: string | null;
+  vehicle_id: string;
+  vehicle_plate: string | null;
+  planned_date: string | null;
+  actual_weight_kg: number | null;
+  actual_pallets_used: number | null;
+  space_utilization_percent: number | null;
+  had_packing_issues: boolean | null;
+  similarity_score: number | null;
+  main_categories: string[] | null;
+  store_ids: string[] | null;
+}
+
+export interface SimilarTripsQueryInput {
+  totalWeightKg: number;
+  totalVolumeLiter: number;
+  storeIds?: string[];
+  productIds?: string[];
+  limit?: number;
+}
+
+export interface PostTripAnalysisEntry {
+  id: string;
+  delivery_trip_id: string;
+  analysis_type: string;
+  ai_summary: string;
+  created_at: string;
+  created_by: string | null;
+}
+
 export const tripMetricsService = {
   /**
    * บันทึก metrics หลังจบทริป (อัปเดตคอลัมน์ใน delivery_trips)
@@ -179,6 +211,137 @@ export const tripMetricsService = {
       throw error;
     }
     return { id: data.id };
+  },
+
+  /**
+   * Helper: แปลงรายการ Similar Trips ให้เป็นข้อความสรุป (ใช้เป็น historical_context สำหรับ AI)
+   */
+  buildSimilarTripsContext: (similarTrips: SimilarTripSummary[]): string => {
+    if (!similarTrips || similarTrips.length === 0) {
+      return '';
+    }
+
+    const header = 'ทริปคล้ายกันจากประวัติ (สูงสุด 10 ทริป):';
+    const lines = similarTrips.slice(0, 10).map((t) => {
+      const tripLabel = t.trip_number || t.delivery_trip_id?.substring(0, 8) || 'ไม่ทราบรหัสทริป';
+      const vehicleLabel = t.vehicle_plate || 'ไม่ระบุรถ';
+      const weightLabel =
+        typeof t.actual_weight_kg === 'number'
+          ? `${t.actual_weight_kg.toFixed(0)} kg`
+          : 'ไม่ระบุน้ำหนัก';
+      const utilLabel =
+        typeof t.space_utilization_percent === 'number'
+          ? `${t.space_utilization_percent.toFixed(0)}%`
+          : 'ไม่ระบุโหลด';
+      const palletsLabel =
+        typeof t.actual_pallets_used === 'number'
+          ? `${t.actual_pallets_used} พาเลท`
+          : '-';
+      const issueLabel =
+        t.had_packing_issues === true
+          ? 'มีปัญหาจัดเรียง'
+          : 'ไม่มีปัญหาจัดเรียง';
+      const categories =
+        t.main_categories && t.main_categories.length > 0
+          ? t.main_categories.join(', ')
+          : '';
+
+      const parts: string[] = [
+        `ทริป ${tripLabel} – รถ ${vehicleLabel}`,
+        `น้ำหนัก ${weightLabel}`,
+        `โหลด ${utilLabel}`,
+        `พาเลทจริง ${palletsLabel}`,
+        issueLabel,
+      ];
+
+      if (categories) {
+        parts.push(`หมวดสินค้า: ${categories}`);
+      }
+
+      return '- ' + parts.join(' | ');
+    });
+
+    return [header, ...lines].join('\n');
+  },
+
+  /**
+   * บันทึกผลวิเคราะห์ทริป (Post-Trip Analysis) ลงตาราง trip_post_analysis
+   */
+  savePostTripAnalysis: async (params: {
+    delivery_trip_id: string;
+    analysis_type: string;
+    ai_summary: string;
+    created_by?: string;
+  }): Promise<void> => {
+    const { error } = await supabase.from('trip_post_analysis').insert({
+      delivery_trip_id: params.delivery_trip_id,
+      analysis_type: params.analysis_type,
+      ai_summary: params.ai_summary,
+      created_by: params.created_by ?? null,
+    });
+
+    if (error) {
+      console.error('[tripMetricsService] savePostTripAnalysis error:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * ดึงผลวิเคราะห์ทริปทั้งหมดสำหรับทริปหนึ่ง ๆ
+   */
+  getPostTripAnalysisForTrip: async (
+    tripId: string
+  ): Promise<PostTripAnalysisEntry[]> => {
+    const { data, error } = await supabase
+      .from('trip_post_analysis')
+      .select('id, delivery_trip_id, analysis_type, ai_summary, created_at, created_by')
+      .eq('delivery_trip_id', tripId)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('[tripMetricsService] getPostTripAnalysisForTrip error:', error);
+      throw error;
+    }
+
+    return (data || []) as PostTripAnalysisEntry[];
+  },
+
+  /**
+   * ดึง "ทริปที่คล้ายกัน" จาก DB ด้วยฟังก์ชัน get_similar_trips (SQL)
+   * ใช้สำหรับสร้าง historical_context ให้ AI วิเคราะห์เป็น insight
+   */
+  getSimilarTripsForLoad: async (
+    input: SimilarTripsQueryInput
+  ): Promise<SimilarTripSummary[]> => {
+    const payload: Record<string, unknown> = {
+      p_current_weight_kg: input.totalWeightKg,
+      p_current_volume_liter: input.totalVolumeLiter,
+      p_limit: input.limit ?? 10,
+    };
+
+    if (input.storeIds && input.storeIds.length > 0) {
+      payload.p_store_ids = input.storeIds;
+    }
+    if (input.productIds && input.productIds.length > 0) {
+      payload.p_product_ids = input.productIds;
+    }
+
+    const { data, error } = await supabase.rpc('get_similar_trips', payload);
+
+    if (error) {
+      if (error.code === '42883') {
+        // Function ยังไม่ถูกสร้าง (ยังไม่รัน migration) → ไม่ถือเป็น error ร้ายแรง
+        console.warn(
+          '[tripMetricsService] get_similar_trips RPC not found. Run migration: sql/20260228000007_create_similar_trips_function.sql'
+        );
+        return [];
+      }
+      console.error('[tripMetricsService] getSimilarTripsForLoad error:', error);
+      throw error;
+    }
+
+    const rows = (Array.isArray(data) ? data : []) as SimilarTripSummary[];
+    return rows;
   },
 
   /**

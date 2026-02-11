@@ -401,7 +401,7 @@ export function VehicleRecommendationPanel({
             </div>
           )}
 
-          {/* ผลจาก AI (reasoning + packing_tips) */}
+          {/* ผลจาก AI (reasoning + packing_tips) แสดงเป็น insight แยกจากคะแนน rule-based */}
           {aiResult && !aiResult.error && (aiResult.reasoning || aiResult.packing_tips) && (
             <div className="rounded-lg border border-blue-200 dark:border-blue-800/60 bg-blue-50/50 dark:bg-blue-950/20 p-3 space-y-2">
               {aiResult.reasoning && (
@@ -425,7 +425,7 @@ export function VehicleRecommendationPanel({
           {/* Disclaimer */}
           {!loading && displayRecs.length > 0 && (
             <p className="text-[10px] text-gray-400 dark:text-gray-500 text-center pt-1">
-              AI แนะนำจากข้อมูลความจุรถ ประวัติทริป และความพร้อมใช้งาน (Phase 1: Rule-Based)
+              การเลือกคันรถหลักมาจากคะแนน rule-based ด้านบน ส่วนข้อความจาก AI เป็น insight เสริมเพื่อช่วยตัดสินใจ
             </p>
           )}
         </div>

@@ -195,6 +195,22 @@ export const vehicleRecommendationService = {
       item_count?: number;
       items_summary?: string;
       planned_date?: string;
+      /** จำนวนพาเลทที่ระบบคำนวณ (จาก bin packing จัดรวมหลายชนิดได้) */
+      estimated_pallets?: number;
+      /** การจัดสรรพาเลทแต่ละใบ (จาก bin packing) — ส่งให้ AI แนะนำวิธีจัดเรียง/ซ้อนได้เฉพาะทาง */
+      pallet_allocation?: Array<{
+        pallet_index: number;
+        items: Array<{
+          product_id: string;
+          product_name?: string | null;
+          product_code?: string | null;
+          quantity: number;
+          weight_kg: number;
+          volume_liter: number;
+        }>;
+        total_weight_kg?: number;
+        total_volume_liter?: number;
+      }>;
     };
     vehicles: Array<{
       vehicle_id: string;
