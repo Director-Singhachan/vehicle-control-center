@@ -47,15 +47,18 @@ function ScoreBar({ value, max = 100 }: { value: number; max?: number }) {
   );
 }
 
+interface RecommendationCardProps {
+  rec: VehicleRecommendation;
+  isSelected: boolean;
+  onSelect: () => void;
+  key?: React.Key; // allow React key without type error
+}
+
 function RecommendationCard({
   rec,
   isSelected,
   onSelect,
-}: {
-  rec: VehicleRecommendation;
-  isSelected: boolean;
-  onSelect: () => void;
-}) {
+}: RecommendationCardProps) {
   const [expanded, setExpanded] = useState(false);
   const conf = CONFIDENCE_CONFIG[rec.confidence];
   const ConfIcon = conf.icon;
@@ -242,8 +245,16 @@ export function VehicleRecommendationPanel({
   return (
     <div className="border border-purple-200 dark:border-purple-800/60 rounded-lg bg-gradient-to-br from-purple-50/50 to-blue-50/30 dark:from-purple-950/20 dark:to-blue-950/10 overflow-hidden">
       {/* Panel Header */}
-      <button
+      <div
+        role="button"
+        tabIndex={0}
         onClick={() => setIsCollapsed(!isCollapsed)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            setIsCollapsed(!isCollapsed);
+          }
+        }}
         className="w-full flex items-center justify-between p-3 hover:bg-purple-100/30 dark:hover:bg-purple-900/20 transition-colors"
       >
         <div className="flex items-center gap-2">
@@ -283,7 +294,7 @@ export function VehicleRecommendationPanel({
             <ChevronUp className="w-4 h-4 text-gray-400" />
           )}
         </div>
-      </button>
+      </div>
 
       {/* Panel Body */}
       {!isCollapsed && (

@@ -15,10 +15,9 @@ export const ImageModal: React.FC<ImageModalProps> = ({
   alt,
   onClose,
 }) => {
-  if (!isOpen) return null;
-  const hasImage = Boolean(imageUrl && imageUrl.trim().length > 0);
-
   useEffect(() => {
+    if (!isOpen) return;
+
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         onClose();
@@ -26,7 +25,10 @@ export const ImageModal: React.FC<ImageModalProps> = ({
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [onClose]);
+  }, [isOpen, onClose]);
+
+  if (!isOpen) return null;
+  const hasImage = Boolean(imageUrl && imageUrl.trim().length > 0);
 
   return (
     <div
