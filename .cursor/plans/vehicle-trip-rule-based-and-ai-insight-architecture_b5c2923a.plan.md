@@ -17,6 +17,9 @@ todos:
   - id: phase4-post-trip-analytics
     content: ออกแบบและสร้าง Post-Trip Analyst (ตาราง trip_post_analysis, Edge Function, UI แสดงผล)
     status: completed
+  - id: todo-1770825379009-2vvly0l6d
+    content: ""
+    status: pending
 isProject: false
 ---
 
