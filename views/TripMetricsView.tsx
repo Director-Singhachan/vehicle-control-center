@@ -56,6 +56,7 @@ export const TripMetricsView: React.FC<TripMetricsViewProps> = ({
     stores_count: number;
     distance_km: number | null;
     duration_hours: number | null;
+    calculated_weight_kg: number;
   } | null>(null);
 
   useEffect(() => {
@@ -83,7 +84,12 @@ export const TripMetricsView: React.FC<TripMetricsViewProps> = ({
             actual_duration_hours: metrics.actual_duration_hours ?? undefined,
           });
         } else if (!cancelled) {
-          setForm(emptyForm);
+          // ยังไม่เคยบันทึก metrics → เติมน้ำหนักจากที่ระบบคำนวณไว้ให้อัตโนมัติ
+          const weightFromSystem = basic?.calculated_weight_kg;
+          setForm({
+            ...emptyForm,
+            actual_weight_kg: weightFromSystem && weightFromSystem > 0 ? weightFromSystem : undefined,
+          });
         }
       } catch (err) {
         if (!cancelled) {
@@ -209,7 +215,7 @@ export const TripMetricsView: React.FC<TripMetricsViewProps> = ({
                 <h4 className="text-sm font-semibold text-blue-900 dark:text-blue-100 mb-2">
                   สรุปข้อมูลทริป
                 </h4>
-                <div className="grid grid-cols-2 md:grid-cols-5 gap-3 text-sm">
+                <div className="grid grid-cols-2 md:grid-cols-6 gap-3 text-sm">
                   <div>
                     <span className="text-blue-700 dark:text-blue-300 font-medium">
                       {basicData.total_products_quantity.toLocaleString()}
@@ -227,6 +233,14 @@ export const TripMetricsView: React.FC<TripMetricsViewProps> = ({
                       {basicData.stores_count}
                     </span>
                     <div className="text-blue-600 dark:text-blue-400 text-xs">จำนวนร้าน</div>
+                  </div>
+                  <div>
+                    <span className="text-blue-700 dark:text-blue-300 font-medium">
+                      {basicData.calculated_weight_kg > 0
+                        ? `${basicData.calculated_weight_kg.toFixed(1)} กก.`
+                        : '-'}
+                    </span>
+                    <div className="text-blue-600 dark:text-blue-400 text-xs">น้ำหนัก (คำนวณจากระบบ)</div>
                   </div>
                   <div>
                     <span className="text-blue-700 dark:text-blue-300 font-medium">
@@ -282,20 +296,31 @@ export const TripMetricsView: React.FC<TripMetricsViewProps> = ({
             <div className="text-xs text-slate-500 dark:text-slate-400 -mt-2">
               ⚠️ สำคัญมาก - ข้อมูลนี้ไม่มีในระบบ
             </div>
-            <Input
-              label="น้ำหนักจริง (กก.)"
-              type="number"
-              min={0}
-              step={0.01}
-              value={form.actual_weight_kg ?? ''}
-              onChange={(e) =>
-                update(
-                  'actual_weight_kg',
-                  e.target.value === '' ? undefined : parseFloat(e.target.value)
-                )
-              }
-              placeholder="เช่น 850.5"
-            />
+            <div>
+              <Input
+                label="น้ำหนักจริง (กก.)"
+                type="number"
+                min={0}
+                step={0.01}
+                value={form.actual_weight_kg ?? ''}
+                onChange={(e) =>
+                  update(
+                    'actual_weight_kg',
+                    e.target.value === '' ? undefined : parseFloat(e.target.value)
+                  )
+                }
+                placeholder={
+                  basicData?.calculated_weight_kg
+                    ? `เช่น ${basicData.calculated_weight_kg.toFixed(1)} (จากระบบ)`
+                    : 'เช่น 850.5'
+                }
+              />
+              {basicData?.calculated_weight_kg != null && basicData.calculated_weight_kg > 0 && (
+                <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                  ค่าที่ระบบคำนวณจากสินค้าในทริป: {basicData.calculated_weight_kg.toFixed(1)} กก.
+                </div>
+              )}
+            </div>
             <Input
               label="% การใช้พื้นที่ (0–100)"
               type="number"

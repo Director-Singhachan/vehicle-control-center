@@ -191,6 +191,8 @@ export const tripMetricsService = {
     stores_count: number;
     distance_km: number | null;
     duration_hours: number | null;
+    /** น้ำหนักรวมที่คำนวณจาก (จำนวน × น้ำหนักต่อหน่วย) ของสินค้าในทริป */
+    calculated_weight_kg: number;
   }> => {
     // ดึงข้อมูลทริป
     const { data: trip, error: tripError } = await supabase
@@ -204,15 +206,35 @@ export const tripMetricsService = {
       throw tripError;
     }
 
-    // ดึงจำนวนสินค้าและร้าน
+    // ดึงจำนวนสินค้าและร้าน (รวม product_id สำหรับคำนวณน้ำหนัก)
     const { data: items, error: itemsError } = await supabase
       .from('delivery_trip_items')
-      .select('quantity, delivery_trip_store_id')
+      .select('quantity, delivery_trip_store_id, product_id')
       .eq('delivery_trip_id', tripId);
 
     if (itemsError) {
       console.error('[tripMetricsService] getTripBasicData items error:', itemsError);
       throw itemsError;
+    }
+
+    // คำนวณน้ำหนักรวมจากสินค้าในทริป (จำนวน × น้ำหนักต่อหน่วย)
+    let calculated_weight_kg = 0;
+    const productIds = [...new Set((items ?? []).map((i: { product_id?: string }) => i.product_id).filter(Boolean))];
+    if (productIds.length > 0) {
+      const { data: products, error: productsError } = await supabase
+        .from('products')
+        .select('id, weight_kg')
+        .in('id', productIds);
+      if (!productsError && products) {
+        const weightByProduct = new Map<string, number>();
+        products.forEach((p: { id: string; weight_kg?: number | null }) => {
+          weightByProduct.set(p.id, p.weight_kg ?? 0);
+        });
+        calculated_weight_kg = (items ?? []).reduce((sum, item: { product_id?: string; quantity?: number }) => {
+          const w = weightByProduct.get(item.product_id || '') ?? 0;
+          return sum + (Number(item.quantity || 0) * w);
+        }, 0);
+      }
     }
 
     // ดึงจำนวนร้าน
@@ -263,6 +285,7 @@ export const tripMetricsService = {
       stores_count,
       distance_km,
       duration_hours,
+      calculated_weight_kg,
     };
   },
 
