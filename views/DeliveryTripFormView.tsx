@@ -1995,7 +1995,7 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
                     </div>
                     <div className="p-3 bg-slate-50 dark:bg-slate-800 rounded-lg">
                       <div className="text-sm text-slate-600 dark:text-slate-400 mb-1">
-                        ความสูงรวม
+                        ความสูงกองสูงสุด
                       </div>
                       <div className="text-2xl font-bold text-slate-900 dark:text-slate-100">
                         {capacitySummary?.totalHeightCm?.toFixed(1) || '0.0'} ซม.

@@ -1407,29 +1407,60 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
                       <div className="text-center py-4 text-gray-500">
                         กำลังคำนวณ...
                       </div>
-                    ) : capacitySummary ? (
+                    ) : capacitySummary ? (() => {
+                      // ใช้จำนวนพาเลทเดียวกับที่แสดง (bin packing) ในการให้ error/warning
+                      const displayPallets = palletPackingResult
+                        ? palletPackingResult.totalPallets
+                        : capacitySummary.totalPallets;
+
+                      const nonPalletErrors = capacitySummary.errors.filter(
+                        (msg) => !msg.startsWith('จำนวนพาเลท')
+                      );
+                      const nonPalletWarnings = capacitySummary.warnings.filter(
+                        (msg) => !msg.startsWith('จำนวนพาเลท')
+                      );
+
+                      const palletErrors: string[] = [];
+                      const palletWarnings: string[] = [];
+
+                      if (capacitySummary.vehicleMaxPallets !== null) {
+                        if (displayPallets > capacitySummary.vehicleMaxPallets) {
+                          palletErrors.push(
+                            `จำนวนพาเลทเกินความจุ: ${displayPallets} พาเลท (สูงสุด ${capacitySummary.vehicleMaxPallets} พาเลท)`
+                          );
+                        } else if (displayPallets > capacitySummary.vehicleMaxPallets * 0.9) {
+                          palletWarnings.push(
+                            `จำนวนพาเลทใกล้เต็มความจุ: ${displayPallets}/${capacitySummary.vehicleMaxPallets} พาเลท (${Math.round((displayPallets / capacitySummary.vehicleMaxPallets) * 100)}%)`
+                          );
+                        }
+                      }
+
+                      const errorsToShow = [...nonPalletErrors, ...palletErrors];
+                      const warningsToShow = [...nonPalletWarnings, ...palletWarnings];
+
+                      return (
                       <div className="space-y-3">
-                        {capacitySummary.errors.length > 0 && (
+                        {errorsToShow.length > 0 && (
                           <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
                             <div className="flex items-center gap-2 text-red-800 mb-2">
                               <AlertCircle size={16} />
                               <span className="font-medium">ข้อผิดพลาด:</span>
                             </div>
                             <ul className="list-disc list-inside text-sm text-red-700 space-y-1">
-                              {capacitySummary.errors.map((error, idx) => (
+                              {errorsToShow.map((error, idx) => (
                                 <li key={idx}>{error}</li>
                               ))}
                             </ul>
                           </div>
                         )}
-                        {capacitySummary.warnings.length > 0 && (
+                        {warningsToShow.length > 0 && (
                           <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
                             <div className="flex items-center gap-2 text-amber-800 mb-2">
                               <AlertCircle size={16} />
                               <span className="font-medium">คำเตือน:</span>
                             </div>
                             <ul className="list-disc list-inside text-sm text-amber-700 space-y-1">
-                              {capacitySummary.warnings.map((warning, idx) => (
+                              {warningsToShow.map((warning, idx) => (
                                 <li key={idx}>{warning}</li>
                               ))}
                             </ul>
@@ -1448,7 +1479,7 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
                               </span>
                             </div>
                             <div className="text-2xl font-bold text-gray-900">
-                              {palletPackingResult ? palletPackingResult.totalPallets : capacitySummary.totalPallets}
+                              {displayPallets}
                               {capacitySummary.vehicleMaxPallets !== null && (
                                 <span className="text-lg font-normal text-gray-500">
                                   {' '}/ {capacitySummary.vehicleMaxPallets}
@@ -1456,7 +1487,6 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
                               )}
                             </div>
                             {capacitySummary.vehicleMaxPallets !== null && (() => {
-                              const displayPallets = palletPackingResult ? palletPackingResult.totalPallets : capacitySummary.totalPallets;
                               const pct = (displayPallets / capacitySummary.vehicleMaxPallets) * 100;
                               return (
                                 <div className="mt-2">
@@ -1522,7 +1552,8 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
                           {/* ตัดการแสดงความสูงรวมออกจากหน้านี้ตามคำขอ (ยังคำนวณภายในแต่ไม่แสดง) */}
                         </div>
                       </div>
-                    ) : (
+                      );
+                    })() : (
                       <div className="text-sm text-gray-500">
                         กำลังคำนวณความจุ...
                       </div>

@@ -59,6 +59,76 @@ interface AIResponse {
   error?: string;
 }
 
+/** ดึง JSON string จากข้อความที่ AI ตอบกลับ (รองรับกรณีมีโค้ดบล็อก/คำอธิบายพ่วงมา) */
+function extractJsonBlock(text: string): string | null {
+  if (!text) return null;
+
+  // ตัด code fence ``` / ```json ออกถ้ามี
+  let cleaned = text.trim();
+  cleaned = cleaned.replace(/^```(?:json)?\s*/i, '');
+  cleaned = cleaned.replace(/```$/i, '').trim();
+
+  // หา block {...} ที่ใหญ่ที่สุดจากข้อความที่เหลือ
+  const firstBrace = cleaned.indexOf('{');
+  const lastBrace = cleaned.lastIndexOf('}');
+  if (firstBrace === -1 || lastBrace === -1 || lastBrace <= firstBrace) {
+    return null;
+  }
+  return cleaned.slice(firstBrace, lastBrace + 1);
+}
+
+/** พยายาม parse JSON แบบผ่อนปรนเล็กน้อย (ลบ trailing comma ฯลฯ) */
+function tryParseJsonLoose(input: string): any | null {
+  try {
+    return JSON.parse(input);
+  } catch {
+    /* ignore and try to repair */
+  }
+
+  // ลบ trailing comma ก่อนปิด object / array
+  const withoutTrailingCommas = input.replace(/,\s*([}\]])/g, '$1');
+  try {
+    return JSON.parse(withoutTrailingCommas);
+  } catch {
+    return null;
+  }
+}
+
+/** fallback ดึง field หลัก ๆ จาก raw text เมื่อ JSON พัง/ขาดตอน */
+function extractFieldsFromRawText(text: string): AIResponse | null {
+  if (!text) return null;
+
+  // suggested_vehicle_id (uuid)
+  const idMatch = text.match(/"suggested_vehicle_id"\s*:\s*"([\w-]+)"/);
+  const suggested_vehicle_id = idMatch?.[1] ?? null;
+
+  // reasoning: จับระหว่าง key reasoning ถึง key packing_tips
+  let reasoning: string | null = null;
+  const reasoningMatch = text.match(
+    /"reasoning"\s*:\s*"([\s\S]*?)",\s*\n\s*"packing_tips"/
+  );
+  if (reasoningMatch?.[1]) {
+    reasoning = reasoningMatch[1];
+  }
+
+  // packing_tips: จับจาก key จนจบข้อความ (อาจไม่ปิด quote/brace)
+  let packing_tips: string | null = null;
+  const tipsMatch = text.match(/"packing_tips"\s*:\s*"([\s\S]*)$/);
+  if (tipsMatch?.[1]) {
+    packing_tips = tipsMatch[1];
+  }
+
+  if (!suggested_vehicle_id && !reasoning && !packing_tips) {
+    return null;
+  }
+
+  return {
+    suggested_vehicle_id,
+    reasoning,
+    packing_tips,
+  };
+}
+
 function buildPrompt(body: RequestBody): string {
   const { trip, vehicles, historical_context } = body;
   const vehicleList = vehicles
@@ -200,20 +270,27 @@ async function callGemini(apiKey: string, prompt: string): Promise<AIResponse> {
     return { error: 'AI did not return text' };
   }
 
-  // Parse JSON from response (อาจมี markdown code block)
-  let jsonStr = text;
-  const match = text.match(/\{[\s\S]*\}/);
-  if (match) jsonStr = match[0];
-  try {
-    const parsed = JSON.parse(jsonStr) as AIResponse;
+  // Parse JSON from response (อาจมี markdown code block หรือข้อความพ่วง)
+  const jsonStr = extractJsonBlock(text) ?? text;
+  const parsed = tryParseJsonLoose(jsonStr) as AIResponse | null;
+
+  if (parsed && typeof parsed === 'object') {
     return {
       suggested_vehicle_id: parsed.suggested_vehicle_id ?? null,
       reasoning: parsed.reasoning ?? null,
       packing_tips: parsed.packing_tips ?? null,
     };
-  } catch {
-    return { reasoning: text, error: 'Could not parse AI response as JSON' };
   }
+
+  // Fallback: พยายามดึง field หลักจาก raw text (เช่น กรณี JSON ถูกตัดตอน)
+  const fallback = extractFieldsFromRawText(text);
+  if (fallback) {
+    console.warn('[ai-trip-recommendation] JSON parse failed, using regex fallback');
+    return fallback;
+  }
+
+  console.error('[ai-trip-recommendation] Could not parse AI JSON. Raw text:', text);
+  return { reasoning: text, error: 'Could not parse AI response as JSON' };
 }
 
 Deno.serve(async (req) => {

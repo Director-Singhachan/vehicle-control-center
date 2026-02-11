@@ -222,6 +222,8 @@ export async function calculateTripCapacity(
   // Calculate totals
   let totalPallets = 0;
   let totalWeightKg = 0;
+  // ความสูงที่ใช้จริง = "ความสูงกองสูงสุด" ไม่ใช่เอาทุกกองมาต่อเป็นตึก
+  // ใช้ค่านี้ไปเทียบกับความสูงสูงสุดของรถ (ต่อกอง/ต่อพาเลท)
   let totalHeightCm = 0;
   const missingConfigProducts: string[] = [];
 
@@ -282,12 +284,17 @@ export async function calculateTripCapacity(
       const palletWeightEstimate = 25 * palletsNeeded; // กก. ต่อพาเลทประมาณ
       totalWeightKg += productWeight + palletWeightEstimate;
 
-      // ความสูงรวม = ยึดหลักความสูงมาตรฐานการจัดเรียงที่กำหนด (config) เท่านั้น
+      // ความสูงกองหนึ่ง (ไม่คูณจำนวนพาเลท) ใช้เทียบกับ max height ของรถ
+      let stackHeight = 0;
       if (configToUse.total_height_cm != null && configToUse.total_height_cm > 0) {
-        totalHeightCm += configToUse.total_height_cm * palletsNeeded;
+        stackHeight = configToUse.total_height_cm;
       } else if (configToUse.layers != null && configToUse.layers > 0 && product.height_cm != null) {
         // Fallback: ความสูงมาตรฐาน = จำนวนชั้น × ความสูงต่อหน่วย ต่อพาเลท
-        totalHeightCm += configToUse.layers * product.height_cm * palletsNeeded;
+        stackHeight = configToUse.layers * product.height_cm;
+      }
+      if (stackHeight > 0) {
+        // ใช้ค่าที่ "สูงสุด" ของทุกกองเป็นตัวแทนในการเช็กกับรถ
+        totalHeightCm = Math.max(totalHeightCm, stackHeight);
       }
 
       // Already warned about config selection issues above if needed
@@ -314,12 +321,14 @@ export async function calculateTripCapacity(
       continue;
     }
 
-    // Case 3: Product doesn't use pallet - only calculate weight and height
+    // Case 3: Product doesn't use pallet - only calculate weight
     if (product.weight_kg) {
       totalWeightKg += product.weight_kg * item.quantity;
     }
+    // สำหรับสินค้าที่ไม่ขึ้นพาเลท ยังไม่มี model ที่ดีในการคิดความสูงรวมของทั้งโหลด
+    // เบื้องต้นถือว่าใช้ "ความสูงต่อหน่วย" เป็น candidate หนึ่งของกอง แล้วหา max รวมกับกองอื่น ๆ
     if (product.height_cm) {
-      totalHeightCm += product.height_cm * item.quantity;
+      totalHeightCm = Math.max(totalHeightCm, product.height_cm);
     }
   }
 
@@ -352,14 +361,14 @@ export async function calculateTripCapacity(
     );
   }
 
-  // หมายเหตุ: ความสูงรวมจะไม่ block การสร้างทริปแล้ว (ให้เป็นแค่คำเตือน)
+  // หมายเหตุ: ความสูงจะไม่ block การสร้างทริปแล้ว (ให้เป็นแค่คำเตือน)
   if (maxHeightCm !== null && totalHeightCm > maxHeightCm) {
     warnings.push(
-      `ความสูงรวมเกินความจุ: ${totalHeightCm.toFixed(1)} ซม. (สูงสุด ${maxHeightCm} ซม.)`
+      `ความสูงกองสูงสุดเกินความจุ: ${totalHeightCm.toFixed(1)} ซม. (สูงสุด ${maxHeightCm} ซม.)`
     );
   } else if (maxHeightCm !== null && totalHeightCm > maxHeightCm * 0.9) {
     warnings.push(
-      `ความสูงรวมใกล้เต็มความจุ: ${totalHeightCm.toFixed(1)}/${maxHeightCm} ซม. (${Math.round((totalHeightCm / maxHeightCm) * 100)}%)`
+      `ความสูงกองสูงสุดใกล้เต็มความจุ: ${totalHeightCm.toFixed(1)}/${maxHeightCm} ซม. (${Math.round((totalHeightCm / maxHeightCm) * 100)}%)`
     );
   }
 
