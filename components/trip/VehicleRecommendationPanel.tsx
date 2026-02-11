@@ -1,7 +1,14 @@
 // AI Vehicle Recommendation Panel - Shows top-ranked vehicle suggestions
 import React, { useState, useMemo } from 'react';
-import { Sparkles, ChevronDown, ChevronUp, Truck, TrendingUp, Weight, Box, Shield, MapPin, CheckCircle, AlertTriangle, Info, RefreshCw } from 'lucide-react';
+import { Sparkles, ChevronDown, ChevronUp, Truck, TrendingUp, Weight, Box, Shield, MapPin, CheckCircle, AlertTriangle, Info, RefreshCw, Bot, Package } from 'lucide-react';
 import type { VehicleRecommendation } from '../../services/vehicleRecommendationService';
+
+export interface AIRecommendationResult {
+  suggested_vehicle_id: string | null;
+  reasoning: string | null;
+  packing_tips: string | null;
+  error?: string;
+}
 
 interface VehicleRecommendationPanelProps {
   recommendations: VehicleRecommendation[];
@@ -11,6 +18,12 @@ interface VehicleRecommendationPanelProps {
   onSelectVehicle: (vehicleId: string) => void;
   selectedVehicleId?: string;
   onRefresh?: () => void;
+  /** ใช้ AI (Edge Function) แนะนำรถ + คำแนะนำการจัดเรียง */
+  onRequestAI?: () => void;
+  aiLoading?: boolean;
+  aiResult?: AIRecommendationResult | null;
+  /** วินาทีที่เหลือก่อนกดใช้ AI ได้อีก (ลดการเกินโควต้า) */
+  aiCooldownRemaining?: number;
 }
 
 const CONFIDENCE_CONFIG = {
@@ -233,6 +246,10 @@ export function VehicleRecommendationPanel({
   onSelectVehicle,
   selectedVehicleId,
   onRefresh,
+  onRequestAI,
+  aiLoading = false,
+  aiResult = null,
+  aiCooldownRemaining = 0,
 }: VehicleRecommendationPanelProps) {
   const [isCollapsed, setIsCollapsed] = useState(false);
 
@@ -342,6 +359,68 @@ export function VehicleRecommendationPanel({
               onSelect={() => onSelectVehicle(rec.vehicle_id)}
             />
           ))}
+
+          {/* ปุ่มใช้ AI แนะนำ (เรียก Edge Function) + cooldown เพื่อไม่เกินโควต้า */}
+          {onRequestAI && !loading && displayRecs.length > 0 && (
+            <div className="pt-2 border-t border-purple-200/60 dark:border-purple-700/40">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (aiCooldownRemaining > 0) return;
+                  onRequestAI();
+                }}
+                disabled={aiLoading || aiCooldownRemaining > 0}
+                className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-lg bg-purple-100 hover:bg-purple-200 dark:bg-purple-900/40 dark:hover:bg-purple-800/50 text-purple-800 dark:text-purple-200 text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {aiLoading ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    กำลังถาม AI...
+                  </>
+                ) : aiCooldownRemaining > 0 ? (
+                  <>
+                    <Bot className="w-4 h-4" />
+                    ลองใหม่ใน {aiCooldownRemaining} วินาที
+                  </>
+                ) : (
+                  <>
+                    <Bot className="w-4 h-4" />
+                    ใช้ AI แนะนำ
+                  </>
+                )}
+              </button>
+            </div>
+          )}
+
+          {/* ข้อความ error จาก AI (เมื่อ Edge Function คืน 200 แต่มี error ใน body) */}
+          {aiResult?.error && (
+            <div className="rounded-lg border border-amber-200 dark:border-amber-800/60 bg-amber-50/50 dark:bg-amber-950/20 p-3 text-xs text-amber-800 dark:text-amber-200">
+              <AlertTriangle className="w-3.5 h-3.5 inline mr-1" />
+              {aiResult.error}
+            </div>
+          )}
+
+          {/* ผลจาก AI (reasoning + packing_tips) */}
+          {aiResult && !aiResult.error && (aiResult.reasoning || aiResult.packing_tips) && (
+            <div className="rounded-lg border border-blue-200 dark:border-blue-800/60 bg-blue-50/50 dark:bg-blue-950/20 p-3 space-y-2">
+              {aiResult.reasoning && (
+                <p className="text-xs text-blue-900 dark:text-blue-100">
+                  <Sparkles className="w-3.5 h-3.5 inline mr-1 text-blue-500" />
+                  {aiResult.reasoning}
+                </p>
+              )}
+              {aiResult.packing_tips && (
+                <div className="text-xs">
+                  <div className="flex items-center gap-1 text-blue-700 dark:text-blue-300 font-medium mb-1">
+                    <Package className="w-3.5 h-3.5" />
+                    คำแนะนำการจัดเรียง
+                  </div>
+                  <p className="text-blue-800 dark:text-blue-200 whitespace-pre-wrap">{aiResult.packing_tips}</p>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Disclaimer */}
           {!loading && displayRecs.length > 0 && (

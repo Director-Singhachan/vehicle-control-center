@@ -187,7 +187,7 @@ export const deliveryTripService = {
       let query = supabase
         .from('delivery_trips')
         .select(lite
-          ? 'id, trip_number, status, planned_date, vehicle_id, driver_id, has_item_changes, odometer_start, notes, sequence_order, created_at'
+          ? 'id, trip_number, status, planned_date, vehicle_id, driver_id, has_item_changes, odometer_start, notes, sequence_order, created_at, actual_pallets_used'
           : '*',
           { count: 'exact' }
         )
