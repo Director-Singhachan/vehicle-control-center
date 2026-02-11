@@ -65,12 +65,13 @@ export const usePendingTickets = () => {
   };
 
   useEffect(() => {
-    fetchPendingCount();
-
-    // Refresh every 30 seconds
+    // เลื่อนการโหลดครั้งแรกเล็กน้อย เพื่อไม่ให้แข่งกับ auth (ลดหน่วงหน้าแรก)
+    const t = setTimeout(() => fetchPendingCount(), 800);
     const interval = setInterval(() => fetchPendingCount(false), 30000);
-
-    return () => clearInterval(interval);
+    return () => {
+      clearTimeout(t);
+      clearInterval(interval);
+    };
   }, [profile?.role, isInspector, isManager, isExecutive]);
 
   return {
