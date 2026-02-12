@@ -443,7 +443,7 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
           productIds,
           limit: 8,
         });
-        const ctx = tripMetricsService.buildSimilarTripsContext(similarTrips);
+        const ctx = await tripMetricsService.buildSimilarTripsContext(similarTrips);
         if (ctx.trim().length > 0) {
           historical_context = ctx;
         }

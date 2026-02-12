@@ -41,6 +41,11 @@ interface ItemData {
   weight_kg: number | null;
 }
 
+interface LayoutData {
+  has_layout: boolean;
+  layout_summary: string | null;
+}
+
 interface AIAnalysisResponse {
   utilization_analysis: string;
   packing_analysis: string;
@@ -48,7 +53,7 @@ interface AIAnalysisResponse {
   recommendations: string;
 }
 
-function buildPrompt(trip: TripData, vehicle: VehicleData, items: ItemData[]): string {
+function buildPrompt(trip: TripData, vehicle: VehicleData, items: ItemData[], layout: LayoutData): string {
   const itemsSummary = items
     .map((item) => {
       const name = item.product_name || item.product_code || 'ไม่ระบุ';
@@ -63,10 +68,10 @@ function buildPrompt(trip: TripData, vehicle: VehicleData, items: ItemData[]): s
     trip.space_utilization_percent == null
       ? 'ไม่ระบุ'
       : trip.space_utilization_percent < 60
-      ? `${trip.space_utilization_percent.toFixed(0)}% (ต่ำ)`
-      : trip.space_utilization_percent > 90
-      ? `${trip.space_utilization_percent.toFixed(0)}% (สูงมาก)`
-      : `${trip.space_utilization_percent.toFixed(0)}% (ปกติ)`;
+        ? `${trip.space_utilization_percent.toFixed(0)}% (ต่ำ)`
+        : trip.space_utilization_percent > 90
+          ? `${trip.space_utilization_percent.toFixed(0)}% (สูงมาก)`
+          : `${trip.space_utilization_percent.toFixed(0)}% (ปกติ)`;
 
   return `คุณเป็นผู้เชี่ยวชาญวิเคราะห์การส่งสินค้า วิเคราะห์ทริปที่เพิ่งเสร็จสิ้นนี้:
 
@@ -82,6 +87,16 @@ function buildPrompt(trip: TripData, vehicle: VehicleData, items: ItemData[]): s
 
 รายการสินค้า (${items.length} รายการ):
 ${itemsSummary || '- ไม่มีข้อมูลสินค้า'}
+
+${layout.has_layout && layout.layout_summary ? `
+📦 ข้อมูลการจัดเรียงจริง (Layout Recording):
+${layout.layout_summary}
+
+⚠️ กรุณาวิเคราะห์ข้อมูลการจัดเรียงจริงด้านบนอย่างละเอียด โดยเฉพาะ:
+- น้ำหนักแต่ละพาเลทสมดุลหรือไม่
+- ของหนักอยู่ชั้นล่าง ของเบาอยู่ชั้นบน ถูกต้องหรือไม่
+- มีพาเลทไหนที่หนักเกินไปหรือเบาเกินไป
+` : '(ไม่มีข้อมูลการจัดเรียงจริง)'}
 
 โปรดวิเคราะห์:
 1. Utilization Analysis: ทำไม space utilization เป็น ${trip.space_utilization_percent?.toFixed(0) ?? 'N/A'}%? สูง/ต่ำกว่าปกติหรือไม่? มีปัญหาหรือข้อดีอะไร?
@@ -317,6 +332,52 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Fetch packing layout data if available
+    let layout: LayoutData = { has_layout: false, layout_summary: null };
+    try {
+      // Check if trip has packing layout
+      const { data: layoutData, error: layoutError } = await supabase
+        .from('trip_packing_layout')
+        .select('id')
+        .eq('delivery_trip_id', body.delivery_trip_id)
+        .limit(1);
+
+      console.log('[post-trip-analysis] Layout check:', {
+        tripId: body.delivery_trip_id,
+        layoutRecords: layoutData?.length ?? 0,
+        layoutError: layoutError?.message ?? null
+      });
+
+      if (!layoutError && layoutData && layoutData.length > 0) {
+        // Trip has layout, fetch detailed summary using RPC function
+        const { data: layoutSummary, error: rpcError } = await supabase.rpc('get_trip_packing_layout_summary', {
+          p_trip_id: body.delivery_trip_id
+        });
+
+        console.log('[post-trip-analysis] RPC result:', {
+          hasData: !!layoutSummary,
+          summaryLength: layoutSummary ? String(layoutSummary).length : 0,
+          summaryPreview: layoutSummary ? String(layoutSummary).substring(0, 200) : null,
+          rpcError: rpcError?.message ?? null
+        });
+
+        if (layoutSummary) {
+          layout = {
+            has_layout: true,
+            layout_summary: layoutSummary as string
+          };
+        }
+      }
+    } catch (err) {
+      console.warn('[post-trip-analysis] Layout fetch error:', err);
+      // Continue without layout data
+    }
+
+    console.log('[post-trip-analysis] Final layout state:', {
+      has_layout: layout.has_layout,
+      summary_length: layout.layout_summary?.length ?? 0
+    });
+
     // Check for Gemini API key
     const apiKey = Deno.env.get('GEMINI_API_KEY');
     if (!apiKey) {
@@ -330,7 +391,8 @@ Deno.serve(async (req) => {
     }
 
     // Build prompt and call Gemini
-    const prompt = buildPrompt(trip as TripData, vehicle as VehicleData, items);
+    const prompt = buildPrompt(trip as TripData, vehicle as VehicleData, items, layout);
+    console.log('[post-trip-analysis] Prompt length:', prompt.length, 'Layout in prompt:', prompt.includes('Layout Recording'));
     const result = await callGemini(apiKey, prompt);
 
     if ('error' in result) {
@@ -365,9 +427,15 @@ ${result.recommendations}
 
     if (insertError) {
       console.error('[post-trip-analysis] Insert error:', insertError);
+      // Still return the analysis even if save failed
       return new Response(
-        JSON.stringify({ error: 'Failed to save analysis', details: insertError.message }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({
+          success: true,
+          analysis: result,
+          summary: aiSummary,
+          warning: 'Analysis completed but could not save to database: ' + insertError.message,
+        }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 

@@ -53,6 +53,7 @@ export interface SimilarTripSummary {
   space_utilization_percent: number | null;
   had_packing_issues: boolean | null;
   similarity_score: number | null;
+  layout_similarity_score: number | null; // New field for layout pattern similarity
   main_categories: string[] | null;
   store_ids: string[] | null;
 }
@@ -263,14 +264,21 @@ export const tripMetricsService = {
 
   /**
    * Helper: แปลงรายการ Similar Trips ให้เป็นข้อความสรุป (ใช้เป็น historical_context สำหรับ AI)
+   * รวมข้อมูลการจัดเรียงจริงจาก layout ที่บันทึกไว้ (ถ้ามี)
    */
-  buildSimilarTripsContext: (similarTrips: SimilarTripSummary[]): string => {
+  buildSimilarTripsContext: async (similarTrips: SimilarTripSummary[]): Promise<string> => {
     if (!similarTrips || similarTrips.length === 0) {
       return '';
     }
 
     const header = 'ทริปคล้ายกันจากประวัติ (สูงสุด 10 ทริป):';
-    const lines = similarTrips.slice(0, 10).map((t) => {
+    const lines: string[] = [header];
+
+    // ดึง layout summary สำหรับทริปที่มีการบันทึก layout
+    const tripIds = similarTrips.map(t => t.delivery_trip_id);
+    const tripsWithLayout = await tripMetricsService.getTripsWithPackingLayout(tripIds);
+
+    for (const t of similarTrips.slice(0, 10)) {
       const tripLabel = t.trip_number || t.delivery_trip_id?.substring(0, 8) || 'ไม่ทราบรหัสทริป';
       const vehicleLabel = t.vehicle_plate || 'ไม่ระบุรถ';
       const weightLabel =
@@ -293,6 +301,10 @@ export const tripMetricsService = {
         t.main_categories && t.main_categories.length > 0
           ? t.main_categories.join(', ')
           : '';
+      const layoutScoreLabel =
+        typeof t.layout_similarity_score === 'number' && t.layout_similarity_score > 0
+          ? ` (ความคล้ายการจัดเรียง ${(t.layout_similarity_score * 100).toFixed(0)}%)`
+          : '';
 
       const parts: string[] = [
         `ทริป ${tripLabel} – รถ ${vehicleLabel}`,
@@ -306,10 +318,21 @@ export const tripMetricsService = {
         parts.push(`หมวดสินค้า: ${categories}`);
       }
 
-      return '- ' + parts.join(' | ');
-    });
+      lines.push('- ' + parts.join(' | ') + layoutScoreLabel);
 
-    return [header, ...lines].join('\n');
+      // เพิ่มข้อมูลการจัดเรียงจริง ถ้ามี
+      if (tripsWithLayout.has(t.delivery_trip_id)) {
+        const layoutSummary = await tripMetricsService.getTripPackingLayoutSummary(t.delivery_trip_id);
+        if (layoutSummary) {
+          lines.push(`  📦 การจัดเรียงจริง:`);
+          for (const layoutLine of layoutSummary.split('\n')) {
+            lines.push(`    ${layoutLine}`);
+          }
+        }
+      }
+    }
+
+    return lines.join('\n');
   },
 
   /**
