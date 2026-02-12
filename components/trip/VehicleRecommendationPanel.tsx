@@ -10,6 +10,24 @@ export interface AIRecommendationResult {
   error?: string;
 }
 
+/** ปรับข้อความจาก AI ให้เหมาะกับการแสดงผล (ตัด markdown พื้นฐาน/ลบตัวอักษรพิเศษที่เกินจำเป็น) */
+function formatAiText(raw: string | null | undefined): string {
+  if (!raw) return '';
+
+  let text = raw;
+
+  // แปลง literal "\n" ให้เป็นขึ้นบรรทัดจริง (เผื่อบางครั้ง AI ส่งมาแบบ escape ซ้ำ)
+  text = text.replace(/\\n/g, '\n');
+
+  // ลบเครื่องหมายตัวหนาแบบ markdown **ข้อความ**
+  text = text.replace(/\*\*(.+?)\*\*/g, '$1');
+
+  // ลบ ** ที่หลงเหลือ (กันกรณีจับไม่ครบ)
+  text = text.replace(/\*\*/g, '');
+
+  return text.trim();
+}
+
 interface VehicleRecommendationPanelProps {
   recommendations: VehicleRecommendation[];
   loading: boolean;
@@ -401,13 +419,13 @@ export function VehicleRecommendationPanel({
             </div>
           )}
 
-          {/* ผลจาก AI (reasoning + packing_tips) */}
+          {/* ผลจาก AI (reasoning + packing_tips) แสดงเป็น insight แยกจากคะแนน rule-based */}
           {aiResult && !aiResult.error && (aiResult.reasoning || aiResult.packing_tips) && (
             <div className="rounded-lg border border-blue-200 dark:border-blue-800/60 bg-blue-50/50 dark:bg-blue-950/20 p-3 space-y-2">
               {aiResult.reasoning && (
                 <p className="text-xs text-blue-900 dark:text-blue-100">
                   <Sparkles className="w-3.5 h-3.5 inline mr-1 text-blue-500" />
-                  {aiResult.reasoning}
+                  {formatAiText(aiResult.reasoning)}
                 </p>
               )}
               {aiResult.packing_tips && (
@@ -416,7 +434,9 @@ export function VehicleRecommendationPanel({
                     <Package className="w-3.5 h-3.5" />
                     คำแนะนำการจัดเรียง
                   </div>
-                  <p className="text-blue-800 dark:text-blue-200 whitespace-pre-wrap">{aiResult.packing_tips}</p>
+                  <p className="text-blue-800 dark:text-blue-200 whitespace-pre-wrap">
+                    {formatAiText(aiResult.packing_tips)}
+                  </p>
                 </div>
               )}
             </div>
@@ -425,7 +445,7 @@ export function VehicleRecommendationPanel({
           {/* Disclaimer */}
           {!loading && displayRecs.length > 0 && (
             <p className="text-[10px] text-gray-400 dark:text-gray-500 text-center pt-1">
-              AI แนะนำจากข้อมูลความจุรถ ประวัติทริป และความพร้อมใช้งาน (Phase 1: Rule-Based)
+              การเลือกคันรถหลักมาจากคะแนน rule-based ด้านบน ส่วนข้อความจาก AI เป็น insight เสริมเพื่อช่วยตัดสินใจ
             </p>
           )}
         </div>
