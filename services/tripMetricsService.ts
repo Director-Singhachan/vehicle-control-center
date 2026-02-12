@@ -79,12 +79,13 @@ export interface PostTripAnalysisEntry {
 export interface PackingLayoutItemInput {
   delivery_trip_item_id: string;
   quantity: number;
+  layer_index?: number | null; // null = โหมดง่าย, 0+ = โหมดละเอียด (0=ชั้นล่างสุด)
 }
 
 export interface PackingLayoutPosition {
   position_type: 'pallet' | 'floor';
   position_index: number;
-  layer_index?: number;
+  total_layers: number; // จำนวนชั้นที่ซ้อนกัน
   notes?: string;
   items: PackingLayoutItemInput[];
 }
@@ -97,7 +98,7 @@ export interface PackingLayoutResultItem {
   id: string;
   delivery_trip_item_id: string;
   quantity: number;
-  sequence_in_layer: number | null;
+  layer_index: number | null; // null = โหมดง่าย, 0+ = โหมดละเอียด
   product_id: string;
   product_code: string;
   product_name: string;
@@ -110,7 +111,7 @@ export interface PackingLayoutResultPosition {
   id: string;
   position_type: 'pallet' | 'floor';
   position_index: number;
-  layer_index: number;
+  total_layers: number;
   notes: string | null;
   items: PackingLayoutResultItem[];
 }
@@ -965,6 +966,7 @@ export const tripMetricsService = {
 
   /**
    * บันทึก layout การจัดเรียงสินค้าของทริป (ลบ layout เดิมแล้ว insert ใหม่ทั้งหมด)
+   * 1 position = 1 พาเลท/พื้น + total_layers + สินค้า
    * พร้อมอัปเดต actual_pallets_used ใน delivery_trips
    */
   saveTripPackingLayout: async (
@@ -983,7 +985,6 @@ export const tripMetricsService = {
     }
 
     if (!payload.positions || payload.positions.length === 0) {
-      // ถ้าไม่มี positions ให้ set actual_pallets_used = 0
       await supabase
         .from('delivery_trips')
         .update({ actual_pallets_used: 0, updated_at: new Date().toISOString() })
@@ -991,19 +992,19 @@ export const tripMetricsService = {
       return;
     }
 
-    // 2. Insert ตำแหน่งทั้งหมด
+    // 2. Insert ตำแหน่งทั้งหมด (1 row = 1 พาเลท/พื้น)
     const layoutRows = payload.positions.map((pos) => ({
       delivery_trip_id: tripId,
       position_type: pos.position_type,
       position_index: pos.position_index,
-      layer_index: pos.layer_index ?? 0,
+      total_layers: pos.total_layers || 1,
       notes: pos.notes ?? null,
     }));
 
     const { data: insertedLayouts, error: layoutError } = await supabase
       .from('trip_packing_layout')
       .insert(layoutRows)
-      .select('id, position_type, position_index, layer_index');
+      .select('id, position_type, position_index');
 
     if (layoutError) {
       console.error('[tripMetricsService] saveTripPackingLayout insert layouts error:', layoutError);
@@ -1017,19 +1018,20 @@ export const tripMetricsService = {
     // 3. Map positions → inserted IDs
     const layoutIdMap = new Map<string, string>();
     for (const ins of insertedLayouts) {
-      const key = `${ins.position_type}-${ins.position_index}-${ins.layer_index}`;
+      const key = `${ins.position_type}-${ins.position_index}`;
       layoutIdMap.set(key, ins.id);
     }
 
-    // 4. Insert items ทั้งหมด (batch)
+    // 4. Insert items ทั้งหมด (batch) — รองรับ layer_index (null = โหมดง่าย, 0+ = โหมดละเอียด)
     const allItemRows: Array<{
       trip_packing_layout_id: string;
       delivery_trip_item_id: string;
       quantity: number;
+      layer_index: number | null;
     }> = [];
 
     for (const pos of payload.positions) {
-      const key = `${pos.position_type}-${pos.position_index}-${pos.layer_index ?? 0}`;
+      const key = `${pos.position_type}-${pos.position_index}`;
       const layoutId = layoutIdMap.get(key);
       if (!layoutId) continue;
 
@@ -1039,6 +1041,7 @@ export const tripMetricsService = {
             trip_packing_layout_id: layoutId,
             delivery_trip_item_id: item.delivery_trip_item_id,
             quantity: item.quantity,
+            layer_index: item.layer_index ?? null,
           });
         }
       }
@@ -1072,14 +1075,12 @@ export const tripMetricsService = {
   getTripPackingLayout: async (
     tripId: string
   ): Promise<PackingLayoutResult> => {
-    // ดึง layout positions
     const { data: layouts, error: layoutError } = await supabase
       .from('trip_packing_layout')
-      .select('id, position_type, position_index, layer_index, notes')
+      .select('id, position_type, position_index, total_layers, notes')
       .eq('delivery_trip_id', tripId)
       .order('position_type', { ascending: true })
-      .order('position_index', { ascending: true })
-      .order('layer_index', { ascending: true });
+      .order('position_index', { ascending: true });
 
     if (layoutError) {
       console.error('[tripMetricsService] getTripPackingLayout error:', layoutError);
@@ -1090,11 +1091,11 @@ export const tripMetricsService = {
       return { positions: [], total_pallets: 0, total_floor_zones: 0 };
     }
 
-    // ดึง layout items ทั้งหมด
+    // ดึง layout items ทั้งหมด (รวม layer_index)
     const layoutIds = layouts.map((l) => l.id);
     const { data: items, error: itemsError } = await supabase
       .from('trip_packing_layout_items')
-      .select('id, trip_packing_layout_id, delivery_trip_item_id, quantity, sequence_in_layer')
+      .select('id, trip_packing_layout_id, delivery_trip_item_id, quantity, layer_index')
       .in('trip_packing_layout_id', layoutIds);
 
     if (itemsError) {
@@ -1162,7 +1163,7 @@ export const tripMetricsService = {
         id: layout.id,
         position_type: layout.position_type as 'pallet' | 'floor',
         position_index: layout.position_index,
-        layer_index: layout.layer_index,
+        total_layers: (layout as any).total_layers ?? 1,
         notes: layout.notes ?? null,
         items: layoutItems.map((li) => {
           const tripItem = tripItemMap.get(li.delivery_trip_item_id);
@@ -1171,7 +1172,7 @@ export const tripMetricsService = {
             id: li.id,
             delivery_trip_item_id: li.delivery_trip_item_id,
             quantity: Number(li.quantity),
-            sequence_in_layer: li.sequence_in_layer ?? null,
+            layer_index: (li as any).layer_index ?? null,
             product_id: tripItem?.product_id || '',
             product_code: product?.product_code || '',
             product_name: product?.product_name || '',
@@ -1206,14 +1207,21 @@ export const tripMetricsService = {
 
   /**
    * สร้างข้อความสรุป layout สำหรับ AI context
-   * เช่น "พาเลท 1: น้ำดื่ม 50 ลัง + ผงซักฟอก 20 แพ็ค; พาเลท 2: ทิชชู่ 40 แพ็ค"
+   * รองรับ 2 โหมด:
+   * โหมดง่าย (layer_index=null):  - พาเลท 1 (450kg, 4 ชั้น): เบียร์ 60 ลัง (ชั้นละ ~15)
+   * โหมดละเอียด (layer_index>=0):  - พาเลท 1 (450kg, 4 ชั้น):
+   *   ชั้น 1 (ล่างสุด): เบียร์ 15 ลัง + น้ำดื่ม 10 ลัง
+   *   ชั้น 2: เบียร์ 15 ลัง + น้ำดื่ม 10 ลัง
+   *   ชั้น 3: ทิชชู่ 5 แพ็ค
+   *   ชั้น 4 (บนสุด): ทิชชู่ 5 แพ็ค
    */
   getTripPackingLayoutSummary: async (tripId: string): Promise<string | null> => {
     try {
       const layout = await tripMetricsService.getTripPackingLayout(tripId);
       if (!layout || layout.positions.length === 0) return null;
 
-      const lines = layout.positions.map((pos) => {
+      const lines: string[] = [];
+      for (const pos of layout.positions) {
         const posLabel =
           pos.position_type === 'pallet'
             ? `พาเลท ${pos.position_index}`
@@ -1224,13 +1232,40 @@ export const tripMetricsService = {
           0
         );
 
-        const itemDescriptions = pos.items.map(
-          (item) => `${item.product_name} ${item.quantity} ${item.unit}`
-        );
+        const weightStr = totalWeight > 0 ? `, ${totalWeight.toFixed(0)}kg` : '';
+        const layerStr = pos.total_layers > 1 ? `, ${pos.total_layers} ชั้น` : '';
 
-        const weightStr = totalWeight > 0 ? ` (${totalWeight.toFixed(0)}kg)` : '';
-        return `- ${posLabel}${weightStr}: ${itemDescriptions.join(' + ')}`;
-      });
+        // ตรวจว่าเป็นโหมดละเอียดหรือไม่ (มี item ที่ layer_index != null)
+        const isDetailed = pos.items.some((item) => item.layer_index !== null && item.layer_index !== undefined);
+
+        if (isDetailed && pos.total_layers > 1) {
+          // โหมดละเอียด: แยกสินค้าตามชั้น
+          lines.push(`- ${posLabel}${weightStr}${layerStr}:`);
+          for (let li = 0; li < pos.total_layers; li++) {
+            const layerItems = pos.items.filter((item) => item.layer_index === li);
+            if (layerItems.length === 0) continue;
+            const layerNum = li + 1;
+            let suffix = '';
+            if (li === 0) suffix = ' (ล่างสุด)';
+            else if (li === pos.total_layers - 1) suffix = ' (บนสุด)';
+            const descs = layerItems.map(
+              (item) => `${item.product_name} ${item.quantity} ${item.unit}`
+            );
+            lines.push(`  ชั้น ${layerNum}${suffix}: ${descs.join(' + ')}`);
+          }
+        } else {
+          // โหมดง่าย: สินค้ารวม + จำนวนชั้น
+          const itemDescs = pos.items.map((item) => {
+            let desc = `${item.product_name} ${item.quantity} ${item.unit}`;
+            if (pos.items.length === 1 && pos.total_layers > 1) {
+              const perLayer = Math.round(item.quantity / pos.total_layers);
+              desc += ` (ชั้นละ ~${perLayer})`;
+            }
+            return desc;
+          });
+          lines.push(`- ${posLabel}${weightStr}${layerStr}: ${itemDescs.join(' + ')}`);
+        }
+      }
 
       return lines.join('\n');
     } catch (err) {
