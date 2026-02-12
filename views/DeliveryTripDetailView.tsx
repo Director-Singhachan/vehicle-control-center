@@ -352,10 +352,15 @@ export const DeliveryTripDetailView: React.FC<DeliveryTripDetailViewProps> = ({
             พิมพ์ A5 (โฟล์คลิฟท์)
           </Button>
           {onRecordMetrics && (
-            <Button variant="outline" onClick={onRecordMetrics}>
-              <BarChart3 size={18} className="mr-2" />
-              บันทึกเมตริกซ์
-            </Button>
+            <span className="inline-flex items-center gap-2">
+              <Button variant="outline" onClick={onRecordMetrics}>
+                <BarChart3 size={18} className="mr-2" />
+                บันทึกเมตริกซ์
+              </Button>
+              {(trip as any).actual_pallets_used != null && (
+                <span className="text-xs text-slate-500 dark:text-slate-400">บันทึกเมตริกซ์แล้ว</span>
+              )}
+            </span>
           )}
           {(trip.status === 'planned' || trip.status === 'in_progress') && (
             <Button variant="outline" onClick={() => setAddOrderModalOpen(true)}>

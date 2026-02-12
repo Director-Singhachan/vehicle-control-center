@@ -387,10 +387,73 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
   // Track which recommendation was selected (for feedback recording)
   const [selectedRecommendationVehicleId, setSelectedRecommendationVehicleId] = useState<string | null>(null);
 
+  // AI แนะนำ (Edge Function): ผลจากปุ่ม "ใช้ AI แนะนำ"
+  const [aiExtraResult, setAiExtraResult] = useState<{
+    suggested_vehicle_id: string | null;
+    reasoning: string | null;
+    packing_tips: string | null;
+    error?: string;
+  } | null>(null);
+  const [aiExtraLoading, setAiExtraLoading] = useState(false);
+  /** Cooldown หลังกดใช้ AI (วินาทีที่เหลือ) เพื่อไม่ให้กดซ้ำเกินโควต้า */
+  const [aiCooldownRemaining, setAiCooldownRemaining] = useState(0);
+  const AI_COOLDOWN_SECONDS = 60;
+
   const handleAiSelectVehicle = useCallback((vehicleId: string) => {
     setSelectedVehicleId(vehicleId);
     setSelectedRecommendationVehicleId(vehicleId);
   }, []);
+
+  const handleRequestAI = useCallback(async () => {
+    const input = recommendationInput;
+    if (!input || input.items.length === 0 || aiRecommendations.length === 0 || aiCooldownRemaining > 0) return;
+    setAiExtraLoading(true);
+    setAiExtraResult(null);
+    try {
+      const first = aiRecommendations[0];
+      const trip = {
+        estimated_weight_kg: first.capacity_info.estimated_weight_kg,
+        estimated_volume_liter: first.capacity_info.estimated_volume_liter,
+        store_count: input.store_ids.length,
+        item_count: input.items.length,
+        items_summary: `${input.items.length} รายการสินค้า`,
+        planned_date: input.planned_date,
+      };
+      const vehicles = aiRecommendations.slice(0, 5).map((r) => ({
+        vehicle_id: r.vehicle_id,
+        plate: r.vehicle_plate,
+        max_weight_kg: r.capacity_info.max_weight_kg,
+        cargo_volume_liter: r.capacity_info.max_volume_liter,
+        branch: null as string | null,
+      }));
+      const result = await vehicleRecommendationService.getAIRecommendation({ trip, vehicles });
+      setAiExtraResult(result ?? null);
+      if (result?.suggested_vehicle_id) {
+        setSelectedVehicleId(result.suggested_vehicle_id);
+        setSelectedRecommendationVehicleId(result.suggested_vehicle_id);
+      }
+      setAiCooldownRemaining(AI_COOLDOWN_SECONDS);
+    } catch (err) {
+      console.warn('[CreateTripFromOrdersView] getAIRecommendation error:', err);
+      setAiCooldownRemaining(AI_COOLDOWN_SECONDS);
+    } finally {
+      setAiExtraLoading(false);
+    }
+  }, [recommendationInput, aiRecommendations]);
+
+  // นับถอยหลัง cooldown ทุก 1 วินาที
+  useEffect(() => {
+    if (aiCooldownRemaining <= 0) return;
+    const t = setInterval(() => {
+      setAiCooldownRemaining((prev) => Math.max(0, prev - 1));
+    }, 1000);
+    return () => clearInterval(t);
+  }, [aiCooldownRemaining]);
+
+  // ล้างผล AI เมื่อรายการแนะนำรถเปลี่ยน (ผู้ใช้เปลี่ยนร้าน/สินค้า แล้วระบบโหลดแนะนำใหม่)
+  useEffect(() => {
+    setAiExtraResult(null);
+  }, [aiRecommendations.length, aiRecommendations[0]?.vehicle_id]);
 
   // Drag & Drop handlers
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
@@ -675,6 +738,10 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
                       onSelectVehicle={handleAiSelectVehicle}
                       selectedVehicleId={selectedVehicleId}
                       onRefresh={fetchRecommendations}
+                      onRequestAI={handleRequestAI}
+                      aiLoading={aiExtraLoading}
+                      aiResult={aiExtraResult}
+                      aiCooldownRemaining={aiCooldownRemaining}
                     />
                   )}
 

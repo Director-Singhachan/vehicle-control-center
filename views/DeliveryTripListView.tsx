@@ -397,6 +397,11 @@ export const DeliveryTripListView: React.FC<DeliveryTripListViewProps> = ({
                     <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
                       {formatDate(trip.planned_date)}
                     </p>
+                    {(trip as any).actual_pallets_used != null && (
+                      <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">
+                        บันทึกเมตริกซ์แล้ว
+                      </p>
+                    )}
                   </div>
                   {getStatusBadge(trip.status)}
                 </div>

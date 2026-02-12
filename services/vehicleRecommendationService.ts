@@ -182,6 +182,59 @@ export const vehicleRecommendationService = {
   /**
    * Record user feedback on a recommendation (accepted/rejected)
    */
+  /**
+   * เรียก AI (Edge Function) เพื่อแนะนำรถ + คำแนะนำการจัดเรียง (packing_tips)
+   * ใช้เมื่อตั้งค่า GEMINI_API_KEY ใน Supabase secrets แล้ว
+   * ถ้าเรียกไม่สำเร็จ คืน null — ให้ใช้ผลจาก getRecommendations (rule-based) แทน
+   */
+  getAIRecommendation: async (params: {
+    trip: {
+      estimated_weight_kg: number;
+      estimated_volume_liter: number;
+      store_count: number;
+      item_count?: number;
+      items_summary?: string;
+      planned_date?: string;
+    };
+    vehicles: Array<{
+      vehicle_id: string;
+      plate: string;
+      max_weight_kg?: number | null;
+      cargo_volume_liter?: number | null;
+      branch?: string | null;
+    }>;
+    historical_context?: string;
+  }): Promise<{
+    suggested_vehicle_id: string | null;
+    reasoning: string | null;
+    packing_tips: string | null;
+    error?: string;
+  } | null> => {
+    try {
+      const { data, error } = await supabase.functions.invoke('ai-trip-recommendation', {
+        body: {
+          trip: params.trip,
+          vehicles: params.vehicles,
+          historical_context: params.historical_context,
+        },
+      });
+      if (error) {
+        console.warn('[vehicleRecommendationService] getAIRecommendation error:', error);
+        return { suggested_vehicle_id: null, reasoning: null, packing_tips: null, error: error.message || 'เรียก AI ไม่สำเร็จ' };
+      }
+      const result = data as { suggested_vehicle_id?: string | null; reasoning?: string | null; packing_tips?: string | null; error?: string };
+      return {
+        suggested_vehicle_id: result?.suggested_vehicle_id ?? null,
+        reasoning: result?.reasoning ?? null,
+        packing_tips: result?.packing_tips ?? null,
+        error: result?.error,
+      };
+    } catch (err) {
+      console.warn('[vehicleRecommendationService] getAIRecommendation exception:', err);
+      return { suggested_vehicle_id: null, reasoning: null, packing_tips: null, error: err instanceof Error ? err.message : 'เกิดข้อผิดพลาด' };
+    }
+  },
+
   recordFeedback: async (data: {
     input_hash: string;
     requested_products: any;
