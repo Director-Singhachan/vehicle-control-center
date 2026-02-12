@@ -28,12 +28,13 @@ import {
   ShoppingCart,
   ClipboardList,
   Boxes,
+  Database,
 } from 'lucide-react';
-
 // Lazy load views เพื่อลด initial bundle และให้หน้าแรกโหลดเร็วขึ้น
 const DashboardView = lazy(() => import('./views/DashboardView').then(m => ({ default: m.DashboardView })));
 const ProfileView = lazy(() => import('./views/ProfileView').then(m => ({ default: m.ProfileView })));
 const RLSTestView = lazy(() => import('./views/RLSTestView').then(m => ({ default: m.RLSTestView })));
+const DatabaseExplorerView = lazy(() => import('./views/DatabaseExplorerView').then(m => ({ default: m.DatabaseExplorerView })));
 const VehiclesView = lazy(() => import('./views/VehiclesView').then(m => ({ default: m.VehiclesView })));
 const VehicleDetailView = lazy(() => import('./views/VehicleDetailView').then(m => ({ default: m.VehicleDetailView })));
 const VehicleFormView = lazy(() => import('./views/VehicleFormView').then(m => ({ default: m.VehicleFormView })));
@@ -114,7 +115,7 @@ const AppContent = () => {
   // Profile will load in background and update when ready
   const { count: pendingTicketsCount } = usePendingTickets();
   const { count: pendingBillingTripsCount, trips: pendingBillingTrips } = usePendingBillingTrips();
-  
+
   // Combine counts for notification badge
   const pendingCount = isSales ? pendingBillingTripsCount : pendingTicketsCount;
   const [isDark, setIsDark] = useState(true);
@@ -231,6 +232,13 @@ const AppContent = () => {
   const [isTripsOpen, setIsTripsOpen] = useState(false);
   const [isTripsHovered, setIsTripsHovered] = useState(false);
   const tripsMenuRef = React.useRef<HTMLDivElement>(null);
+
+  const [isLogisticsOpen, setIsLogisticsOpen] = useState(false);
+  const [isLogisticsHovered, setIsLogisticsHovered] = useState(false);
+  const logisticsMenuRef = React.useRef<HTMLDivElement>(null);
+  const logisticsTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
+  const [logisticsFlyoutPosition, setLogisticsFlyoutPosition] = useState({ top: 0, left: 0 });
+
   const commissionTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
   const [flyoutPosition, setFlyoutPosition] = useState({ top: 0, left: 0 });
 
@@ -430,6 +438,48 @@ const AppContent = () => {
     setIsTripsHovered(false);
   };
 
+  // Logistics menu handlers
+  const handleLogisticsMouseEnter = (e: React.MouseEvent) => {
+    if (logisticsTimeoutRef.current) {
+      clearTimeout(logisticsTimeoutRef.current);
+      logisticsTimeoutRef.current = null;
+    }
+
+    const rect = e.currentTarget.getBoundingClientRect();
+    const viewportHeight = window.innerHeight;
+    const flyoutEstimatedHeight = 480;
+
+    let top = rect.top;
+    if (top + flyoutEstimatedHeight > viewportHeight - 10) {
+      top = Math.max(10, viewportHeight - flyoutEstimatedHeight - 10);
+    }
+
+    setLogisticsFlyoutPosition({
+      top,
+      left: rect.right + 8,
+    });
+
+    setIsLogisticsHovered(true);
+  };
+
+  const handleLogisticsMouseLeave = () => {
+    logisticsTimeoutRef.current = setTimeout(() => {
+      setIsLogisticsHovered(false);
+    }, 150);
+  };
+
+  const handleLogisticsFlyoutMouseEnter = () => {
+    if (logisticsTimeoutRef.current) {
+      clearTimeout(logisticsTimeoutRef.current);
+      logisticsTimeoutRef.current = null;
+    }
+    setIsLogisticsHovered(true);
+  };
+
+  const handleLogisticsFlyoutMouseLeave = () => {
+    setIsLogisticsHovered(false);
+  };
+
   // Settings menu handlers
   const handleSettingsMouseEnter = (e: React.MouseEvent) => {
     if (settingsTimeoutRef.current) {
@@ -480,6 +530,7 @@ const AppContent = () => {
     setIsOrdersOpen(false);
     setIsStockOpen(false);
     setIsTripsOpen(false);
+    setIsLogisticsOpen(false);
   }, [activeTab]);
 
   // Open settings menu if one of its sub-items is active
@@ -500,6 +551,9 @@ const AppContent = () => {
       }
       if (settingsTimeoutRef.current) {
         clearTimeout(settingsTimeoutRef.current);
+      }
+      if (logisticsTimeoutRef.current) {
+        clearTimeout(logisticsTimeoutRef.current);
       }
     };
   }, []);
@@ -747,90 +801,7 @@ const AppContent = () => {
         </div>
 
         <div className="flex-1 px-3 space-y-1 mt-4 overflow-y-auto overflow-x-clip scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-700 scrollbar-track-transparent hover:scrollbar-thumb-gray-400 dark:hover:scrollbar-thumb-gray-600 [&:has(.group\/menu:hover)]:overflow-x-visible">
-          {!isDriver && !isSales && (
-            <SidebarItem
-              icon={LayoutDashboard}
-              label={isSidebarOpen ? "แดชบอร์ด" : ""}
-              active={activeTab === 'dashboard'}
-              onClick={() => setActiveTab('dashboard')}
-              onMouseEnter={() => prefetchService.prefetchDashboard()}
-              isCollapsed={!isSidebarOpen}
-            />
-          )}
-          {!isDriver && !isSales && (
-            <SidebarItem
-              icon={Truck}
-              label={isSidebarOpen ? "ยานพาหนะ" : ""}
-              active={activeTab === 'vehicles'}
-              onClick={() => setActiveTab('vehicles')}
-              onMouseEnter={() => prefetchService.prefetchVehicles()}
-              isCollapsed={!isSidebarOpen}
-            />
-          )}
-          {!isSales && (
-            <SidebarItem
-              icon={Wrench}
-              label={isSidebarOpen ? "การซ่อมบำรุง" : ""}
-              active={activeTab === 'maintenance'}
-              onClick={() => setActiveTab('maintenance')}
-              onMouseEnter={() => prefetchService.prefetchTicketsWithRelations()}
-              isCollapsed={!isSidebarOpen}
-            />
-          )}
-          {!isSales && (
-            <SidebarItem
-              icon={Route}
-              label={isSidebarOpen ? "บันทึกการใช้งานรถ" : ""}
-              active={activeTab === 'triplogs'}
-              onClick={() => {
-                setActiveTab('triplogs');
-                setTripLogView('list');
-              }}
-              isCollapsed={!isSidebarOpen}
-            />
-          )}
-          {!isSales && (
-            <SidebarItem
-              icon={Droplet}
-              label={isSidebarOpen ? "บันทึกการเติมน้ำมัน" : ""}
-              active={activeTab === 'fuellogs'}
-              onClick={() => {
-                setActiveTab('fuellogs');
-                // Drivers go directly to form, others go to list
-                setFuelLogView(isDriver ? 'form' : 'list');
-              }}
-              isCollapsed={!isSidebarOpen}
-            />
-          )}
-          {/* Show approval board menu - check role directly for reliability */}
-          {(() => {
-            const userRole = profile?.role?.toLowerCase();
-            const hasPermission = userRole === 'admin' ||
-              userRole === 'manager' ||
-              userRole === 'inspector' ||
-              userRole === 'executive' ||
-              isAdmin || isInspector || isManager || isExecutive || authLoading;
-
-            return hasPermission ? (
-              <SidebarItem
-                icon={CheckSquare}
-                label={isSidebarOpen ? "ภาพรวมการอนุมัติ" : ""}
-                active={activeTab === 'approvals'}
-                onClick={() => setActiveTab('approvals')}
-                onMouseEnter={() => prefetchService.prefetchTicketsWithRelations()}
-                isCollapsed={!isSidebarOpen}
-              />
-            ) : null;
-          })()}
-          {!isDriver && !isSales && (
-            <SidebarItem
-              icon={Calendar}
-              label={isSidebarOpen ? "สรุปการใช้รถรายวัน" : ""}
-              active={activeTab === 'daily-summary'}
-              onClick={() => setActiveTab('daily-summary')}
-              isCollapsed={!isSidebarOpen}
-            />
-          )}
+          {/* 1. รายงาน (Reports) */}
           {!isDriver && !isSales && (
             <SidebarItem
               icon={FileText}
@@ -840,232 +811,8 @@ const AppContent = () => {
               isCollapsed={!isSidebarOpen}
             />
           )}
-          {!isDriver && !isSales && (
-            <div
-              ref={tripsMenuRef}
-              className="relative group/menu"
-              onMouseEnter={handleTripsMouseEnter}
-              onMouseLeave={handleTripsMouseLeave}
-            >
-              <SidebarItem
-                icon={Package}
-                label={isSidebarOpen ? "ทริปส่งสินค้า" : ""}
-                active={activeTab === 'delivery-trips' || activeTab === 'pending-orders'}
-                onClick={() => {
-                  if (activeTab !== 'delivery-trips') {
-                    setActiveTab('delivery-trips');
-                    setDeliveryTripView('list');
-                    setSelectedDeliveryTripId(null);
-                  }
-                }}
-                onMouseEnter={handleTripsMouseEnter}
-                isCollapsed={!isSidebarOpen}
-                hasSubmenu={true}
-                isOpen={isTripsHovered}
-              />
-            </div>
-          )}
 
-          {/* Flyout Submenu for Trips */}
-          {isTripsHovered && (
-            <div
-              className="fixed z-[100]"
-              style={{
-                top: `${tripsFlyoutPosition.top}px`,
-                left: `${tripsFlyoutPosition.left}px`,
-              }}
-              onMouseEnter={handleTripsFlyoutMouseEnter}
-              onMouseLeave={handleTripsFlyoutMouseLeave}
-            >
-              <div className="bg-white dark:bg-charcoal-900 border border-slate-200 dark:border-slate-700 rounded-xl shadow-2xl min-w-[220px] py-2 overflow-hidden ring-1 ring-black/5 animate-in fade-in slide-in-from-left-2 duration-150">
-                <div className="px-4 pb-2 mb-2 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
-                  <p className="text-[10px] font-black text-blue-500 uppercase tracking-widest">ทริปส่งสินค้า</p>
-                  <div className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"></div>
-                </div>
-                <div className="px-2 space-y-1">
-                  <SubSidebarItem
-                    label="รายการทริป"
-                    active={activeTab === 'delivery-trips'}
-                    onClick={() => {
-                      setActiveTab('delivery-trips');
-                      setDeliveryTripView('list');
-                      setSelectedDeliveryTripId(null);
-                      setIsTripsHovered(false);
-                    }}
-                    isCollapsed={false}
-                    isFlyout={true}
-                  />
-                  <SubSidebarItem
-                    label="ออเดอร์รอจัดส่ง"
-                    active={activeTab === 'pending-orders'}
-                    onClick={() => {
-                      setActiveTab('pending-orders');
-                      setIsTripsHovered(false);
-                    }}
-                    isCollapsed={false}
-                    isFlyout={true}
-                  />
-                </div>
-              </div>
-            </div>
-          )}
-          {!isDriver && !isSales && (
-            <SidebarItem
-              icon={Users}
-              label={isSidebarOpen ? "จัดการพนักงาน" : ""}
-              active={activeTab === 'service-staff'}
-              onClick={() => setActiveTab('service-staff')}
-              isCollapsed={!isSidebarOpen}
-            />
-          )}
-
-          {/* Commission Section - kept inside main menu but allow flyout */}
-          {!isDriver && !isSales && (
-            <>
-              <div
-                ref={commissionMenuRef}
-                className="relative group/menu"
-                onMouseEnter={handleCommissionMouseEnter}
-                onMouseLeave={handleCommissionMouseLeave}
-              >
-                <SidebarItem
-                  icon={DollarSign}
-                  label={isSidebarOpen ? "ค่าคอมมิชชั่น" : ""}
-                  active={activeTab === 'commission' || activeTab === 'commission-rates'}
-                  onClick={() => {
-                    if (activeTab !== 'commission') {
-                      setActiveTab('commission');
-                    }
-                  }}
-                  isCollapsed={!isSidebarOpen}
-                  hasSubmenu={true}
-                  isOpen={isCommissionHovered}
-                />
-              </div>
-
-              {/* Flyout Submenu - Rendered using Portal (fixed position) */}
-              {isCommissionHovered && (
-                <div
-                  className="fixed z-[100]"
-                  style={{
-                    top: `${flyoutPosition.top}px`,
-                    left: `${flyoutPosition.left}px`,
-                  }}
-                  onMouseEnter={handleFlyoutMouseEnter}
-                  onMouseLeave={handleFlyoutMouseLeave}
-                >
-                  <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-xl shadow-2xl dark:shadow-black/50 min-w-[220px] py-2 overflow-hidden ring-1 ring-black/5 dark:ring-white/10 animate-in fade-in slide-in-from-left-2 duration-150">
-                    <div className="px-4 pb-2 mb-2 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between">
-                      <p className="text-[10px] font-black text-blue-500 dark:text-blue-400 uppercase tracking-widest">เมนูค่าคอมมิชชั่น</p>
-                      <div className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"></div>
-                    </div>
-                    <div className="px-2 space-y-1">
-                      <SubSidebarItem
-                        label="คำนวณค่าคอมฯ"
-                        active={activeTab === 'commission'}
-                        onClick={() => {
-                          setActiveTab('commission');
-                          setIsCommissionHovered(false);
-                        }}
-                        isCollapsed={false}
-                        isFlyout={true}
-                      />
-                      <SubSidebarItem
-                        label="ตั้งค่าอัตราค่าคอมฯ"
-                        active={activeTab === 'commission-rates'}
-                        onClick={() => {
-                          setActiveTab('commission-rates');
-                          setIsCommissionHovered(false);
-                        }}
-                        isCollapsed={false}
-                        isFlyout={true}
-                      />
-                    </div>
-                  </div>
-                </div>
-              )}
-            </>
-          )}
-
-          {/* Stock Management Section with Submenu */}
-          {!isDriver && !isSales && (
-            <>
-              <div
-                ref={stockMenuRef}
-                className="relative group/menu"
-                onMouseEnter={handleStockMouseEnter}
-                onMouseLeave={handleStockMouseLeave}
-              >
-                <SidebarItem
-                  icon={Boxes}
-                  label={isSidebarOpen ? "คลังสินค้า" : ""}
-                  active={activeTab === 'stock-dashboard' || activeTab === 'warehouses' || activeTab === 'inventory-receipts'}
-                  onClick={() => {
-                    if (activeTab !== 'stock-dashboard') {
-                      setActiveTab('stock-dashboard');
-                    }
-                  }}
-                  isCollapsed={!isSidebarOpen}
-                  hasSubmenu={true}
-                  isOpen={isStockHovered}
-                />
-              </div>
-
-              {/* Flyout Submenu for Stock */}
-              {isStockHovered && (
-                <div
-                  className="fixed z-[100]"
-                  style={{
-                    top: `${stockFlyoutPosition.top}px`,
-                    left: `${stockFlyoutPosition.left}px`,
-                  }}
-                  onMouseEnter={handleStockFlyoutMouseEnter}
-                  onMouseLeave={handleStockFlyoutMouseLeave}
-                >
-                  <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-xl shadow-2xl dark:shadow-black/50 min-w-[220px] py-2 overflow-hidden ring-1 ring-black/5 dark:ring-white/10 animate-in fade-in slide-in-from-left-2 duration-150">
-                    <div className="px-4 pb-2 mb-2 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between">
-                      <p className="text-[10px] font-black text-blue-500 dark:text-blue-400 uppercase tracking-widest">เมนูคลังสินค้า</p>
-                      <div className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"></div>
-                    </div>
-                    <div className="px-2 space-y-1">
-                      <SubSidebarItem
-                        label="Stock Dashboard"
-                        active={activeTab === 'stock-dashboard'}
-                        onClick={() => {
-                          setActiveTab('stock-dashboard');
-                          setIsStockHovered(false);
-                        }}
-                        isCollapsed={false}
-                        isFlyout={true}
-                      />
-                      <SubSidebarItem
-                        label="จัดการคลัง"
-                        active={activeTab === 'warehouses'}
-                        onClick={() => {
-                          setActiveTab('warehouses');
-                          setIsStockHovered(false);
-                        }}
-                        isCollapsed={false}
-                        isFlyout={true}
-                      />
-                      <SubSidebarItem
-                        label="ประวัติรับสินค้า"
-                        active={activeTab === 'inventory-receipts'}
-                        onClick={() => {
-                          setActiveTab('inventory-receipts');
-                          setIsStockHovered(false);
-                        }}
-                        isCollapsed={false}
-                        isFlyout={true}
-                      />
-                    </div>
-                  </div>
-                </div>
-              )}
-            </>
-          )}
-
-          {/* Orders Menu with Submenu (Sales) */}
+          {/* 2. ฝ่ายขาย (Orders/Sales) */}
           {(!isDriver || isSales) && (
             <>
               <div
@@ -1203,9 +950,326 @@ const AppContent = () => {
               )}
             </>
           )}
+
+          {/* 3. คลังสินค้า (Stock) */}
+          {!isDriver && !isSales && (
+            <>
+              <div
+                ref={stockMenuRef}
+                className="relative group/menu"
+                onMouseEnter={handleStockMouseEnter}
+                onMouseLeave={handleStockMouseLeave}
+              >
+                <SidebarItem
+                  icon={Boxes}
+                  label={isSidebarOpen ? "คลังสินค้า" : ""}
+                  active={activeTab === 'stock-dashboard' || activeTab === 'warehouses' || activeTab === 'inventory-receipts'}
+                  onClick={() => {
+                    if (activeTab !== 'stock-dashboard') {
+                      setActiveTab('stock-dashboard');
+                    }
+                  }}
+                  isCollapsed={!isSidebarOpen}
+                  hasSubmenu={true}
+                  isOpen={isStockHovered}
+                />
+              </div>
+
+              {/* Flyout Submenu for Stock */}
+              {isStockHovered && (
+                <div
+                  className="fixed z-[100]"
+                  style={{
+                    top: `${stockFlyoutPosition.top}px`,
+                    left: `${stockFlyoutPosition.left}px`,
+                  }}
+                  onMouseEnter={handleStockFlyoutMouseEnter}
+                  onMouseLeave={handleStockFlyoutMouseLeave}
+                >
+                  <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-xl shadow-2xl dark:shadow-black/50 min-w-[220px] py-2 overflow-hidden ring-1 ring-black/5 dark:ring-white/10 animate-in fade-in slide-in-from-left-2 duration-150">
+                    <div className="px-4 pb-2 mb-2 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between">
+                      <p className="text-[10px] font-black text-blue-500 dark:text-blue-400 uppercase tracking-widest">เมนูคลังสินค้า</p>
+                      <div className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"></div>
+                    </div>
+                    <div className="px-2 space-y-1">
+                      <SubSidebarItem
+                        label="Stock Dashboard"
+                        active={activeTab === 'stock-dashboard'}
+                        onClick={() => {
+                          setActiveTab('stock-dashboard');
+                          setIsStockHovered(false);
+                        }}
+                        isCollapsed={false}
+                        isFlyout={true}
+                      />
+                      <SubSidebarItem
+                        label="จัดการคลัง"
+                        active={activeTab === 'warehouses'}
+                        onClick={() => {
+                          setActiveTab('warehouses');
+                          setIsStockHovered(false);
+                        }}
+                        isCollapsed={false}
+                        isFlyout={true}
+                      />
+                      <SubSidebarItem
+                        label="ประวัติรับสินค้า"
+                        active={activeTab === 'inventory-receipts'}
+                        onClick={() => {
+                          setActiveTab('inventory-receipts');
+                          setIsStockHovered(false);
+                        }}
+                        isCollapsed={false}
+                        isFlyout={true}
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+
+          {/* 4. ฝ่ายขนส่ง (Logistics) - Consolidated */}
+          {!isSales && (
+            <>
+              <div
+                ref={logisticsMenuRef}
+                className="relative group/menu"
+                onMouseEnter={handleLogisticsMouseEnter}
+                onMouseLeave={handleLogisticsMouseLeave}
+              >
+                <SidebarItem
+                  icon={Truck}
+                  label={isSidebarOpen ? "ฝ่ายขนส่ง" : ""}
+                  active={
+                    activeTab === 'dashboard' ||
+                    activeTab === 'vehicles' ||
+                    activeTab === 'maintenance' ||
+                    activeTab === 'triplogs' ||
+                    activeTab === 'fuellogs' ||
+                    activeTab === 'approvals' ||
+                    activeTab === 'daily-summary' ||
+                    activeTab === 'delivery-trips' ||
+                    activeTab === 'service-staff' ||
+                    activeTab === 'commission' ||
+                    activeTab === 'commission-rates' ||
+                    activeTab === 'pending-orders'
+                  }
+                  onClick={() => {
+                    if (isDriver) {
+                      setActiveTab('triplogs');
+                      setTripLogView('form');
+                    } else {
+                      setActiveTab('dashboard');
+                    }
+                  }}
+                  isCollapsed={!isSidebarOpen}
+                  hasSubmenu={true}
+                  isOpen={isLogisticsHovered}
+                />
+              </div>
+
+              {/* Flyout Submenu for Logistics */}
+              {isLogisticsHovered && (
+                <div
+                  className="fixed z-[100]"
+                  style={{
+                    top: `${logisticsFlyoutPosition.top}px`,
+                    left: `${logisticsFlyoutPosition.left}px`,
+                  }}
+                  onMouseEnter={handleLogisticsFlyoutMouseEnter}
+                  onMouseLeave={handleLogisticsFlyoutMouseLeave}
+                >
+                  <div className="bg-white dark:bg-charcoal-900 border border-slate-200 dark:border-slate-700 rounded-xl shadow-2xl min-w-[240px] py-2 ring-1 ring-black/5 dark:ring-white/10 animate-in fade-in slide-in-from-left-2 duration-150 max-h-[85vh] overflow-y-auto">
+                    <div className="px-4 pb-2 mb-2 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between">
+                      <p className="text-[10px] font-black text-blue-500 uppercase tracking-widest">ฝ่ายขนส่ง (Logistics)</p>
+                      <div className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"></div>
+                    </div>
+                    <div className="px-2 space-y-0.5">
+                      {/* Dashboard */}
+                      {!isDriver && (
+                        <SubSidebarItem
+                          label="เดชบอร์ด(ฝ่ายขนส่ง)"
+                          active={activeTab === 'dashboard'}
+                          onClick={() => {
+                            setActiveTab('dashboard');
+                            setIsLogisticsHovered(false);
+                          }}
+                          isCollapsed={false}
+                          isFlyout={true}
+                        />
+                      )}
+
+                      {/* Vehicles */}
+                      {!isDriver && (
+                        <SubSidebarItem
+                          label="ยานพาหนะ"
+                          active={activeTab === 'vehicles'}
+                          onClick={() => {
+                            setActiveTab('vehicles');
+                            setIsLogisticsHovered(false);
+                          }}
+                          isCollapsed={false}
+                          isFlyout={true}
+                        />
+                      )}
+
+                      {/* Maintenance */}
+                      <SubSidebarItem
+                        label="การซ่อมบำรุง"
+                        active={activeTab === 'maintenance'}
+                        onClick={() => {
+                          setActiveTab('maintenance');
+                          if (isDriver) {
+                            setTicketView('form');
+                          } else {
+                            setTicketView('list');
+                          }
+                          setIsLogisticsHovered(false);
+                        }}
+                        isCollapsed={false}
+                        isFlyout={true}
+                      />
+
+                      <div className="h-px bg-slate-100 dark:bg-slate-800 my-1 mx-2"></div>
+
+                      {/* Trip Logs */}
+                      <SubSidebarItem
+                        label="บันทึกการใช้งานรถ"
+                        active={activeTab === 'triplogs'}
+                        onClick={() => {
+                          setActiveTab('triplogs');
+                          setTripLogView(isDriver ? 'form' : 'list');
+                          setIsLogisticsHovered(false);
+                        }}
+                        isCollapsed={false}
+                        isFlyout={true}
+                      />
+
+                      {/* Fuel Logs */}
+                      <SubSidebarItem
+                        label="บันทึกการเติมน้ำมัน"
+                        active={activeTab === 'fuellogs'}
+                        onClick={() => {
+                          setActiveTab('fuellogs');
+                          setFuelLogView(isDriver ? 'form' : 'list');
+                          setIsLogisticsHovered(false);
+                        }}
+                        isCollapsed={false}
+                        isFlyout={true}
+                      />
+
+                      {/* Approvals */}
+                      {(() => {
+                        const userRole = profile?.role?.toLowerCase();
+                        const hasPermission = userRole === 'admin' ||
+                          userRole === 'manager' ||
+                          userRole === 'inspector' ||
+                          userRole === 'executive' ||
+                          isAdmin || isInspector || isManager || isExecutive;
+
+                        return hasPermission && (
+                          <SubSidebarItem
+                            label="ภาพรวมการอนุมัติ"
+                            active={activeTab === 'approvals'}
+                            onClick={() => {
+                              setActiveTab('approvals');
+                              setIsLogisticsHovered(false);
+                            }}
+                            isCollapsed={false}
+                            isFlyout={true}
+                          />
+                        );
+                      })()}
+
+                      {/* Daily Summary */}
+                      {!isDriver && (
+                        <SubSidebarItem
+                          label="สรุปการใช้รถรายวัน"
+                          active={activeTab === 'daily-summary'}
+                          onClick={() => {
+                            setActiveTab('daily-summary');
+                            setIsLogisticsHovered(false);
+                          }}
+                          isCollapsed={false}
+                          isFlyout={true}
+                        />
+                      )}
+
+                      <div className="h-px bg-slate-100 dark:bg-slate-800 my-1 mx-2"></div>
+
+                      {/* Delivery Trips */}
+                      {!isDriver && (
+                        <>
+                          <SubSidebarItem
+                            label="ทริปส่งสินค้า"
+                            active={activeTab === 'delivery-trips'}
+                            onClick={() => {
+                              setActiveTab('delivery-trips');
+                              setDeliveryTripView('list');
+                              setSelectedDeliveryTripId(null);
+                              setIsLogisticsHovered(false);
+                            }}
+                            isCollapsed={false}
+                            isFlyout={true}
+                          />
+                          <SubSidebarItem
+                            label="ออเดอร์รอจัดส่ง"
+                            active={activeTab === 'pending-orders'}
+                            onClick={() => {
+                              setActiveTab('pending-orders');
+                              setIsLogisticsHovered(false);
+                            }}
+                            isCollapsed={false}
+                            isFlyout={true}
+                          />
+                        </>
+                      )}
+
+                      {!isDriver && isAdmin && (
+                        <>
+                          <div className="h-px bg-slate-100 dark:bg-slate-800 my-1 mx-2"></div>
+                          <SubSidebarItem
+                            label="จัดการพนักงาน"
+                            active={activeTab === 'service-staff'}
+                            onClick={() => {
+                              setActiveTab('service-staff');
+                              setIsLogisticsHovered(false);
+                            }}
+                            isCollapsed={false}
+                            isFlyout={true}
+                          />
+                          <SubSidebarItem
+                            label="ค่าคอมมิชชั่น"
+                            active={activeTab === 'commission' || activeTab === 'commission-rates'}
+                            onClick={() => {
+                              setActiveTab('commission');
+                              setIsLogisticsHovered(false);
+                            }}
+                            isCollapsed={false}
+                            isFlyout={true}
+                          />
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
         </div>
 
         <div className="p-3 border-t border-slate-200 dark:border-slate-800/50 space-y-1">
+          {/* Database Explorer - Admin Only */}
+          {isAdmin && (
+            <SidebarItem
+              icon={Database}
+              label={isSidebarOpen ? "เมนูหลังบ้าน (DB)" : ""}
+              active={activeTab === 'db-explorer'}
+              onClick={() => setActiveTab('db-explorer')}
+              isCollapsed={!isSidebarOpen}
+            />
+          )}
           {/* Settings Menu with Submenu */}
           <>
             <div
@@ -1412,7 +1476,7 @@ const AppContent = () => {
                             day: 'numeric',
                             month: 'short',
                           });
-                          
+
                           return (
                             <button
                               key={trip.id}
@@ -1543,7 +1607,6 @@ const AppContent = () => {
                       return 'ผู้ใช้';
                     }
                     // Default fallback
-                    return 'ผู้ใช้';
                     return 'ผู้ใช้';
                   })()}
                   {/* Debug Role */}
@@ -2113,6 +2176,8 @@ const AppContent = () => {
             <SalesTripsView />
           ) : activeTab === 'cleanup-test-orders' ? (
             <CleanupTestOrdersView />
+          ) : activeTab === 'db-explorer' ? (
+            <DatabaseExplorerView />
           ) : (
             <div className="flex flex-col items-center justify-center h-[60vh] text-slate-400">
               <Wrench size={48} className="mb-4 opacity-50" />

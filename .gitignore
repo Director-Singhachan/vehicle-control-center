@@ -30,4 +30,7 @@ coverage/
 *.ntvs*
 *.njsproj
 *.sln
-*.sw?
+*.sw?git 
+
+
+_old_version/

@@ -1,0 +1,4912 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+
+
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ระบบลูกค้า + สินค้า + คำสั่งซื้อ</title>
+  <style>
+    /*เวลาเรียก DocNo ให้ Filter top [Revision] ด้วย */
+    /* CSS layout และ styling */
+    /* Layout และพื้นหลัง */
+    body {
+      margin: 0;
+      padding: 40px;
+      font-family: sans-serif;
+      background: #eef6fa;
+    }
+
+    .container-header {
+      font-size: 18px;
+      font-weight: bold;
+      padding: 10px 14px;
+      margin: -20px -20px 20px -20px;
+      /* ดึงขึ้นชิดขอบ container */
+      border-radius: 12px 12px 0 0;
+      background: linear-gradient(to right, #4facfe, #00f2fe);
+      /* ฟ้า → เขียวฟ้า */
+      color: white;
+      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+
+    .column {
+      flex: 1;
+      /* ✅ ให้กว้างเท่ากัน */
+      min-width: 280px;
+      /* ✅ กันไม่ให้แคบเกิน */
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .left-side,
+    .middle-side,
+    .right-side {
+      width: 100%;
+      max-width: 100%;
+      box-sizing: border-box;
+    }
+
+    .container {
+      width: 100%;
+      /* ✅ ทุก container เต็มความกว้าง */
+      max-width: 960px;
+      /* ✅ กว้างเท่ากันหมด */
+      background: #fff;
+      padding: 20px;
+      border-radius: 12px;
+      border: 1px solid #cfcfcf;
+      box-sizing: border-box;
+    }
+
+
+    /* ตาราง */
+    .table-container {
+      max-height: none;
+      overflow-y: auto;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      margin-top: 10px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+    }
+
+    th,
+    td {
+      padding: 8px;
+      border-bottom: 1px solid #eee;
+    }
+
+    th {
+      background: #d8ecff;
+      position: sticky;
+      top: 0;
+      z-index: 1;
+    }
+
+    tr:hover {
+      background: #e6f3ff;
+      cursor: pointer;
+    }
+
+    tr.selected {
+      background: #cce5ff;
+    }
+
+    /* ปุ่มและอินพุต */
+    button {
+      padding: 6px 12px;
+      border-radius: 6px;
+      border: none;
+      cursor: pointer;
+    }
+
+    input[type="text"],
+    input[type="number"],
+    select {
+      padding: 8px 10px;
+      font-size: 14px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      outline: none;
+      box-sizing: border-box;
+      width: 100%;
+      transition: border-color 0.2s ease-in-out;
+    }
+
+    input:focus,
+    select:focus {
+      border-color: #2196F3;
+      box-shadow: 0 0 0 2px rgba(33, 150, 243, 0.2);
+    }
+
+    /* แถว input */
+    .input-row {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      margin-top: 10px;
+    }
+
+    .input-pair {
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+    }
+
+    /* กล่อง readonly */
+    .readonly-box {
+      padding: 8px 10px;
+      background: #f5f5f5;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      font-size: 14px;
+    }
+
+    /* Highlight แถว 2 ช่อง */
+    .row-highlight {
+      display: flex;
+      justify-content: space-between;
+      background: #f3f9ff;
+      padding: 10px;
+      border-radius: 6px;
+      margin-bottom: 10px;
+      gap: 20px;
+    }
+
+    .row-highlight .input-pair {
+      flex: 1;
+    }
+
+    /* ส่วนจัดระเบียบจำนวน + หน่วย */
+    .qty-unit-wrapper {
+      display: flex;
+      gap: 40px;
+      margin-top: 10px;
+      align-items: flex-end;
+    }
+
+    .qty-block,
+    .unit-block {
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+    }
+
+    .qty-control {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .qty-control input {
+      width: 70px;
+      text-align: center;
+      padding: 6px;
+      font-size: 14px;
+      border-radius: 6px;
+      border: 1px solid #ccc;
+    }
+
+    .qty-btn {
+      width: 32px;
+      height: 32px;
+      background: #f0f0f0;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      font-size: 16px;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    /* ปุ่มเคลียร์ที่อยู่นอก input/select (หน้าตาคล้าย clear-btn แต่ไม่ absolute) */
+    .clear-btn-outside {
+      background: transparent;
+      border: none;
+      font-size: 16px;
+      cursor: pointer;
+      color: #888;
+      padding: 2px 6px;
+      line-height: 1;
+      border-radius: 6px;
+    }
+
+    .clear-btn-outside:hover {
+      color: #555;
+      background: #f2f2f2;
+    }
+
+
+    .unit-block select {
+      padding: 6px 10px;
+      font-size: 14px;
+      border-radius: 6px;
+      border: 1px solid #ccc;
+      width: 100%;
+    }
+
+    /* ราคาต่อหน่วย + ส่วนลด */
+    .price-discount-wrapper {
+      display: flex;
+      gap: 40px;
+      margin-top: 10px;
+      align-items: flex-end;
+      flex-wrap: wrap;
+    }
+
+    .price-block {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .price-flex {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .price-flex input {
+      width: 120px;
+      padding: 6px;
+      font-size: 14px;
+      border-radius: 6px;
+      border: 1px solid #ccc;
+    }
+
+    .unit-text {
+      font-size: 14px;
+      color: #333;
+    }
+
+    .discount-block {
+      flex: 1;
+      display: flex;
+      gap: 20px;
+      align-items: flex-end;
+    }
+
+    .discount-block .input-pair {
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+    }
+
+    .discount-block input {
+      padding: 6px;
+      font-size: 14px;
+      border-radius: 6px;
+      border: 1px solid #ccc;
+    }
+
+    .input-wrapper {
+      position: relative;
+      width: 100%;
+    }
+
+    .input-wrapper input {
+      width: 100%;
+      padding-right: 30px;
+      /* เผื่อพื้นที่ปุ่ม X */
+    }
+
+    .clear-btn {
+      position: absolute;
+      right: 8px;
+      top: 50%;
+      transform: translateY(-50%);
+      background: transparent;
+      border: none;
+      font-size: 16px;
+      cursor: pointer;
+      color: #888;
+      padding: 0;
+      line-height: 1;
+    }
+
+    table th,
+    table td {
+      text-align: center;
+      vertical-align: middle;
+    }
+
+
+    .main-wrapper {
+      display: flex;
+      flex-direction: column;
+      /* ✅ เรียงลงมาแนวตั้ง */
+      gap: 20px;
+      max-width: 960px;
+      /* ✅ ความกว้างสูงสุดของ layout */
+      margin: 0 auto;
+      width: 100%;
+      box-sizing: border-box;
+    }
+
+    .middle-side {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .middle-side .container {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+    }
+
+    #orderContainer {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+    }
+
+    #orderContainer .table-container {
+      flex: 1;
+      overflow-y: auto;
+      max-height: none !important;
+      /* ✅ ลบข้อจำกัดเดิม */
+    }
+
+    /* จำกัดตารางลูกค้าและสินค้าให้แสดงแค่ 3 แถว */
+    #customerContainer .table-container,
+    #productContainer .table-container {
+      max-height: 240px;
+      /* แสดง 6 แถว (40px x 6) */
+      overflow-y: auto;
+    }
+
+    /* ใช้เฉพาะคอนเทนเนอร์คำสั่งซื้อ */
+    #orderContainer {
+      position: relative;
+      /* ให้ .total-container อ้างอิง */
+      padding-bottom: 80px;
+      /* กันพื้นที่ด้านล่าง ไม่ให้เบียดกับตาราง */
+    }
+
+    #orderContainer .table-container {
+      margin-bottom: 12px;
+      /* เพิ่มระยะห่างตารางกับขอบล่าง */
+    }
+
+    .total-container {
+      position: absolute;
+      right: 24px;
+      bottom: 24px;
+      font-weight: bold;
+      font-size: 1.05rem;
+      background: #fff;
+      padding: 6px 10px;
+      border-radius: 6px;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, .08);
+      z-index: 10;
+      /* ลอยอยู่เหนือเส้นตาราง */
+    }
+
+
+
+
+
+
+    .reach-panel .panel-header {
+      font-weight: 700;
+      font-size: 18px;
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .reach-panel .panel-header::after {
+      content: "";
+      flex: 1;
+      height: 1px;
+      background: #bfbfbf;
+      margin-left: 8px;
+    }
+
+    /* กล่องย่อย */
+    .reach-panel .panel-box {
+      border: 1px solid #cfcfcf;
+      background: #fff;
+      border-radius: 4px;
+      padding: 10px;
+      margin-bottom: 10px;
+    }
+
+    .reach-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+      margin-top: 10px;
+    }
+
+    .reach-table th,
+    .reach-table td {
+      border: 1px solid #ccc;
+      padding: 6px;
+      text-align: center;
+    }
+
+    .reach-table th {
+      background: #eef6ff;
+      font-weight: bold;
+    }
+
+    .reach-table td:first-child {
+      font-weight: bold;
+      background: #f9f9f9;
+    }
+
+
+    .reach-remaining {
+      display: flex;
+      justify-content: flex-end;
+      gap: 6px;
+      margin-top: 6px;
+      font-size: 14px;
+    }
+
+    .reach-remaining .days {
+      color: #e53935;
+      font-weight: 700;
+    }
+
+    /* หัวข้อส่วนย่อย */
+    .section-title {
+      font-weight: 600;
+      margin-bottom: 6px;
+      display: block;
+    }
+
+    .status-warn {
+      color: #e53935;
+      font-weight: 700;
+      margin-left: 8px;
+    }
+
+    /* ฟอร์มเลย์เอาต์ */
+    .form-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .form-row .grow {
+      flex: 1;
+    }
+
+    .small-btn {
+      padding: 6px 10px;
+      border: 1px solid #bbb;
+      background: #eaeaea;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+
+    .inline-check {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .inline-check input {
+      margin: 0;
+    }
+
+    .textarea {
+      width: 100%;
+      height: 110px;
+      padding: 8px;
+      border: 1px solid #cfcfcf;
+      border-radius: 4px;
+      resize: vertical;
+      background: #fff;
+    }
+
+    /* ปุ่มยืนยัน */
+    .submit-btn {
+      display: block;
+      width: 100%;
+      padding: 10px 14px;
+      border: none;
+      border-radius: 6px;
+      background: #0d6efd;
+      color: #fff;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .submit-btn:hover {
+      background: #0b5ed7;
+    }
+
+    textarea,
+    input,
+    select {
+      box-sizing: border-box;
+      /* ✅ กัน input/textarea ล้น */
+      max-width: 100%;
+      /* กันไม่ให้เกิน container */
+    }
+
+    input[type="date"] {
+      padding: 6px 8px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      font-size: 14px;
+      box-sizing: border-box;
+    }
+
+
+    /* ==== Fancy Cute Loader (โปร่งใส) ==== */
+    .loader-overlay {
+      position: fixed;
+      inset: 0;
+      /* โปร่งใส 55% + เบลอเล็กน้อย เห็นพื้นหลังเลา ๆ */
+      background: rgba(255, 255, 255, 0.55);
+      backdrop-filter: blur(3px);
+      -webkit-backdrop-filter: blur(3px);
+      display: none;
+      /* ซ่อนเริ่มต้น */
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
+      /* ทับทุกอย่าง */
+    }
+
+    .loader-overlay.show {
+      display: flex;
+    }
+
+    .loader-card {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 14px;
+      padding: 22px 26px;
+      background: #ffffffcc;
+      border: 1px solid #d9e8ff;
+      border-radius: 16px;
+      box-shadow: 0 12px 30px rgba(0, 0, 0, .12), 0 2px 6px rgba(0, 0, 0, .06);
+    }
+
+    /* jelly blob */
+    .blob {
+      width: 72px;
+      height: 72px;
+      border-radius: 50%;
+      background: conic-gradient(from 160deg, #7bb9ff, #ffd1dc, #c5f0a4, #7bb9ff);
+      filter: saturate(1.1);
+      position: relative;
+      animation: blob 2.4s ease-in-out infinite;
+    }
+
+    @keyframes blob {
+
+      0%,
+      100% {
+        transform: scale(1) rotate(0deg);
+        border-radius: 50%;
+      }
+
+      40% {
+        transform: scale(1.06) rotate(8deg);
+        border-radius: 42% 58% 51% 49% / 55% 45% 55% 45%;
+      }
+
+      70% {
+        transform: scale(0.98) rotate(-6deg);
+        border-radius: 58% 42% 47% 53% / 45% 55% 45% 55%;
+      }
+    }
+
+    .face {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      color: #1f3b5b;
+      text-shadow: 0 1px 0 #fff;
+      font-size: 20px;
+    }
+
+    /* bouncing dots */
+    .dots {
+      display: flex;
+      gap: 6px;
+    }
+
+    .dots span {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #1f78ff;
+      animation: dot 1.2s ease-in-out infinite;
+    }
+
+    .dots span:nth-child(2) {
+      animation-delay: .15s;
+    }
+
+    .dots span:nth-child(3) {
+      animation-delay: .30s;
+    }
+
+    @keyframes dot {
+
+      0%,
+      80%,
+      100% {
+        transform: translateY(0);
+        opacity: .4
+      }
+
+      40% {
+        transform: translateY(-6px);
+        opacity: 1
+      }
+    }
+
+    .caption {
+      font-weight: 600;
+      color: #2b3b52;
+      letter-spacing: .2px;
+    }
+
+
+
+
+
+    .modal {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      background: rgba(0, 0, 0, 0.4);
+      backdrop-filter: blur(5px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+    }
+
+    .modal.hidden {
+      display: none;
+    }
+
+    .modal-content {
+      background: #fff;
+      padding: 20px;
+      border-radius: 8px;
+      text-align: center;
+    }
+
+
+    /* Fallback — บังคับซ้อนแนวตั้งแม้ @media โดน block */
+
+
+
+    .right-panel-wrapper {
+      position: sticky;
+      top: 20px;
+      right: 0;
+      display: flex;
+      align-items: flex-start;
+      transition: transform 0.3s ease;
+      z-index: 10;
+    }
+
+    .right-panel-wrapper.hide {
+      transform: translateX(260px);
+      /* หุบออกไปขวา */
+    }
+
+    .toggle-panel-btn {
+      margin-left: 8px;
+      background: #0d6efd;
+      color: white;
+      border: none;
+      padding: 8px 10px;
+      font-weight: bold;
+      border-radius: 6px;
+      cursor: pointer;
+      transform: rotate(90deg);
+      transition: all 0.3s ease;
+    }
+
+    .right-panel-wrapper.hide .toggle-panel-btn {
+      transform: rotate(-90deg);
+    }
+
+    /* ✅ กล่องลอยด้านขวา */
+    .right-panel-fixed {
+      position: fixed;
+      top: 60px;
+      right: 10px;
+      display: flex;
+      flex-direction: row;
+      align-items: stretch;
+      /* ทำให้ปุ่มสูงเท่า container */
+      z-index: 999;
+    }
+
+    .slide-panel {
+      width: 360px;
+      /* ✅ ขยายความกว้างกล่อง */
+      transition: transform 0.3s ease;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+      height: auto;
+    }
+
+    .slide-panel.closed {
+      transform: translateX(100%);
+    }
+
+    .toggle-bar {
+      background: #0d6efd;
+      color: white;
+      border: none;
+      width: 42px;
+      font-size: 16px;
+      font-weight: bold;
+      cursor: pointer;
+      writing-mode: vertical-rl;
+      text-orientation: mixed;
+      border-radius: 8px 0 0 8px;
+      box-shadow: 0 0 6px rgba(0, 0, 0, 0.3);
+      /* เพิ่มเงา */
+      transition: all 0.3s ease;
+      padding: 10px 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      text-align: center;
+      margin-left: 6px;
+      /* ✅ เว้นจาก container */
+      background-image: linear-gradient(to bottom, #0d6efd, #004ecb);
+      /* gradient ชัดขึ้น */
+      border-left: 3px solid white;
+      /* ✅ เพิ่มเส้นขาวให้เด่น */
+      z-index: 999;
+    }
+
+    .toggle-bar .arrow {
+      font-size: 20px;
+    }
+
+    .toggle-bar .label {
+      font-size: 13px;
+      transform: rotate(180deg);
+    }
+
+    .modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      background: rgba(0, 0, 0, 0.4);
+      display: none;
+      justify-content: center;
+      align-items: center;
+      z-index: 9999;
+    }
+
+    .modal-overlay.active {
+      display: flex;
+    }
+
+    .modal-box {
+      background: white;
+      padding: 20px 30px;
+      border-radius: 10px;
+      max-width: 90%;
+      box-shadow: 0 0 20px rgba(0, 0, 0, 0.25);
+      text-align: center;
+    }
+
+    .modal-box p {
+      font-size: 16px;
+      margin-bottom: 20px;
+    }
+
+    .modal-box button {
+      background-color: #0d6efd;
+      color: white;
+      border: none;
+      padding: 8px 16px;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+
+
+    /* === Large UI Overrides (ใส่ไว้ท้าย <style>) === */
+
+    /* ตัวอักษรและระยะขอบโดยรวม */
+    body {
+      font-size: 18px;
+      /* เดิม 16px → ใหญ่ขึ้น */
+      padding: 48px;
+      /* เดิม 40px → กว้างขึ้น */
+    }
+
+    /* ความกว้างและช่องไฟ layout หลัก */
+    .main-wrapper {
+      max-width: 1140px;
+      /* เดิม 960px → กว้างขึ้น */
+      gap: 24px;
+      /* เดิม 20px */
+    }
+
+    /* กล่องหลัก */
+    .container {
+      padding: 24px;
+      /* เดิม 20px */
+      border-radius: 14px;
+      /* เดิม 12px */
+    }
+
+    /* หัวกล่อง */
+    .container-header {
+      font-size: 22px;
+      /* เดิม 18px */
+      padding: 12px 16px;
+      /* เดิม 10px 14px */
+    }
+
+    /* หัวเรื่องบนสุด */
+    h2 {
+      font-size: 30px !important;
+      /* เดิม 26px */
+    }
+
+    /* ตาราง */
+    table {
+      font-size: 16px;
+      /* เดิม 14px */
+    }
+
+    th,
+    td {
+      padding: 12px;
+      /* เดิม 8px */
+    }
+
+    /* อินพุต/ปุ่ม/ตัวเลือก */
+    input,
+    select,
+    textarea,
+    button,
+    label {
+      font-size: 16px !important;
+      /* ขยาย baseline UI */
+    }
+
+    input[type="text"],
+    input[type="number"],
+    select {
+      padding: 10px 12px;
+      /* เดิม 8px 10px */
+    }
+
+    /* กล่อง readonly */
+    .readonly-box {
+      font-size: 16px;
+      /* เดิม 14px */
+      padding: 10px 12px;
+      /* เดิม 8px 10px */
+    }
+
+    /* ปุ่มทั่วไป */
+    button {
+      padding: 8px 14px;
+      /* เดิม 6px 12px */
+      border-radius: 8px;
+      /* เดิม 6px */
+    }
+
+    /* คุมจำนวนสินค้า */
+    .qty-control input {
+      width: 80px;
+      /* เดิม 70px */
+      padding: 8px;
+      /* เดิม 6px */
+      font-size: 16px;
+      /* เดิม 14px */
+    }
+
+    .qty-btn {
+      width: 36px;
+      /* เดิม 32px */
+      height: 36px;
+      /* เดิม 32px */
+      font-size: 18px;
+      /* เดิม 16px */
+    }
+
+    /* ราคาต่อหน่วย + ส่วนลด */
+    .price-flex input {
+      width: 160px;
+      /* เดิม 120px */
+      padding: 8px;
+      /* เดิม 6px */
+      font-size: 16px;
+      /* เดิม 14px */
+    }
+
+    .unit-text {
+      font-size: 16px;
+      /* เดิม 14px */
+    }
+
+    /* รวมยอด */
+    .total-container {
+      font-size: 1.2rem;
+      /* เดิม 1.05rem */
+      padding: 8px 12px;
+      /* เดิม 6px 10px */
+      border-radius: 8px;
+      /* เดิม 6px */
+    }
+
+    /* Panel ขวา (Target Reach) */
+    .reach-panel {
+      width: 340px;
+      /* เดิม 300px */
+    }
+
+    .reach-table {
+      font-size: 16px;
+      /* เดิม 14px */
+    }
+
+    .reach-table th,
+    .reach-table td {
+      padding: 8px;
+      /* เดิม 6px */
+    }
+
+    /* ปุ่มเปิด/ปิดแผงขวา */
+    .toggle-bar {
+      width: 48px;
+      /* เดิม 42px */
+      font-size: 18px;
+      /* เดิม 16px */
+    }
+
+    .toggle-bar .label {
+      font-size: 15px;
+      /* เดิม 13px */
+    }
+
+    /* Modal */
+    .modal-box p,
+    .modal-content p {
+      font-size: 18px;
+      /* เดิม 16px */
+    }
+
+    .modal-box button,
+    .submit-btn {
+      font-size: 18px;
+      /* เดิม 16px */
+      padding: 12px 18px;
+      /* เดิม 10px 16px */
+      border-radius: 8px;
+      /* เดิม 6px */
+    }
+
+    /* เวอร์ชันมือถือ (ยังคงอ่านง่ายขึ้น) */
+    @media screen and (max-width: 768px) {
+      body {
+        font-size: 18px;
+      }
+
+      .container-header {
+        font-size: 22px;
+      }
+
+      input,
+      select,
+      textarea,
+      button,
+      label,
+      th,
+      td {
+        font-size: 18px !important;
+      }
+
+      .toggle-bar {
+        font-size: 18px;
+        width: 48px;
+      }
+
+      .modal-box p {
+        font-size: 18px;
+      }
+
+      .modal-box button {
+        font-size: 18px;
+        padding: 12px 18px;
+      }
+    }
+
+    html,
+    body {
+      font-size: 18px;
+      /* เดิมอาจจะ 14–16px → ขยายขึ้น */
+      line-height: 1.5;
+    }
+
+    input,
+    select,
+    button,
+    textarea {
+      font-size: 18px;
+      padding: 12px 14px;
+      /* ปุ่ม/กล่อง input กดง่ายขึ้น */
+    }
+
+    .container,
+    .order-card,
+    .modal-card {
+      padding: 20px;
+      border-radius: 16px;
+    }
+
+    /* ===== Mobile Bigger & Scrollable (≤ 768px) — ปรับให้ใหญ่ขึ้นอีก ===== */
+    @media (max-width: 768px) {
+
+      /* ให้หน้าเลื่อนตามปกติ */
+      html,
+      body {
+        height: auto;
+        overflow: auto;
+      }
+
+      /* ตัวอักษรใหญ่ขึ้นทั่วหน้า */
+      body {
+        font-size: 20px;
+        /* เดิม 18 → 20 */
+        line-height: 1.65;
+        padding: 20px;
+        background: #eef6fa;
+      }
+
+      /* ส่วนหัวแบบฟอร์ม */
+      h2 {
+        font-size: 28px !important;
+      }
+
+      /* เลย์เอาต์หลัก */
+      .main-wrapper {
+        max-width: 720px;
+        margin: 0 auto;
+        gap: 18px;
+      }
+
+      /* กล่อง/หัวกล่อง */
+      .container {
+        padding: 18px;
+        border-radius: 14px;
+      }
+
+      .container-header {
+        font-size: 22px;
+        padding: 12px 14px;
+      }
+
+      /* ตาราง: ตัวอักษร/ช่องว่างใหญ่ขึ้น แตะง่าย */
+      table {
+        font-size: 17px;
+      }
+
+      /* เดิม 16 → 17 */
+      th,
+      td {
+        padding: 12px;
+      }
+
+      /* เดิม 10 → 12 */
+
+      /* อินพุต/ตัวเลือก/ปุ่ม */
+      input,
+      select,
+      textarea,
+      button,
+      label {
+        font-size: 18px !important;
+      }
+
+      input[type="text"],
+      input[type="number"],
+      select {
+        padding: 12px 14px;
+        /* เดิม 10 → 12 */
+        border-radius: 10px;
+      }
+
+      button {
+        padding: 12px 16px;
+        /* เดิม 10 → 12 */
+        border-radius: 10px;
+      }
+
+      /* กล่อง readonly */
+      .readonly-box {
+        font-size: 18px;
+        padding: 12px 14px;
+      }
+
+      /* โซนจำนวน/ปุ่ม +/- ใหญ่ขึ้น */
+      .qty-control input {
+        width: 96px;
+        font-size: 18px;
+        padding: 10px;
+      }
+
+      .qty-btn {
+        width: 40px;
+        height: 40px;
+        font-size: 20px;
+      }
+
+      /* ราคาต่อหน่วย/ส่วนลด */
+      .price-flex input {
+        width: 180px;
+        font-size: 18px;
+        padding: 10px;
+      }
+
+      .unit-text {
+        font-size: 18px;
+      }
+
+      /* จำกัดความสูงตารางลูกค้า/สินค้าให้ยืดตามเนื้อหา (เลื่อนทั้งหน้าแทน) */
+      #customerContainer .table-container,
+      #productContainer .table-container {
+        max-height: none;
+      }
+
+      /* รวมยอด: วางใต้ตาราง ไม่ลอยขวา ป้องกันบัง */
+      #orderContainer {
+        padding-bottom: 16px;
+      }
+
+      .total-container {
+        position: static;
+        margin-top: 12px;
+        font-size: 1.25rem;
+        /* ใหญ่ขึ้นเล็กน้อย */
+        padding: 10px 14px;
+        border-radius: 10px;
+      }
+
+      /* แผงขวาให้เป็นบล็อคธรรมดา */
+      .right-panel-fixed {
+        position: static;
+        top: auto;
+        right: auto;
+        display: block;
+        margin-top: 10px;
+      }
+
+      .reach-panel {
+        position: static;
+        width: 100%;
+      }
+
+      .slide-panel {
+        width: 100%;
+        box-shadow: none;
+      }
+
+      /* ปุ่ม Toggle แนวนอน ใช้ง่ายขึ้น */
+      .toggle-bar {
+        writing-mode: horizontal-tb;
+        text-orientation: mixed;
+        width: auto;
+        padding: 12px 14px;
+        border-radius: 10px;
+        margin-left: 0;
+        font-size: 18px;
+      }
+
+      .toggle-bar .label {
+        transform: none;
+        font-size: 16px;
+        margin-left: 8px;
+      }
+
+      .toggle-bar .arrow {
+        font-size: 20px;
+      }
+
+      /* ฟอนต์ใน Modal */
+      .modal-box p,
+      .modal-content p {
+        font-size: 18px;
+      }
+
+      .modal-box button,
+      .submit-btn {
+        font-size: 18px;
+        padding: 12px 18px;
+      }
+    }
+
+    .hint {
+      margin-top: 6px;
+      font-size: 0.9rem;
+      color: #555;
+    }
+
+    .hint .next {
+      color: #f1c40f;
+      /* เหลืองเตือน */
+      font-weight: 700;
+      /* ให้เด่นขึ้นนิด */
+    }
+
+    .hint .warn {
+      color: #d35400;
+      font-weight: 600;
+    }
+
+    .hint .ok {
+      color: #2e7d32;
+      font-weight: 600;
+    }
+
+
+    .hidden {
+      display: none !important;
+    }
+
+    .muted {
+      opacity: .55;
+      pointer-events: none;
+    }
+
+    .warn-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: #FFF7E6;
+      /* ครีมอุ่นๆ */
+      border: 1px solid #FFD8A8;
+      /* ส้มพีชอ่อน */
+      color: #8B5E00;
+      /* น้ำตาลทอง */
+      padding: 6px 10px;
+      border-radius: 999px;
+      /* pill */
+      font-weight: 600;
+      box-shadow: 0 2px 6px rgba(255, 179, 71, .15);
+      line-height: 1.2;
+      white-space: nowrap;
+      animation: popin .18s ease-out;
+    }
+
+    .warn-badge::before {
+      content: "⚠️";
+      font-size: 16px;
+    }
+
+    @keyframes popin {
+      from {
+        transform: translateY(-2px);
+        opacity: 0;
+      }
+
+      to {
+        transform: translateY(0);
+        opacity: 1;
+      }
+    }
+
+    .ok-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: #E8F5E9;
+      /* เขียวอ่อน */
+      border: 1px solid #A5D6A7;
+      /* เขียวพาสเทล */
+      color: #1B5E20;
+      /* เขียวเข้ม */
+      padding: 6px 10px;
+      border-radius: 999px;
+      font-weight: 600;
+      box-shadow: 0 2px 6px rgba(76, 175, 80, .15);
+      line-height: 1.2;
+      white-space: nowrap;
+      animation: popin .18s ease-out;
+    }
+
+    .ok-badge::before {
+      content: "✅";
+      font-size: 16px;
+    }
+
+
+    /* เมื่อแผงขวาเปิด ให้ main ถอยขวาเพื่อไม่ให้โดนทับ */
+    body.panel-open .main-wrapper {
+      margin-right: 380px;
+    }
+
+    /* = width slide-panel + gap */
+    @media (max-width: 1024px) {
+      body.panel-open .main-wrapper {
+        margin-right: 0;
+      }
+
+      /* มือถือ: ให้ลอยทับตามเดิม */
+    }
+
+    /* ยึดแผงชิดขวาจริง ๆ และจัดระบบสกรอลล์ในแผง */
+    .right-panel-fixed {
+      top: 72px;
+      right: 0;
+    }
+
+    /* ชิดขวา */
+    .slide-panel {
+      width: 360px;
+      max-height: calc(100vh - 96px);
+      /* ไม่ให้สูงเกินจอ */
+      overflow: auto;
+      /* สกรอลล์ภายในแผง */
+      border-left: 1px solid #e5e7eb;
+    }
+
+    /* ปุ่มพับให้แนบขอบแผงและอยู่กึ่งกลางแนวตั้ง */
+    .toggle-bar {
+      position: relative;
+      right: 0;
+      margin-left: 0;
+      border-left: 0;
+      border-right: 3px solid white;
+      /* เส้นขาวด้านในแทน */
+    }
+
+    .right-panel-fixed {
+      display: flex;
+      align-items: stretch;
+    }
+
+    .slide-panel.open+.toggle-bar .arrow {
+      transform: none;
+    }
+
+    .slide-panel.closed+.toggle-bar .arrow {
+      transform: none;
+    }
+
+    /* สีสถานะเตือน/ผ่านเกณฑ์ใน badge ด้านซ้าย */
+    .warn-badge.ok {
+      background: #ECFDF5;
+      border-color: #A7F3D0;
+      color: #065F46;
+      box-shadow: 0 2px 6px rgba(16, 185, 129, .15);
+    }
+
+    /* คอนเทนต์หลักอยู่กึ่งกลางเสมอ */
+    .main-wrapper {
+      max-width: 1140px;
+      /* เท่าที่ใช้อยู่ */
+      margin: 0 auto;
+      /* จัดกลางจอ */
+    }
+
+    /* เมื่อแผงขวาเปิด: จำกัดความกว้างรวมให้เว้นพื้นที่แผง แต่ยังคง "จัดกลาง" จริง ๆ */
+    body.panel-open .main-wrapper {
+      max-width: min(1140px, calc(100vw - 380px));
+      /* 380px = ความกว้างแผง + ช่องว่างเล็กน้อย */
+    }
+
+    /* มือถือ/จอเล็ก: ไม่จำกัดความกว้าง ให้แผงลอยทับตามเดิม */
+    @media (max-width: 1024px) {
+      body.panel-open .main-wrapper {
+        max-width: 1140px;
+        /* กลับมาเหมือนเดิม */
+      }
+    }
+
+    /* เผื่อมี padding ซ้าย/ขวาไม่เท่ากัน ให้สมมาตร */
+    body {
+      padding: 48px 24px;
+    }
+
+    /* ซ้าย=ขวา */
+
+
+
+    /* ค้นหา class นี้แล้วแก้ width */
+    .reach-panel {
+      width: 480px;
+      /* ✅ ขยายให้กว้างขึ้น (เดิมประมาณ 340px) */
+    }
+
+    .slide-panel {
+      width: 500px;
+      /* ✅ ขยายแผงสไลด์ให้รับกับข้างบน (เดิม 360px) */
+      max-height: calc(100vh - 96px);
+      overflow: auto;
+      border-left: 1px solid #e5e7eb;
+    }
+
+    /* เพิ่ม CSS ปุ่มยางลบ */
+    .eraser-btn {
+      background: transparent;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      cursor: pointer;
+      color: #666;
+      font-size: 14px;
+      padding: 4px 8px;
+      margin-left: 8px;
+      transition: all 0.2s;
+    }
+
+    .eraser-btn:hover {
+      background: #ffebee;
+      color: #d32f2f;
+      border-color: #d32f2f;
+    }
+
+
+    /* ✅ สไตล์ปุ่มแบบ "Edge Handle" (ลิ้นยื่นออกมา) */
+    .toggle-bar {
+      /* จัดตำแหน่งและเลย์เอาต์ */
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+
+      /* รูปลักษณ์ */
+      background: #ffffff;
+      /* พื้นขาวสะอาด */
+      color: #0d6efd;
+      /* สีตัวอักษรน้ำเงินแบรนด์ */
+      border: none;
+
+      /* เส้นขอบซ้ายสีน้ำเงิน เพื่อให้เห็นชัดว่าเป็นจุดกด */
+      border-left: 4px solid #0d6efd;
+
+      /* ทำมุมมนเฉพาะด้านซ้าย */
+      border-radius: 12px 0 0 12px;
+
+      /* เงาฟุ้งๆ ให้ดูลอยออกมา */
+      box-shadow: -4px 0 20px rgba(0, 0, 0, 0.12);
+
+      /* ขนาด */
+      width: 44px;
+      padding: 14px 4px;
+      cursor: pointer;
+
+      /* Animation นุ่มนวล */
+      transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+      z-index: 1000;
+
+      /* ลบเส้นขาวเดิมทิ้ง */
+      border-right: none;
+      margin-left: 0;
+    }
+
+    /* เมื่อเอาเมาส์ไปชี้: ยื่นออกมานิดนึง */
+    .toggle-bar:hover {
+      width: 54px;
+      /* กว้างขึ้น */
+      background: #f8faff;
+      /* เปลี่ยนสีพื้นนิดหน่อย */
+      box-shadow: -6px 0 25px rgba(13, 110, 253, 0.2);
+      /* เงาสีฟ้าเรืองแสง */
+    }
+
+    /* ปรับแต่งลูกศร */
+    .toggle-bar .arrow {
+      font-size: 24px;
+      line-height: 1;
+      font-weight: 300;
+      /* บางลงให้ดูหรู */
+      transition: transform 0.3s;
+    }
+
+    /* ปรับแต่งตัวอักษรแนวตั้ง */
+    .toggle-bar .label {
+      writing-mode: horizontal-tb;
+      /* กลับเป็นแนวนอนปกติ */
+      transform: none;
+      /* ไม่ต้องหมุน */
+      display: block;
+      /* บรรทัดใหม่ */
+      line-height: 1;
+    }
+
+    /* Mobile: ให้ปุ่มเล็กลงหน่อย */
+    @media (max-width: 768px) {
+      .toggle-bar {
+        writing-mode: horizontal-tb;
+        /* กลับเป็นแนวนอนในมือถือ */
+        flex-direction: row;
+        width: auto;
+        border-left: none;
+        border-top: 4px solid #0d6efd;
+        /* ย้ายเส้นไปข้างบนแทน */
+        border-radius: 12px 12px 0 0;
+        /* มนข้างบน */
+        padding: 10px 20px;
+        box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.1);
+      }
+
+      .toggle-bar .label {
+        writing-mode: horizontal-tb;
+        transform: none;
+        font-size: 16px;
+        margin-left: 8px;
+      }
+    }
+
+    /* ✅ แผงซ้าย (Left Sidebar) - Mirror จากขวา */
+    .left-panel-fixed {
+      position: fixed;
+      top: 72px;
+      left: 0;
+      bottom: 0;
+      z-index: 998;
+
+      display: flex;
+      align-items: flex-start;
+
+      /* ความกว้างรวม = กล่อง (320px) + ปุ่ม (ประมาณ 50px) */
+      width: auto;
+
+      /* เริ่มต้น: ขยับซ่อนไปทางซ้าย (เหลือแค่ปุ่มโผล่มา) */
+      transform: translateX(-320px);
+      transition: transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+    }
+
+    .left-panel {
+      width: 320px;
+      background: #fff;
+      border-right: 1px solid #e5e7eb;
+      box-shadow: 4px 0 20px rgba(0, 0, 0, 0.05);
+      height: calc(100vh - 72px);
+      /* เต็มความสูงลบ topbar */
+      display: flex;
+      flex-direction: column;
+      transition: transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+      transform: translateX(0);
+      /* เริ่มต้น: เปิด */
+    }
+
+    .left-panel.closed {
+      transform: translateX(-100%);
+      /* หุบไปทางซ้าย */
+    }
+
+    /* ปุ่ม Toggle ซ้าย (กลับด้านกับขวา) */
+    .toggle-bar-left {
+      background: #fff;
+      color: #0d6efd;
+      border: none;
+      border-right: 4px solid #0d6efd;
+      /* เส้นสีด้านขวา */
+      border-radius: 0 12px 12px 0;
+      /* มนด้านขวา */
+      box-shadow: 4px 0 20px rgba(0, 0, 0, 0.12);
+      width: 40px;
+      padding: 12px 0;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.3s ease;
+      margin-right: 0;
+    }
+
+    .toggle-bar-left:hover {
+      width: 50px;
+      background: #f8faff;
+    }
+
+    /* ส่วนประกอบภายในแผงซ้าย */
+    .panel-search-box {
+      padding: 16px;
+      border-bottom: 1px solid #eee;
+      background: #fdfdfd;
+    }
+
+    .panel-search-box input {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      font-size: 16px;
+      outline: none;
+    }
+
+    .panel-search-box input:focus {
+      border-color: #0d6efd;
+      box-shadow: 0 0 0 3px rgba(13, 110, 253, 0.1);
+    }
+
+    /* รายการออเดอร์ (Scrollable) */
+    .order-list-container {
+      flex: 1;
+      overflow-y: auto;
+      padding: 10px;
+      background: #f4f7fa;
+    }
+
+    /* การ์ดออเดอร์ */
+    .order-card {
+      background: #fff;
+      border: 1px solid #e0e0e0;
+      border-radius: 10px;
+      padding: 12px;
+      margin-bottom: 10px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .order-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+      border-color: #b0c4de;
+    }
+
+    .order-card.active {
+      border: 2px solid #0d6efd;
+      background: #f0f7ff;
+    }
+
+    /* แถบสีสถานะด้านซ้ายการ์ด */
+    .order-card::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      width: 4px;
+      background: #ccc;
+      /* สี default (รออนุมัติ) */
+    }
+
+    .order-card.active::before {
+      background: #0d6efd;
+    }
+
+    /* รายละเอียดในการ์ด */
+    .oc-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 6px;
+    }
+
+    .oc-cust-name {
+      font-weight: 700;
+      font-size: 16px;
+      color: #333;
+      line-height: 1.3;
+    }
+
+    .oc-meta {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      font-size: 13px;
+      color: #666;
+    }
+
+    .oc-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .oc-date-faded {
+      font-size: 12px;
+      color: #999;
+      /* สีจางตามขอ */
+    }
+
+    .oc-ship-date {
+      color: #098b36;
+      /* สีเขียว */
+      font-weight: 600;
+      background: #e8f5e9;
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+
+    /* Responsive มือถือ */
+    @media (max-width: 768px) {
+      .left-panel-fixed {
+        position: static;
+        display: block;
+        height: auto;
+      }
+
+      .left-panel {
+        width: 100%;
+        height: auto;
+        max-height: 300px;
+        border-right: none;
+        border-bottom: 1px solid #ccc;
+      }
+
+      .toggle-bar-left {
+        display: none;
+      }
+
+      /* ซ่อนปุ่ม toggle ในมือถือ */
+    }
+
+    /* ✅ แผงซ้าย (Left Sidebar) - Logic ขยับทั้ง Wrapper */
+    .left-panel-fixed {
+      position: fixed;
+      top: 72px;
+      left: 0;
+      bottom: 0;
+      z-index: 998;
+
+      display: flex;
+      align-items: flex-start;
+
+      /* ความกว้างรวม = กล่อง (320px) + ปุ่ม (ประมาณ 50px) */
+      width: auto;
+
+      /* เริ่มต้น: ขยับซ่อนไปทางซ้าย (เหลือแค่ปุ่มโผล่มา) */
+      transform: translateX(-320px);
+      transition: transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+    }
+
+    /* สถานะเปิด: เลื่อนกลับมาที่ 0 */
+    .left-panel-fixed.open {
+      transform: translateX(0);
+    }
+
+    .left-panel {
+      width: 320px;
+      background: #fff;
+      border-right: 1px solid #e5e7eb;
+      box-shadow: 4px 0 20px rgba(0, 0, 0, 0.05);
+      height: 100%;
+      /* เต็มความสูง Wrapper */
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ปุ่ม Toggle ซ้าย (ปรับให้สวยเหมือนขวา) */
+    .toggle-bar-left {
+      /* จัดวาง */
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+
+      /* รูปลักษณ์ */
+      background: #ffffff;
+      color: #0d6efd;
+      border: none;
+
+      /* เส้นสีด้านขวา */
+      border-right: 4px solid #0d6efd;
+      border-left: none;
+
+      /* มนด้านขวา */
+      border-radius: 0 12px 12px 0;
+
+      /* เงา */
+      box-shadow: 4px 0 20px rgba(0, 0, 0, 0.12);
+
+      /* ขนาด */
+      width: 44px;
+      padding: 14px 4px;
+      cursor: pointer;
+      transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+    }
+
+    /* Hover: ยื่นออกมาหน่อย */
+    .toggle-bar-left:hover {
+      width: 54px;
+      background: #f8faff;
+      box-shadow: 6px 0 25px rgba(13, 110, 253, 0.2);
+    }
+
+    .toggle-bar-left .label {
+      writing-mode: horizontal-tb;
+      /* ไม่หมุน */
+      display: block;
+      line-height: 1;
+    }
+
+    /* Responsive มือถือ */
+    @media (max-width: 768px) {
+
+      /* ในมือถือ ให้ซ่อนแผงนี้ไปเลย หรือจะทำเป็น Modal เต็มจอก็ได้ */
+      /* ในที่นี้ขอซ่อนปุ่ม toggle เพื่อไม่ให้เกะกะ ถ้ายังไม่ได้ทำรองรับมือถือ */
+      .left-panel-fixed {
+        display: none;
+      }
+    }
+
+
+    /* ✅ แผงขวา (Right Sidebar) - Mirror จากซ้าย */
+    .right-panel-fixed {
+      position: fixed;
+      top: 72px;
+      right: 0;
+      bottom: 0;
+      z-index: 998;
+
+      display: flex;
+      align-items: flex-start;
+
+      /* ความกว้างรวม = ปุ่ม + กล่อง */
+      width: auto;
+
+      /* เริ่มต้น: ขยับซ่อนไปทางขวา (320px) เหลือแค่ปุ่ม */
+      transform: translateX(320px);
+      transition: transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+    }
+
+    /* สถานะเปิด: เลื่อนกลับมาที่ 0 */
+    .right-panel-fixed.open {
+      transform: translateX(0);
+    }
+
+    .right-panel {
+      width: 320px;
+      /* หรือ 400px ตามชอบ */
+      background: #fff;
+      border-left: 1px solid #e5e7eb;
+      /* เส้นขอบอยู่ซ้าย */
+      box-shadow: -4px 0 20px rgba(0, 0, 0, 0.05);
+      /* เงาอยู่ซ้าย */
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      overflow-y: auto;
+      /* ให้สกรอลล์ได้ */
+    }
+
+    /* ปุ่ม Toggle ขวา (ปุ่มอยู่ซ้ายของกล่อง) */
+    .toggle-bar-right {
+      /* จัดวาง */
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+
+      /* รูปลักษณ์ */
+      background: #ffffff;
+      color: #0d6efd;
+      border: none;
+
+      /* เส้นสีด้านซ้าย */
+      border-left: 4px solid #0d6efd;
+      border-right: none;
+
+      /* มนด้านซ้าย */
+      border-radius: 12px 0 0 12px;
+
+      /* เงา */
+      box-shadow: -4px 0 20px rgba(0, 0, 0, 0.12);
+
+      /* ขนาด */
+      width: 44px;
+      padding: 14px 4px;
+      cursor: pointer;
+      transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+    }
+
+    /* Hover: ยื่นออกมาทางซ้ายหน่อย */
+    .toggle-bar-right:hover {
+      width: 54px;
+      background: #f8faff;
+      box-shadow: -6px 0 25px rgba(13, 110, 253, 0.2);
+    }
+
+    .toggle-bar-right .label {
+      writing-mode: horizontal-tb;
+      display: block;
+      line-height: 1;
+    }
+
+    /* Responsive มือถือ */
+    @media (max-width: 768px) {
+      .right-panel-fixed {
+        display: none;
+      }
+    }
+
+
+    /* 1. ขยายกล่องให้กว้าง 500px (จากเดิม 340px) */
+    .right-panel,
+    .reach-panel,
+    .slide-panel {
+      width: 500px !important;
+      max-width: 90vw;
+      /* กันล้นจอเผื่อจอเล็ก */
+    }
+
+    /* 2. ปรับระยะซ่อน (ต้องเท่ากับความกว้างใหม่) */
+    .right-panel-fixed {
+      transform: translateX(500px);
+      /* ดันเก็บไปทางขวา 500px */
+    }
+
+    /* 3. (มือถือ) ให้เต็มจอเหมือนเดิม ไม่ต้องแก้ */
+    @media (max-width: 768px) {
+
+      .right-panel,
+      .reach-panel,
+      .slide-panel {
+        width: 100% !important;
+      }
+
+      .right-panel-fixed {
+        transform: translateX(100%);
+      }
+    }
+
+    /* =========================================
+   🎨 Right Panel: Card Style Theme
+   ========================================= */
+
+    /* 1. เปลี่ยนพื้นหลังแผงใหญ่เป็นสีเทาอ่อน (เพื่อให้การ์ดสีขาวเด่นขึ้น) */
+    #rightOrderPanel {
+      background-color: #f0f2f5 !important;
+      /* สีเทาอ่อนสบายตา */
+      /* ซ่อน scrollbar แนวนอนเผื่อไว้ */
+      overflow-x: hidden;
+    }
+
+    /* 2. ปรับหัวข้อใหญ่สุด "Target Reach" */
+    #rightOrderPanel .panel-header {
+      background-color: #ffffff;
+      padding: 18px 24px;
+      border-bottom: 1px solid #e0e0e0;
+      margin-bottom: 0;
+      font-size: 20px;
+      color: #1f2937;
+      position: sticky;
+      /* (แถม) ให้หัวข้อติดอยู่ข้างบนเวลาเลื่อนลง */
+      top: 0;
+      z-index: 10;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.03);
+    }
+
+    /* 3. แปลงร่างกล่องข้อมูล (.panel-box) ให้เป็น "การ์ด" */
+    .reach-panel .panel-box,
+    #rightOrderPanel .panel-box {
+      background: #ffffff;
+      /* พื้นหลังสีขาว */
+      border: 1px solid #eaecf0;
+      /* เส้นขอบจางๆ */
+      border-radius: 12px;
+      /* มุมมน 12px */
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+      /* เงาฟุ้งๆ ให้ดูลอย */
+      padding: 20px;
+      /* เพิ่มพื้นที่ภายในให้หายใจสะดวก */
+      margin-bottom: 16px;
+      /* เว้นระยะห่างระหว่างการ์ด */
+    }
+
+    /* (แถม) แต่งหัวข้อในแต่ละการ์ดให้สวยขึ้น */
+    .section-title {
+      font-size: 16px;
+      font-weight: 700;
+      color: #374151;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+    }
+
+    /* เพิ่มเส้นขีดเล็กๆ หน้าหัวข้อ */
+    .section-title::before {
+      content: "";
+      display: inline-block;
+      width: 4px;
+      height: 16px;
+      background: #0d6efd;
+      /* สีน้ำเงินแบรนด์ */
+      margin-right: 8px;
+      border-radius: 2px;
+    }
+
+    /* ปรับปุ่มกด "ยืนยันคำสั่งซื้อ" ให้ลอยเด่น */
+    #rightOrderPanel .submit-btn {
+      margin: 20px 10px 40px 10px;
+      /* เว้นระยะรอบๆ */
+      width: calc(100% - 20px);
+      /* ปรับความกว้างให้พอดี */
+      box-shadow: 0 4px 12px rgba(13, 110, 253, 0.3);
+      /* เงาสีน้ำเงิน */
+      transition: transform 0.2s;
+    }
+
+    #rightOrderPanel .submit-btn:hover {
+      transform: translateY(-2px);
+      /* ขยับขึ้นนิดนึงเวลากด */
+    }
+
+
+    /* === Progress Bar ใน Loader === */
+    .progress-container {
+      width: 200px;
+      background-color: #e0e0e0;
+      border-radius: 10px;
+      margin-top: 10px;
+      overflow: hidden;
+      height: 8px;
+      /* ความสูงหลอด */
+    }
+
+    .progress-bar {
+      width: 0%;
+      height: 100%;
+      background: linear-gradient(90deg, #4facfe, #00f2fe);
+      transition: width 0.4s ease;
+      /* เอฟเฟกต์เลื่อนนุ่มๆ */
+    }
+
+    .progress-text {
+      font-size: 12px;
+      color: #666;
+      margin-top: 4px;
+      font-weight: 600;
+    }
+
+
+    /* ====================================================
+   ✅ FIX: จัด Layout ใหม่ให้ขยับนุ่มนวล
+   ==================================================== */
+
+    /* ให้ body ขยับพื้นที่ตัวเอง เมื่อมี class เพิ่มเข้ามา */
+    body {
+      transition: padding 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+      /* padding เริ่มต้นคือ 48px ตามที่คุณตั้งไว้ */
+    }
+
+    /* เมื่อเปิดซ้าย: บีบพื้นที่ body ด้านซ้าย */
+    body.open-left {
+      /* 320px (ความกว้างกล่อง) + 50px (ปุ่ม/ช่องว่าง) */
+      padding-left: 370px !important;
+    }
+
+    /* เมื่อเปิดขวา: บีบพื้นที่ body ด้านขวา */
+    body.open-right {
+      /* 500px (ความกว้างกล่อง) + 20px (ช่องว่าง) */
+      padding-right: 520px !important;
+    }
+
+    /* ในมือถือ ไม่ต้องบีบ (ให้ลอยทับเหมือนเดิม) */
+    @media (max-width: 1024px) {
+      body.open-left {
+        padding-left: 24px !important;
+      }
+
+      /* กลับไปค่า default */
+      body.open-right {
+        padding-right: 24px !important;
+      }
+    }
+
+    /* ลบ Logic เก่าที่อาจจะตีกันทิ้ง (ถ้ามี) */
+    body.panel-open .main-wrapper {
+      margin-right: auto;
+      max-width: 1140px;
+    }
+
+    /* ใส่เพิ่มใน <style> ของ Index.html */
+    .badge-pay {
+      font-size: 11px;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-weight: 700;
+      margin-left: 6px;
+      white-space: nowrap;
+      display: inline-block;
+      vertical-align: middle;
+    }
+
+    .bg-pay-green {
+      background: #dcfce7;
+      color: #166534;
+      border: 1px solid #bbf7d0;
+    }
+
+    /* ชำระแล้ว */
+    .bg-pay-red {
+      background: #fee2e2;
+      color: #991b1b;
+      border: 1px solid #fecaca;
+    }
+
+    /* รอชำระ */
+    .bg-pay-yellow {
+      background: #fef9c3;
+      color: #854d0e;
+      border: 1px solid #fde68a;
+    }
+
+    /* นัดชำระแล้ว */
+    .bg-pay-darkred {
+      background: #7f1d1d;
+      color: #fecaca;
+      border: 1px solid #991b1b;
+    }
+
+    /* หนี้คงค้าง */
+  </style>
+</head>
+
+
+
+<body>
+
+  <!-- Loader Overlay -->
+  <div id="appLoader" class="loader-overlay" aria-live="polite" aria-busy="true">
+    <div class="loader-card">
+      <div class="blob">
+        <div class="face">^‿^</div>
+      </div>
+
+      <div class="dots">
+        <span></span><span></span><span></span>
+      </div>
+
+      <div class="caption">กำลังโหลดข้อมูล…</div>
+
+      <div class="progress-container">
+        <div id="loadingBar" class="progress-bar"></div>
+      </div>
+      <div id="loadingPercent" class="progress-text">0%</div>
+
+    </div>
+  </div>
+
+
+  <div class="main-wrapper">
+
+    <div style="text-align: center; margin-bottom: 15px;">
+      <h2 style="margin: 0; font-size: 26px; font-weight: bold;">แบบฟอร์มสั่งซื้อสินค้า</h2>
+      <p style="margin: 0px 0 0; color: #666;">สร้างและจัดการออเดอร์สำหรับลูกค้า</p>
+    </div>
+    <input type="hidden" id="branchHidden" value="<?= CURRENT_BRANCH ?>">
+
+    <div style="text-align: center; margin-bottom: 15px;">
+      <span style="font-size: 18px; color: #0d6efd; font-weight: bold;">
+        สาขาปัจจุบัน:
+        <?= CURRENT_BRANCH ? CURRENT_BRANCH : '(กรุณาเลือกสาขาที่เมนูด้านบน)' ?>
+      </span>
+    </div>
+
+
+    <!-- 🔹 ซ้าย: ลูกค้า + สินค้า -->
+    <div class="column left-side">
+
+      <div class="container" id="customerContainer">
+        <div class="container-header">
+          <span>ข้อมูลลูกค้า</span>
+          <label style="display:flex; align-items:center; gap:8px; font-weight:600; cursor: pointer;">
+            <input type="checkbox" id="chkWithdraw" style="width: 18px; height: 18px;">
+            เบิกสินค้า
+          </label>
+        </div>
+
+        <div id="panelNormalMode">
+          <div class="input-row">
+            <div class="input-pair">
+              <label>ชื่อ</label>
+              <div class="input-wrapper">
+                <input type="text" id="nameInput">
+                <button class="clear-btn" onclick="clearCustomerInputs()">✖</button>
+              </div>
+            </div>
+            <div class="input-pair">
+              <label>รหัส</label>
+              <div class="input-wrapper">
+                <input type="text" id="codeInput">
+                <button class="clear-btn" onclick="clearCustomerInputs()">✖</button>
+              </div>
+            </div>
+          </div>
+
+          <select id="custCodeSelect" style="display:none;"></select>
+
+          <div class="row-highlight">
+            <div class="input-pair">
+              <label>ประเภท</label>
+              <div class="readonly-box" id="projectDisplay">-</div>
+            </div>
+            <div class="input-pair">
+              <label>Tier</label>
+              <div class="readonly-box" id="priceDisplay">-</div>
+            </div>
+          </div>
+
+          <div class="table-container">
+            <table>
+              <thead>
+                <tr>
+                  <th class="sortable">รหัส</th>
+                  <th class="sortable">ชื่อ</th>
+                  <th class="sortable">Tier</th>
+                </tr>
+              </thead>
+              <tbody id="customerTable">
+                <tr>
+                  <td colspan="3">กำลังโหลดข้อมูล...</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div id="panelWithdrawMode" class="hidden">
+          <div class="input-row">
+            <div class="input-pair">
+              <label>รูปแบบการขาย</label>
+              <select id="saleTypeSelect">
+                <option value="">-- เลือกประเภท --</option>
+                <option value="ขายปลีก">ขายปลีก</option>
+                <option value="ขายส่ง">ขายส่ง</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="input-row">
+            <div class="input-pair">
+              <label>รหัสพนักงาน (Sale)</label>
+              <div class="input-wrapper">
+                <input type="text" id="withdrawEmpCode" placeholder="ค้นหารหัส">
+                <button class="clear-btn" onclick="clearWithdrawEmp()">✖</button>
+              </div>
+            </div>
+            <div class="input-pair">
+              <label>ชื่อพนักงาน</label>
+              <div class="input-wrapper">
+                <input type="text" id="withdrawEmpName" placeholder="ค้นหาชื่อ">
+                <button class="clear-btn" onclick="clearWithdrawEmp()">✖</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="table-container" id="employeeSelectContainer">
+            <table>
+              <thead>
+                <tr>
+                  <th class="sortable">รหัส (Sale)</th>
+                  <th class="sortable">ชื่อ</th>
+                </tr>
+              </thead>
+              <tbody id="employeeTable">
+                <tr>
+                  <td colspan="2">กำลังโหลดพนักงาน...</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      <div class="container" id="productContainer">
+        <div class="container-header">สินค้า</div>
+        <div class="input-row">
+          <div class="input-pair">
+            <label>สินค้า</label>
+            <div class="input-wrapper">
+              <input type="text" id="prodName">
+              <button class="clear-btn" onclick="clearProdInputs()">✖</button>
+            </div>
+          </div>
+          <div class="input-pair">
+            <label>รหัสสินค้า</label>
+            <div class="input-wrapper">
+              <input type="text" id="prodCode">
+              <button class="clear-btn" onclick="clearProdInputs()">✖</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="qty-unit-wrapper">
+          <div class="qty-block">
+            <label for="qtyInput">จำนวน</label>
+            <div class="qty-control">
+              <button type="button" class="qty-btn" onclick="changeQty(-1)">-</button>
+              <input type="number" id="qtyInput" min="1">
+              <button type="button" class="qty-btn" onclick="changeQty(1)">+</button>
+            </div>
+            <div id="qtyHint" class="hint" aria-live="polite"></div>
+          </div>
+          <div class="unit-block">
+            <label for="unitSelect">หน่วยนับ</label>
+            <select id="unitSelect">
+              <option value=""></option>
+              <option>กระป๋อง</option>
+              <option>ลัง</option>
+              <option>ถาด</option>
+              <option>ขวด</option>
+              <option>แพ็ค</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="price-discount-wrapper">
+          <div class="price-block">
+            <label>ราคาต่อหน่วย</label>
+            <div class="price-flex">
+              <input type="number" id="priceInput">
+              <span class="unit-text">บาท</span>
+            </div>
+          </div>
+          <div class="discount-block">
+            <div class="input-pair">
+              <label>ส่วนลด BR(ต่อหน่วย)</label>
+              <input type="number" id="brDiscount">
+            </div>
+            <div class="input-pair">
+              <label>ส่วนลด SC(ต่อหน่วย)</label>
+              <input type="number" id="scDiscount">
+            </div>
+          </div>
+        </div>
+
+
+        <div class="input-row">
+          <label style="font-weight: bold;">รายการ:</label>
+          <div>
+            <input type="radio" name="itemType" value="ซื้อ" id="buyRadio">
+            <label for="buyRadio">สินค้าซื้อ</label>
+            <input type="radio" name="itemType" value="แถม" id="giftRadio">
+            <label for="giftRadio">สินค้าแถม</label>
+          </div>
+        </div>
+
+        <div class="table-container">
+          <table>
+            <thead>
+              <tr>
+                <th>รหัสสินค้า</th>
+                <th>ชื่อสินค้า</th>
+              </tr>
+            </thead>
+            <tbody id="cartTable">
+              <tr>
+                <td colspan="2">กำลังโหลดสินค้า...</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="input-row" style="justify-content: flex-end; gap: 10px; margin-top: 10px;">
+          <button onclick="removeSelectedBillRow()" style="background:#f44336; color:white;">นำสินค้าออก</button>
+          <button onclick="addToBill()" style="background:#2196F3; color:white;">เพิ่มสินค้าลงตะกร้า</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 🔸 กลาง: คำสั่งซื้อ -->
+    <div class="column middle-side">
+      <div class="container" id="orderContainer">
+        <div class="container-header">คำสั่งซื้อ</div>
+        <input type="hidden" id="selectedDocNo" value="">
+        <div class="order-header"
+          style="display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;">
+
+          <div style="font-weight: bold; font-size: 16px; display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+            สรุปรายการ <span id="orderCount">0</span> รายการ
+            <span id="beerWarn" class="warn-badge hidden" aria-live="polite"></span>
+          </div>
+
+        </div>
+
+
+
+        <div class="table-container">
+          <table>
+            <thead>
+              <tr>
+                <th>รหัส</th>
+                <th>สินค้า</th>
+                <th>จำนวน</th>
+                <th>หน่วย</th>
+                <th>ราคา</th>
+                <th>ส่วนลด BR</th>
+                <th>ส่วนลด SC</th>
+                <th>มูลค่า(บาท)</th>
+              </tr>
+            </thead>
+            <tbody id="billTable">
+              <tr>
+                <td colspan="8">ยังไม่มีรายการ</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="input-row" style="justify-content: space-between;">
+          <div class="total-container">
+            รวมทั้งหมด: <span id="totalAmount">0.00</span> บาท
+            <div id="tradeWarning" style="color:red; font-weight:bold; display:none;">
+              ⚠️ สินค้าเทรดจะไม่คิดราคา
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+
+
+
+    <!-- 🔸 ขวา: ส่วนเพิ่มเติม -->
+    <!-- 🔹 START: Target Reach Panel (พับได้) -->
+    <div class="right-panel-fixed" id="rightPanelWrapper">
+
+      <button class="toggle-bar-right" onclick="toggleRightPanel()" id="rightToggleBtn" title="ยืนยันคำสั่งซื้อ">
+        <span id="rightArrowIcon" class="arrow" style="font-size: 24px;">‹</span> <span class="label"
+          style="font-size: 34px; margin-top: 4px;">📝</span>
+      </button>
+
+      <div id="rightOrderPanel" class="right-panel">
+        <div class="panel-header" style="padding: 16px; border-bottom: 1px solid #eee;">Target Reach</div>
+
+        <div style="padding: 16px;">
+          <div class="panel-box">
+            <table id="targetReachTable" class="reach-table">
+              <thead>
+                <tr>
+                  <th>แบรนด์</th>
+                  <th>ยอดปัจจุบัน</th>
+                  <th>เพิ่มแล้ว</th>
+                  <th>เทียบ Target</th>
+                  <th>คงเหลือ</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>สิงห์</td>
+                  <td id="singhaCurrent">-</td>
+                  <td id="singhaAdded">-</td>
+                  <td id="singhaCompare">-</td>
+                  <td id="singhaRemain">-</td>
+                </tr>
+                <tr>
+                  <td>ลีโอ</td>
+                  <td id="leoCurrent">-</td>
+                  <td id="leoAdded">-</td>
+                  <td id="leoCompare">-</td>
+                  <td id="leoRemain">-</td>
+                </tr>
+                <tr>
+                  <td>เบียร์รวม</td>
+                  <td id="beerCurrent">-</td>
+                  <td id="beerAdded">-</td>
+                  <td id="beerCompare">-</td>
+                  <td id="beerRemain">-</td>
+                </tr>
+              </tbody>
+            </table>
+            <div class="reach-remaining">
+              <span>เหลืออีก</span><span class="days" id="remainDays">3</span><span>วัน</span>
+            </div>
+          </div>
+
+          <div class="panel-box">
+            <label class="section-title">สถานะการชำระเงิน</label>
+            <select id="paymentStatusSelect" style="width:100%; padding:8px; border:1px solid #ccc; border-radius:4px;">
+              <option value="" selected>-- (ไม่ระบุ) --</option>
+              <option value="ชำระแล้ว">ชำระแล้ว</option>
+              <option value="รอชำระ">รอชำระ</option>
+              <option value="นัดชำระหนี้คงค้างเรียบร้อยแล้ว">นัดชำระหนี้คงค้างเรียบร้อยแล้ว</option>
+              <option value="รอชำระหนี้คงค้าง">รอชำระหนี้คงค้าง</option>
+            </select>
+          </div>
+
+          <div class="panel-box">
+            <label class="section-title">วันที่ส่ง</label>
+            <div class="form-row">
+              <input type="date" id="shipDate" class="grow">
+              <label class="inline-check"><input type="radio" name="shipPeriod" value="เช้า"> เช้า</label>
+              <label class="inline-check"><input type="radio" name="shipPeriod" value="บ่าย"> บ่าย</label>
+              <button type="button" class="eraser-btn" onclick="clearShipPeriod()" title="ล้าง">ล้าง</button>
+            </div>
+          </div>
+
+          <div class="panel-box">
+            <label class="section-title">ประเภท</label>
+            <label class="inline-check"><input type="checkbox" id="isBulk"> สินค้าเทรด</label>
+          </div>
+
+          <div class="panel-box">
+            <label class="section-title">หมายเหตุ</label>
+            <textarea class="textarea" id="remark">-</textarea>
+          </div>
+
+          <button class="submit-btn" onclick="submitOrder()">ยืนยันคำสั่งซื้อ</button>
+        </div>
+      </div>
+
+    </div>
+
+
+
+    <div class="left-panel-fixed" id="leftPanelWrapper">
+      <div id="leftOrderPanel" class="left-panel">
+
+        <div class="panel-search-box">
+          <input type="text" id="orderSearchInput" placeholder="🔍 ค้นหาชื่อลูกค้า / เลขที่...">
+        </div>
+
+        <div class="order-list-container" id="orderListContainer">
+          <div style="text-align:center; color:#999; margin-top:20px;">กำลังโหลด...</div>
+        </div>
+
+      </div>
+
+      <button class="toggle-bar-left" onclick="toggleLeftPanel()" id="leftToggleBtn" title="ซ่อน/แสดง รายการ">
+        <span class="arrow" style="font-size: 24px;">›</span>
+
+        <span class="label" style="font-size: 34px; margin-top: 4px;">📋</span>
+      </button>
+    </div>
+
+
+
+
+
+
+    <!-- Modal กำลังบันทึก -->
+    <div id="savingModal" class="modal hidden">
+      <div class="modal-content" style="width: 300px;">
+        <p style="margin-bottom: 15px; font-weight: bold;">กำลังบันทึกข้อมูล...</p>
+
+        <div style="background-color: #e0e0e0; border-radius: 10px; height: 12px; overflow: hidden; width: 100%;">
+          <div id="saveProgressBar"
+            style="width: 0%; height: 100%; background: linear-gradient(90deg, #2196F3, #00BCD4); transition: width 0.3s ease;">
+          </div>
+        </div>
+        <div id="saveProgressText" style="margin-top: 8px; font-size: 14px; color: #666;">0%</div>
+      </div>
+    </div>
+    <!-- Modal บันทึกเสร็จ -->
+    <div id="doneModal" class="modal hidden">
+      <div class="modal-content">
+        <p>บันทึกสำเร็จ!</p>
+        <button id="doneClose">ปิด</button>
+      </div>
+    </div>
+    <!-- 🔔 Modal เตือน -->
+    <div id="alertModal" class="modal-overlay" onclick="closeModal(event)">
+      <div class="modal-box">
+        <p id="alertMessage">ข้อความเตือน</p>
+        <button onclick="closeModal()">ตกลง</button>
+      </div>
+    </div>
+
+
+
+    <!-- 🔸 JavaScript -->
+    <script>
+      let targetReachData = [];
+      let allCustomers = [];
+      let selectedBillRow = null;
+      let trDebounce;
+      let ORDER_CACHE = new Map();          // key = docNo, value = order object
+      let PREFETCHED_DOCS = [];             // เก็บรายการ docNos ที่ preload มาแล้ว (กันซ้ำใน select)
+      let ALL_ORDERS_LIST = []; // เก็บรายการออเดอร์ทั้งหมดสำหรับ Search
+      let allEmployees = [];
+
+
+      // === Cache DOM elements (ต้องมีตั้งแต่ต้น) ===
+      const nameInput = document.getElementById('nameInput');
+      const codeInput = document.getElementById('codeInput');
+      const customerTable = document.getElementById('customerTable');
+      const projectDisplay = document.getElementById('projectDisplay');
+      const priceDisplay = document.getElementById('priceDisplay');
+
+      const buyRadio = document.getElementById('buyRadio');
+      const giftRadio = document.getElementById('giftRadio');
+
+      const shipDate = document.getElementById('shipDate');
+      const remark = document.getElementById('remark');
+      const isBulkCheckbox = document.getElementById('isBulk'); // เปลี่ยนชื่อกันชนกับตัวแปรอื่น
+
+      const billTable = document.getElementById('billTable');
+      const docSelect = document.getElementById('docSelect');
+      const orderCount = document.getElementById('orderCount');
+      const totalAmount = document.getElementById('totalAmount');
+      const branchSelect = document.getElementById('branchSelect');
+
+      const custCodeSelect = document.getElementById('custCodeSelect');
+
+
+      let IS_WITHDRAW = false;
+      const chkWithdraw = document.getElementById('chkWithdraw');
+      const saleTypeSelect = document.getElementById('saleTypeSelect');
+      const customerFields = document.getElementById('panelNormalMode');   // ✅ คู่กับ ID ใน HTML
+      const withdrawFields = document.getElementById('panelWithdrawMode'); // ✅ คู่กับ ID ใน HTML
+
+
+      const DOC_TO_CUST = new Map();   // docNo -> customerCode
+      let ALL_DOCS = [];               // รายการเอกสารทั้งหมด (จาก prefetch/select)
+      let ALL_CUSTS = new Set();       // รหัสลูกค้าทั้งหมด (จาก orders)
+      let CURRENT_FILTERS = { docNo: "", cust: "" };
+
+      // เติม options ให้ dropdown รหัสลูกค้า
+      // เติม options ให้ dropdown รหัสลูกค้า (ป้องกันล้างเมื่อ array ว่าง)
+      function fillCustDropdown(codesIterable, sourceTag = '') {
+        const codes = Array.from(new Set(Array.from(codesIterable || []).filter(Boolean))).sort();
+        if (!codes.length) {
+          console.log('⚠️ skip fillCustDropdown: empty codes from', sourceTag);
+          return; // ❌ ไม่ล้างของเดิม ถ้าส่งมาว่าง
+        }
+        custCodeSelect.innerHTML = '<option value=""></option>';
+        codes.forEach(c => {
+          const opt = document.createElement('option');
+          opt.value = c;
+          opt.textContent = c;
+          custCodeSelect.appendChild(opt);
+        });
+        console.log('✅ fillCustDropdown from', sourceTag, 'size=', codes.length);
+      }
+
+
+      // เติม option ให้ dropdown รหัสลูกค้าแบบ on-demand (ถ้ายังไม่มี)
+      function ensureCustOption(code) {
+        const val = String(code || '').trim();
+        if (!val) return;
+        const exists = Array.from(custCodeSelect.options).some(o => o.value === val);
+        if (!exists) {
+          const opt = document.createElement('option');
+          opt.value = val;
+          opt.textContent = val;
+          custCodeSelect.appendChild(opt);
+        }
+      }
+
+
+      // สร้างดัชนีจากผล prefetch (orders จาก getPendingOrders_fixed)
+      // จาก prefetch orders
+      function indexFromPrefetchedOrders(ordersObj) {
+        if (!ordersObj) return;
+        Object.entries(ordersObj).forEach(([doc, order]) => {
+          if (!doc || !order) return;
+          const code = String(order.customerCode || "").trim();
+          DOC_TO_CUST.set(doc, code);
+          if (code) ALL_CUSTS.add(code);
+        });
+        // เรียกเติม dropdown เฉพาะกรณีมี code จริง ๆ
+        if (ALL_CUSTS.size > 0) fillCustDropdown(ALL_CUSTS, 'prefetch');
+      }
+
+
+      // ดัชนีจากเอกสารเดี่ยว (ตอนผู้ใช้เปิดเอกสาร / บันทึกเสร็จ)
+      function indexFromSingleOrder(doc, order) {
+        if (!doc || !order) return;
+        const code = String(order.customerCode || "").trim();
+        DOC_TO_CUST.set(doc, code);
+        if (code) {
+          ALL_CUSTS.add(code);
+          fillCustDropdown(ALL_CUSTS, 'openDoc'); // มีค่าจริงแน่ ๆ
+        }
+      }
+
+      function snapshotAllDocNos() {
+        const sel = document.getElementById('docSelect');
+        if (!sel) return; // ✅ เพิ่มบรรทัดนี้: ถ้าหาไม่เจอ ให้จบฟังก์ชันเลย ไม่ต้องทำต่อ
+        ALL_DOCS = Array.from(sel.options).map(o => o.value).filter(Boolean);
+      }
+
+      // กรอง docSelect ด้วยการค้นหาข้อความตามรหัสลูกค้า (เช่น .../TM129/...)
+      function filterDocSelectByText(customerCode) {
+        const sel = document.getElementById('docSelect');
+        const code = String(customerCode || '').trim();
+        const needle = code.toLowerCase();
+
+        // ถ้ายังไม่เคย snapshot ให้ถ่ายตอนนี้
+        if (!ALL_DOCS.length) snapshotAllDocNos();
+
+        // สร้างรายการที่ผ่านการกรอง (ถ้า code ว่าง ให้แสดงทั้งหมด)
+        const filtered = needle
+          ? ALL_DOCS.filter(d => d.toLowerCase().includes('/' + needle + '/'))
+          : ALL_DOCS.slice();
+
+        // วาด options ใหม่
+        const current = sel.value;
+        sel.innerHTML = '<option value=""></option>';
+        filtered.forEach(doc => {
+          const opt = document.createElement('option');
+          opt.value = opt.textContent = doc;
+          sel.appendChild(opt);
+        });
+
+        // ถ้าเหลือ 1 อัน ให้ auto-select และโหลดรายการเลย
+        if (filtered.length === 1) {
+          sel.value = filtered[0];
+          if (typeof window.handleDocSelect === 'function') window.handleDocSelect();
+        } else if (filtered.includes(current)) {
+          sel.value = current; // คงค่าเดิมไว้ถ้ายังอยู่ในผลกรอง
+        } else {
+          // เคลียร์ตารางเมื่อไม่พบ doc ที่ match
+          const billTable = document.getElementById('billTable');
+          if (billTable) {
+            billTable.innerHTML = '<tr><td colspan="8">ไม่พบเอกสารของรหัสลูกค้าดังกล่าว</td></tr>';
+          }
+          const totalAmount = document.getElementById('totalAmount');
+          if (totalAmount) totalAmount.textContent = '0.00';
+          const warn = document.getElementById('tradeWarning');
+          if (warn) warn.style.display = 'none';
+          if (typeof window.recalculateOrderCount === 'function') window.recalculateOrderCount();
+        }
+      }
+
+      // === ผูก event ให้กรองอัตโนมัติเมื่อผู้ใช้เปลี่ยนรหัสลูกค้า ===
+
+      // 1) ถ้าใช้ dropdown รหัสลูกค้า
+      if (custCodeSelect) {
+        custCodeSelect.addEventListener('change', () => {
+          filterDocSelectByText(custCodeSelect.value);
+        });
+      }
+
+      // 2) ถ้าผู้ใช้พิมพ์รหัสลูกค้าในช่อง text (#codeInput)
+      let debounce;
+      if (codeInput) {
+        ['input', 'change', 'blur'].forEach(evt => {
+          codeInput.addEventListener(evt, () => {
+            clearTimeout(debounce);
+            debounce = setTimeout(() => filterDocSelectByText(codeInput.value), 180);
+          });
+        });
+      }
+
+
+      // รีเฟรชตัวเลือกเอกสารตามรหัสลูกค้า (partial match)
+      function filterDocSelectByCustomer(partialCode) {
+        const select = document.getElementById('docSelect');
+        const needle = String(partialCode || "").trim().toLowerCase();
+
+        // เลือก doc ที่ match
+        const filteredDocs = ALL_DOCS.filter(doc => {
+          const cust = (DOC_TO_CUST.get(doc) || "").toLowerCase();
+          return needle ? cust.includes(needle) : true;
+        });
+
+        // วาด select ใหม่
+        const current = select.value;
+        select.innerHTML = '<option value=""></option>';
+        filteredDocs.forEach(doc => {
+          const opt = document.createElement('option');
+          opt.value = doc;
+          opt.textContent = doc;
+          select.appendChild(opt);
+        });
+
+        // ถ้ายังคงค่าเดิมได้ ให้คงไว้
+        if (current && filteredDocs.includes(current)) {
+          select.value = current;
+        } else {
+          // auto-select ถ้าเหลือ 1
+          if (filteredDocs.length === 1) {
+            select.value = filteredDocs[0];
+            CURRENT_FILTERS.docNo = filteredDocs[0];
+            handleDocSelect();
+          } else if (!filteredDocs.length) {
+            // ไม่พบเอกสาร → เคลียร์ตาราง
+            billTable.innerHTML = '<tr><td colspan="8">ไม่พบเอกสารของรหัสลูกค้าดังกล่าว</td></tr>';
+            totalAmount.textContent = "0.00";
+            document.getElementById("tradeWarning").style.display = "none";
+            recalculateOrderCount();
+            updateTargetReachUI();
+          }
+        }
+      }
+
+
+      // ปุ่ม Clear: เอกสาร
+      window.clearDocFilter = function () {
+        docSelect.value = "";
+        CURRENT_FILTERS.docNo = "";
+        billTable.innerHTML = '<tr><td colspan="8">ยังไม่มีรายการ</td></tr>';
+        totalAmount.textContent = "0.00";
+        document.getElementById("tradeWarning").style.display = "none";
+        recalculateOrderCount();
+        updateTargetReachUI();
+      };
+
+      // 3) ปุ่มล้างค่า → รีเซ็ต docSelect ให้แสดงทั้งหมด
+      function clearCustFilter() {
+        if (custCodeSelect) custCodeSelect.value = '';
+        if (codeInput) codeInput.value = '';
+        filterDocSelectByText('');
+      }
+
+
+
+      function markRowSelected(tr) {
+        const cells = tr?.cells;
+        if (!cells || cells.length < 8) return;
+
+        document.querySelectorAll("#billTable tr").forEach(r => r.classList.remove("selected"));
+        tr.classList.add("selected");
+        selectedBillRow = tr;
+
+        // ดึงข้อมูลกลับเข้า input
+        const qty = parseFloat(cells[2].textContent) || 0;
+        const price = parseFloat(cells[4].textContent) || 0;
+        const br = parseFloat(cells[5].textContent) || 0;
+        const sc = parseFloat(cells[6].textContent) || 0;
+
+        document.getElementById("qtyInput").value = qty || 1;
+        document.getElementById("priceInput").value = price;
+        document.getElementById("unitSelect").value = cells[3].textContent;
+        document.getElementById("brDiscount").value = qty > 0 ? (br / qty).toFixed(2) : "0.00";
+        document.getElementById("scDiscount").value = qty > 0 ? (sc / qty).toFixed(2) : "0.00";
+        document.getElementById("prodCode").value = cells[0].textContent;
+        document.getElementById("prodName").value = cells[1].textContent;
+
+        // อัปเดตข้อมูลประเภท (project) และ Tier (priceLevel)
+        const custCode = document.getElementById("codeInput").value.trim();
+        const matched = allCustomers.find(c => c.code === custCode);
+        if (matched) {
+          document.getElementById("projectDisplay").textContent = matched.project || "-";
+          document.getElementById("priceDisplay").textContent = matched.priceLevel || "-";
+        }
+
+        // เปลี่ยนปุ่มเป็น "แก้ไขสินค้าในตะกร้า"
+        const addBtn = document.querySelector("button[onclick='addToBill()']");
+        addBtn.textContent = "แก้ไขสินค้าในตะกร้า";
+        addBtn.style.background = "#FFD700";
+        addBtn.style.color = "#333";
+
+        // ตั้งค่า "สินค้าซื้อ/แถม" จากข้อมูลแถว (ถ้าไม่มีให้บังคับเป็น "ซื้อ")
+        const type = (tr.dataset.itemType || "ซื้อ").trim();
+        const buyRadio = document.getElementById('buyRadio');
+        const giftRadio = document.getElementById('giftRadio');
+        if (type === "แถม") {
+          giftRadio.checked = true;
+          buyRadio.checked = false;
+        } else {
+          buyRadio.checked = true;   // บังคับเป็น "สินค้าซื้อ" เป็นค่าเริ่มต้น
+          giftRadio.checked = false;
+        }
+
+      }
+
+
+      function saleTypeTHtoEN(th) {
+        return th === 'ขายปลีก' ? 'Retail' : th === 'ขายส่ง' ? 'Wholesale' : '';
+      }
+
+
+
+      function toggleWithdrawMode(checked) {
+        IS_WITHDRAW = !!checked;
+
+        // UI show/hide
+        if (IS_WITHDRAW) {
+          customerFields?.classList.add('hidden');
+          withdrawFields?.classList.remove('hidden');
+
+          // ปิดการใช้งาน input ลูกค้าเดิม + ตัวช่วยค้นหา
+          if (nameInput) {
+            nameInput.classList.add('muted');
+            nameInput.disabled = true;
+          }
+          if (codeInput) {
+            codeInput.classList.add('muted');
+            codeInput.disabled = true;
+          }
+
+          // ปิดการเลือกเอกสาร/รหัสลูกค้า (ใส่ if เช็คก่อน)
+          if (docSelect) docSelect.disabled = true;           // ✅ แก้ตรงนี้
+          if (custCodeSelect) custCodeSelect.disabled = true; // ✅ แก้ตรงนี้
+
+          // ล้างค่าเดิม
+          if (nameInput) nameInput.value = '';
+          if (codeInput) codeInput.value = '';
+          if (projectDisplay) projectDisplay.textContent = '-';
+          if (priceDisplay) priceDisplay.textContent = '-';
+
+          // รีเซ็ตตารางลูกค้า
+          renderCustomerTable([]);
+
+          // Target Reach → ไม่ใช้ในโหมดเบิก
+          if (typeof resetTargetReachUI === 'function') resetTargetReachUI();
+
+        } else {
+          customerFields?.classList.remove('hidden');
+          withdrawFields?.classList.add('hidden');
+
+          if (nameInput) {
+            nameInput.classList.remove('muted');
+            nameInput.disabled = false;
+          }
+          if (codeInput) {
+            codeInput.classList.remove('muted');
+            codeInput.disabled = false;
+          }
+
+          if (docSelect) docSelect.disabled = false;           // ✅ แก้ตรงนี้
+          if (custCodeSelect) custCodeSelect.disabled = false; // ✅ แก้ตรงนี้
+
+          // รีโหลดตารางลูกค้าตามเดิม
+          renderCustomerTable(allCustomers || []);
+
+          // อัปเดต Target Reach ตามรหัสลูกค้า (ถ้ามี)
+          if (typeof updateTargetReachUI === 'function') updateTargetReachUI();
+          if (typeof updateBeerWarning === 'function') updateBeerWarning();
+        }
+      }
+
+      // ผูกอีเวนต์
+      if (chkWithdraw) {
+        chkWithdraw.addEventListener('change', (e) => toggleWithdrawMode(e.target.checked));
+      }
+
+
+
+
+
+      window.renderCustomerTable = function (data) {
+        customerTable.innerHTML = '';
+        if (!data.length) {
+          customerTable.innerHTML = '<tr><td colspan="3">ไม่พบข้อมูล</td></tr>';
+          return;
+        }
+        data.forEach(c => {
+          const tr = document.createElement('tr');
+          tr.innerHTML = `<td>${c.code}</td><td>${c.name}</td><td>${c.priceLevel}</td>`;
+
+          // ✅ ใช้ selectCustomer ให้กรอก input ได้
+          tr.addEventListener('click', () => selectCustomer(c, tr));
+
+          customerTable.appendChild(tr);
+        });
+      };
+
+
+      // ค้นหา function นี้ใน <script> ของไฟล์ Index.html แล้ววางทับเลยครับ
+      window.selectCustomer = function (c, row) {
+        // 1. ไฮไลต์แถวที่เลือก
+        document.querySelectorAll('#customerTable tr').forEach(r => r.classList.remove('selected'));
+        row.classList.add('selected');
+
+        // 2. เติมค่าลงในช่อง Input
+        nameInput.value = c.name;
+        codeInput.value = c.code;
+        projectDisplay.textContent = c.project || '-';
+        priceDisplay.textContent = c.priceLevel || '-';
+
+        // =========================================================
+        // ⭐️ [ส่วนที่เพิ่มใหม่] : แสดงป้ายสถานะการชำระเงิน
+        // =========================================================
+        const status = (c.paymentStatus || '').trim();
+
+        // กำหนดสีและข้อความของแต่ละสถานะ
+        const warningBadges = {
+          'รอชำระ': {
+            color: '#b91c1c', bg: '#fecaca', border: '#f87171',
+            text: '⚠️ รอชำระ (สั่งได้ แต่ห้ามขึ้นรถ)'
+          },
+          'รอชำระหนี้คงค้าง': {
+            color: '#7f1d1d', bg: '#fee2e2', border: '#ef4444',
+            text: '⛔ หนี้คงค้าง (สั่งได้ แต่ห้ามขึ้นรถ)'
+          },
+          'นัดชำระหนี้คงค้างเรียบร้อยแล้ว': {
+            color: '#92400e', bg: '#fef3c7', border: '#fcd34d',
+            text: 'ℹ️ นัดชำระแล้ว (จัดส่งได้ปกติ)'
+          }
+        };
+
+        // ล้างป้ายเตือนเก่าทิ้งก่อน (ถ้ามี)
+        const oldBadge = document.getElementById('paymentStatusBadge');
+        if (oldBadge) oldBadge.remove();
+
+        // ถ้าลูกค้ามีสถานะที่กำหนดไว้ ให้สร้างป้ายใหม่
+        if (warningBadges[status]) {
+          const style = warningBadges[status];
+          const badgeHtml = `
+      <div id="paymentStatusBadge" style="
+        margin-top: 10px; 
+        padding: 8px 12px; 
+        background: ${style.bg}; 
+        color: ${style.color}; 
+        border: 1px solid ${style.border}; 
+        border-radius: 8px; 
+        font-weight: bold; 
+        font-size: 14px;
+        text-align: center;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+        ${style.text}
+      </div>`;
+
+          // แทรกป้ายไว้ใต้กล่องแสดง Tier (priceDisplay)
+          // หา Element แม่ (row-highlight) แล้วต่อท้าย
+          const tierBox = document.getElementById('priceDisplay').closest('.row-highlight');
+          if (tierBox) {
+            tierBox.insertAdjacentHTML('afterend', badgeHtml);
+          }
+        }
+        // =========================================================
+
+        filterCustomerTable();
+        updateTargetReachUI();   // อัปเดตเป้า (ถ้ามี)
+      };
+
+
+
+      document.querySelectorAll('input[name="shipPeriod"]').forEach(radio => {
+        radio.addEventListener('mousedown', function (e) {
+          // ถ้ากำลังถูกเลือกอยู่ → ยกเลิกการเลือก (ติ๊กออกได้)
+          if (this.checked) {
+            this.oldChecked = true;
+          }
+        });
+
+        radio.addEventListener('click', function (e) {
+          if (this.oldChecked) {
+            this.checked = false;
+            this.oldChecked = false;
+            e.preventDefault(); // กันไม่ให้ select อีกครั้ง
+          }
+        });
+      });
+
+      window.filterCustomerTable = function () {
+        if (IS_WITHDRAW) return; // โหมดเบิก: ไม่ต้องฟิลเตอร์/แสดงรายชื่อลูกค้า
+        const n = nameInput.value.toLowerCase();
+        const co = codeInput.value.toLowerCase();
+        renderCustomerTable(allCustomers.filter(c =>
+          String(c.name).toLowerCase().includes(n) &&
+          String(c.code).toLowerCase().includes(co)
+        ));
+      };
+
+      window.clearCustomerInputs = function () {
+        nameInput.value = '';
+        codeInput.value = '';
+        projectDisplay.textContent = '-';
+        priceDisplay.textContent = '-';
+        filterCustomerTable();
+      };
+
+
+
+      nameInput.addEventListener('input', filterCustomerTable);
+      codeInput.addEventListener('input', filterCustomerTable);
+
+
+      // 🔸 สินค้า
+      const prodName = document.getElementById('prodName');
+      const prodCode = document.getElementById('prodCode');
+      const cartTable = document.getElementById('cartTable');
+
+      let allItems = [];
+
+      /***** ===============================
+     *  STEP PRICING CACHE & UTILITIES
+     *  =============================== ****/
+
+      // โครงแคช:
+      // AL_STEP_MAP: Map<itemCode, Map<unitTH, Map<tierNumber, Step[]>>>
+      // NAL_STEP_MAP: Map<itemCode, Step[]>
+      const AL_STEP_MAP = new Map();
+      const NAL_STEP_MAP = new Map();
+
+      let CURRENT_PRODUCT_TYPE = null; // 'Alcohol' | 'Non-AL' | null
+
+      // Helper: parse number safely
+      const toNum = v => {
+        const n = typeof v === 'string' ? v.replace(/[, ]/g, '') : v;
+        const x = Number(n);
+        return Number.isFinite(x) ? x : NaN;
+      };
+
+      // ===== สร้าง Map จาก payload ที่เซิร์ฟเวอร์ส่งมา =====
+      function buildStepMaps(stepBundle) {
+        // stepBundle = { AL: Array<Object>, NAL: Array<Object> }
+        (stepBundle?.AL || []).forEach(r => {
+          // ใช้เฉพาะ Active + ราคามีค่า
+          if ((r.Status || '').toLowerCase() !== 'active') return;
+          const price = toNum(r['ราคาต่อหน่วย']);
+          const minQ = toNum(r['จำนวนขั้นต่ำ']);
+          if (!Number.isFinite(price) || !Number.isFinite(minQ)) return;
+
+          const code = String(r['รหัสสินค้า'] || '').trim();
+          const unit = String(r['หน่วยนับ(TH)'] || '').trim();
+          const tier = toNum(r['ระดับราคาขาย']); // 0-6 (ยืนยันแล้ว)
+          if (!code || !unit || !Number.isInteger(tier)) return;
+
+          if (!AL_STEP_MAP.has(code)) AL_STEP_MAP.set(code, new Map());
+          const unitMap = AL_STEP_MAP.get(code);
+          if (!unitMap.has(unit)) unitMap.set(unit, new Map());
+          const tierMap = unitMap.get(unit);
+          if (!tierMap.has(tier)) tierMap.set(tier, []);
+          tierMap.get(tier).push({ minQty: minQ, unitPrice: price });
+        });
+
+        // sort steps asc by minQty
+        AL_STEP_MAP.forEach(unitMap => {
+          unitMap.forEach(tierMap => {
+            tierMap.forEach(steps => steps.sort((a, b) => a.minQty - b.minQty));
+          });
+        });
+
+        (stepBundle?.NAL || []).forEach(r => {
+          // ไม่มี Status คอลัมน์ในตัวอย่าง Non-AL → ใช้ทุกแถว
+          const code = String(r['รหัสสินค้า'] || '').trim();
+          const price = toNum(r['ราคาต่อหน่วย']);
+          const minQ = toNum(r['จำนวนขั้นต่ำ']);
+          if (!code || !Number.isFinite(price) || !Number.isFinite(minQ)) return;
+          if (!NAL_STEP_MAP.has(code)) NAL_STEP_MAP.set(code, []);
+          NAL_STEP_MAP.get(code).push({ minQty: minQ, unitPrice: price });
+        });
+
+        // sort asc
+        NAL_STEP_MAP.forEach(steps => steps.sort((a, b) => a.minQty - b.minQty));
+      }
+
+      // ===== โหลดครั้งเดียวตอนบูต =====
+      function loadStepPricingOnce() {
+        incPending(); // ✅ เพิ่ม: บอก Loader ว่ามีงาน
+        google.script.run
+          .withSuccessHandler(bundle => {
+            buildStepMaps(bundle);
+            decPending(); // ✅ ลด: งานเสร็จแล้ว
+          })
+          .withFailureHandler(err => {
+            console.error('getStepPricingBundle', err);
+            decPending(); // ✅ ลด: งานเสร็จแล้ว (แม้ error)
+          })
+          .getStepPricingBundle();
+      }
+
+      // ===== ระบุชนิดสินค้าจาก code + unit (AL priority) =====
+      function detectProductType(itemCode, unitTH) {
+        if (AL_STEP_MAP.has(itemCode)) {
+          const unitMap = AL_STEP_MAP.get(itemCode);
+          if (!unitTH) return 'Alcohol'; // ถ้าไม่รู้หน่วย แต่มีใน AL → ถือเป็น AL
+          if (unitMap.has(unitTH)) return 'Alcohol';
+          // มี code ใน AL แต่ไม่มี unit นี้ → ยังถือเป็น AL (ตาม spec แจ้งว่าเคสซ้ำไม่น่าเกิด)
+        }
+        if (NAL_STEP_MAP.has(itemCode)) return 'Non-AL';
+        return null;
+      }
+
+      // ===== คำนวณราคาตามจำนวน/หน่วย/tier =====
+      function recalcStepPrice() {
+        const code = document.getElementById('prodCode')?.value?.trim() || '';
+        const unitTH = document.getElementById('unitSelect')?.value?.trim() || '';
+        const qty = toNum(document.getElementById('qtyInput')?.value);
+        const priceEl = document.getElementById('priceInput');
+        const hintEl = document.getElementById('qtyHint');
+
+        // เคลียร์ hint ก่อน
+        if (hintEl) hintEl.innerHTML = '';
+
+        if (!code || !Number.isFinite(qty) || qty <= 0) {
+          if (priceEl) priceEl.value = '';
+          return;
+        }
+
+        // ระบุชนิดสินค้า (ถ้ายังไม่รู้)
+        if (!CURRENT_PRODUCT_TYPE) CURRENT_PRODUCT_TYPE = detectProductType(code, unitTH);
+
+        // โหมดเบิก → AL ใช้ tier 5
+        const isWithdraw = !!IS_WITHDRAW;
+        let tierNumber = null;
+        if (CURRENT_PRODUCT_TYPE === 'Alcohol') {
+          tierNumber = isWithdraw ? 5 : (() => {
+            const t = toNum((document.getElementById('priceDisplay')?.textContent || '').trim());
+            return Number.isInteger(t) ? t : null;
+          })();
+        }
+
+        // ===== Helper สำหรับใส่ “ราคาขั้นถัดไป” เมื่อยังไม่ถึงขั้นต่ำ =====
+        const useNextStepPrice = (firstStep, msgPrefix = 'ขั้นต่ำคือ') => {
+          // ใส่ราคาขั้นถัดไป (คือขั้นแรกในตาราง) ลงช่องราคา แต่ยังเตือนเหมือนเดิม
+          if (priceEl) priceEl.value = typeof firstStep.unitPrice === 'number' ? firstStep.unitPrice : '';
+          if (hintEl) {
+            const txt = `${msgPrefix} ${firstStep.minQty} → ${firstStep.unitPrice.toLocaleString()}/หน่วย  (กำลังใช้ราคาขั้นถัดไปให้ก่อน)`;
+            hintEl.innerHTML = `<span class="warn">${txt}</span>`;
+          }
+        };
+
+        if (CURRENT_PRODUCT_TYPE === 'Alcohol') {
+          const byCode = AL_STEP_MAP.get(code);
+          if (!byCode) {
+            priceEl.value = '';
+            if (hintEl) hintEl.innerHTML = `<span class="warn">ไม่มีเรตราคาเริ่มต้นของสินค้านี้</span>`;
+            return;
+          }
+          const byUnit = byCode.get(unitTH);
+          if (!byUnit) {
+            priceEl.value = '';
+            if (hintEl) hintEl.innerHTML = `<span class="warn">ไม่มีเรตราคาเริ่มต้นสำหรับหน่วยนี้</span>`;
+            return;
+          }
+          const steps = byUnit.get(tierNumber);
+          if (!steps || steps.length === 0) {
+            priceEl.value = '';
+            if (hintEl) hintEl.innerHTML = `<span class="warn">ไม่พบเรตราคาใน Tier ที่ระบุ</span>`;
+            return;
+          }
+
+          let current = null, next = null;
+          for (const s of steps) {
+            if (s.minQty <= qty) current = s;
+            else { next = s; break; }
+          }
+
+          if (!current) {
+            // ยังไม่ถึงขั้นต่ำแรก → ใส่ "ราคาขั้นถัดไป" (ขั้นแรก) และเตือน
+            useNextStepPrice(steps[0], 'ขั้นต่ำคือ');
+          } else {
+            // ถึง step แล้ว
+            priceEl.value = typeof current.unitPrice === 'number' ? current.unitPrice : '';
+            if (next) {
+              if (hintEl) hintEl.innerHTML = `<span class="next">⚠️ ขั้นถัดไป ${next.minQty}+ → ${next.unitPrice.toLocaleString()}/หน่วย</span>`;
+            } else {
+              if (hintEl) hintEl.innerHTML = `<span class="ok">ได้ราคาขั้นสูงสุดแล้ว</span>`;
+            }
+          }
+        }
+        else if (CURRENT_PRODUCT_TYPE === 'Non-AL') {
+          const steps = NAL_STEP_MAP.get(code);
+          if (!steps || steps.length === 0) {
+            priceEl.value = '';
+            if (hintEl) hintEl.innerHTML = `<span class="warn">ไม่มีเรตราคาเริ่มต้นของสินค้านี้</span>`;
+            return;
+          }
+
+          let current = null, next = null;
+          for (const s of steps) {
+            if (s.minQty <= qty) current = s;
+            else { next = s; break; }
+          }
+
+          if (!current) {
+            // ยังไม่ถึงขั้นต่ำแรก → ใส่ "ราคาขั้นถัดไป" (ขั้นแรก) และเตือน
+            useNextStepPrice(steps[0], 'ขั้นต่ำคือ');
+          } else {
+            priceEl.value = typeof current.unitPrice === 'number' ? current.unitPrice : '';
+            if (next) {
+              if (hintEl) hintEl.innerHTML = `<span class="next">ขั้นถัดไป ${next.minQty}+ → ${next.unitPrice.toLocaleString()} / หน่วย</span>`;
+            } else {
+              if (hintEl) hintEl.innerHTML = `<span class="ok">ได้ราคาขั้นสูงสุดแล้ว</span>`;
+            }
+          }
+        }
+        else {
+          priceEl.value = '';
+          if (hintEl) hintEl.innerHTML = `<span class="warn">ยังไม่พบประเภทสินค้า (AL/Non-AL)</span>`;
+        }
+      }
+
+
+      // ===== hook จุดเปลี่ยนค่าต่าง ๆ =====
+
+
+
+      // 2) เปลี่ยนหน่วย → คำนวณใหม่
+      document.getElementById('unitSelect')?.addEventListener('change', recalcStepPrice);
+
+      // 3) เปลี่ยนจำนวน → คำนวณใหม่ (หน่วงเล็กน้อยกันเด้ง)
+      ['input', 'change', 'blur'].forEach(e => {
+        document.getElementById('qtyInput')?.addEventListener(e, () => {
+          clearTimeout(window.__qtyDeb); window.__qtyDeb = setTimeout(recalcStepPrice, 120);
+        });
+      });
+
+      // 4) เปลี่ยนลูกค้า (tier เปลี่ยน) → คำนวณใหม่ (เฉพาะ AL)
+      // ใช้ MutationObserver ติดตาม textContent ของ #priceDisplay
+      (function watchTierBox() {
+        const el = document.getElementById('priceDisplay');
+        if (!el) return;
+        const mo = new MutationObserver(() => {
+          if (CURRENT_PRODUCT_TYPE === 'Alcohol' && !IS_WITHDRAW) recalcStepPrice();
+          updateBeerWarning();
+        });
+        mo.observe(el, { childList: true, characterData: true, subtree: true });
+      })();
+
+      // 5) โหมดเบิก (ติ๊ก/ถอน) → AL ใช้ tier 5 → คำนวณใหม่
+      if (typeof chkWithdraw !== 'undefined' && chkWithdraw) {
+        chkWithdraw.addEventListener('change', () => setTimeout(recalcStepPrice, 0));
+      }
+
+      // 6) ตอน plus/minus ปุ่มจำนวน (เวอร์ชันปลอดภัย ไม่พังถ้า changeQty ยังไม่พร้อม)
+      document.addEventListener('DOMContentLoaded', () => {
+        const orig = window.changeQty; // ถ้ายังไม่ถูกนิยาม จะเป็น undefined
+
+        window.changeQty = function (delta) {
+          if (typeof orig === 'function') {
+            orig(delta);                 // เรียกของเดิม
+          } else {
+            // fallback: เดินค่าจำนวนเอง
+            const el = document.getElementById('qtyInput');
+            let v = parseInt(el?.value || '0', 10);
+            if (!Number.isFinite(v)) v = 0;
+            v += Number(delta) || 0;
+            if (v < 1) v = 1;
+            if (el) el.value = v;
+          }
+          recalcStepPrice();             // แล้วค่อยคำนวณราคา
+        };
+      });
+
+
+      // 7) ตอน reset ฟอร์มสินค้า → ล้างชนิดสินค้า
+      const _resetProductForm_orig = (typeof resetProductForm === 'function') ? resetProductForm : null;
+      window.resetProductForm = function () {
+        if (_resetProductForm_orig) _resetProductForm_orig();
+        CURRENT_PRODUCT_TYPE = null;
+        const hintEl = document.getElementById('qtyHint'); if (hintEl) hintEl.innerHTML = '';
+      };
+
+      // โหลด step pricing ครั้งเดียวเมื่อพร้อม
+      document.addEventListener('DOMContentLoaded', loadStepPricingOnce);
+
+
+      function setUnitOptionsFor(item) {
+        const sel = document.getElementById('unitSelect');
+        if (!sel) return;
+
+        const units = new Set();
+
+        // ① หน่วยจาก Step Pricing (AL) ถ้ามี → แม่นสุด
+        const code = item?.itemCode || document.getElementById('prodCode')?.value?.trim() || '';
+        if (code && AL_STEP_MAP.has(code)) {
+          const unitMap = AL_STEP_MAP.get(code);           // Map<unitTH, Map<tier, steps>>
+          unitMap.forEach((_, unitTH) => units.add(unitTH));
+        }
+
+        // ② หน่วยจาก ItemMasterTable: unitTH อาจเป็น "ลัง/ถาด/แพ็ค" หรือค่าว่าง
+        const raw = (item?.unitTH || '').trim();
+        if (raw) {
+          raw.split(/[\/,|]/).map(s => s.trim()).filter(Boolean).forEach(u => units.add(u));
+        }
+
+        // ③ Fallback (เผื่อไม่มีข้อมูลเลย)
+        if (units.size === 0) ['ลัง', 'ถาด', 'แพ็ค', 'ขวด', 'กระป๋อง'].forEach(u => units.add(u));
+
+        // วาด options ใหม่
+        sel.innerHTML = '<option value=""></option>';
+        [...units].forEach(u => {
+          const opt = document.createElement('option');
+          opt.value = u; opt.textContent = u;
+          sel.appendChild(opt);
+        });
+      }
+
+      function dedupeItems(arr) {
+        const map = new Map(); // key = code|name
+        arr.forEach(it => {
+          const code = String(it.itemCode || '').trim();
+          const name = String(it.itemName || '').trim();
+          if (!code && !name) return;
+          const key = code + '|' + name;
+
+          if (!map.has(key)) {
+            map.set(key, { itemCode: code, itemName: name, unitTH: '' });
+          }
+          // รวมหน่วยนับ
+          const curUnits = new Set(String(map.get(key).unitTH || '').split(/[\/,|]/).filter(Boolean));
+          const raw = String(it.unitTH || '').trim();
+          raw.split(/[\/,|]/).map(s => s.trim()).filter(Boolean).forEach(u => curUnits.add(u));
+          map.get(key).unitTH = Array.from(curUnits).join('/');
+        });
+        return Array.from(map.values());
+      }
+
+
+
+
+      function renderItemTable(data) {
+        // ✅ ตัดซ้ำก่อนวาด
+        const list = dedupeItems(Array.isArray(data) ? data : []);
+
+        cartTable.innerHTML = '';
+        if (!list.length) {
+          cartTable.innerHTML = '<tr><td colspan="2">ไม่พบข้อมูล</td></tr>';
+          return;
+        }
+
+        list.forEach(item => {
+          const tr = document.createElement('tr');
+          tr.innerHTML = `<td>${item.itemCode}</td><td>${item.itemName}</td>`;
+
+          tr.addEventListener('click', () => {
+            document.querySelectorAll('#cartTable tr').forEach(r => r.classList.remove('selected'));
+            tr.classList.add('selected');
+
+            prodCode.value = item.itemCode;
+            prodName.value = item.itemName;
+
+            // ✅ เติมตัวเลือกหน่วยจาก Item + AL step
+            setUnitOptionsFor(item);
+
+            // ✅ กระตุ้นคำนวณ step pricing ให้ทันที
+            CURRENT_PRODUCT_TYPE = detectProductType(item.itemCode, null);
+            recalcStepPrice();
+
+            filterItemTable();
+          });
+
+          cartTable.appendChild(tr);
+        });
+      }
+
+
+
+
+      window.changeQty = function (change) {
+        const qtyInput = document.getElementById("qtyInput");
+        let value = parseInt(qtyInput.value || "0");
+        value += change;
+        if (value < 1) value = 1;
+        qtyInput.value = value;
+      };
+
+
+      function filterItemTable() {
+        const nameVal = prodName.value.toLowerCase();
+        const codeVal = prodCode.value.toLowerCase();
+        const filtered = allItems.filter(item =>
+          String(item.itemName || '').toLowerCase().includes(nameVal) &&
+          String(item.itemCode || '').toLowerCase().includes(codeVal)
+        );
+        renderItemTable(filtered);
+      }
+
+      window.clearProdInputs = function () {
+        resetProductForm();
+      };
+      if (prodName) prodName.addEventListener('input', filterItemTable);
+      if (prodCode) prodCode.addEventListener('input', filterItemTable);
+
+
+
+
+      function renderOrder(order) {
+        const billTable = document.getElementById('billTable');
+        const totalAmount = document.getElementById('totalAmount');
+        const tradeWarning = document.getElementById("tradeWarning");
+
+        // 1. เคลียร์ตารางก่อน
+        billTable.innerHTML = '';
+        totalAmount.textContent = "0.00";
+        if (tradeWarning) tradeWarning.style.display = "none";
+
+        // เช็คว่ามีข้อมูลไหม
+        if (!order) {
+          billTable.innerHTML = '<tr><td colspan="8">ไม่พบข้อมูลคำสั่งซื้อ</td></tr>';
+          // คืนค่า Dropdown ลูกค้า
+          if (typeof ensureCustOption === 'function') ensureCustOption(order?.customerCode);
+          if (custCodeSelect) custCodeSelect.value = order?.customerCode || "";
+          CURRENT_FILTERS.cust = custCodeSelect ? custCodeSelect.value : "";
+          if (typeof recalculateOrderCount === 'function') recalculateOrderCount();
+          if (typeof updateTargetReachUI === 'function') updateTargetReachUI();
+          return;
+        }
+
+        // ===============================================
+        // ⭐️ 2. เติมข้อมูลลงฟอร์ม (Header Inputs)
+        // ===============================================
+
+        // 2.1 ชื่อและรหัสลูกค้า
+        if (nameInput) nameInput.value = order.customerName || '';
+        if (codeInput) codeInput.value = order.customerCode || '';
+
+        // 2.2 วันที่ส่ง (แปลง format dd/MM/yyyy -> yyyy-MM-dd สำหรับ input type="date")
+        if (shipDate) {
+          shipDate.value = convertToInputDate(order.shipDate);
+        }
+
+        // 2.3 รอบส่ง (Radio Button: เช้า/บ่าย)
+        const pVal = (order.shipPeriod || "").trim();
+        document.querySelectorAll('input[name="shipPeriod"]').forEach(rb => {
+          rb.checked = (rb.value === pVal);
+        });
+
+        // 2.4 หมายเหตุ
+        if (remark) remark.value = order.remark || '';
+
+        // 2.5 ประเภทบิล (สินค้าเทรด)
+        if (isBulkCheckbox) isBulkCheckbox.checked = !!order.isBulk;
+
+        // 2.6 🔴 สถานะการชำระเงิน (Dropdown) -> ดึงค่ามาเลือก
+        const paySelect = document.getElementById("paymentStatusSelect");
+        if (paySelect) {
+          // ค่าต้องตรงกับ value ใน <option> เป๊ะๆ (เช่น "รอชำระหนี้คงค้าง")
+          paySelect.value = (order.paymentStatus || "").trim();
+        }
+
+        // 2.7 Reset ปุ่ม (เผื่อค้างจากสถานะ Edit)
+        const buyRadio = document.getElementById('buyRadio');
+        const giftRadio = document.getElementById('giftRadio');
+        if (buyRadio) buyRadio.checked = false;
+        if (giftRadio) giftRadio.checked = false;
+
+        // ===============================================
+        // ⭐️ 3. เติมรายการสินค้า (Table Items)
+        // ===============================================
+        let total = 0;
+        if (order.items && Array.isArray(order.items)) {
+          order.items.forEach(item => {
+            const tr = document.createElement("tr");
+            const qty = Number(item.qty) || 0;
+            const price = Number(item.price) || 0;
+            const br = Number(item.br) || 0;
+            const sc = Number(item.sc) || 0;
+            const isFree = (item.itemType || "").trim() === "แถม";
+
+            // คำนวณยอด
+            const rowTotal = (order.isBulk || isFree) ? 0 : Math.max(0, (qty * price - br - sc));
+
+            tr.innerHTML = `
+          <td>${item.itemCode}</td>
+          <td>${item.itemName}</td>
+          <td>${qty}</td>
+          <td>${item.unit}</td>
+          <td>${price.toFixed(2)}</td>
+          <td>${br.toFixed(2)}</td>
+          <td>${sc.toFixed(2)}</td>
+          <td>${rowTotal.toFixed(2)}</td>
+        `;
+            tr.dataset.isNew = "false";
+            tr.dataset.itemType = (item.itemType || "ซื้อ").trim();
+
+            // คลิกเพื่อแก้ไข
+            tr.addEventListener("click", () => markRowSelected(tr));
+
+            billTable.appendChild(tr);
+            total += rowTotal;
+          });
+        }
+
+        // อัปเดตยอดรวม
+        if (totalAmount) totalAmount.textContent = total.toFixed(2);
+        if (tradeWarning) tradeWarning.style.display = order.isBulk ? "block" : "none";
+
+        // เรียกฟังก์ชันเสริม (ถ้ามี)
+        if (typeof recalculateOrderCount === 'function') recalculateOrderCount();
+        if (typeof filterCustomerTable === 'function') filterCustomerTable();
+        if (typeof updateTargetReachUI === 'function') updateTargetReachUI();
+      }
+
+
+
+
+
+      // ✅ 3.3 โค้ดใหม่ (วางทับ handleDocSelect เดิม)
+      window.loadOrderToForm = function (docNoArg) {
+
+        // พยายามหาเลขที่เอกสาร:
+        // 1. จากพารามิเตอร์ที่ส่งมา (ตอนคลิกการ์ด)
+        // 2. หรือจาก Hidden Input (เผื่อกรณีอื่น)
+        const doc = docNoArg || document.getElementById('selectedDocNo').value;
+
+        // ถ้าเป็นโหมดเบิก ไม่ให้โหลดออเดอร์
+        if (IS_WITHDRAW) {
+          showAlert('โหมดเบิกสินค้า: ไม่สามารถโหลดคำสั่งซื้อเดิมได้');
+          return;
+        }
+
+        // เคลียร์ตารางเดิมรอก่อน
+        const billTable = document.getElementById('billTable');
+        billTable.innerHTML = '';
+
+        // ถ้าไม่มีเลขที่เอกสาร ก็จบการทำงาน
+        if (!doc) return;
+
+        // 1. ลองหาใน Cache ก่อน (จะได้ไม่ต้องโหลดใหม่ถ้าเคยเปิดแล้ว)
+        const cached = ORDER_CACHE.get(doc);
+        if (cached) {
+          ensureCustOption(cached.customerCode); // เติม option รหัสลูกค้า (ถ้าจำเป็น)
+          renderOrder(cached); // วาดตาราง
+          return;
+        }
+
+        // 2. ถ้าไม่มีใน Cache ให้เรียก Server
+        showLoader();
+        google.script.run
+          .withSuccessHandler(order => {
+            hideLoader();
+            if (order) {
+              ORDER_CACHE.set(doc, order); // เก็บลง Cache
+              renderOrder(order); // วาดตาราง
+
+              const paySelect = document.getElementById("paymentStatusSelect");
+              if (paySelect) {
+                paySelect.value = order.paymentStatus || "";
+              }
+            }
+          })
+          .withFailureHandler(err => {
+            hideLoader();
+            console.error(err);
+            showAlert("โหลดข้อมูลไม่สำเร็จ");
+          })
+          .getOrderByDocNo_cached(doc);
+      };
+
+
+
+      function expandItemTuple(t) {
+        // [itemCode,itemName,qty,unit,price,br,sc,total,itemType]
+        return {
+          docNo: document.getElementById("selectedDocNo").value,
+          itemCode: t[0] || "",
+          itemName: t[1] || "",
+          qty: Number(t[2]) || 0,
+          unit: t[3] || "",
+          price: Number(t[4]) || 0,
+          br: Number(t[5]) || 0,
+          sc: Number(t[6]) || 0,
+          total: Number(t[7]) || 0,
+          itemType: (t[8] || "ซื้อ")
+        };
+      }
+
+
+      function fillDocSelect(docNos = []) {
+        const select = document.getElementById('docSelect');
+        const existing = new Set(Array.from(select.options).map(o => o.value));
+        docNos.forEach(doc => {
+          if (!doc || existing.has(doc)) return;
+          const opt = document.createElement('option');
+          opt.value = doc;
+          opt.textContent = doc;
+          select.appendChild(opt);
+        });
+      }
+
+
+      function convertToInputDate(dateStr) {
+        if (!dateStr || typeof dateStr !== "string") return "";
+        // ลองตัดด้วย /
+        const parts = dateStr.trim().split('/');
+        if (parts.length === 3) {
+          // parts[0]=dd, parts[1]=MM, parts[2]=yyyy
+          // ต้องคืนค่าเป็น yyyy-MM-dd
+          return `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+        }
+        return "";
+      }
+
+      window.recalculateTotal = function () {
+
+        let total = 0;
+
+        billTable.querySelectorAll('tr').forEach(row => {
+          const cells = row.querySelectorAll('td');
+          if (cells.length === 8 && !cells[0].textContent.includes('ยังไม่มีรายการ')) {
+            total += parseFloat(cells[7].textContent || 0); // คอลัมน์สุดท้าย index 7
+          }
+        });
+        totalAmount.textContent = total.toFixed(2);
+      };
+
+
+      const doneClose = document.getElementById("doneClose");
+      if (doneClose) {
+        doneClose.addEventListener("click", () => {
+          closeModal("doneModal");
+          clearForm();
+        });
+      }
+
+
+      function clearForm() {
+        selectedBillRow = null;
+
+        // ปุ่มกลับเป็นโหมดเพิ่ม
+        const addBtn = document.querySelector("button[onclick='addToBill()']");
+        if (addBtn) {
+          addBtn.textContent = "เพิ่มสินค้าลงตะกร้า";
+          addBtn.style.background = "#2196F3";
+          addBtn.style.color = "white";
+        }
+
+        // เคลียร์หัวบิล
+        if (nameInput) nameInput.value = "";
+        if (codeInput) codeInput.value = "";
+        if (projectDisplay) projectDisplay.textContent = "-";
+        if (priceDisplay) priceDisplay.textContent = "-";
+        if (shipDate) shipDate.value = "";
+        if (remark) remark.value = "-";
+
+        // ✅ รีเซ็ต Dropdown สถานะกลับเป็นค่าว่าง
+        const paymentSelect = document.getElementById("paymentStatusSelect");
+        if (paymentSelect) paymentSelect.value = "";
+
+        // Ship period
+        document.querySelectorAll('input[name="shipPeriod"]').forEach(r => r.checked = false);
+
+        // เคลียร์บิลสินค้า
+        if (billTable) billTable.innerHTML = '<tr><td colspan="8">ยังไม่มีรายการ</td></tr>';
+        if (totalAmount) totalAmount.textContent = "0.00";
+        const tradeWarn = document.getElementById("tradeWarning");
+        if (tradeWarn) tradeWarn.style.display = "none";
+
+        // ฟอร์มสินค้า
+        if (document.getElementById("prodName")) document.getElementById("prodName").value = "";
+        if (document.getElementById("prodCode")) document.getElementById("prodCode").value = "";
+        if (document.getElementById("qtyInput")) document.getElementById("qtyInput").value = "";
+        if (document.getElementById("unitSelect")) document.getElementById("unitSelect").value = "";
+        if (document.getElementById("priceInput")) document.getElementById("priceInput").value = "";
+        if (document.getElementById("brDiscount")) document.getElementById("brDiscount").value = "";
+        if (document.getElementById("scDiscount")) document.getElementById("scDiscount").value = "";
+        if (document.getElementById("selectedDocNo")) document.getElementById("selectedDocNo").value = "";
+        document.querySelectorAll('.order-card').forEach(c => c.classList.remove('active'));
+
+        const buyRadio = document.getElementById('buyRadio');
+        const giftRadio = document.getElementById('giftRadio');
+        if (buyRadio) buyRadio.checked = false;
+        if (giftRadio) giftRadio.checked = false;
+
+        // ยกเลิก “บิลเทรด”
+        const isBulk = document.getElementById("isBulk");
+        if (isBulk) isBulk.checked = false;
+
+        // เอกสาร/รหัสลูกค้า (แก้ให้เช็คก่อนเคลียร์)
+        if (docSelect) docSelect.value = "";           // ✅ แก้ตรงนี้
+        if (custCodeSelect) custCodeSelect.value = ""; // ✅ แก้ตรงนี้
+
+        // === รีเซ็ตโหมดเบิก + เคลียร์ช่องพนักงาน ===
+        if (chkWithdraw) {
+          chkWithdraw.checked = false;
+          toggleWithdrawMode(false);
+        }
+        if (saleTypeSelect) saleTypeSelect.value = "";
+        const wCode = document.getElementById('withdrawEmpCode');
+        const wName = document.getElementById('withdrawEmpName');
+        if (wCode) wCode.value = "";
+        if (wName) wName.value = "";
+
+        // อัปเดต UI อื่น ๆ
+        if (typeof recalculateOrderCount === 'function') recalculateOrderCount();
+        if (typeof updateTargetReachUI === 'function') updateTargetReachUI();
+        if (typeof filterCustomerTable === 'function') filterCustomerTable();
+        if (typeof updateBeerWarning === 'function') updateBeerWarning();
+      }
+
+
+      function toggleLeftPanel() {
+        const wrapper = document.getElementById('leftPanelWrapper');
+        const btn = document.getElementById('leftToggleBtn');
+        const arrow = btn.querySelector('.arrow');
+
+        // 1. สลับ Class เปิด/ปิด ที่ Panel
+        wrapper.classList.toggle('open');
+        const isOpen = wrapper.classList.contains('open');
+
+        // 2. เปลี่ยนลูกศร
+        arrow.textContent = isOpen ? '‹' : '›';
+
+        // 3. ✅ สั่ง Body ให้รู้ตัวว่าซ้ายเปิดแล้ว (CSS จะจัดการบีบหน้าจอเอง)
+        if (isOpen) {
+          document.body.classList.add('open-left');
+        } else {
+          document.body.classList.remove('open-left');
+        }
+      }
+
+      function renderOrderList(orders) {
+        const container = document.getElementById('orderListContainer');
+        container.innerHTML = '';
+
+        if (!orders || orders.length === 0) {
+          container.innerHTML = '<div style="text-align:center; padding:20px; color:#999;">ไม่พบรายการ</div>';
+          return;
+        }
+
+        orders.sort((a, b) => b.docNo.localeCompare(a.docNo));
+
+        orders.forEach(o => {
+          const card = document.createElement('div');
+          card.className = 'order-card';
+          card.dataset.doc = o.docNo;
+
+          let receiveDate = "-";
+          const match = o.docNo.match(/^(\d{4})(\d{2})(\d{2})/);
+          if (match) receiveDate = `${match[3]}/${match[2]}/${match[1]}`;
+
+          const shipDisplay = o.shipDate
+            ? `<span class="oc-ship-date">🚚 ส่ง: ${convertToInputDate(o.shipDate)}</span>`
+            : `<span style="color:#ccc;">(ไม่ระบุวันส่ง)</span>`;
+
+          // ✅ สร้าง Badge สถานะ
+          const badgeHTML = getPaymentBadgeHTML(o.paymentStatus);
+
+          card.innerHTML = `
+      <div class="oc-header">
+        <div class="oc-cust-name">
+            ${o.customerName || '(ไม่ระบุชื่อ)'}
+            ${badgeHTML} </div>
+      </div>
+      <div class="oc-meta">
+        <div class="oc-row">
+           ${shipDisplay}
+        </div>
+        <div class="oc-row">
+           <span class="oc-date-faded">📅 รับ: ${receiveDate}</span>
+           <span class="oc-date-faded" style="margin-left:auto;">#${o.docNo.split('/').pop()}</span>
+        </div>
+      </div>
+    `;
+
+          card.addEventListener('click', () => selectOrderCard(o.docNo));
+
+          container.appendChild(card);
+        });
+      }
+
+      // ฟังก์ชันเมื่อคลิกการ์ด
+      function selectOrderCard(docNo) {
+        // 1. Highlight การ์ด
+        document.querySelectorAll('.order-card').forEach(c => c.classList.remove('active'));
+        const target = document.querySelector(`.order-card[data-doc="${docNo}"]`);
+        if (target) target.classList.add('active');
+
+        // 2. เก็บค่าลง Hidden Input (แทน docSelect เดิม)
+        document.getElementById('selectedDocNo').value = docNo;
+
+        // 3. โหลดข้อมูล (เรียกฟังก์ชันเดิมที่มีอยู่)
+        loadOrderToForm(docNo);
+      }
+
+      // ฟิลเตอร์รายการ (Search)
+      document.getElementById('orderSearchInput').addEventListener('input', (e) => {
+        const txt = e.target.value.toLowerCase();
+        const filtered = ALL_ORDERS_LIST.filter(o =>
+          (o.customerName || '').toLowerCase().includes(txt) ||
+          (o.docNo || '').toLowerCase().includes(txt)
+        );
+        renderOrderList(filtered);
+      });
+
+
+
+
+
+      window.billTableHasItems = function () {
+
+        const rows = billTable.querySelectorAll("tr");
+
+        return Array.from(rows).some(tr => {
+          const tds = tr.querySelectorAll("td");
+          return tds.length >= 8 && !tds[0].textContent.includes("ยังไม่มีรายการ");
+        });
+      };
+
+
+      window.recalculateOrderCount = function () {
+
+
+        const rows = Array.from(billTable.querySelectorAll('tr')).filter(r => {
+          const cells = r.querySelectorAll('td');
+          return cells.length === 8 && !cells[0].textContent.includes('ยังไม่มีรายการ');
+        });
+        orderCount.textContent = rows.length;
+        updateBeerWarning();
+      };
+
+
+      function getCurrentTierNumber() {
+        // โหมดเบิก = Tier 5 ตามสเปก
+        if (IS_WITHDRAW) return 5;
+
+        const txt = (document.getElementById('priceDisplay')?.textContent || '').trim();
+        const n = parseInt(txt, 10);
+        return Number.isInteger(n) ? n : null;  // null = ไม่ระบุ
+      }
+
+      function requiredBeerByTier(tier) {
+        if (tier === 1) return 300;
+        if (tier === 2) return 180;
+        if (tier === 3) return 50;
+        // ที่เหลือ (0,4,5,6, null/ว่าง) → อย่างน้อย 1
+        return 1;
+      }
+
+      function computeBeerSumQty() {
+        // รวม qty ของแถวที่ "ชื่อสินค้า" มีคำว่า "เบียร์"
+        let sum = 0;
+        billTable.querySelectorAll('tr').forEach(tr => {
+          const tds = tr.querySelectorAll('td');
+          if (tds.length < 8) return;
+          const name = (tds[1].textContent || '').toLowerCase();
+          if (name.includes('เบียร์')) {
+            const q = parseFloat(tds[2].textContent || 0);
+            if (Number.isFinite(q)) sum += q;
+          }
+        });
+        return sum;
+      }
+
+      function updateBeerWarning() {
+        const badge = document.getElementById('beerWarn');
+        if (!badge) return;
+
+        const sumBeer = computeBeerSumQty();
+
+        // ไม่มี "เบียร์" เลย → ซ่อนไป
+        if (sumBeer <= 0) {
+          badge.classList.add('hidden');
+          badge.textContent = '';
+          return;
+        }
+
+        const tier = getCurrentTierNumber();
+        const required = requiredBeerByTier(tier);
+        const tierText = (tier === 1 || tier === 2 || tier === 3) ? `Tier ${tier}` : `เกณฑ์ขั้นต่ำ`;
+
+        // มีเบียร์แล้ว → โชว์ตลอด
+        badge.classList.remove('hidden');
+
+        if (sumBeer < required) {
+          // ไม่ถึงเกณฑ์ → โหมดเตือน (สีส้ม)
+          const msg = `เบียร์รวม ${sumBeer}/${required} ยังไม่ถึงเกณฑ์ ${tierText} (ขั้นต่ำ ${required})`;
+          badge.textContent = msg;
+          badge.classList.remove('ok-badge');
+          badge.classList.add('warn-badge');
+        } else {
+          // ถึง/เกินเกณฑ์ → โหมดผ่าน (สีเขียว)
+          const msg = `เบียร์รวม ${sumBeer}/${required} ผ่านเกณฑ์ ${tierText}`;
+          badge.textContent = msg;
+          badge.classList.remove('warn-badge');
+          badge.classList.add('ok-badge');
+        }
+      }
+
+
+
+
+      window.collectData = function () {
+        const rows = billTable.querySelectorAll("tr");
+
+        const items = Array.from(rows).map(tr => {
+          const cells = tr.querySelectorAll("td");
+          if (cells.length < 8 || cells[0].textContent.includes("ยังไม่มีรายการ")) return null;
+
+          return {
+            itemCode: cells[0].textContent.trim(),
+            itemName: cells[1].textContent.trim(),
+            qty: parseFloat(cells[2].textContent.trim()) || 0,
+            unit: cells[3].textContent.trim(),
+            price: parseFloat(cells[4].textContent.trim()) || 0,
+            br: parseFloat(cells[5].textContent.trim()) || 0,
+            sc: parseFloat(cells[6].textContent.trim()) || 0,
+            total: parseFloat(cells[7].textContent.trim()) || 0,
+            itemType: tr.dataset.itemType || "ซื้อ"
+          };
+        }).filter(Boolean);
+
+        let custName = document.getElementById("nameInput").value;
+        let custCode = document.getElementById("codeInput").value;
+        let saleType = "";
+
+        if (IS_WITHDRAW) {
+          const stTH = saleTypeSelect?.value || '';
+          const empCode = (document.getElementById('withdrawEmpCode')?.value || '').trim();
+          saleType = stTH;
+          custName = `เบิก - ${stTH}`;
+          custCode = empCode;
+        }
+
+        // ✅ ดึงค่าจาก Dropdown ใหม่
+        const paymentStatus = document.getElementById("paymentStatusSelect").value;
+
+        return {
+          // ✅ แก้ตรงนี้: ถ้า docSelect ไม่มี ให้ใช้ค่าจาก hidden input แทน
+          docNo: document.getElementById("docSelect")?.value || document.getElementById("selectedDocNo")?.value || "",
+          customerCode: custCode,
+          customerName: custName,
+          shipDate: document.getElementById("shipDate").value,
+          branch: document.getElementById("branchHidden").value,
+          shipPeriod: document.querySelector('input[name="shipPeriod"]:checked')?.value || "",
+          remark: document.getElementById("remark").value,
+          isBulk: document.getElementById("isBulk").checked,
+          isWithdraw: IS_WITHDRAW,
+          saleType: saleType,
+          statusApprove: paymentStatus,
+          items
+        };
+      };
+
+      isBulkCheckbox.addEventListener("change", function () {
+        const isTrade = this.checked;
+        const warning = document.getElementById("tradeWarning");
+        const rows = billTable.querySelectorAll("tr");
+        let total = 0;
+
+        rows.forEach(row => {
+          const cells = row.querySelectorAll("td");
+          if (cells.length !== 8) return;
+
+          const isFree = (row.dataset.itemType || "").trim() === "แถม";
+
+          if (isTrade || isFree) {
+            cells[7].textContent = "0.00"; // บิลเทรดหรือแถม => 0
+            return;
+          }
+
+          const qty = parseFloat(cells[2].textContent || 0);
+          const price = parseFloat(cells[4].textContent || 0);
+          const br = parseFloat(cells[5].textContent || 0);
+          const sc = parseFloat(cells[6].textContent || 0);
+          const value = (qty * price) - br - sc;
+
+          cells[7].textContent = value.toFixed(2);
+          total += value;
+        });
+
+        if (isTrade) {
+          totalAmount.textContent = "0.00";
+          warning.style.display = "block";
+        } else {
+          totalAmount.textContent = total.toFixed(2);
+          updateBeerWarning();
+          warning.style.display = "none";
+
+        }
+      });
+
+
+      // ⬇️ บล็อกเพิ่มใหม่สำหรับปุ่มลบแถวที่เลือก
+      window.removeSelectedBillRow = function () {
+
+        // หาแถวที่ถูกเลือก (คุณใส่ .selected ตอนคลิกแล้ว)
+        const selected = billTable.querySelector('tr.selected');
+        if (!selected) {
+          showAlert('โปรดคลิกเลือกแถวในตารางก่อนลบ');
+          return;
+        }
+
+        // ลบแถวที่เลือก
+        selected.remove();
+
+        // ถ้าไม่เหลือแถวข้อมูล ให้แทรกแถว "ยังไม่มีรายการ"
+        const hasData = Array.from(billTable.querySelectorAll('tr')).some(tr => {
+          const tds = tr.querySelectorAll('td');
+          return tds.length === 8 && !tds[0].textContent.includes('ยังไม่มีรายการ');
+        });
+        if (!hasData) {
+          const tr = document.createElement('tr');
+          tr.innerHTML = '<td colspan="8">ยังไม่มีรายการ</td>';
+          billTable.appendChild(tr);
+        }
+
+        // อัปเดตยอดรวมและจำนวนรายการ (ถ้ามีฟังก์ชันเหล่านี้อยู่แล้ว)
+        if (typeof window.recalculateTotal === 'function') window.recalculateTotal();
+        if (typeof window.recalculateOrderCount === 'function') window.recalculateOrderCount();
+        updateBeerWarning();
+      };
+
+
+      // === Loader helpers ===
+      // === Loader helpers ===
+      let __pendingLoads = 0;
+      function showLoader() { document.getElementById('appLoader')?.classList.add('show'); }
+      function hideLoader() { document.getElementById('appLoader')?.classList.remove('show'); }
+
+      function incPending() {
+        if (__pendingLoads === 0) showLoader();
+        __pendingLoads++;
+      }
+      function decPending() {
+        __pendingLoads = Math.max(0, __pendingLoads - 1);
+        if (__pendingLoads === 0) hideLoader();
+      }
+
+      // กันค้างเกินเหตุ 15 วินาที (ยังคงไว้)
+      setTimeout(() => { if (__pendingLoads > 0) hideLoader(); }, 15000);
+
+
+
+
+
+
+
+
+
+
+      function updateRemainingDays() {
+        const today = new Date();
+        const nextMonth = new Date(today.getFullYear(), today.getMonth() + 1, 1);
+        const daysLeft = Math.ceil((nextMonth - today) / (1000 * 60 * 60 * 24));
+        const el = document.getElementById("remainDays");
+        if (el) el.textContent = daysLeft;
+      }
+
+
+      // ============================================================
+      // 📊 ส่วนระบบ Progress Bar (นับ % การโหลด)
+      // ============================================================
+      const TOTAL_TASKS = 4; // เรามี 4 งานที่ต้องรอ
+      let completedTasks = 0;
+
+      function updateProgress() {
+        completedTasks++;
+        // คำนวณ % (ไม่ให้เกิน 100)
+        let percent = Math.min(100, Math.round((completedTasks / TOTAL_TASKS) * 100));
+
+        // อัปเดตหลอดและตัวเลข
+        const bar = document.getElementById('loadingBar');
+        const txt = document.getElementById('loadingPercent');
+
+        if (bar) bar.style.width = percent + "%";
+        if (txt) txt.textContent = percent + "%";
+
+        // ถ้าโหลดครบ 4 งานแล้ว ให้รอ 0.5 วินาที แล้วค่อยปิดหน้าโหลด
+        if (completedTasks >= TOTAL_TASKS) {
+          console.log("✅ โหลดครบ 100%");
+          setTimeout(decPending, 500);
+        }
+      }
+
+      // ============================================================
+      // 🔄 DOMContentLoaded (เวอร์ชันใหม่: รวมทุกอย่างไว้ที่นี่)
+      // ============================================================
+      document.addEventListener("DOMContentLoaded", function () {
+
+        // ถ้ามีฟังก์ชัน updateRemainingDays ให้เรียกใช้ (ถ้าไม่มีก็ข้ามได้)
+        if (typeof updateRemainingDays === 'function') updateRemainingDays();
+
+        // เรียก Loader ขึ้นมาครั้งแรก
+        incPending();
+
+        // --- งานที่ 1: โหลดข้อมูลหลัก (Customers, Items, Pending Orders) ---
+        google.script.run
+          .withSuccessHandler(bundle => {
+            // 1.1 วาดตารางลูกค้า
+            allCustomers = Array.isArray(bundle?.customers) ? bundle.customers : [];
+            renderCustomerTable(allCustomers);
+
+            // 1.2 วาดสินค้า
+            allItems = dedupeItems(Array.isArray(bundle?.items) ? bundle.items : []);
+            renderItemTable(allItems);
+
+            // 1.3 จัดการออเดอร์รออนุมัติ
+            const pending = bundle?.pending || { docNos: [], orders: {} };
+            const pendingOrdersArray = [];
+            Object.entries(pending.orders).forEach(([doc, o]) => {
+              pendingOrdersArray.push({
+                docNo: doc,
+                customerName: o.customerName,
+                shipDate: o.shipDate,
+                paymentStatus: o.paymentStatus
+              });
+            });
+            ALL_ORDERS_LIST = pendingOrdersArray;
+            renderOrderList(ALL_ORDERS_LIST);
+
+            Object.entries(pending.orders).forEach(([doc, o]) => {
+              const items = Array.isArray(o.items)
+                ? o.items.map(t => ({
+                  itemCode: t[0] || "",
+                  itemName: t[1] || "",
+                  qty: Number(t[2]) || 0,
+                  unit: t[3] || "",
+                  price: Number(t[4]) || 0,
+                  br: Number(t[5]) || 0,
+                  sc: Number(t[6]) || 0,
+                  total: Number(t[7]) || 0,
+                  itemType: (t[8] || "ซื้อ")
+                }))
+                : [];
+              ORDER_CACHE.set(doc, {
+                customerCode: o.customerCode || "",
+                customerName: o.customerName || "",
+                shipDate: o.shipDate || "",
+                shipPeriod: o.shipPeriod || "",
+                remark: o.remark || "",
+                paymentStatus: o.paymentStatus || "",
+                isBulk: !!o.isBulk,
+                items
+              });
+            });
+
+            indexFromPrefetchedOrders(Object.fromEntries(ORDER_CACHE));
+            snapshotAllDocNos();
+
+            // ✅ จบงานที่ 1
+            updateProgress();
+          })
+          .withFailureHandler(err => {
+            console.error('❌ getBootstrapBundleCached', err);
+            updateProgress();
+          })
+          .getBootstrapBundleCached();
+
+        // --- งานที่ 2: Target Reach ---
+        google.script.run
+          .withSuccessHandler(data => {
+            targetReachData = Array.isArray(data) ? data : [];
+            updateTargetReachUI();
+            // ✅ จบงานที่ 2
+            updateProgress();
+          })
+          .withFailureHandler(err => {
+            console.error('getTargetReachTable', err);
+            updateProgress();
+          })
+          .getTargetReachTable();
+
+        // --- งานที่ 3: โหลดรหัสลูกค้า ---
+        loadPendingCustomerCodes({ silent: true });
+
+        // --- งานที่ 4: โหลดพนักงาน ---
+        loadEmployeesForWithdraw();
+
+      });
+
+      // ============================================================
+      // 🛠️ ฟังก์ชันย่อย 1: โหลดรหัสลูกค้า (ปรับปรุงใหม่)
+      // ============================================================
+      function loadPendingCustomerCodes({ silent = true } = {}) {
+        const branch = document.getElementById('branchHidden').value || '';
+
+        google.script.run
+          .withSuccessHandler(codes => {
+            const keep = custCodeSelect.value;
+            fillCustDropdown(codes || [], 'server:listPendingCustomerCodes');
+            if (keep && (codes || []).includes(keep)) custCodeSelect.value = keep;
+
+            // ✅ จบงานที่ 3
+            updateProgress();
+          })
+          .withFailureHandler(err => {
+            // ✅ จบงานที่ 3 (กรณี Error)
+            updateProgress();
+          })
+          .listPendingCustomerCodes(branch || null);
+      }
+
+      // ============================================================
+      // 🛠️ ฟังก์ชันย่อย 2: โหลดพนักงาน (ปรับปรุงใหม่)
+      // ============================================================
+      // ในไฟล์ Index.html (ใน <script>)
+
+      function loadEmployeesForWithdraw() {
+        google.script.run
+          .withSuccessHandler(list => {
+            // ✅ แก้ไข: แปลงข้อมูลให้รองรับทั้งแบบเก่า (Sale/ชื่อ) และแบบใหม่ (code/name)
+            const cleaned = (Array.isArray(list) ? list : []).map(r => {
+              return {
+                code: r.code || r.Sale || '',  // ถ้าไม่มี code ให้ใช้ Sale
+                name: r.name || r['ชื่อ'] || '' // ถ้าไม่มี name ให้ใช้ ชื่อ
+              };
+            })
+              .filter(r => r.code && r.name); // กรองเอาเฉพาะที่มีข้อมูลครบ
+
+            allEmployees = cleaned;
+            renderEmployeeTable(allEmployees);
+
+            // อย่าลืมเรียก updateProgress ถ้ามี Loader
+            if (typeof updateProgress === 'function') updateProgress();
+          })
+          .withFailureHandler(err => {
+            console.error('getEmployeeMasterForSelect failed', err);
+            // ... handle error
+            if (typeof updateProgress === 'function') updateProgress();
+          })
+          .getEmployeeMasterForSelect();
+      }
+
+
+
+
+
+      window.resetTargetReachUI = function () {
+        ["singha", "leo", "beer"].forEach(b => {
+          document.getElementById(`${b}Current`).textContent = "-";
+          document.getElementById(`${b}Added`).textContent = "-";
+          document.getElementById(`${b}Compare`).textContent = "-";
+          document.getElementById(`${b}Remain`).textContent = "-";
+        });
+      };
+
+      window.updateTargetReachUI = function () {
+        if (IS_WITHDRAW) { resetTargetReachUI(); return; }  // ⬅ เพิ่มบรรทัดนี้
+        const custCode = document.getElementById("codeInput").value.trim();
+        if (!custCode) { resetTargetReachUI(); return; }
+        google.script.run
+          .withSuccessHandler(showTargetReach)
+          .withFailureHandler(err => { console.error(err); resetTargetReachUI(); })
+          .getTargetReachTableFor(custCode);
+      };
+
+      function showTargetReach(rows) {
+        if (!Array.isArray(rows) || rows.length === 0) { resetTargetReachUI(); return; }
+        const getRow = (key) => rows.find(r => String(r["Brand"] || "").includes(key));
+        const rSingha = getRow("สิงห์");
+        const rLeo = getRow("ลีโอ");
+
+        const current = {
+          singha: parseFloat(rSingha?.["HOP_เป้า(ลัง)"]) || 0,
+          leo: parseFloat(rLeo?.["HOP_เป้า(ลัง)"]) || 0,
+        };
+        current.beer = current.singha + current.leo;
+
+        const added = { singha: 0, leo: 0 };
+        document.querySelectorAll("#billTable tr").forEach(tr => {
+          if (tr.dataset.isNew === "true") {
+            const name = tr.cells[1]?.textContent || "";
+            const unit = tr.cells[3]?.textContent || "";
+            const qty = parseFloat(tr.cells[2]?.textContent) || 0;
+            if (unit === "ลัง") {
+              if (name.includes("สิงห์")) added.singha += qty;
+              if (name.includes("ลีโอ")) added.leo += qty;
+            }
+          }
+        });
+        added.beer = added.singha + added.leo;
+
+        const remain = {
+          singha: Math.max(0, current.singha - added.singha),
+          leo: Math.max(0, current.leo - added.leo),
+          beer: Math.max(0, current.beer - added.beer),
+        };
+        const compare = {
+          singha: current.singha ? (added.singha / current.singha) * 100 : 0,
+          leo: current.leo ? (added.leo / current.leo) * 100 : 0,
+          beer: current.beer ? (added.beer / current.beer) * 100 : 0,
+        };
+
+        document.getElementById("singhaCurrent").textContent = current.singha.toLocaleString();
+        document.getElementById("singhaAdded").textContent = added.singha ? "+" + added.singha.toLocaleString() : "-";
+        document.getElementById("singhaCompare").textContent = compare.singha.toFixed(2) + "%";
+        document.getElementById("singhaRemain").textContent = remain.singha.toLocaleString();
+
+        document.getElementById("leoCurrent").textContent = current.leo.toLocaleString();
+        document.getElementById("leoAdded").textContent = added.leo ? "+" + added.leo.toLocaleString() : "-";
+        document.getElementById("leoCompare").textContent = compare.leo.toFixed(2) + "%";
+        document.getElementById("leoRemain").textContent = remain.leo.toLocaleString();
+
+        document.getElementById("beerCurrent").textContent = current.beer.toLocaleString();
+        document.getElementById("beerAdded").textContent = added.beer ? "+" + added.beer.toLocaleString() : "-";
+        document.getElementById("beerCompare").textContent = compare.beer.toFixed(2) + "%";
+        document.getElementById("beerRemain").textContent = remain.beer.toLocaleString();
+      }
+
+
+      updateBeerWarning();
+
+
+
+
+      function resetProductForm() {
+        // ช่องค้นหา/เลือกสินค้า
+        if (typeof renderItemTable === 'function') renderItemTable(allItems || []);
+        const prodNameEl = document.getElementById('prodName');
+        const prodCodeEl = document.getElementById('prodCode');
+        if (prodNameEl) prodNameEl.value = '';
+        if (prodCodeEl) prodCodeEl.value = '';
+
+        // ล้างไฮไลต์ในตารางรายการสินค้า
+        document.querySelectorAll('#cartTable tr').forEach(r => r.classList.remove('selected'));
+
+        // ค่าปริมาณ/หน่วย/ราคา/ส่วนลด
+        const qtyInputEl = document.getElementById('qtyInput');
+        const unitSelectEl = document.getElementById('unitSelect');
+        const priceInputEl = document.getElementById('priceInput');
+        const brEl = document.getElementById('brDiscount');
+        const scEl = document.getElementById('scDiscount');
+
+        if (qtyInputEl) qtyInputEl.value = '';  // ตั้งค่าเริ่มเป็น 1 ให้ใส่ต่อสะดวก
+        if (unitSelectEl) unitSelectEl.value = '';
+        if (priceInputEl) priceInputEl.value = '';
+        if (brEl) brEl.value = '';
+        if (scEl) scEl.value = '';
+
+        // ซื้อ/แถม → ปล่อยว่าง (โค้ดคุณ default ไปเป็น "ซื้อ" อยู่แล้วถ้าไม่ติ๊ก)
+        const buyRadioEl = document.getElementById('buyRadio');
+        const giftRadioEl = document.getElementById('giftRadio');
+        if (buyRadioEl) buyRadioEl.checked = false;
+        if (giftRadioEl) giftRadioEl.checked = false;
+
+        // ปุ่มกลับเป็นโหมด "เพิ่ม"
+        const addBtn = document.querySelector("button[onclick='addToBill()']");
+        if (addBtn) {
+          addBtn.textContent = "เพิ่มสินค้าลงตะกร้า";
+          addBtn.style.background = "#2196F3";
+          addBtn.style.color = "white";
+        }
+
+        // เอาโฟกัสกลับไปที่ "รหัสสินค้า"
+        if (prodCodeEl) prodCodeEl.focus();
+      }
+
+
+
+      // ====== เพิ่มหรือแก้ไขสินค้าในตะกร้า ======
+      window.addToBill = function () {
+        const qtyInput = document.getElementById("qtyInput");
+        const priceInput = document.getElementById("priceInput");
+        const unitSelect = document.getElementById("unitSelect");
+        const brDiscount = document.getElementById("brDiscount");
+        const scDiscount = document.getElementById("scDiscount");
+        const addBtn = document.querySelector("button[onclick='addToBill()']");
+
+        // helper กัน NaN
+        const num = v => Number.isFinite(v) ? v : 0;
+
+        let qty = num(parseFloat(qtyInput.value));
+        let price = num(parseFloat(priceInput.value));
+        const brPU = num(parseFloat(brDiscount.value));
+        const scPU = num(parseFloat(scDiscount.value));
+
+        const brTotal = brPU * qty;
+        const scTotal = scPU * qty;
+        const calcTotal = qty * price - brTotal - scTotal;
+
+        // ประเภทสินค้า: ซื้อ/แถม
+        const itemType = (document.querySelector('input[name="itemType"]:checked')?.value || "ซื้อ").trim();
+        const isFree = itemType === "แถม";
+
+        // ตรวจความครบถ้วน
+        if (!prodCode.value || !prodName.value || !qty || !unitSelect.value ||
+          (!IS_WITHDRAW && (!nameInput.value || !codeInput.value))) {
+          showAlert("กรุณากรอกข้อมูลให้ครบก่อนเพิ่มลงตะกร้า");
+          return;
+        }
+
+        // total ที่จะแสดง: ถ้าเป็นแถมหรือบิลเทรด = 0
+        const displayTotal = (isFree || isBulkCheckbox?.checked) ? 0 : calcTotal;
+
+        const rowHTML = (q, u, p, brT, scT, t) => `
+    <td>${prodCode.value}</td>
+    <td>${prodName.value}</td>
+    <td>${q}</td>
+    <td>${u}</td>
+    <td>${p.toFixed(2)}</td>
+    <td>${brT.toFixed(2)}</td>
+    <td>${scT.toFixed(2)}</td>
+    <td>${t.toFixed(2)}</td>
+  `;
+
+        if (selectedBillRow) {
+          // แก้ไขแถวเดิม
+          selectedBillRow.innerHTML = rowHTML(qty, unitSelect.value, price, brTotal, scTotal, displayTotal);
+          selectedBillRow.dataset.isNew = "true";
+          selectedBillRow.dataset.itemType = itemType;
+
+          selectedBillRow.classList.remove("selected");
+          selectedBillRow = null;
+
+          addBtn.textContent = "เพิ่มสินค้าลงตะกร้า";
+          addBtn.style.background = "#2196F3";
+          addBtn.style.color = "white";
+        } else {
+          // เพิ่มแถวใหม่
+          const emptyRow = billTable.querySelector('tr td[colspan]');
+          if (emptyRow) emptyRow.parentElement.remove();
+
+          const tr = document.createElement("tr");
+          tr.innerHTML = rowHTML(qty, unitSelect.value, price, brTotal, scTotal, displayTotal);
+          tr.dataset.isNew = "true";
+          tr.dataset.itemType = itemType;
+          tr.addEventListener("click", () => markRowSelected(tr));
+          billTable.appendChild(tr);
+        }
+
+        recalculateTotal();
+        recalculateOrderCount();
+        updateTargetReachUI();
+        resetProductForm();
+        updateBeerWarning();
+      };
+
+
+
+      // แล้วค่อยใส่ listener
+      ["input", "change", "blur"].forEach(evt => {
+        codeInput.addEventListener(evt, () => {
+          clearTimeout(trDebounce);
+          trDebounce = setTimeout(() => updateTargetReachUI(), 200);
+        });
+      });
+
+
+      // เผื่อใช้ JS เปลี่ยนค่าแบบตรงๆ
+      const observer = new MutationObserver(() => {
+        console.log("🔄 codeInput value changed via DOM:", codeInput.value);
+        updateTargetReachUI();
+      });
+      observer.observe(codeInput, { attributes: true, childList: true, subtree: true });
+
+
+
+      // ==========================================
+      // 📊 ส่วนควบคุม Progress Bar แบบจำลอง (Simulated)
+      // ==========================================
+      let saveInterval;
+
+      function startSaveProgress() {
+        const bar = document.getElementById('saveProgressBar');
+        const txt = document.getElementById('saveProgressText');
+        let width = 0;
+
+        // รีเซ็ตค่าเริ่มต้น
+        bar.style.width = '0%';
+        bar.style.background = 'linear-gradient(90deg, #2196F3, #00BCD4)'; // สีฟ้าปกติ
+        txt.textContent = '0%';
+
+        if (saveInterval) clearInterval(saveInterval);
+
+        // เริ่มวิ่งตัวเลข
+        saveInterval = setInterval(() => {
+          // ถ้ายังไม่ถึง 90% ให้บวกเพิ่มทีละนิด
+          if (width < 90) {
+            // สุ่มเพิ่ม 1-5% เพื่อให้ดูเป็นธรรมชาติ
+            width += Math.random() * 5;
+            if (width > 90) width = 90; // ตันที่ 90% รอ Server
+          }
+
+          bar.style.width = width + '%';
+          txt.textContent = Math.round(width) + '%';
+        }, 400); // อัปเดตทุก 0.4 วินาที
+      }
+
+      function finishSaveProgress(callback) {
+        if (saveInterval) clearInterval(saveInterval);
+
+        const bar = document.getElementById('saveProgressBar');
+        const txt = document.getElementById('saveProgressText');
+
+        // ดีดไป 100% ทันที
+        bar.style.width = '100%';
+        txt.textContent = '100%';
+
+        // หน่วงเวลา 0.6 วิ ให้คนเห็นว่าเต็มหลอดก่อนค่อยไปต่อ
+        setTimeout(() => {
+          callback(); // ทำงานต่อ (ปิด Modal / เปิดหน้าถัดไป)
+        }, 600);
+      }
+
+      function errorSaveProgress() {
+        if (saveInterval) clearInterval(saveInterval);
+        const bar = document.getElementById('saveProgressBar');
+        const txt = document.getElementById('saveProgressText');
+
+        bar.style.background = '#f44336'; // เปลี่ยนเป็นสีแดง
+        txt.textContent = 'เกิดข้อผิดพลาด!';
+        txt.style.color = '#f44336';
+      }
+
+
+
+
+      window.submitOrder = function () {
+        const branch = document.getElementById("branchHidden").value;
+        const missing = [];
+
+        // ตรวจช่องบังคับหลัก
+        if (!branch) { showAlert("กรุณาเลือกสาขาก่อนยืนยันคำสั่งซื้อ"); return; }
+        if (!billTableHasItems()) missing.push("รายการสินค้าในตะกร้า");
+
+        if (IS_WITHDRAW) {
+          const stTH = saleTypeSelect?.value || '';
+          const empCode = (document.getElementById('withdrawEmpCode')?.value || '').trim();
+          const empName = (document.getElementById('withdrawEmpName')?.value || '').trim();
+          if (!stTH) missing.push("รูปแบบการขาย (ขายปลีก/ขายส่ง)");
+          if (!empCode) missing.push("รหัสพนักงาน (Sale)");
+          if (!empName) missing.push("ชื่อพนักงาน");
+        } else {
+          if (!nameInput.value.trim()) missing.push("ชื่อลูกค้า");
+          if (!codeInput.value.trim()) missing.push("รหัสลูกค้า");
+        }
+
+        if (missing.length > 0) {
+          showAlert("กรุณากรอกข้อมูลให้ครบถ้วน:\n\n- " + missing.join("\n- "));
+          return;
+        }
+
+        // เซ็ตค่า header ตามโหมด
+        if (IS_WITHDRAW) {
+          const stTH = (saleTypeSelect?.value || '').trim();
+          const empCode = (document.getElementById('withdrawEmpCode')?.value || '').trim();
+          nameInput.value = `เบิก - ${stTH}`;
+          codeInput.value = empCode;
+        }
+
+        // ✅ 1. เปิด Modal และเริ่มวิ่ง Progress Bar
+        openModal("savingModal");
+        startSaveProgress();
+
+        const data = collectData();
+
+        google.script.run
+          .withSuccessHandler((res) => {
+
+            // ✅ 2. เมื่อเสร็จจริง เรียก finishSaveProgress
+            // รอให้หลอดเต็ม 100% ก่อนแล้วค่อยรันคำสั่งข้างใน (ปิด Modal)
+            finishSaveProgress(() => {
+              closeModal("savingModal");
+              openModal("doneModal");
+
+              // อัปเดต Cache/Select
+              const dataNow = collectData();
+              const docKey = (res && res.docNo) || dataNow.docNo || '';
+              if (docKey) {
+                const orderObj = {
+                  customerCode: dataNow.customerCode,
+                  customerName: dataNow.customerName,
+                  shipDate: dataNow.shipDate,
+                  remark: dataNow.remark,
+                  isBulk: dataNow.isBulk,
+                  items: dataNow.items
+                };
+                ORDER_CACHE.set(docKey, orderObj);
+                if (typeof indexFromSingleOrder === 'function') indexFromSingleOrder(docKey, orderObj);
+                if (typeof snapshotAllDocNos === 'function') snapshotAllDocNos();
+
+                if (CURRENT_FILTERS.cust && typeof filterDocSelectByCustomer === 'function') {
+                  filterDocSelectByCustomer(CURRENT_FILTERS.cust);
+                }
+
+                if (docSelect && ![...docSelect.options].some(o => o.value === docKey)) {
+                  fillDocSelect([docKey]);
+                }
+              }
+              // ล้างฟอร์ม
+              clearForm();
+            });
+
+          })
+          .withFailureHandler(err => {
+            // ❌ 3. ถ้า Error ให้หลอดแดงและหยุด
+            errorSaveProgress();
+            console.error(err);
+            setTimeout(() => {
+              closeModal("savingModal");
+              alert("เกิดข้อผิดพลาด: " + (err?.message || err));
+            }, 1500); // ค้างไว้ 1.5 วิ ให้เห็นว่า Error แล้วค่อยปิด
+          })
+          .saveOrder(data);
+      };
+
+      function toggleRightPanel() {
+        const wrapper = document.getElementById('rightPanelWrapper');
+        const btn = document.getElementById('rightToggleBtn');
+        const arrow = document.getElementById('rightArrowIcon') || btn.querySelector('.arrow');
+
+        // 1. สลับ Class เปิด/ปิด ที่ Panel
+        wrapper.classList.toggle('open');
+        const isOpen = wrapper.classList.contains('open');
+
+        // 2. เปลี่ยนลูกศร
+        if (arrow) {
+          arrow.textContent = isOpen ? '›' : '‹';
+        }
+
+        // 3. ✅ สั่ง Body ให้รู้ตัวว่าขวาเปิดแล้ว
+        if (isOpen) {
+          document.body.classList.add('open-right');
+        } else {
+          document.body.classList.remove('open-right');
+        }
+      }
+
+
+
+
+      function showAlert(message) {
+        document.getElementById("alertMessage").textContent = message;
+        document.getElementById("alertModal").classList.add("active");
+      }
+
+
+      // ✅ ปิด modal "บันทึกสำเร็จ"
+      document.getElementById("doneClose").addEventListener("click", function () {
+        document.getElementById("doneModal").classList.add("hidden");
+      });
+
+      // ✅ (ทางเลือก) ปิด modal "กำลังบันทึก" หลังใช้งานเสร็จ
+      function hideSavingModal() {
+        document.getElementById("savingModal").classList.add("hidden");
+      }
+
+      // ✅ (ทางเลือก) แสดง modal "กำลังบันทึก"
+      function showSavingModal() {
+        document.getElementById("savingModal").classList.remove("hidden");
+      }
+
+      // ✅ แสดง modal "บันทึกสำเร็จ"
+      function showDoneModal() {
+        document.getElementById("doneModal").classList.remove("hidden");
+      }
+
+
+      // === Modal helpers (ตัวใหม่ เหลือตัวเดียวสำหรับปิด) ===
+      function openModal(id) {
+        const el = document.getElementById(id);
+        if (el) el.classList.remove("hidden");
+      }
+
+      /**
+       * ใช้ปิดทั้งสองแบบ:
+       * - closeModal("savingModal")   // ปิดด้วย id
+       * - closeModal(event)           // ปิด alert เมื่อคลิก overlay/กดปุ่ม
+       * - closeModal()                // ปิด alert ด้วยปุ่ม "ตกลง"
+       */
+      function closeModal(arg) {
+        // ถ้าเป็นสตริง => ปิด modal ตาม id (ใช้กับ saving/done)
+        if (typeof arg === "string") {
+          document.getElementById(arg)?.classList.add("hidden");
+          return;
+        }
+
+        // ถ้าเป็น alert overlay/button
+        const modal = document.getElementById("alertModal");
+        // ไม่มี arg (กดปุ่มตกลง) หรือคลิกที่ overlay หรือคลิกปุ่มในกล่อง
+        if (!arg || arg.target === modal || arg.target.tagName === "BUTTON") {
+          modal.classList.remove("active");
+        }
+      }
+
+      const withdrawEmpCode = document.getElementById('withdrawEmpCode');
+      const withdrawEmpName = document.getElementById('withdrawEmpName');
+      const employeeTable = document.getElementById('employeeTable');
+
+      function normalize(s) { return String(s || '').trim(); }
+
+      function renderEmployeeTable(data) {
+        employeeTable.innerHTML = '';
+        const rows = Array.isArray(data) ? data : [];
+        if (!rows.length) {
+          employeeTable.innerHTML = '<tr><td colspan="2">ไม่พบข้อมูลพนักงาน</td></tr>';
+          return;
+        }
+        rows.forEach(emp => {
+          const tr = document.createElement('tr');
+          tr.innerHTML = `<td>${emp.code}</td><td>${emp.name}</td>`;
+          tr.addEventListener('click', () => {
+            // Autofill ทั้ง 2 ช่อง
+            withdrawEmpCode.value = emp.code;
+            withdrawEmpName.value = emp.name;
+
+            // ไฮไลต์ที่เลือก
+            employeeTable.querySelectorAll('tr').forEach(r => r.classList.remove('selected'));
+            tr.classList.add('selected');
+          });
+          employeeTable.appendChild(tr);
+        });
+      }
+
+      function filterEmployeeTable() {
+        const needleCode = normalize(withdrawEmpCode?.value).toLowerCase();
+        const needleName = normalize(withdrawEmpName?.value).toLowerCase();
+        const filtered = allEmployees.filter(e =>
+          e.code.toLowerCase().includes(needleCode) &&
+          e.name.toLowerCase().includes(needleName)
+        );
+        renderEmployeeTable(filtered);
+      }
+
+      function clearWithdrawEmp() {
+        if (withdrawEmpCode) withdrawEmpCode.value = '';
+        if (withdrawEmpName) withdrawEmpName.value = '';
+        renderEmployeeTable(allEmployees);
+      }
+
+      // Hook input
+      ['input', 'change', 'blur'].forEach(ev => {
+        withdrawEmpCode?.addEventListener(ev, filterEmployeeTable);
+        withdrawEmpName?.addEventListener(ev, filterEmployeeTable);
+      });
+
+
+
+
+
+      // ✅ ฟังก์ชันล้างค่า: เคลียร์ทั้ง "รอบส่ง" และ "วันที่"
+      function clearShipPeriod() {
+
+        // 1. ล้างตัวเลือก เช้า/บ่าย (Radio)
+        document.querySelectorAll('input[name="shipPeriod"]').forEach(r => r.checked = false);
+
+        // 2. ล้างวันที่ (Date Input)
+        const dateEl = document.getElementById('shipDate');
+        if (dateEl) dateEl.value = '';
+      }
+
+
+      // ============================================
+      // ⌨️ ฟังก์ชันกด Enter เพื่อไปช่องถัดไป
+      // ============================================
+      document.addEventListener('keydown', function (e) {
+        // ตรวจสอบว่าเป็นปุ่ม Enter หรือไม่
+        if (e.key === 'Enter') {
+          const target = e.target;
+
+          // ข้อยกเว้น: ถ้าพิมพ์ในช่องหมายเหตุ (Textarea) ให้ Enter ขึ้นบรรทัดใหม่ตามปกติ
+          if (target.tagName === 'TEXTAREA') return;
+
+          // ป้องกันการ Submit form หรือพฤติกรรมเดิม
+          e.preventDefault();
+
+          // ค้นหา Input, Select และ Button ทั้งหมดที่มองเห็นและใช้งานได้
+          const selector = 'input:not([disabled]):not([readonly]):not([type="hidden"]), select:not([disabled]), button:not([disabled])';
+          const focusableElements = Array.from(document.querySelectorAll(selector)).filter(el => {
+            // กรองเอาเฉพาะตัวที่มองเห็นอยู่ (ไม่เอาตัวที่ซ่อนใน Tab อื่น หรือ display:none)
+            return el.offsetParent !== null;
+          });
+
+          // หาตำแหน่งของช่องปัจจุบัน
+          const index = focusableElements.indexOf(target);
+
+          // ถ้าเจอช่องปัจจุบัน และไม่ใช่ช่องสุดท้าย
+          if (index > -1 && index < focusableElements.length - 1) {
+            const nextElement = focusableElements[index + 1];
+            nextElement.focus();
+
+            // (Optional) ถ้าเป็นกล่องข้อความ ให้เลือกข้อความทั้งหมดเพื่อความสะดวกในการพิมพ์ทับ
+            if (nextElement.tagName === 'INPUT' && nextElement.type !== 'checkbox' && nextElement.type !== 'radio') {
+              nextElement.select();
+            }
+          }
+        }
+      });
+
+      // ✅ Helper สำหรับสร้าง HTML ป้ายสถานะ
+      function getPaymentBadgeHTML(status) {
+        const s = String(status || '').trim();
+
+        if (!s || s === 'ชำระแล้ว' || s === 'ไม่ติดค้างชำระ') {
+          return `<span class="badge-pay bg-pay-green">🟢 ปกติ</span>`;
+        }
+        if (s === 'รอชำระ') {
+          return `<span class="badge-pay bg-pay-red">🔴 รอชำระ</span>`;
+        }
+        if (s === 'นัดชำระหนี้คงค้างเรียบร้อยแล้ว') {
+          return `<span class="badge-pay bg-pay-yellow">🟡 นัดชำระแล้ว</span>`;
+        }
+        if (s === 'รอชำระหนี้คงค้าง') {
+          return `<span class="badge-pay bg-pay-darkred">⛔ หนี้คงค้าง</span>`;
+        }
+        return `<span class="badge-pay bg-pay-green">${s}</span>`;
+      }
+
+
+    </script>
+
+
+</body>
+
+</html>
