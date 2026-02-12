@@ -12,6 +12,8 @@ import { PageLayout } from '../components/ui/PageLayout';
 import { LoadingSpinner } from '../components/ui/LoadingSpinner';
 import { useToast } from '../hooks/useToast';
 import { ToastContainer } from '../components/ui/Toast';
+import { useAuth } from '../hooks/useAuth';
+import { Building2 } from 'lucide-react';
 
 // Memoized OrderCard component to prevent unnecessary re-renders
 interface OrderCardProps {
@@ -24,14 +26,14 @@ interface OrderCardProps {
   onEdit: (orderId: string) => void;
 }
 
-const OrderCard = memo(({ 
-  order, 
-  isSelected, 
-  isExpanded, 
-  orderItems, 
-  onToggleSelection, 
+const OrderCard = memo(({
+  order,
+  isSelected,
+  isExpanded,
+  orderItems,
+  onToggleSelection,
   onToggleDetails,
-  onEdit 
+  onEdit
 }: OrderCardProps) => {
   // Memoize formatted dates and amounts
   const formattedOrderDate = useMemo(() => {
@@ -268,10 +270,15 @@ OrderCard.displayName = 'OrderCard';
 export function PendingOrdersView() {
   const { orders, loading, error, refetch } = usePendingOrders();
   const { toasts, warning, dismissToast } = useToast();
+  const { profile } = useAuth(); // For default branch
 
   const [selectedOrders, setSelectedOrders] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState('');
   const [dateFilter, setDateFilter] = useState('');
+  const [branchFilter, setBranchFilter] = useState<string>(() => {
+    // Default to user's branch, or 'ALL' if not set
+    return profile?.branch || 'ALL';
+  });
   const [showCreateTrip, setShowCreateTrip] = useState(false);
   const [showQuickCreate, setShowQuickCreate] = useState(false);
   const [expandedOrders, setExpandedOrders] = useState<Set<string>>(new Set());
@@ -292,19 +299,23 @@ export function PendingOrdersView() {
       // กรอกวันที่ใน filter แล้วให้กรองตามวันที่นัดส่ง ถ้ามี
       const matchesDate = !dateFilter || order.delivery_date === dateFilter;
 
-      return matchesSearch && matchesDate;
+      // Filter by branch
+      const matchesBranch = !branchFilter || branchFilter === 'ALL' ||
+        (order.branch && order.branch === branchFilter);
+
+      return matchesSearch && matchesDate && matchesBranch;
     });
-  }, [orders, searchQuery, dateFilter]);
+  }, [orders, searchQuery, dateFilter, branchFilter]);
 
   // Toggle order selection - use useCallback to prevent re-renders
   const toggleOrderSelection = useCallback((orderId: string) => {
     setSelectedOrders(prev => {
       const newSelection = new Set(prev);
-    if (newSelection.has(orderId)) {
-      newSelection.delete(orderId);
-    } else {
-      newSelection.add(orderId);
-    }
+      if (newSelection.has(orderId)) {
+        newSelection.delete(orderId);
+      } else {
+        newSelection.add(orderId);
+      }
       return newSelection;
     });
   }, []);
@@ -405,13 +416,13 @@ export function PendingOrdersView() {
     setExpandedOrders(prev => {
       const newExpanded = new Set(prev);
       const wasExpanded = newExpanded.has(orderId);
-      
+
       if (wasExpanded) {
         newExpanded.delete(orderId);
       } else {
         newExpanded.add(orderId);
       }
-      
+
       // Fetch items if not already fetched (check in callback to avoid stale closure)
       if (!wasExpanded) {
         setOrderItems(prevItems => {
@@ -430,7 +441,7 @@ export function PendingOrdersView() {
           return prevItems;
         });
       }
-      
+
       return newExpanded;
     });
   }, []);
@@ -518,495 +529,509 @@ export function PendingOrdersView() {
       <ToastContainer toasts={toasts} onDismiss={dismissToast} />
       <PageLayout title="ออเดอร์ที่รอจัดทริป">
         {/* Sticky Summary Bar */}
-      {selectedOrders.size > 0 && (
-        <div className="sticky top-0 z-20 bg-gradient-to-r from-blue-600 to-blue-700 text-white shadow-lg mb-4 rounded-lg">
-          <div className="px-6 py-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-6">
-                <div className="flex items-center gap-2">
-                  <div className="bg-white/20 rounded-full p-2">
-                    <Package className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <div className="text-xs text-blue-100">เลือกแล้ว</div>
-                    <div className="text-2xl font-bold">{selectedOrders.size}</div>
-                  </div>
-                </div>
-                <div className="h-10 w-px bg-white/30"></div>
-                <div>
-                  <div className="text-xs text-blue-100">สินค้ารวม</div>
-                  <div className="text-lg font-semibold">
-                    {aggregatedProductsTotal} ชิ้น
-                  </div>
-                </div>
-                <div className="h-10 w-px bg-white/30"></div>
-                <div>
-                  <div className="text-xs text-blue-100">มูลค่ารวม</div>
-                  <div className="text-lg font-semibold">
-                    ฿{selectedTotal.toLocaleString()}
-                  </div>
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <Button
-                  size="sm"
-                  onClick={() => setShowProductsSummaryModal(true)}
-                  className="bg-white/20 hover:bg-white/30 text-white border-white/40"
-                >
-                  <Box className="w-4 h-4 mr-1" />
-                  สรุปสินค้า
-                </Button>
-                <Button
-                  size="sm"
-                  onClick={clearSelection}
-                  variant="outline"
-                  className="bg-white/10 hover:bg-white/20 text-white border-white/40"
-                >
-                  ยกเลิกทั้งหมด
-                </Button>
-                <Button
-                  size="sm"
-                  onClick={handleCreateTrip}
-                  className="bg-white/20 hover:bg-white/30 text-white border-white/40 font-semibold"
-                >
-                  สร้างทริป
-                </Button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Info Banner */}
-      <div className="mb-4 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
-        <div className="flex items-start gap-3">
-          <Package className="w-5 h-5 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" />
-          <div className="flex-1">
-            <div className="font-medium text-blue-900 dark:text-blue-100 mb-1">วิธีสร้างทริปจัดส่ง</div>
-            <div className="text-sm text-blue-700 dark:text-blue-300 space-y-1">
-              <p>• <strong>สร้างจากออเดอร์</strong>: เลือกออเดอร์จากรายการด้านล่าง → คลิก "สร้างทริป" ที่แถบด้านบน</p>
-              <p>• <strong>สร้างทริปด่วน</strong>: สำหรับกรณีฉุกเฉิน/พิเศษ → คลิกปุ่ม "สร้างทริปด่วน" ⚡</p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Header with Filters */}
-      <div className="mb-6 space-y-4">
-        <div className="flex flex-wrap items-center gap-4">
-          {/* Search */}
-          <div className="flex-1 min-w-[250px]">
-            <input
-              type="text"
-              placeholder="ค้นหาออเดอร์, ร้านค้า..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-500 dark:placeholder-gray-400"
-            />
-          </div>
-
-          {/* Date Filter */}
-          <div className="flex items-center gap-2">
-            <Calendar className="w-5 h-5 text-gray-400 dark:text-gray-500" />
-            <input
-              type="date"
-              value={dateFilter}
-              onChange={(e) => setDateFilter(e.target.value)}
-              className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
-            />
-            {dateFilter && (
-              <button
-                onClick={() => setDateFilter('')}
-                className="p-2 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            )}
-          </div>
-
-          <Button onClick={refetch} variant="outline">
-            รีเฟรช
-          </Button>
-
-          {/* Quick Create Button (always visible) */}
-          <Button
-            onClick={() => setShowQuickCreate(true)}
-            variant="outline"
-            className="flex items-center gap-2 border-orange-300 text-orange-600 hover:bg-orange-50"
-          >
-            <Zap className="w-4 h-4" />
-            สร้างทริปด่วน
-          </Button>
-        </div>
-
-      </div>
-
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-        <Card>
-          <div className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600 dark:text-gray-400">ออเดอร์ทั้งหมด</p>
-                <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">{orders?.length || 0}</p>
-              </div>
-              <Package className="w-10 h-10 text-blue-500 opacity-50" />
-            </div>
-          </div>
-        </Card>
-
-        <Card>
-          <div className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600 dark:text-gray-400">ออเดอร์ที่กรอง</p>
-                <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">{filteredOrders.length}</p>
-              </div>
-              <Filter className="w-10 h-10 text-green-500 opacity-50" />
-            </div>
-          </div>
-        </Card>
-
-        <Card>
-          <div className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600 dark:text-gray-400">มูลค่ารวม</p>
-                <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">
-                  {new Intl.NumberFormat('th-TH', {
-                    notation: 'compact',
-                    compactDisplay: 'short'
-                  }).format(filteredOrdersTotal)} ฿
-                </p>
-              </div>
-              <DollarSign className="w-10 h-10 text-yellow-500 opacity-50" />
-            </div>
-          </div>
-        </Card>
-      </div>
-
-      {/* Orders List */}
-      {filteredOrders.length === 0 ? (
-        <Card>
-          <div className="p-12 text-center text-gray-500 dark:text-gray-400">
-            <Package className="w-16 h-16 mx-auto mb-4 opacity-30" />
-            <p className="text-lg font-medium">ไม่มีออเดอร์ที่รอจัดทริป</p>
-            <p className="text-sm mt-2">ออเดอร์ทั้งหมดถูกจัดเข้าทริปแล้ว</p>
-          </div>
-        </Card>
-      ) : (
-        <div className="space-y-6">
-          {/* Selected Orders Section (Compact View) */}
-          {selectedOrderObjects.length > 0 && (
-            <div>
-              <div className="flex items-center justify-between mb-3 px-2">
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2">
-                  <div className="w-2 h-2 bg-blue-600 rounded-full animate-pulse"></div>
-                  ออเดอร์ที่เลือกแล้ว ({selectedOrderObjects.length})
-                </h3>
-              </div>
-              <div className="space-y-2">
-                {selectedOrderObjects.map((order: any) => (
-                  <Card key={order.id} className="bg-blue-50 border-blue-200">
-                    <div className="p-4">
-                      <div className="flex items-center gap-4">
-                        <input
-                          type="checkbox"
-                          checked={true}
-                          onChange={() => toggleOrderSelection(order.id)}
-                          className="w-5 h-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                        />
-                        <div className="flex-1 grid grid-cols-4 gap-4 items-center">
-                        <div>
-                          <div className="font-mono text-sm font-semibold text-blue-700">
-                            {order.order_number}
-                          </div>
-                          <div className="text-xs text-gray-500">
-                            {new Date(order.order_date).toLocaleDateString('th-TH', {
-                              day: 'numeric',
-                              month: 'short',
-                            })}
-                          </div>
-                          {order.delivery_date && (
-                            <div className="flex items-center gap-1 mt-1">
-                              <Calendar className="w-3 h-3 text-orange-600" />
-                              <span className="text-xs font-medium text-orange-600">
-                                นัดส่ง: {new Date(order.delivery_date).toLocaleDateString('th-TH', {
-                                  day: 'numeric',
-                                  month: 'short',
-                                })}
-                              </span>
-                            </div>
-                          )}
-                        </div>
-                          <div>
-                            <div className="font-medium text-blue-900 dark:text-blue-100">{order.customer_name}</div>
-                            <div className="text-xs text-blue-700 dark:text-blue-300">{order.customer_code}</div>
-                          </div>
-                          <div className="text-right">
-                            <div className="font-bold text-blue-600">
-                              ฿{order.total_amount.toLocaleString()}
-                            </div>
-                          </div>
-                          <div className="text-right">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => toggleOrderDetails(order.id)}
-                              className="text-xs"
-                            >
-                              {expandedOrders.has(order.id) ? (
-                                <>
-                                  <ChevronDown className="w-3 h-3" />
-                                  ซ่อน
-                                </>
-                              ) : (
-                                <>
-                                  <ChevronRight className="w-3 h-3" />
-                                  ดู
-                                </>
-                              )}
-                            </Button>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Order Items (Expandable) */}
-                      {expandedOrders.has(order.id) && (
-                        <div className="mt-4 pt-4 border-t border-blue-200">
-                          <h4 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
-                            <Package className="w-4 h-4 text-blue-600" />
-                            รายการสินค้า
-                          </h4>
-                          {orderItems.get(order.id) ? (
-                            <div className="bg-white rounded-lg p-3">
-                              <table className="w-full text-sm">
-                                <thead>
-                                  <tr className="border-b border-gray-300">
-                                    <th className="text-left py-2 px-2 font-semibold text-gray-700">รหัสสินค้า</th>
-                                    <th className="text-left py-2 px-2 font-semibold text-gray-700">ชื่อสินค้า</th>
-                                    <th className="text-right py-2 px-2 font-semibold text-gray-700">จำนวน</th>
-                                    <th className="text-left py-2 px-2 font-semibold text-gray-700">หน่วย</th>
-                                    <th className="text-right py-2 px-2 font-semibold text-gray-700">ราคา/หน่วย</th>
-                                    <th className="text-right py-2 px-2 font-semibold text-gray-700">ราคารวม</th>
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {orderItems.get(order.id)!.map((item: any, idx: number) => (
-                                    <tr key={idx} className="border-b border-gray-200 dark:border-gray-700 last:border-0">
-                                      <td className="py-2 px-2 text-gray-600 dark:text-gray-400">{item.product?.product_code || '-'}</td>
-                                      <td className="py-2 px-2 text-gray-900 dark:text-gray-100">
-                                        <div className="flex items-center gap-2 flex-wrap">
-                                          <span>{item.product?.product_name || 'ไม่ระบุ'}</span>
-                                          {item.is_bonus && (
-                                            <Badge variant="success" className="text-xs">
-                                              ของแถม
-                                            </Badge>
-                                          )}
-                                        </div>
-                                      </td>
-                                      <td className="py-2 px-2 text-right font-semibold text-blue-600 dark:text-blue-400">
-                                        {item.quantity.toLocaleString()}
-                                      </td>
-                                      <td className="py-2 px-2 text-gray-600 dark:text-gray-400">{item.product?.unit || '-'}</td>
-                                      <td className="py-2 px-2 text-right text-gray-700 dark:text-gray-300">
-                                        ฿{item.unit_price?.toLocaleString() || '0'}
-                                      </td>
-                                      <td className="py-2 px-2 text-right font-semibold text-gray-900 dark:text-gray-100">
-                                        ฿{((item.quantity * (item.unit_price || 0))).toLocaleString()}
-                                      </td>
-                                    </tr>
-                                  ))}
-                                </tbody>
-                              </table>
-                            </div>
-                          ) : (
-                            <div className="flex items-center justify-center py-4">
-                              <LoadingSpinner size={20} />
-                              <span className="ml-2 text-sm text-gray-500 dark:text-gray-400">กำลังโหลด...</span>
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  </Card>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* All Orders Section */}
-          <div>
-            <div className="flex items-center justify-between mb-3 px-2">
-              <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-                ออเดอร์ทั้งหมด ({filteredOrders.length})
-              </h3>
-              <div className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={selectedOrders.size === filteredOrders.length && filteredOrders.length > 0}
-                  onChange={(e) => {
-                    if (e.target.checked) {
-                      selectAll();
-                    } else {
-                      clearSelection();
-                    }
-                  }}
-                  className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                />
-                <label className="text-sm font-medium text-gray-700">
-                  เลือกทั้งหมด
-                </label>
-              </div>
-            </div>
-
-            {/* Order Cards (Full View) - Using memoized component */}
-            {filteredOrders.map((order: any) => (
-              <OrderCard
-                key={order.id}
-                order={order}
-                isSelected={selectedOrders.has(order.id)}
-                isExpanded={expandedOrders.has(order.id)}
-                orderItems={orderItems.get(order.id) || []}
-                onToggleSelection={toggleOrderSelection}
-                onToggleDetails={toggleOrderDetails}
-                onEdit={handleEditOrder}
-              />
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Products Summary Modal */}
-      {showProductsSummaryModal && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <Card className="max-w-4xl w-full max-h-[80vh] overflow-hidden flex flex-col">
-            <div className="p-6 border-b border-gray-200 bg-gradient-to-r from-purple-600 to-purple-700 text-white">
+        {selectedOrders.size > 0 && (
+          <div className="sticky top-0 z-20 bg-gradient-to-r from-blue-600 to-blue-700 text-white shadow-lg mb-4 rounded-lg">
+            <div className="px-6 py-4">
               <div className="flex items-center justify-between">
-                <div>
-                  <h2 className="text-2xl font-bold flex items-center gap-2">
-                    <Box className="w-6 h-6" />
-                    สรุปสินค้ารวมทั้งหมด
-                  </h2>
-                  <p className="text-sm text-purple-100 mt-1">
-                    จาก {selectedOrders.size} ออเดอร์ที่เลือก
-                  </p>
+                <div className="flex items-center gap-6">
+                  <div className="flex items-center gap-2">
+                    <div className="bg-white/20 rounded-full p-2">
+                      <Package className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <div className="text-xs text-blue-100">เลือกแล้ว</div>
+                      <div className="text-2xl font-bold">{selectedOrders.size}</div>
+                    </div>
+                  </div>
+                  <div className="h-10 w-px bg-white/30"></div>
+                  <div>
+                    <div className="text-xs text-blue-100">สินค้ารวม</div>
+                    <div className="text-lg font-semibold">
+                      {aggregatedProductsTotal} ชิ้น
+                    </div>
+                  </div>
+                  <div className="h-10 w-px bg-white/30"></div>
+                  <div>
+                    <div className="text-xs text-blue-100">มูลค่ารวม</div>
+                    <div className="text-lg font-semibold">
+                      ฿{selectedTotal.toLocaleString()}
+                    </div>
+                  </div>
                 </div>
-                <button
-                  onClick={() => setShowProductsSummaryModal(false)}
-                  className="p-2 hover:bg-white/20 rounded-lg transition-colors"
-                >
-                  <X className="w-6 h-6" />
-                </button>
+                <div className="flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    onClick={() => setShowProductsSummaryModal(true)}
+                    className="bg-white/20 hover:bg-white/30 text-white border-white/40"
+                  >
+                    <Box className="w-4 h-4 mr-1" />
+                    สรุปสินค้า
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={clearSelection}
+                    variant="outline"
+                    className="bg-white/10 hover:bg-white/20 text-white border-white/40"
+                  >
+                    ยกเลิกทั้งหมด
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={handleCreateTrip}
+                    className="bg-white/20 hover:bg-white/30 text-white border-white/40 font-semibold"
+                  >
+                    สร้างทริป
+                  </Button>
+                </div>
               </div>
             </div>
+          </div>
+        )}
 
-            <div className="flex-1 overflow-y-auto p-6">
-              {aggregatedProducts.length === 0 ? (
-                <div className="text-center py-12 text-gray-500 dark:text-gray-400">
-                  <Package className="w-16 h-16 mx-auto mb-4 opacity-30" />
-                  <p>ไม่มีรายการสินค้า</p>
-                </div>
-              ) : (
-                <div>
-                  {/* Summary Stats */}
-                  <div className="grid grid-cols-3 gap-4 mb-6">
-                    <div className="bg-purple-50 rounded-lg p-4 text-center">
-                      <div className="text-sm text-purple-600 mb-1">รายการสินค้า</div>
-                      <div className="text-3xl font-bold text-purple-900">
-                        {aggregatedProducts.length}
-                      </div>
-                    </div>
-                    <div className="bg-blue-50 rounded-lg p-4 text-center">
-                      <div className="text-sm text-blue-600 mb-1">จำนวนรวม</div>
-                      <div className="text-3xl font-bold text-blue-900">
-                        {aggregatedProducts.reduce((sum, p) => sum + p.total_quantity, 0).toLocaleString()}
-                      </div>
-                    </div>
-                    <div className="bg-green-50 rounded-lg p-4 text-center">
-                      <div className="text-sm text-green-600 mb-1">มูลค่ารวม</div>
-                      <div className="text-3xl font-bold text-green-900">
-                        ฿{selectedTotal.toLocaleString()}
-                      </div>
-                    </div>
-                  </div>
+        {/* Info Banner */}
+        <div className="mb-4 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+          <div className="flex items-start gap-3">
+            <Package className="w-5 h-5 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" />
+            <div className="flex-1">
+              <div className="font-medium text-blue-900 dark:text-blue-100 mb-1">วิธีสร้างทริปจัดส่ง</div>
+              <div className="text-sm text-blue-700 dark:text-blue-300 space-y-1">
+                <p>• <strong>สร้างจากออเดอร์</strong>: เลือกออเดอร์จากรายการด้านล่าง → คลิก "สร้างทริป" ที่แถบด้านบน</p>
+                <p>• <strong>สร้างทริปด่วน</strong>: สำหรับกรณีฉุกเฉิน/พิเศษ → คลิกปุ่ม "สร้างทริปด่วน" ⚡</p>
+              </div>
+            </div>
+          </div>
+        </div>
 
-                  {/* Products Table */}
-                  <div className="bg-gray-50 dark:bg-gray-800 rounded-lg overflow-hidden">
-                    <table className="w-full">
-                      <thead className="bg-purple-600 text-white sticky top-0">
-                        <tr>
-                          <th className="text-left py-3 px-4 font-semibold">#</th>
-                          <th className="text-left py-3 px-4 font-semibold">รหัสสินค้า</th>
-                          <th className="text-left py-3 px-4 font-semibold">ชื่อสินค้า</th>
-                          <th className="text-right py-3 px-4 font-semibold">จำนวนรวม</th>
-                          <th className="text-center py-3 px-4 font-semibold">หน่วย</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {aggregatedProducts.map((product, index) => (
-                          <tr
-                            key={product.product_id}
-                            className="border-b border-gray-200 dark:border-gray-700 hover:bg-purple-50 dark:hover:bg-purple-900/20 transition-colors"
-                          >
-                            <td className="py-3 px-4 text-gray-500 dark:text-gray-400 text-sm">{index + 1}</td>
-                            <td className="py-3 px-4">
-                              <div className="font-mono text-sm text-gray-600 dark:text-gray-400">
-                                {product.product_code}
-                              </div>
-                            </td>
-                            <td className="py-3 px-4">
-                              <div className="font-medium text-gray-900 dark:text-gray-100">{product.product_name}</div>
-                            </td>
-                            <td className="py-3 px-4 text-right">
-                              <div className="font-bold text-xl text-purple-700 dark:text-purple-400">
-                                {product.total_quantity.toLocaleString()}
-                              </div>
-                            </td>
-                            <td className="py-3 px-4 text-center">
-                              <Badge variant="default">{product.unit}</Badge>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+        {/* Header with Filters */}
+        <div className="mb-6 space-y-4">
+          <div className="flex flex-wrap items-center gap-4">
+            {/* Search */}
+            <div className="flex-1 min-w-[250px]">
+              <input
+                type="text"
+                placeholder="ค้นหาออเดอร์, ร้านค้า..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-500 dark:placeholder-gray-400"
+              />
+            </div>
 
-                  {/* Helpful Tip */}
-                  <div className="mt-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-                    <div className="flex items-start gap-3">
-                      <div className="text-2xl">💡</div>
-                      <div className="flex-1">
-                        <div className="font-semibold text-yellow-900 mb-1">
-                          คำแนะนำในการเลือกรถ
-                        </div>
-                        <div className="text-sm text-yellow-800">
-                          ใช้ข้อมูลสรุปนี้ประกอบการพิจารณาเลือกรถที่มีพื้นที่เหมาะสมสำหรับจำนวนสินค้าในทริปนี้
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
+            {/* Branch Filter */}
+            <div className="flex items-center gap-2">
+              <Building2 className="w-5 h-5 text-gray-400 dark:text-gray-500" />
+              <select
+                value={branchFilter}
+                onChange={(e) => setBranchFilter(e.target.value)}
+                className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+              >
+                <option value="ALL">ทุกสาขา</option>
+                <option value="HQ">สำนักงานใหญ่</option>
+                <option value="SD">สาขาสอยดาว</option>
+              </select>
+            </div>
+
+            {/* Date Filter */}
+            <div className="flex items-center gap-2">
+              <Calendar className="w-5 h-5 text-gray-400 dark:text-gray-500" />
+              <input
+                type="date"
+                value={dateFilter}
+                onChange={(e) => setDateFilter(e.target.value)}
+                className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+              />
+              {dateFilter && (
+                <button
+                  onClick={() => setDateFilter('')}
+                  className="p-2 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
+                >
+                  <X className="w-5 h-5" />
+                </button>
               )}
             </div>
 
-            <div className="p-4 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
-              <div className="flex justify-end gap-2">
-                <Button
-                  variant="outline"
-                  onClick={() => setShowProductsSummaryModal(false)}
-                >
-                  ปิด
-                </Button>
-                <Button onClick={handleCreateTrip}>
-                  ดำเนินการสร้างทริป
-                </Button>
+            <Button onClick={refetch} variant="outline">
+              รีเฟรช
+            </Button>
+
+            {/* Quick Create Button (always visible) */}
+            <Button
+              onClick={() => setShowQuickCreate(true)}
+              variant="outline"
+              className="flex items-center gap-2 border-orange-300 text-orange-600 hover:bg-orange-50"
+            >
+              <Zap className="w-4 h-4" />
+              สร้างทริปด่วน
+            </Button>
+          </div>
+
+        </div>
+
+        {/* Stats Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+          <Card>
+            <div className="p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-gray-600 dark:text-gray-400">ออเดอร์ทั้งหมด</p>
+                  <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">{orders?.length || 0}</p>
+                </div>
+                <Package className="w-10 h-10 text-blue-500 opacity-50" />
+              </div>
+            </div>
+          </Card>
+
+          <Card>
+            <div className="p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-gray-600 dark:text-gray-400">ออเดอร์ที่กรอง</p>
+                  <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">{filteredOrders.length}</p>
+                </div>
+                <Filter className="w-10 h-10 text-green-500 opacity-50" />
+              </div>
+            </div>
+          </Card>
+
+          <Card>
+            <div className="p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-gray-600 dark:text-gray-400">มูลค่ารวม</p>
+                  <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">
+                    {new Intl.NumberFormat('th-TH', {
+                      notation: 'compact',
+                      compactDisplay: 'short'
+                    }).format(filteredOrdersTotal)} ฿
+                  </p>
+                </div>
+                <DollarSign className="w-10 h-10 text-yellow-500 opacity-50" />
               </div>
             </div>
           </Card>
         </div>
-      )}
-    </PageLayout>
+
+        {/* Orders List */}
+        {filteredOrders.length === 0 ? (
+          <Card>
+            <div className="p-12 text-center text-gray-500 dark:text-gray-400">
+              <Package className="w-16 h-16 mx-auto mb-4 opacity-30" />
+              <p className="text-lg font-medium">ไม่มีออเดอร์ที่รอจัดทริป</p>
+              <p className="text-sm mt-2">ออเดอร์ทั้งหมดถูกจัดเข้าทริปแล้ว</p>
+            </div>
+          </Card>
+        ) : (
+          <div className="space-y-6">
+            {/* Selected Orders Section (Compact View) */}
+            {selectedOrderObjects.length > 0 && (
+              <div>
+                <div className="flex items-center justify-between mb-3 px-2">
+                  <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2">
+                    <div className="w-2 h-2 bg-blue-600 rounded-full animate-pulse"></div>
+                    ออเดอร์ที่เลือกแล้ว ({selectedOrderObjects.length})
+                  </h3>
+                </div>
+                <div className="space-y-2">
+                  {selectedOrderObjects.map((order: any) => (
+                    <Card key={order.id} className="bg-blue-50 border-blue-200">
+                      <div className="p-4">
+                        <div className="flex items-center gap-4">
+                          <input
+                            type="checkbox"
+                            checked={true}
+                            onChange={() => toggleOrderSelection(order.id)}
+                            className="w-5 h-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                          />
+                          <div className="flex-1 grid grid-cols-4 gap-4 items-center">
+                            <div>
+                              <div className="font-mono text-sm font-semibold text-blue-700">
+                                {order.order_number}
+                              </div>
+                              <div className="text-xs text-gray-500">
+                                {new Date(order.order_date).toLocaleDateString('th-TH', {
+                                  day: 'numeric',
+                                  month: 'short',
+                                })}
+                              </div>
+                              {order.delivery_date && (
+                                <div className="flex items-center gap-1 mt-1">
+                                  <Calendar className="w-3 h-3 text-orange-600" />
+                                  <span className="text-xs font-medium text-orange-600">
+                                    นัดส่ง: {new Date(order.delivery_date).toLocaleDateString('th-TH', {
+                                      day: 'numeric',
+                                      month: 'short',
+                                    })}
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+                            <div>
+                              <div className="font-medium text-blue-900 dark:text-blue-100">{order.customer_name}</div>
+                              <div className="text-xs text-blue-700 dark:text-blue-300">{order.customer_code}</div>
+                            </div>
+                            <div className="text-right">
+                              <div className="font-bold text-blue-600">
+                                ฿{order.total_amount.toLocaleString()}
+                              </div>
+                            </div>
+                            <div className="text-right">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => toggleOrderDetails(order.id)}
+                                className="text-xs"
+                              >
+                                {expandedOrders.has(order.id) ? (
+                                  <>
+                                    <ChevronDown className="w-3 h-3" />
+                                    ซ่อน
+                                  </>
+                                ) : (
+                                  <>
+                                    <ChevronRight className="w-3 h-3" />
+                                    ดู
+                                  </>
+                                )}
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Order Items (Expandable) */}
+                        {expandedOrders.has(order.id) && (
+                          <div className="mt-4 pt-4 border-t border-blue-200">
+                            <h4 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                              <Package className="w-4 h-4 text-blue-600" />
+                              รายการสินค้า
+                            </h4>
+                            {orderItems.get(order.id) ? (
+                              <div className="bg-white rounded-lg p-3">
+                                <table className="w-full text-sm">
+                                  <thead>
+                                    <tr className="border-b border-gray-300">
+                                      <th className="text-left py-2 px-2 font-semibold text-gray-700">รหัสสินค้า</th>
+                                      <th className="text-left py-2 px-2 font-semibold text-gray-700">ชื่อสินค้า</th>
+                                      <th className="text-right py-2 px-2 font-semibold text-gray-700">จำนวน</th>
+                                      <th className="text-left py-2 px-2 font-semibold text-gray-700">หน่วย</th>
+                                      <th className="text-right py-2 px-2 font-semibold text-gray-700">ราคา/หน่วย</th>
+                                      <th className="text-right py-2 px-2 font-semibold text-gray-700">ราคารวม</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {orderItems.get(order.id)!.map((item: any, idx: number) => (
+                                      <tr key={idx} className="border-b border-gray-200 dark:border-gray-700 last:border-0">
+                                        <td className="py-2 px-2 text-gray-600 dark:text-gray-400">{item.product?.product_code || '-'}</td>
+                                        <td className="py-2 px-2 text-gray-900 dark:text-gray-100">
+                                          <div className="flex items-center gap-2 flex-wrap">
+                                            <span>{item.product?.product_name || 'ไม่ระบุ'}</span>
+                                            {item.is_bonus && (
+                                              <Badge variant="success" className="text-xs">
+                                                ของแถม
+                                              </Badge>
+                                            )}
+                                          </div>
+                                        </td>
+                                        <td className="py-2 px-2 text-right font-semibold text-blue-600 dark:text-blue-400">
+                                          {item.quantity.toLocaleString()}
+                                        </td>
+                                        <td className="py-2 px-2 text-gray-600 dark:text-gray-400">{item.product?.unit || '-'}</td>
+                                        <td className="py-2 px-2 text-right text-gray-700 dark:text-gray-300">
+                                          ฿{item.unit_price?.toLocaleString() || '0'}
+                                        </td>
+                                        <td className="py-2 px-2 text-right font-semibold text-gray-900 dark:text-gray-100">
+                                          ฿{((item.quantity * (item.unit_price || 0))).toLocaleString()}
+                                        </td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            ) : (
+                              <div className="flex items-center justify-center py-4">
+                                <LoadingSpinner size={20} />
+                                <span className="ml-2 text-sm text-gray-500 dark:text-gray-400">กำลังโหลด...</span>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </Card>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* All Orders Section */}
+            <div>
+              <div className="flex items-center justify-between mb-3 px-2">
+                <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                  ออเดอร์ทั้งหมด ({filteredOrders.length})
+                </h3>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={selectedOrders.size === filteredOrders.length && filteredOrders.length > 0}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        selectAll();
+                      } else {
+                        clearSelection();
+                      }
+                    }}
+                    className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                  />
+                  <label className="text-sm font-medium text-gray-700">
+                    เลือกทั้งหมด
+                  </label>
+                </div>
+              </div>
+
+              {/* Order Cards (Full View) - Using memoized component */}
+              {filteredOrders.map((order: any) => (
+                <OrderCard
+                  key={order.id}
+                  order={order}
+                  isSelected={selectedOrders.has(order.id)}
+                  isExpanded={expandedOrders.has(order.id)}
+                  orderItems={orderItems.get(order.id) || []}
+                  onToggleSelection={toggleOrderSelection}
+                  onToggleDetails={toggleOrderDetails}
+                  onEdit={handleEditOrder}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Products Summary Modal */}
+        {showProductsSummaryModal && (
+          <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+            <Card className="max-w-4xl w-full max-h-[80vh] overflow-hidden flex flex-col">
+              <div className="p-6 border-b border-gray-200 bg-gradient-to-r from-purple-600 to-purple-700 text-white">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className="text-2xl font-bold flex items-center gap-2">
+                      <Box className="w-6 h-6" />
+                      สรุปสินค้ารวมทั้งหมด
+                    </h2>
+                    <p className="text-sm text-purple-100 mt-1">
+                      จาก {selectedOrders.size} ออเดอร์ที่เลือก
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setShowProductsSummaryModal(false)}
+                    className="p-2 hover:bg-white/20 rounded-lg transition-colors"
+                  >
+                    <X className="w-6 h-6" />
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-6">
+                {aggregatedProducts.length === 0 ? (
+                  <div className="text-center py-12 text-gray-500 dark:text-gray-400">
+                    <Package className="w-16 h-16 mx-auto mb-4 opacity-30" />
+                    <p>ไม่มีรายการสินค้า</p>
+                  </div>
+                ) : (
+                  <div>
+                    {/* Summary Stats */}
+                    <div className="grid grid-cols-3 gap-4 mb-6">
+                      <div className="bg-purple-50 rounded-lg p-4 text-center">
+                        <div className="text-sm text-purple-600 mb-1">รายการสินค้า</div>
+                        <div className="text-3xl font-bold text-purple-900">
+                          {aggregatedProducts.length}
+                        </div>
+                      </div>
+                      <div className="bg-blue-50 rounded-lg p-4 text-center">
+                        <div className="text-sm text-blue-600 mb-1">จำนวนรวม</div>
+                        <div className="text-3xl font-bold text-blue-900">
+                          {aggregatedProducts.reduce((sum, p) => sum + p.total_quantity, 0).toLocaleString()}
+                        </div>
+                      </div>
+                      <div className="bg-green-50 rounded-lg p-4 text-center">
+                        <div className="text-sm text-green-600 mb-1">มูลค่ารวม</div>
+                        <div className="text-3xl font-bold text-green-900">
+                          ฿{selectedTotal.toLocaleString()}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Products Table */}
+                    <div className="bg-gray-50 dark:bg-gray-800 rounded-lg overflow-hidden">
+                      <table className="w-full">
+                        <thead className="bg-purple-600 text-white sticky top-0">
+                          <tr>
+                            <th className="text-left py-3 px-4 font-semibold">#</th>
+                            <th className="text-left py-3 px-4 font-semibold">รหัสสินค้า</th>
+                            <th className="text-left py-3 px-4 font-semibold">ชื่อสินค้า</th>
+                            <th className="text-right py-3 px-4 font-semibold">จำนวนรวม</th>
+                            <th className="text-center py-3 px-4 font-semibold">หน่วย</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {aggregatedProducts.map((product, index) => (
+                            <tr
+                              key={product.product_id}
+                              className="border-b border-gray-200 dark:border-gray-700 hover:bg-purple-50 dark:hover:bg-purple-900/20 transition-colors"
+                            >
+                              <td className="py-3 px-4 text-gray-500 dark:text-gray-400 text-sm">{index + 1}</td>
+                              <td className="py-3 px-4">
+                                <div className="font-mono text-sm text-gray-600 dark:text-gray-400">
+                                  {product.product_code}
+                                </div>
+                              </td>
+                              <td className="py-3 px-4">
+                                <div className="font-medium text-gray-900 dark:text-gray-100">{product.product_name}</div>
+                              </td>
+                              <td className="py-3 px-4 text-right">
+                                <div className="font-bold text-xl text-purple-700 dark:text-purple-400">
+                                  {product.total_quantity.toLocaleString()}
+                                </div>
+                              </td>
+                              <td className="py-3 px-4 text-center">
+                                <Badge variant="default">{product.unit}</Badge>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {/* Helpful Tip */}
+                    <div className="mt-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                      <div className="flex items-start gap-3">
+                        <div className="text-2xl">💡</div>
+                        <div className="flex-1">
+                          <div className="font-semibold text-yellow-900 mb-1">
+                            คำแนะนำในการเลือกรถ
+                          </div>
+                          <div className="text-sm text-yellow-800">
+                            ใช้ข้อมูลสรุปนี้ประกอบการพิจารณาเลือกรถที่มีพื้นที่เหมาะสมสำหรับจำนวนสินค้าในทริปนี้
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="p-4 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
+                <div className="flex justify-end gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => setShowProductsSummaryModal(false)}
+                  >
+                    ปิด
+                  </Button>
+                  <Button onClick={handleCreateTrip}>
+                    ดำเนินการสร้างทริป
+                  </Button>
+                </div>
+              </div>
+            </Card>
+          </div>
+        )}
+      </PageLayout>
     </>
   );
 }

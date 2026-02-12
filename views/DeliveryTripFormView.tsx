@@ -13,6 +13,7 @@ import {
   Truck,
   Calendar,
   User,
+  CheckCircle,
   ChevronDown,
   ChevronUp,
   AlertCircle,
@@ -20,6 +21,7 @@ import {
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Card } from '../components/ui/Card';
+import { PalletConfigSelector } from '../components/trip/PalletConfigSelector';
 import { PageLayout } from '../components/layout/PageLayout';
 import { useDeliveryTrip, useVehicles, useStores, useProducts } from '../hooks';
 import { deliveryTripService, type CreateDeliveryTripData, type UpdateDeliveryTripData } from '../services/deliveryTripService';
@@ -30,6 +32,7 @@ import { productService, type Product } from '../services/productService';
 import { profileService } from '../services/profileService';
 import { serviceStaffService } from '../services/serviceStaffService';
 import type { DeliveryTripWithRelations } from '../services/deliveryTripService';
+import { calculateTripCapacity } from '../utils/tripCapacityValidation';
 
 interface DeliveryTripFormViewProps {
   tripId?: string;
@@ -44,7 +47,26 @@ interface StoreWithItems {
     product_id: string;
     quantity: number;
     notes?: string;
+    selected_pallet_config_id?: string; // Phase 0: User-selected config
   }>;
+}
+
+/** Deep compare stores+items; used to avoid sending stores on update when user only changed driver/vehicle/date/notes */
+function storesAndItemsEqual(a: StoreWithItems[], b: StoreWithItems[] | null): boolean {
+  if (!b || a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    const sa = a[i], sb = b[i];
+    if (sa.store_id !== sb.store_id || sa.sequence_order !== sb.sequence_order) return false;
+    if (sa.items.length !== sb.items.length) return false;
+    const sortKey = (item: { product_id: string; quantity: number; notes?: string }) =>
+      `${item.product_id}:${item.quantity}:${item.notes ?? ''}`;
+    const aItems = [...sa.items].sort((x, y) => sortKey(x).localeCompare(sortKey(y)));
+    const bItems = [...sb.items].sort((x, y) => sortKey(x).localeCompare(sortKey(y)));
+    for (let j = 0; j < aItems.length; j++) {
+      if (sortKey(aItems[j]) !== sortKey(bItems[j])) return false;
+    }
+  }
+  return true;
 }
 
 export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
@@ -250,18 +272,100 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
   // Refs for dropdown positioning
   const vehicleInputRef = useRef<HTMLDivElement>(null);
   const storeInputRef = useRef<HTMLDivElement>(null);
+
+  // Snapshot of stores when trip is loaded in edit mode — used to avoid sending stores on update when user only changed driver/vehicle/date/notes (prevents accidental deletion of items)
+  const initialStoresRef = useRef<StoreWithItems[] | null>(null);
   const [vehicleDropdownPosition, setVehicleDropdownPosition] = useState<{ top: number; left: number; width: number } | null>(null);
 
   // Helper staff
-  const [availableStaff, setAvailableStaff] = useState<Array<{ id: string; name: string }>>([]);
+  const [availableStaff, setAvailableStaff] = useState<Array<{ id: string; name: string; employee_code?: string | null }>>([]);
   const [selectedHelpers, setSelectedHelpers] = useState<string[]>([]);
   const [helperSearch, setHelperSearch] = useState('');
   const [showHelperDropdown, setShowHelperDropdown] = useState(false);
   const helperInputRef = useRef<HTMLDivElement>(null);
   const [helperDropdownPosition, setHelperDropdownPosition] = useState<{ top: number; left: number; width: number } | null>(null);
 
+  // Service staff driver (for crew/commission system)
+  const [selectedDriverStaffId, setSelectedDriverStaffId] = useState<string>('');
+  const [driverStaffSearch, setDriverStaffSearch] = useState('');
+  const [showDriverStaffDropdown, setShowDriverStaffDropdown] = useState(false);
+  const driverStaffInputRef = useRef<HTMLDivElement>(null);
+  const [driverStaffDropdownPosition, setDriverStaffDropdownPosition] = useState<{ top: number; left: number; width: number } | null>(null);
+
   // Edit reason (required for edit mode)
   const [editReason, setEditReason] = useState('');
+  // Capacity summary state
+  const [capacitySummary, setCapacitySummary] = useState<{
+    totalPallets: number;
+    totalWeightKg: number;
+    totalHeightCm: number;
+    vehicleMaxPallets: number | null;
+    vehicleMaxWeightKg: number | null;
+    vehicleMaxHeightCm: number | null;
+    loading: boolean;
+    errors: string[];
+    warnings: string[];
+  } | null>(null);
+
+  // Calculate capacity summary when vehicle or items change (with debounce)
+  useEffect(() => {
+    if (!formData.vehicle_id || selectedStores.length === 0) {
+      setCapacitySummary(null);
+      return;
+    }
+
+    // Collect all items from all stores
+    const allItems = selectedStores.flatMap(store =>
+      store.items.map(item => ({
+        product_id: item.product_id,
+        quantity: item.quantity,
+      }))
+    );
+
+    if (allItems.length === 0) {
+      setCapacitySummary(null);
+      return;
+    }
+
+    // Set loading state
+    setCapacitySummary(prev => ({
+      ...prev,
+      loading: true,
+      errors: [],
+      warnings: [],
+    } as any));
+
+    // Debounce: wait 500ms before calculating (to avoid too many requests)
+    const timeoutId = setTimeout(() => {
+      // Calculate capacity
+      calculateTripCapacity(allItems, formData.vehicle_id)
+        .then(result => {
+          setCapacitySummary({
+            totalPallets: result.summary.totalPallets,
+            totalWeightKg: result.summary.totalWeightKg,
+            totalHeightCm: result.summary.totalHeightCm || 0,
+            vehicleMaxPallets: result.summary.vehicleMaxPallets,
+            vehicleMaxWeightKg: result.summary.vehicleMaxWeightKg,
+            vehicleMaxHeightCm: result.summary.vehicleMaxHeightCm || null,
+            loading: false,
+            errors: result.errors,
+            warnings: result.warnings,
+          });
+        })
+        .catch(err => {
+          console.error('[DeliveryTripFormView] Error calculating capacity:', err);
+          setCapacitySummary(prev => ({
+            ...prev,
+            loading: false,
+            errors: [err.message || 'ไม่สามารถคำนวณความจุได้'],
+            warnings: [],
+          } as any));
+        });
+    }, 500);
+
+    // Cleanup: cancel timeout if component unmounts or dependencies change
+    return () => clearTimeout(timeoutId);
+  }, [formData.vehicle_id, selectedStores]);
 
   // Load trip data when editing
   useEffect(() => {
@@ -274,12 +378,22 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
         notes: trip.notes || '',
       });
 
-      // Set helpers if editing
+      // Set crew members if editing
       if (trip.crews) {
         const helpers = trip.crews
           .filter(c => c.role === 'helper' && c.status === 'active')
           .map(c => c.staff_id);
         setSelectedHelpers(helpers);
+
+        // Set driver staff from crew
+        const driverCrew = trip.crews.find(c => c.role === 'driver' && c.status === 'active');
+        if (driverCrew) {
+          setSelectedDriverStaffId(driverCrew.staff_id);
+          const driverStaff = availableStaff.find(s => s.id === driverCrew.staff_id);
+          if (driverStaff) {
+            setDriverStaffSearch(`${driverStaff.name}${driverStaff.employee_code ? ` (${driverStaff.employee_code})` : ''}`);
+          }
+        }
       }
 
       // Set vehicle search text
@@ -298,9 +412,12 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
             product_id: item.product_id,
             quantity: Number(item.quantity),
             notes: item.notes || '',
+            selected_pallet_config_id: item.selected_pallet_config_id || undefined,
           })),
         }));
         setSelectedStores(storesWithItems);
+        // Snapshot for "did user change stores/items?" — if unchanged, we won't send stores on update to avoid overwriting/deleting items
+        initialStoresRef.current = JSON.parse(JSON.stringify(storesWithItems));
 
         // Fetch store info and product info for all stores in the trip and cache them
         // This prevents "loading" state when stores/products arrays are empty
@@ -620,7 +737,7 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
     const fetchStaff = async () => {
       try {
         const staff = await serviceStaffService.getAllActive();
-        setAvailableStaff(staff.map(s => ({ id: s.id, name: s.name })));
+        setAvailableStaff(staff.map(s => ({ id: s.id, name: s.name, employee_code: s.employee_code })));
       } catch (err) {
         console.error('[DeliveryTripFormView] Error fetching staff:', err);
       }
@@ -752,21 +869,39 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
       }
     };
 
+    const updateDriverStaffPosition = () => {
+      if (driverStaffInputRef.current && showDriverStaffDropdown) {
+        const rect = driverStaffInputRef.current.getBoundingClientRect();
+        setDriverStaffDropdownPosition({
+          top: rect.bottom + window.scrollY + 4,
+          left: rect.left + window.scrollX,
+          width: rect.width,
+        });
+      } else {
+        setDriverStaffDropdownPosition(null);
+      }
+    };
+
     updateVehiclePosition();
     updateHelperPosition();
+    updateDriverStaffPosition();
 
     window.addEventListener('scroll', updateVehiclePosition, true);
     window.addEventListener('resize', updateVehiclePosition);
     window.addEventListener('scroll', updateHelperPosition, true);
     window.addEventListener('resize', updateHelperPosition);
+    window.addEventListener('scroll', updateDriverStaffPosition, true);
+    window.addEventListener('resize', updateDriverStaffPosition);
 
     return () => {
       window.removeEventListener('scroll', updateVehiclePosition, true);
       window.removeEventListener('resize', updateVehiclePosition);
       window.removeEventListener('scroll', updateHelperPosition, true);
       window.removeEventListener('resize', updateHelperPosition);
+      window.removeEventListener('scroll', updateDriverStaffPosition, true);
+      window.removeEventListener('resize', updateDriverStaffPosition);
     };
-  }, [showVehicleDropdown, showHelperDropdown]);
+  }, [showVehicleDropdown, showHelperDropdown, showDriverStaffDropdown]);
 
   // Close dropdowns when clicking outside
   useEffect(() => {
@@ -777,6 +912,7 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
       const isOnVehicleDropdown = target.closest('[data-vehicle-dropdown-portal]');
       const isOnStoreDropdown = target.closest('[data-store-dropdown-portal]');
       const isOnHelperDropdown = target.closest('[data-helper-dropdown-portal]');
+      const isOnDriverStaffDropdown = target.closest('[data-driver-staff-dropdown-portal]');
 
       // Check if click is outside vehicle dropdown
       if (!isOnVehicleDropdown && !target.closest('[data-vehicle-dropdown]') && !target.closest('[data-vehicle-input]')) {
@@ -793,6 +929,12 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
       if (!isOnHelperDropdown && !target.closest('[data-helper-dropdown]') && !target.closest('[data-helper-input]')) {
         setShowHelperDropdown(false);
         setHelperDropdownPosition(null);
+      }
+
+      // Check if click is outside driver staff dropdown
+      if (!isOnDriverStaffDropdown && !target.closest('[data-driver-staff-dropdown]') && !target.closest('[data-driver-staff-input]')) {
+        setShowDriverStaffDropdown(false);
+        setDriverStaffDropdownPosition(null);
       }
     };
 
@@ -1004,6 +1146,49 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
       return;
     }
 
+    // Validate capacity (pallets and weight) - only if vehicle is selected
+    if (formData.vehicle_id) {
+      try {
+        // Collect all items from all stores
+        const allItems = selectedStores.flatMap(store =>
+          store.items.map(item => ({
+            product_id: item.product_id,
+            quantity: item.quantity,
+          }))
+        );
+
+        if (allItems.length > 0) {
+          const capacityResult = await calculateTripCapacity(
+            allItems,
+            formData.vehicle_id
+          );
+
+          if (!capacityResult.valid) {
+            setError(
+              `ไม่สามารถสร้างทริปได้:\n${capacityResult.errors.join('\n')}`
+            );
+            // Show warnings as well
+            if (capacityResult.warnings.length > 0) {
+              console.warn('Capacity warnings:', capacityResult.warnings);
+            }
+            return;
+          }
+
+          // Show warnings if any (but allow submission)
+          if (capacityResult.warnings.length > 0) {
+            console.warn('Capacity warnings:', capacityResult.warnings);
+            // Optionally show warnings to user (non-blocking)
+            // You can uncomment this to show warnings as alerts
+            // alert(`คำเตือน:\n${capacityResult.warnings.join('\n')}`);
+          }
+        }
+      } catch (capacityErr: any) {
+        console.error('[DeliveryTripFormView] Error validating capacity:', capacityErr);
+        // Don't block submission if capacity validation fails (graceful degradation)
+        // Just log the error
+      }
+    }
+
     try {
       setSaving(true);
 
@@ -1012,27 +1197,33 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
         const updateData: UpdateDeliveryTripData = {
           vehicle_id: formData.vehicle_id,
           driver_id: formData.driver_id || undefined,
+          driver_staff_id: selectedDriverStaffId || undefined,
           planned_date: formData.planned_date,
           odometer_start: formData.odometer_start ? parseInt(formData.odometer_start) : undefined,
           notes: formData.notes || undefined,
           edit_reason: editReason, // Required for edit mode
           helpers: selectedHelpers, // Include helpers for update
-          stores: selectedStores.map(store => ({
+        };
+        // Only send stores when user actually changed stores/items — otherwise backend replaces the full list and can delete items the user never touched
+        if (!storesAndItemsEqual(selectedStores, initialStoresRef.current)) {
+          updateData.stores = selectedStores.map(store => ({
             store_id: store.store_id,
             sequence_order: store.sequence_order,
             items: store.items.map(item => ({
               product_id: item.product_id,
               quantity: item.quantity,
               notes: item.notes || undefined,
+              selected_pallet_config_id: item.selected_pallet_config_id || undefined,
             })),
-          })),
-        };
+          }));
+        }
         await deliveryTripService.update(tripId, updateData);
       } else {
         // For create, use CreateDeliveryTripData
         const createData: CreateDeliveryTripData = {
           vehicle_id: formData.vehicle_id,
           driver_id: formData.driver_id || undefined,
+          driver_staff_id: selectedDriverStaffId || undefined,
           planned_date: formData.planned_date,
           odometer_start: formData.odometer_start ? parseInt(formData.odometer_start) : undefined,
           notes: formData.notes || undefined,
@@ -1044,6 +1235,7 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
               product_id: item.product_id,
               quantity: item.quantity,
               notes: item.notes || undefined,
+              selected_pallet_config_id: item.selected_pallet_config_id || undefined,
             })),
           })),
         };
@@ -1233,115 +1425,8 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
               </select>
             </div>
 
-            {/* Helper Selection */}
             <div>
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                พนักงานบริการ
-              </label>
-              <div className="relative" ref={helperInputRef} data-helper-dropdown>
-                <div className="flex flex-wrap gap-2 p-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 min-h-[42px]">
-                  {selectedHelpers.map(helperId => {
-                    const helper = availableStaff.find(s => s.id === helperId);
-                    return (
-                      <span key={helperId} className="inline-flex items-center px-2 py-1 rounded-md text-sm font-medium bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
-                        {helper?.name || 'Unknown'}
-                        <button
-                          type="button"
-                          onClick={() => setSelectedHelpers(prev => prev.filter(id => id !== helperId))}
-                          className="ml-1 hover:text-blue-900 dark:hover:text-blue-100"
-                        >
-                          <X size={14} />
-                        </button>
-                      </span>
-                    );
-                  })}
-                  <input
-                    type="text"
-                    value={helperSearch}
-                    onChange={(e) => {
-                      setHelperSearch(e.target.value);
-                      setShowHelperDropdown(true);
-                      // Update position immediately when typing
-                      if (helperInputRef.current) {
-                        const rect = helperInputRef.current.getBoundingClientRect();
-                        setHelperDropdownPosition({
-                          top: rect.bottom + window.scrollY + 4,
-                          left: rect.left + window.scrollX,
-                          width: rect.width,
-                        });
-                      }
-                    }}
-                    onFocus={() => {
-                      setShowHelperDropdown(true);
-                      // Update position immediately when focusing
-                      if (helperInputRef.current) {
-                        const rect = helperInputRef.current.getBoundingClientRect();
-                        setHelperDropdownPosition({
-                          top: rect.bottom + window.scrollY + 4,
-                          left: rect.left + window.scrollX,
-                          width: rect.width,
-                        });
-                      }
-                    }}
-                    placeholder={selectedHelpers.length === 0 ? "ค้นหาพนักงานบริการ..." : ""}
-                    className="flex-1 min-w-[120px] outline-none bg-transparent text-sm text-slate-900 dark:text-slate-100 placeholder-slate-400"
-                    data-helper-input
-                  />
-                </div>
-
-                {showHelperDropdown && helperDropdownPosition && createPortal(
-                  <div
-                    data-helper-dropdown-portal
-                    className="fixed bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg shadow-xl z-[9999] max-h-60 overflow-y-auto overscroll-contain"
-                    style={{
-                      top: `${helperDropdownPosition.top}px`,
-                      left: `${helperDropdownPosition.left}px`,
-                      width: `${helperDropdownPosition.width}px`,
-                    }}
-                    onMouseDown={(e) => {
-                      // Allow scrolling by not preventing default
-                      e.stopPropagation();
-                    }}
-                  >
-                    {availableStaff
-                      .filter(s => !selectedHelpers.includes(s.id))
-                      .filter(s => s.name.toLowerCase().includes(helperSearch.toLowerCase()))
-                      .map(staff => (
-                        <button
-                          key={staff.id}
-                          type="button"
-                          onMouseDown={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            setSelectedHelpers(prev => [...prev, staff.id]);
-                            setHelperSearch('');
-                            // Keep dropdown open to allow selecting more staff
-                            // Update position after selection to ensure dropdown stays visible
-                            setTimeout(() => {
-                              if (helperInputRef.current) {
-                                const rect = helperInputRef.current.getBoundingClientRect();
-                                setHelperDropdownPosition({
-                                  top: rect.bottom + window.scrollY + 4,
-                                  left: rect.left + window.scrollX,
-                                  width: rect.width,
-                                });
-                              }
-                            }, 0);
-                          }}
-                          className="w-full text-left px-4 py-2 hover:bg-slate-100 dark:hover:bg-slate-700 text-sm text-slate-900 dark:text-slate-100"
-                        >
-                          {staff.name}
-                        </button>
-                      ))}
-                    {availableStaff.filter(s => !selectedHelpers.includes(s.id)).filter(s => s.name.toLowerCase().includes(helperSearch.toLowerCase())).length === 0 && (
-                      <div className="px-4 py-2 text-sm text-slate-500 dark:text-slate-400 text-center">
-                        ไม่พบพนักงาน
-                      </div>
-                    )}
-                  </div>,
-                  document.body
-                )}
-              </div>
+              {/* placeholder for grid alignment */}
             </div>
 
             <div>
@@ -1395,6 +1480,421 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
             </div>
           )}
         </Card>
+
+        {/* Crew Assignment Section */}
+        <Card>
+          <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-4 flex items-center gap-2">
+            <User size={20} />
+            จัดพนักงานประจำทริป
+            <span className="text-sm font-normal text-slate-500 dark:text-slate-400">(สำคัญ - มีผลต่อค่าคอมมิชชั่น)</span>
+          </h3>
+
+          {(!selectedDriverStaffId && selectedHelpers.length === 0) && (
+            <div className="mb-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg flex items-start gap-2">
+              <AlertCircle className="text-red-600 dark:text-red-400 flex-shrink-0 mt-0.5" size={20} />
+              <div>
+                <p className="text-sm font-medium text-red-800 dark:text-red-200">ยังไม่ได้จัดพนักงาน</p>
+                <p className="text-xs text-red-600 dark:text-red-300 mt-1">กรุณาเลือกคนขับและพนักงานบริการเพื่อให้ระบบคำนวณค่าคอมมิชชั่นได้ถูกต้อง</p>
+              </div>
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Driver Staff Selection */}
+            <div>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                คนขับ (เลือกได้ 1 คน) <span className="text-red-500">*</span>
+              </label>
+              <div className="relative" ref={driverStaffInputRef} data-driver-staff-dropdown>
+                <Input
+                  type="text"
+                  value={driverStaffSearch}
+                  onChange={(e) => {
+                    setDriverStaffSearch(e.target.value);
+                    setShowDriverStaffDropdown(true);
+                    if (!e.target.value) {
+                      setSelectedDriverStaffId('');
+                    }
+                    if (driverStaffInputRef.current) {
+                      const rect = driverStaffInputRef.current.getBoundingClientRect();
+                      setDriverStaffDropdownPosition({
+                        top: rect.bottom + window.scrollY + 4,
+                        left: rect.left + window.scrollX,
+                        width: rect.width,
+                      });
+                    }
+                  }}
+                  onFocus={() => {
+                    setShowDriverStaffDropdown(true);
+                    if (driverStaffInputRef.current) {
+                      const rect = driverStaffInputRef.current.getBoundingClientRect();
+                      setDriverStaffDropdownPosition({
+                        top: rect.bottom + window.scrollY + 4,
+                        left: rect.left + window.scrollX,
+                        width: rect.width,
+                      });
+                    }
+                  }}
+                  placeholder="ค้นหาคนขับ..."
+                  icon={<Search size={18} />}
+                  data-driver-staff-input
+                />
+                {selectedDriverStaffId && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedDriverStaffId('');
+                      setDriverStaffSearch('');
+                    }}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
+                  >
+                    <X size={16} />
+                  </button>
+                )}
+                {showDriverStaffDropdown && driverStaffDropdownPosition && createPortal(
+                  <div
+                    data-driver-staff-dropdown-portal
+                    className="fixed bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg shadow-xl z-[9999] max-h-60 overflow-y-auto overscroll-contain"
+                    style={{
+                      top: `${driverStaffDropdownPosition.top}px`,
+                      left: `${driverStaffDropdownPosition.left}px`,
+                      width: `${driverStaffDropdownPosition.width}px`,
+                    }}
+                    onMouseDown={(e) => e.stopPropagation()}
+                  >
+                    {availableStaff
+                      .filter(s => !selectedHelpers.includes(s.id))
+                      .filter(s => {
+                        const search = driverStaffSearch.toLowerCase();
+                        return s.name.toLowerCase().includes(search) ||
+                          (s.employee_code || '').toLowerCase().includes(search);
+                      })
+                      .map(staff => (
+                        <button
+                          key={staff.id}
+                          type="button"
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setSelectedDriverStaffId(staff.id);
+                            setDriverStaffSearch(`${staff.name}${staff.employee_code ? ` (${staff.employee_code})` : ''}`);
+                            setShowDriverStaffDropdown(false);
+                            setDriverStaffDropdownPosition(null);
+                          }}
+                          className={`w-full text-left px-4 py-2 hover:bg-slate-100 dark:hover:bg-slate-700 text-sm ${
+                            selectedDriverStaffId === staff.id ? 'bg-blue-50 dark:bg-blue-900/30' : ''
+                          }`}
+                        >
+                          <div className="font-medium text-slate-900 dark:text-slate-100">{staff.name}</div>
+                          {staff.employee_code && (
+                            <div className="text-xs text-slate-500 dark:text-slate-400">{staff.employee_code}</div>
+                          )}
+                        </button>
+                      ))}
+                    {availableStaff
+                      .filter(s => !selectedHelpers.includes(s.id))
+                      .filter(s => s.name.toLowerCase().includes(driverStaffSearch.toLowerCase()) ||
+                        (s.employee_code || '').toLowerCase().includes(driverStaffSearch.toLowerCase())).length === 0 && (
+                      <div className="px-4 py-2 text-sm text-slate-500 dark:text-slate-400 text-center">
+                        ไม่พบพนักงาน
+                      </div>
+                    )}
+                  </div>,
+                  document.body
+                )}
+              </div>
+              {selectedDriverStaffId && (
+                <div className="mt-2 p-2 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
+                  <div className="flex items-center gap-2 text-sm text-green-800 dark:text-green-200">
+                    <CheckCircle size={14} />
+                    <span className="font-medium">
+                      {availableStaff.find(s => s.id === selectedDriverStaffId)?.name || 'เลือกแล้ว'}
+                    </span>
+                    <span className="px-2 py-0.5 bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 text-xs rounded-full">คนขับ</span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Helper Selection */}
+            <div>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                พนักงานบริการ (เลือกได้หลายคน)
+              </label>
+              <div className="relative" ref={helperInputRef} data-helper-dropdown>
+                <div className="flex flex-wrap gap-2 p-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 min-h-[42px]">
+                  {selectedHelpers.map(helperId => {
+                    const helper = availableStaff.find(s => s.id === helperId);
+                    return (
+                      <span key={helperId} className="inline-flex items-center px-2 py-1 rounded-md text-sm font-medium bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
+                        {helper?.name || 'Unknown'}
+                        <button
+                          type="button"
+                          onClick={() => setSelectedHelpers(prev => prev.filter(id => id !== helperId))}
+                          className="ml-1 hover:text-blue-900 dark:hover:text-blue-100"
+                        >
+                          <X size={14} />
+                        </button>
+                      </span>
+                    );
+                  })}
+                  <input
+                    type="text"
+                    value={helperSearch}
+                    onChange={(e) => {
+                      setHelperSearch(e.target.value);
+                      setShowHelperDropdown(true);
+                      if (helperInputRef.current) {
+                        const rect = helperInputRef.current.getBoundingClientRect();
+                        setHelperDropdownPosition({
+                          top: rect.bottom + window.scrollY + 4,
+                          left: rect.left + window.scrollX,
+                          width: rect.width,
+                        });
+                      }
+                    }}
+                    onFocus={() => {
+                      setShowHelperDropdown(true);
+                      if (helperInputRef.current) {
+                        const rect = helperInputRef.current.getBoundingClientRect();
+                        setHelperDropdownPosition({
+                          top: rect.bottom + window.scrollY + 4,
+                          left: rect.left + window.scrollX,
+                          width: rect.width,
+                        });
+                      }
+                    }}
+                    placeholder={selectedHelpers.length === 0 ? "ค้นหาพนักงานบริการ..." : "เพิ่มอีก..."}
+                    className="flex-1 min-w-[120px] outline-none bg-transparent text-sm text-slate-900 dark:text-slate-100 placeholder-slate-400"
+                    data-helper-input
+                  />
+                </div>
+
+                {showHelperDropdown && helperDropdownPosition && createPortal(
+                  <div
+                    data-helper-dropdown-portal
+                    className="fixed bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg shadow-xl z-[9999] max-h-60 overflow-y-auto overscroll-contain"
+                    style={{
+                      top: `${helperDropdownPosition.top}px`,
+                      left: `${helperDropdownPosition.left}px`,
+                      width: `${helperDropdownPosition.width}px`,
+                    }}
+                    onMouseDown={(e) => e.stopPropagation()}
+                  >
+                    {availableStaff
+                      .filter(s => !selectedHelpers.includes(s.id) && s.id !== selectedDriverStaffId)
+                      .filter(s => s.name.toLowerCase().includes(helperSearch.toLowerCase()) ||
+                        (s.employee_code || '').toLowerCase().includes(helperSearch.toLowerCase()))
+                      .map(staff => (
+                        <button
+                          key={staff.id}
+                          type="button"
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setSelectedHelpers(prev => [...prev, staff.id]);
+                            setHelperSearch('');
+                            setTimeout(() => {
+                              if (helperInputRef.current) {
+                                const rect = helperInputRef.current.getBoundingClientRect();
+                                setHelperDropdownPosition({
+                                  top: rect.bottom + window.scrollY + 4,
+                                  left: rect.left + window.scrollX,
+                                  width: rect.width,
+                                });
+                              }
+                            }, 0);
+                          }}
+                          className="w-full text-left px-4 py-2 hover:bg-slate-100 dark:hover:bg-slate-700 text-sm text-slate-900 dark:text-slate-100"
+                        >
+                          <div>{staff.name}</div>
+                          {staff.employee_code && (
+                            <div className="text-xs text-slate-500 dark:text-slate-400">{staff.employee_code}</div>
+                          )}
+                        </button>
+                      ))}
+                    {availableStaff
+                      .filter(s => !selectedHelpers.includes(s.id) && s.id !== selectedDriverStaffId)
+                      .filter(s => s.name.toLowerCase().includes(helperSearch.toLowerCase()) ||
+                        (s.employee_code || '').toLowerCase().includes(helperSearch.toLowerCase())).length === 0 && (
+                      <div className="px-4 py-2 text-sm text-slate-500 dark:text-slate-400 text-center">
+                        ไม่พบพนักงาน
+                      </div>
+                    )}
+                  </div>,
+                  document.body
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Crew Summary */}
+          {(selectedDriverStaffId || selectedHelpers.length > 0) && (
+            <div className="mt-4 p-3 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-lg">
+              <div className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                สรุปพนักงานในทริป ({(selectedDriverStaffId ? 1 : 0) + selectedHelpers.length} คน)
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {selectedDriverStaffId && (
+                  <span className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-200 border border-blue-200 dark:border-blue-800">
+                    <Truck size={14} />
+                    {availableStaff.find(s => s.id === selectedDriverStaffId)?.name || 'คนขับ'}
+                    <span className="text-xs font-medium ml-1">(คนขับ)</span>
+                  </span>
+                )}
+                {selectedHelpers.map(helperId => {
+                  const helper = availableStaff.find(s => s.id === helperId);
+                  return (
+                    <span key={helperId} className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-200 border border-green-200 dark:border-green-800">
+                      <User size={14} />
+                      {helper?.name || 'Unknown'}
+                      <span className="text-xs font-medium ml-1">(บริการ)</span>
+                    </span>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </Card>
+
+        {/* Capacity Summary */}
+        {formData.vehicle_id && selectedStores.length > 0 && (() => {
+          // Check if there are any items in any store
+          const hasItems = selectedStores.some(store => store.items.length > 0);
+
+          return (
+            <Card>
+              <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-4 flex items-center gap-2">
+                <Package size={20} />
+                สรุปความจุ
+              </h3>
+              {!hasItems ? (
+                <div className="text-center py-4 text-slate-500 dark:text-slate-400">
+                  <p>กรุณาเพิ่มสินค้าในร้านค้าก่อน</p>
+                  <p className="text-xs mt-2">ระบบจะคำนวณความจุอัตโนมัติเมื่อมีการเพิ่มสินค้า</p>
+                </div>
+              ) : capacitySummary?.loading ? (
+                <div className="text-center py-4 text-slate-500 dark:text-slate-400">
+                  กำลังคำนวณ...
+                </div>
+              ) : capacitySummary ? (
+                <div className="space-y-3">
+                  {capacitySummary.errors.length > 0 && (
+                    <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+                      <div className="flex items-center gap-2 text-red-800 dark:text-red-200 mb-2">
+                        <AlertCircle size={16} />
+                        <span className="font-medium">ข้อผิดพลาด:</span>
+                      </div>
+                      <ul className="list-disc list-inside text-sm text-red-700 dark:text-red-300 space-y-1">
+                        {capacitySummary.errors.map((error, idx) => (
+                          <li key={idx}>{error}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {capacitySummary.warnings.length > 0 && (
+                    <div className="p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
+                      <div className="flex items-center gap-2 text-amber-800 dark:text-amber-200 mb-2">
+                        <AlertCircle size={16} />
+                        <span className="font-medium">คำเตือน:</span>
+                      </div>
+                      <ul className="list-disc list-inside text-sm text-amber-700 dark:text-amber-300 space-y-1">
+                        {capacitySummary.warnings.map((warning, idx) => (
+                          <li key={idx}>{warning}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="p-3 bg-slate-50 dark:bg-slate-800 rounded-lg">
+                      <div className="text-sm text-slate-600 dark:text-slate-400 mb-1">
+                        จำนวนพาเลท
+                      </div>
+                      <div className="text-2xl font-bold text-slate-900 dark:text-slate-100">
+                        {capacitySummary.totalPallets}
+                        {capacitySummary.vehicleMaxPallets !== null && (
+                          <span className="text-lg font-normal text-slate-500 dark:text-slate-400">
+                            {' '}/ {capacitySummary.vehicleMaxPallets}
+                          </span>
+                        )}
+                      </div>
+                      {capacitySummary.vehicleMaxPallets !== null && (
+                        <div className="mt-2">
+                          <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2">
+                            <div
+                              className={`h-2 rounded-full ${capacitySummary.totalPallets > capacitySummary.vehicleMaxPallets
+                                ? 'bg-red-500'
+                                : capacitySummary.totalPallets > capacitySummary.vehicleMaxPallets * 0.9
+                                  ? 'bg-amber-500'
+                                  : 'bg-green-500'
+                                }`}
+                              style={{
+                                width: `${Math.min(
+                                  100,
+                                  (capacitySummary.totalPallets / capacitySummary.vehicleMaxPallets) * 100
+                                )}%`,
+                              }}
+                            />
+                          </div>
+                          <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                            {Math.round(
+                              (capacitySummary.totalPallets / capacitySummary.vehicleMaxPallets) * 100
+                            )}
+                            % ของความจุ
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                    <div className="p-3 bg-slate-50 dark:bg-slate-800 rounded-lg">
+                      <div className="text-sm text-slate-600 dark:text-slate-400 mb-1">
+                        น้ำหนักรวม
+                      </div>
+                      <div className="text-2xl font-bold text-slate-900 dark:text-slate-100">
+                        {capacitySummary.totalWeightKg.toFixed(2)} กก.
+                        {capacitySummary.vehicleMaxWeightKg !== null && (
+                          <span className="text-lg font-normal text-slate-500 dark:text-slate-400">
+                            {' '}/ {capacitySummary.vehicleMaxWeightKg} กก.
+                          </span>
+                        )}
+                      </div>
+                      {capacitySummary.vehicleMaxWeightKg !== null && (
+                        <div className="mt-2">
+                          <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2">
+                            <div
+                              className={`h-2 rounded-full ${capacitySummary.totalWeightKg > capacitySummary.vehicleMaxWeightKg
+                                ? 'bg-red-500'
+                                : capacitySummary.totalWeightKg > capacitySummary.vehicleMaxWeightKg * 0.9
+                                  ? 'bg-amber-500'
+                                  : 'bg-green-500'
+                                }`}
+                              style={{
+                                width: `${Math.min(
+                                  100,
+                                  (capacitySummary.totalWeightKg / capacitySummary.vehicleMaxWeightKg) * 100
+                                )}%`,
+                              }}
+                            />
+                          </div>
+                          <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                            {Math.round(
+                              (capacitySummary.totalWeightKg / capacitySummary.vehicleMaxWeightKg) * 100
+                            )}
+                            % ของความจุ
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                    {/* ตัดการแสดงความสูงรวมออก (ยังคำนวณภายในแต่ไม่แสดง) */}
+                  </div>
+                </div>
+              ) : (
+                <div className="text-sm text-slate-500 dark:text-slate-400">
+                  กำลังคำนวณความจุ...
+                </div>
+              )}
+            </Card>
+          );
+        })()}
 
         {/* Stores and Products */}
         <Card>
@@ -1489,6 +1989,45 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
                           กำลังโหลดข้อมูลร้านค้า... (ID: {storeWithItems.store_id.substring(0, 8)}...)
                         </div>
                       </div>
+                    </div>
+                    <div className="p-3 bg-slate-50 dark:bg-slate-800 rounded-lg">
+                      <div className="text-sm text-slate-600 dark:text-slate-400 mb-1">
+                        ความสูงรวม
+                      </div>
+                      <div className="text-2xl font-bold text-slate-900 dark:text-slate-100">
+                        {capacitySummary?.totalHeightCm?.toFixed(1) || '0.0'} ซม.
+                        {capacitySummary && capacitySummary.vehicleMaxHeightCm !== null && (
+                          <span className="text-lg font-normal text-slate-500 dark:text-slate-400">
+                            {' '}/ {capacitySummary!.vehicleMaxHeightCm} ซม.
+                          </span>
+                        )}
+                      </div>
+                      {capacitySummary && capacitySummary.vehicleMaxHeightCm !== null && (
+                        <div className="mt-2">
+                          <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2">
+                            <div
+                              className={`h-2 rounded-full ${capacitySummary!.totalHeightCm > capacitySummary!.vehicleMaxHeightCm
+                                ? 'bg-red-500'
+                                : capacitySummary!.totalHeightCm > capacitySummary!.vehicleMaxHeightCm * 0.9
+                                  ? 'bg-amber-500'
+                                  : 'bg-green-500'
+                                }`}
+                              style={{
+                                width: `${Math.min(
+                                  100,
+                                  (capacitySummary!.totalHeightCm / capacitySummary!.vehicleMaxHeightCm) * 100
+                                )}%`,
+                              }}
+                            />
+                          </div>
+                          <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                            {Math.round(
+                              (capacitySummary!.totalHeightCm / capacitySummary!.vehicleMaxHeightCm) * 100
+                            )}
+                            % ของความจุ
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
                 );
@@ -1743,6 +2282,22 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
                                   >
                                     <X size={16} />
                                   </button>
+                                </div>
+
+                                {/* Phase 0: Pallet Config Selector - Full width below */}
+                                <div className="col-span-full">
+                                  <PalletConfigSelector
+                                    productId={item.product_id}
+                                    productName={product.product_name}
+                                    quantity={item.quantity}
+                                    configs={product.product_pallet_configs || []}
+                                    selectedConfigId={item.selected_pallet_config_id}
+                                    onChange={(configId) => {
+                                      const updatedStores = [...selectedStores];
+                                      updatedStores[storeIndex].items[itemIndex].selected_pallet_config_id = configId;
+                                      setSelectedStores(updatedStores);
+                                    }}
+                                  />
                                 </div>
                               </div>
                             );

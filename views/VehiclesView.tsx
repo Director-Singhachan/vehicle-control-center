@@ -23,6 +23,7 @@ import { Card } from '../components/ui/Card';
 import { PageLayout } from '../components/layout/PageLayout';
 import { VehicleGroupBadge } from '../components/vehicle/VehicleGroupBadge';
 import { VehicleDocumentBadge } from '../components/vehicle/VehicleDocumentBadge';
+import { ImageModal } from '../components/ui/ImageModal';
 import type { Database } from '../types/database';
 
 type Vehicle = Database['public']['Tables']['vehicles']['Row'];
@@ -48,6 +49,10 @@ const VehicleCard = React.memo<VehicleCardProps>(({
   onViewDetail,
   onEdit,
 }) => {
+  const [isImageOpen, setIsImageOpen] = useState(false);
+  const fallbackImageUrl =
+    'https://images.unsplash.com/photo-1533473359331-0135ef1b58bf?auto=format&fit=crop&q=80&w=1000';
+  const imageUrl = vehicle.image_url || fallbackImageUrl;
   const StatusIcon = statusBadge.icon;
   const handleViewDetail = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -60,18 +65,19 @@ const VehicleCard = React.memo<VehicleCardProps>(({
   }, [vehicle.id, onEdit]);
 
   const handleImageError = useCallback((e: React.SyntheticEvent<HTMLImageElement>) => {
-    e.currentTarget.src = 'https://images.unsplash.com/photo-1533473359331-0135ef1b58bf?auto=format&fit=crop&q=80&w=1000';
+    e.currentTarget.src = fallbackImageUrl;
   }, []);
 
   return (
     <Card className="overflow-hidden hover:shadow-lg transition-shadow group">
       <div className="relative h-48 bg-slate-100 dark:bg-slate-800">
         <img
-          src={vehicle.image_url || 'https://images.unsplash.com/photo-1533473359331-0135ef1b58bf?auto=format&fit=crop&q=80&w=1000'}
+          src={imageUrl}
           alt={vehicle.plate}
-          className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+          className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105 cursor-zoom-in"
           onError={handleImageError}
           loading="lazy"
+          onClick={() => setIsImageOpen(true)}
         />
         <div className="absolute top-3 right-3 flex flex-col gap-2 items-end">
           <span className={`px-2 py-1 rounded-full text-xs font-medium flex items-center gap-1 shadow-sm ${statusBadge.className}`}>
@@ -81,6 +87,12 @@ const VehicleCard = React.memo<VehicleCardProps>(({
           <VehicleDocumentBadge vehicleId={vehicle.id} compact={true} />
         </div>
       </div>
+      <ImageModal
+        isOpen={isImageOpen}
+        imageUrl={imageUrl}
+        alt={vehicle.plate}
+        onClose={() => setIsImageOpen(false)}
+      />
 
       <div className="p-6">
         <div className="flex items-start justify-between mb-4">

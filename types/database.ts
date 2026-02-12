@@ -31,6 +31,7 @@ export interface Database {
           full_name: string | null;
           role: AppRole;
           avatar_url: string | null;
+          branch: string | null;
           created_at: string;
         };
         Insert: {
@@ -39,6 +40,7 @@ export interface Database {
           full_name?: string | null;
           role?: AppRole;
           avatar_url?: string | null;
+          branch?: string | null;
           created_at?: string;
         };
         Update: {
@@ -47,6 +49,7 @@ export interface Database {
           full_name?: string | null;
           role?: AppRole;
           avatar_url?: string | null;
+          branch?: string | null;
           created_at?: string;
         };
       };
@@ -872,6 +875,7 @@ export interface Database {
           sequence_order: number | null;
           has_item_changes: boolean;
           last_item_change_at: string | null;
+          branch: string | null;
           created_at: string;
           updated_at: string;
           created_by: string | null;
@@ -891,6 +895,7 @@ export interface Database {
           sequence_order?: number | null;
           has_item_changes?: boolean;
           last_item_change_at?: string | null;
+          branch?: string | null;
           created_at?: string;
           updated_at?: string;
           created_by?: string | null;
@@ -910,6 +915,7 @@ export interface Database {
           sequence_order?: number | null;
           has_item_changes?: boolean;
           last_item_change_at?: string | null;
+          branch?: string | null;
           created_at?: string;
           updated_at?: string;
           created_by?: string | null;
@@ -1038,7 +1044,7 @@ export interface Database {
           delivery_trip_store_id: string | null;
           delivery_trip_item_id: string | null;
           product_id: string | null;
-          change_type: 'add' | 'update' | 'remove';
+          action: 'add' | 'update' | 'remove'; // Column name matches database schema
           old_quantity: number | null;
           new_quantity: number | null;
           reason: string | null;
@@ -1051,7 +1057,7 @@ export interface Database {
           delivery_trip_store_id?: string | null;
           delivery_trip_item_id?: string | null;
           product_id?: string | null;
-          change_type: 'add' | 'update' | 'remove';
+          action: 'add' | 'update' | 'remove'; // Column name matches database schema
           old_quantity?: number | null;
           new_quantity?: number | null;
           reason?: string | null;
@@ -1064,7 +1070,7 @@ export interface Database {
           delivery_trip_store_id?: string | null;
           delivery_trip_item_id?: string | null;
           product_id?: string | null;
-          change_type?: 'add' | 'update' | 'remove';
+          action?: 'add' | 'update' | 'remove'; // Column name matches database schema
           old_quantity?: number | null;
           new_quantity?: number | null;
           reason?: string | null;

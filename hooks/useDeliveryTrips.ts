@@ -9,6 +9,7 @@ export interface UseDeliveryTripsOptions {
   planned_date_from?: string;
   planned_date_to?: string;
   search?: string;
+  branch?: string; // Filter by branch: 'HQ' (สำนักงานใหญ่), 'SD' (สอยดาว), or 'ALL'
   autoFetch?: boolean;
   autoRefresh?: boolean; // Enable/disable auto-refresh (default: true)
   autoRefreshInterval?: number; // Auto-refresh interval in milliseconds (default: 30000)
@@ -46,6 +47,7 @@ export const useDeliveryTrips = (options: UseDeliveryTripsOptions = { autoFetch:
         planned_date_to: options.planned_date_to,
         has_item_changes: options.has_item_changes,
         search: options.search,
+        branch: options.branch, // Pass branch filter
         page,
         pageSize,
         lite: options.lite !== false, // Default to true (lite mode) if not specified
@@ -79,6 +81,7 @@ export const useDeliveryTrips = (options: UseDeliveryTripsOptions = { autoFetch:
     options.planned_date_to,
     options.has_item_changes,
     options.search,
+    options.branch,
     options.page,
     options.pageSize,
     options.lite,
@@ -100,6 +103,7 @@ export const useDeliveryTrips = (options: UseDeliveryTripsOptions = { autoFetch:
         planned_date_to: options.planned_date_to,
         has_item_changes: options.has_item_changes,
         search: options.search,
+        branch: options.branch,
         page,
         pageSize: options.pageSize || 20,
         lite: options.lite !== false,
@@ -117,6 +121,7 @@ export const useDeliveryTrips = (options: UseDeliveryTripsOptions = { autoFetch:
     options.planned_date_to,
     options.has_item_changes,
     options.search,
+    options.branch,
     options.pageSize,
     options.lite,
     options.sortAscending,

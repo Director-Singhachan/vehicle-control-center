@@ -18,16 +18,18 @@ import {
   ChevronRight,
   Package,
   XCircle,
+  Trash2,
   Edit2,
   ZoomIn,
-  X
+  X,
+  Unlink
 } from 'lucide-react';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Card } from '../components/ui/Card';
 import { PageLayout } from '../components/layout/PageLayout';
 import { Avatar } from '../components/ui/Avatar';
-import { useTripLogs, useVehicles } from '../hooks';
+import { useTripLogs, useVehicles, useAuth } from '../hooks';
 import { tripLogService, type TripLogWithRelations } from '../services/tripLogService';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { TripLogEditView } from './TripLogEditView';
@@ -63,6 +65,14 @@ export const TripLogListView: React.FC<TripLogListViewProps> = ({
   const [cancelReason, setCancelReason] = useState('');
   const [isCancelling, setIsCancelling] = useState(false);
   const [editTripId, setEditTripId] = useState<string | null>(null);
+  const [deleteTripId, setDeleteTripId] = useState<string | null>(null);
+  const [deleteReason, setDeleteReason] = useState('');
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [unlinkTripId, setUnlinkTripId] = useState<string | null>(null);
+  const [isUnlinking, setIsUnlinking] = useState(false);
+
+  const { isAdmin, isManager, isExecutive } = useAuth();
+  const canAdminDelete = isAdmin || isManager || isExecutive;
 
   // Debounce search input (wait 500ms after user stops typing)
   useEffect(() => {
@@ -473,24 +483,37 @@ export const TripLogListView: React.FC<TripLogListViewProps> = ({
                           </p>
                         </div>
                         {trip.delivery_trip?.trip_number && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (trip.delivery_trip?.id && onViewDeliveryTrip) {
-                                onViewDeliveryTrip(trip.delivery_trip.id);
-                              }
-                            }}
-                            className="flex items-center gap-2 mt-2 group focus:outline-none"
-                            title="ดูรายละเอียดทริปส่งสินค้า"
-                          >
-                            <Package
-                              size={14}
-                              className="text-enterprise-600 dark:text-enterprise-400 group-hover:text-enterprise-700 dark:group-hover:text-enterprise-300 transition-colors"
-                            />
-                            <span className="text-xs font-medium text-enterprise-600 dark:text-enterprise-400 bg-enterprise-50 dark:bg-enterprise-900/30 px-2 py-0.5 rounded group-hover:bg-enterprise-100 dark:group-hover:bg-enterprise-900/60 underline-offset-2 group-hover:underline">
-                              {trip.delivery_trip.trip_number}
-                            </span>
-                          </button>
+                          <div className="flex items-center gap-2 mt-2 flex-wrap">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (trip.delivery_trip?.id && onViewDeliveryTrip) {
+                                  onViewDeliveryTrip(trip.delivery_trip.id);
+                                }
+                              }}
+                              className="flex items-center gap-2 group focus:outline-none"
+                              title="ดูรายละเอียดทริปส่งสินค้า"
+                            >
+                              <Package
+                                size={14}
+                                className="text-enterprise-600 dark:text-enterprise-400 group-hover:text-enterprise-700 dark:group-hover:text-enterprise-300 transition-colors"
+                              />
+                              <span className="text-xs font-medium text-enterprise-600 dark:text-enterprise-400 bg-enterprise-50 dark:bg-enterprise-900/30 px-2 py-0.5 rounded group-hover:bg-enterprise-100 dark:group-hover:bg-enterprise-900/60 underline-offset-2 group-hover:underline">
+                                {trip.delivery_trip.trip_number}
+                              </span>
+                            </button>
+                            {trip.status === 'checked_in' && canAdminDelete && (
+                              <button
+                                type="button"
+                                onClick={() => setUnlinkTripId(trip.id)}
+                                className="flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400 hover:underline focus:outline-none"
+                                title="ยกเลิกการผูกกับทริปส่งของ (เคสนอกทริปถูกผูกผิด)"
+                              >
+                                <Unlink size={12} />
+                                ยกเลิกการผูก
+                              </button>
+                            )}
+                          </div>
                         )}
                       </div>
                       <div className="ml-auto">
@@ -624,7 +647,7 @@ export const TripLogListView: React.FC<TripLogListViewProps> = ({
                     </div>
 
                     {/* Actions */}
-                    <div className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-700 flex items-center gap-2">
+                    <div className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-700 flex flex-wrap items-center gap-2">
                       {trip.status === 'checked_out' && (
                         <>
                           {onCreateCheckin && (
@@ -659,6 +682,31 @@ export const TripLogListView: React.FC<TripLogListViewProps> = ({
                         >
                           <Edit2 size={16} />
                           แก้ไขข้อมูล
+                        </Button>
+                      )}
+
+                      {trip.status === 'checked_in' && canAdminDelete && (trip.delivery_trip_id || trip.delivery_trip) && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setUnlinkTripId(trip.id)}
+                          className="flex items-center gap-1 text-amber-700 hover:text-amber-800 dark:text-amber-400 dark:hover:text-amber-300"
+                          title="ยกเลิกการผูกกับทริปส่งของ (ใช้เมื่อเคสนอกทริปถูกผูกผิด)"
+                        >
+                          <Unlink size={16} />
+                          ยกเลิกการผูกทริปส่งของ
+                        </Button>
+                      )}
+
+                      {canAdminDelete && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setDeleteTripId(trip.id)}
+                          className="flex items-center gap-1 text-red-700 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300 ml-auto"
+                        >
+                          <Trash2 size={16} />
+                          ลบทริป (Admin)
                         </Button>
                       )}
                     </div>
@@ -855,6 +903,93 @@ export const TripLogListView: React.FC<TripLogListViewProps> = ({
         confirmText="ยืนยันยกเลิกทริป"
         cancelText="ยกเลิก"
         variant="danger"
+      />
+
+      {/* Admin Delete Trip Dialog */}
+      <ConfirmDialog
+        isOpen={deleteTripId !== null}
+        onCancel={() => {
+          setDeleteTripId(null);
+          setDeleteReason('');
+        }}
+        onConfirm={async () => {
+          if (!deleteTripId) return;
+          setIsDeleting(true);
+          try {
+            await tripLogService.deleteTrip(deleteTripId, deleteReason || 'ลบทริปที่บันทึกผิด');
+            setDeleteTripId(null);
+            setDeleteReason('');
+            refetch();
+          } catch (err: any) {
+            alert(err.message || 'เกิดข้อผิดพลาดในการลบทริป');
+          } finally {
+            setIsDeleting(false);
+          }
+        }}
+        title="ลบทริป (สำหรับผู้ดูแลระบบ)"
+        message={
+          <div className="space-y-4" onClick={(e) => e.stopPropagation()}>
+            <p className="text-sm text-slate-700 dark:text-slate-200">
+              การลบทริปจะลบข้อมูลการเดินทางนี้ออกจากระบบอย่างถาวร และไม่สามารถกู้คืนได้
+              กรุณาตรวจสอบให้แน่ใจก่อนดำเนินการ
+            </p>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                เหตุผลในการลบทริป (จำเป็น)
+              </label>
+              <textarea
+                value={deleteReason}
+                onChange={(e) => setDeleteReason(e.target.value)}
+                onClick={(e) => e.stopPropagation()}
+                onMouseDown={(e) => e.stopPropagation()}
+                placeholder="ระบุเหตุผลในการลบทริป เช่น ลงทะเบียนรถผิดคัน, ผูกกับทริปที่ถูกลบไปแล้ว เป็นต้น"
+                className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
+                rows={3}
+              />
+              {isDeleting && (
+                <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                  กำลังลบข้อมูลทริป...
+                </p>
+              )}
+            </div>
+          </div>
+        }
+        confirmText="ยืนยันการลบทริป"
+        cancelText="ยกเลิก"
+        variant="danger"
+      />
+
+      {/* Unlink trip log from delivery trip (Admin) */}
+      <ConfirmDialog
+        isOpen={unlinkTripId !== null}
+        onCancel={() => setUnlinkTripId(null)}
+        onConfirm={async () => {
+          if (!unlinkTripId) return;
+          setIsUnlinking(true);
+          try {
+            await tripLogService.unlinkFromDeliveryTrip(unlinkTripId);
+            setUnlinkTripId(null);
+            refetch();
+            alert('ยกเลิกการผูกกับทริปส่งของเรียบร้อย ทริปส่งของถูก reset กลับเป็น planned');
+          } catch (err: any) {
+            alert(err.message || 'เกิดข้อผิดพลาด');
+          } finally {
+            setIsUnlinking(false);
+          }
+        }}
+        title="ยกเลิกการผูกกับทริปส่งของ"
+        message={
+          <p className="text-sm text-slate-700 dark:text-slate-200">
+            การดำเนินการนี้จะยกเลิกการผูก trip log นี้กับ delivery trip และ reset ทริปส่งของกลับเป็นสถานะ planned
+            (ร้านจะกลับเป็น pending) ใช้เมื่อเคสนอกทริปถูกผูกกับทริปส่งของโดยผิดพลาด
+            {isUnlinking && (
+              <span className="block mt-2 text-xs text-slate-500">กำลังดำเนินการ...</span>
+            )}
+          </p>
+        }
+        confirmText="ยืนยัน"
+        cancelText="ยกเลิก"
+        variant="warning"
       />
 
       {expandedImage && (

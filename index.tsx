@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense, lazy } from 'react';
 import { createRoot } from 'react-dom/client';
 import './src/index.css';
 import {
@@ -30,43 +30,46 @@ import {
   Boxes,
   Database,
 } from 'lucide-react';
-import { DashboardView } from './views/DashboardView';
-import { ProfileView } from './views/ProfileView';
-import { RLSTestView } from './views/RLSTestView';
-import { DatabaseExplorerView } from './views/DatabaseExplorerView';
-import { VehiclesView } from './views/VehiclesView';
-import { VehicleDetailView } from './views/VehicleDetailView';
-import { VehicleFormView } from './views/VehicleFormView';
-import { TicketsView } from './views/TicketsView';
-import { TicketDetailView } from './views/TicketDetailView';
-import { TicketFormView } from './views/TicketFormView';
-import { ApprovalBoardView } from './views/ApprovalBoardView';
-import { TripLogFormView } from './views/TripLogFormView';
-import { TripLogListView } from './views/TripLogListView';
-import { FuelLogFormView } from './views/FuelLogFormView';
-import { FuelLogListView } from './views/FuelLogListView';
-import { ReportsView } from './views/ReportsView';
-import { DailySummaryView } from './views/DailySummaryView';
-import { SettingsView } from './views/SettingsView';
-import { DeliveryTripListView } from './views/DeliveryTripListView';
-import { DeliveryTripFormView } from './views/DeliveryTripFormView';
-import { DeliveryTripDetailView } from './views/DeliveryTripDetailView';
-import { StoreDeliveryDetailView } from './views/StoreDeliveryDetailView';
-import { ServiceStaffManagementView } from './views/ServiceStaffManagementView';
-import { StaffVehicleUsageView } from './views/StaffVehicleUsageView';
-import { CommissionManagementView } from './views/CommissionManagementView';
-import { CommissionRatesView } from './views/CommissionRatesView';
-import { StockDashboardView } from './views/StockDashboardView';
-import { ProductsManagementView } from './views/ProductsManagementView';
-import { WarehouseManagementView } from './views/WarehouseManagementView';
-import { CustomerTiersManagementView } from './views/CustomerTiersManagementView';
-import { ProductTierPricingView } from './views/ProductTierPricingView';
-import { InventoryReceiptsView } from './views/InventoryReceiptsView';
-import { CreateOrderView } from './views/CreateOrderView';
-import { PendingOrdersView } from './views/PendingOrdersView';
-import { TrackOrdersView } from './views/TrackOrdersView';
-import { SalesTripsView } from './views/SalesTripsView';
-import { CleanupTestOrdersView } from './views/CleanupTestOrdersView';
+// Lazy load views เพื่อลด initial bundle และให้หน้าแรกโหลดเร็วขึ้น
+const DashboardView = lazy(() => import('./views/DashboardView').then(m => ({ default: m.DashboardView })));
+const ProfileView = lazy(() => import('./views/ProfileView').then(m => ({ default: m.ProfileView })));
+const RLSTestView = lazy(() => import('./views/RLSTestView').then(m => ({ default: m.RLSTestView })));
+const DatabaseExplorerView = lazy(() => import('./views/DatabaseExplorerView').then(m => ({ default: m.DatabaseExplorerView })));
+const VehiclesView = lazy(() => import('./views/VehiclesView').then(m => ({ default: m.VehiclesView })));
+const VehicleDetailView = lazy(() => import('./views/VehicleDetailView').then(m => ({ default: m.VehicleDetailView })));
+const VehicleFormView = lazy(() => import('./views/VehicleFormView').then(m => ({ default: m.VehicleFormView })));
+const TicketsView = lazy(() => import('./views/TicketsView').then(m => ({ default: m.TicketsView })));
+const TicketDetailView = lazy(() => import('./views/TicketDetailView').then(m => ({ default: m.TicketDetailView })));
+const TicketFormView = lazy(() => import('./views/TicketFormView').then(m => ({ default: m.TicketFormView })));
+const ApprovalBoardView = lazy(() => import('./views/ApprovalBoardView').then(m => ({ default: m.ApprovalBoardView })));
+const TripLogFormView = lazy(() => import('./views/TripLogFormView').then(m => ({ default: m.TripLogFormView })));
+const TripLogListView = lazy(() => import('./views/TripLogListView').then(m => ({ default: m.TripLogListView })));
+const FuelLogFormView = lazy(() => import('./views/FuelLogFormView').then(m => ({ default: m.FuelLogFormView })));
+const FuelLogListView = lazy(() => import('./views/FuelLogListView').then(m => ({ default: m.FuelLogListView })));
+const ReportsView = lazy(() => import('./views/ReportsView').then(m => ({ default: m.ReportsView })));
+const DailySummaryView = lazy(() => import('./views/DailySummaryView').then(m => ({ default: m.DailySummaryView })));
+const SettingsView = lazy(() => import('./views/SettingsView').then(m => ({ default: m.SettingsView })));
+const DeliveryTripListView = lazy(() => import('./views/DeliveryTripListView').then(m => ({ default: m.DeliveryTripListView })));
+const DeliveryTripFormView = lazy(() => import('./views/DeliveryTripFormView').then(m => ({ default: m.DeliveryTripFormView })));
+const DeliveryTripDetailView = lazy(() => import('./views/DeliveryTripDetailView').then(m => ({ default: m.DeliveryTripDetailView })));
+const TripMetricsView = lazy(() => import('./views/TripMetricsView').then(m => ({ default: m.TripMetricsView })));
+const StoreDeliveryDetailView = lazy(() => import('./views/StoreDeliveryDetailView').then(m => ({ default: m.StoreDeliveryDetailView })));
+const ServiceStaffManagementView = lazy(() => import('./views/ServiceStaffManagementView').then(m => ({ default: m.ServiceStaffManagementView })));
+const StaffVehicleUsageView = lazy(() => import('./views/StaffVehicleUsageView').then(m => ({ default: m.StaffVehicleUsageView })));
+const CommissionManagementView = lazy(() => import('./views/CommissionManagementView').then(m => ({ default: m.CommissionManagementView })));
+const CommissionRatesView = lazy(() => import('./views/CommissionRatesView').then(m => ({ default: m.CommissionRatesView })));
+const StockDashboardView = lazy(() => import('./views/StockDashboardView').then(m => ({ default: m.StockDashboardView })));
+const ProductsManagementView = lazy(() => import('./views/ProductsManagementView').then(m => ({ default: m.ProductsManagementView })));
+const WarehouseManagementView = lazy(() => import('./views/WarehouseManagementView').then(m => ({ default: m.WarehouseManagementView })));
+const CustomerTiersManagementView = lazy(() => import('./views/CustomerTiersManagementView').then(m => ({ default: m.CustomerTiersManagementView })));
+const ProductTierPricingView = lazy(() => import('./views/ProductTierPricingView').then(m => ({ default: m.ProductTierPricingView })));
+const InventoryReceiptsView = lazy(() => import('./views/InventoryReceiptsView').then(m => ({ default: m.InventoryReceiptsView })));
+const CreateOrderView = lazy(() => import('./views/CreateOrderView').then(m => ({ default: m.CreateOrderView })));
+const CustomerManagementView = lazy(() => import('./views/CustomerManagementView').then(m => ({ default: m.CustomerManagementView })));
+const PendingOrdersView = lazy(() => import('./views/PendingOrdersView').then(m => ({ default: m.PendingOrdersView })));
+const TrackOrdersView = lazy(() => import('./views/TrackOrdersView').then(m => ({ default: m.TrackOrdersView })));
+const SalesTripsView = lazy(() => import('./views/SalesTripsView').then(m => ({ default: m.SalesTripsView })));
+const CleanupTestOrdersView = lazy(() => import('./views/CleanupTestOrdersView').then(m => ({ default: m.CleanupTestOrdersView })));
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { useAuth, usePendingTickets } from './hooks';
 import { usePendingBillingTrips } from './hooks/usePendingBillingTrips';
@@ -305,14 +308,18 @@ const AppContent = () => {
 
     const rect = e.currentTarget.getBoundingClientRect();
     const viewportHeight = window.innerHeight;
-    // Estimate flyout height (menu + padding). Keep conservative to reduce upward shift.
-    const flyoutEstimatedHeight = 320;
-    // Start aligned to trigger top
+    // ประเมินความสูงของเมนูฝ่ายขายให้เผื่อเคสที่มีหลายเมนู (เช่น เพิ่ม "จัดการลูกค้า")
+    // แล้วบังคับไม่ให้เกินขอบล่างของหน้าจอ เพื่อให้เมนูล่างสุดยังมองเห็นได้
+    const estimatedHeight = 380; // สูงกว่าเดิมเล็กน้อยเผื่อหลายเมนู
+    const margin = 12;
+
+    // เริ่มจากยึด top ตามปุ่มเมนูใน sidebar
     let top = rect.top;
-    // If it would overflow bottom, shift up just enough
-    const overflow = top + flyoutEstimatedHeight - (viewportHeight - 12);
-    if (overflow > 0) {
-      top = Math.max(12, top - overflow);
+
+    // ถ้าเมนูจะล้นด้านล่าง ให้ขยับขึ้น แต่ไม่ให้ล้นด้านบน
+    const maxTop = viewportHeight - estimatedHeight - margin;
+    if (top > maxTop) {
+      top = Math.max(margin, maxTop);
     }
 
     setOrdersFlyoutPosition({
@@ -550,7 +557,7 @@ const AppContent = () => {
       }
     };
   }, []);
-  const [deliveryTripView, setDeliveryTripView] = useState<'list' | 'form' | 'detail'>('list');
+  const [deliveryTripView, setDeliveryTripView] = useState<'list' | 'form' | 'detail' | 'metrics'>('list');
   const [selectedDeliveryTripId, setSelectedDeliveryTripId] = useState<string | null>(null);
   const [deliveryTripReturnContext, setDeliveryTripReturnContext] = useState<
     'delivery-list' | 'triplogs' | 'daily-summary' | 'vehicles'
@@ -598,6 +605,7 @@ const AppContent = () => {
         'products',
         'product-pricing',
         'customer-tiers',
+        'customers',
         'profile',
         'settings'
       ];
@@ -737,16 +745,16 @@ const AppContent = () => {
     }
   }, []);
 
-  // Prefetch common data on mount for faster navigation
+  // Prefetch แบบกระจายเวลา เพื่อไม่ให้โหลดทุกอย่างพร้อมกัน (ลดหน่วงและกินสเปค)
   useEffect(() => {
-    // Prefetch dashboard and vehicles immediately (most common pages)
-    prefetchService.prefetchDashboard();
-    prefetchService.prefetchVehicles();
-
-    // Prefetch tickets after a short delay (less critical)
-    setTimeout(() => {
-      prefetchService.prefetchTicketsWithRelations();
-    }, 500);
+    const t1 = setTimeout(() => prefetchService.prefetchDashboard(), 300);
+    const t2 = setTimeout(() => prefetchService.prefetchVehicles(), 800);
+    const t3 = setTimeout(() => prefetchService.prefetchTicketsWithRelations(), 1500);
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+      clearTimeout(t3);
+    };
   }, []);
 
   // Save navigation state to localStorage whenever it changes
@@ -823,6 +831,7 @@ const AppContent = () => {
                     activeTab === 'products' ||
                     activeTab === 'product-pricing' ||
                     activeTab === 'customer-tiers' ||
+                    activeTab === 'customers' ||
                     activeTab === 'cleanup-test-orders'
                   }
                   onClick={() => {
@@ -858,6 +867,16 @@ const AppContent = () => {
                         active={activeTab === 'create-order'}
                         onClick={() => {
                           setActiveTab('create-order');
+                          setIsOrdersHovered(false);
+                        }}
+                        isCollapsed={false}
+                        isFlyout={true}
+                      />
+                      <SubSidebarItem
+                        label="จัดการลูกค้า"
+                        active={activeTab === 'customers'}
+                        onClick={() => {
+                          setActiveTab('customers');
                           setIsOrdersHovered(false);
                         }}
                         isCollapsed={false}
@@ -1589,7 +1608,6 @@ const AppContent = () => {
                     }
                     // Default fallback
                     return 'ผู้ใช้';
-                    return 'ผู้ใช้';
                   })()}
                   {/* Debug Role */}
                   <span className="block text-[10px] text-slate-300 opacity-50">
@@ -1607,8 +1625,13 @@ const AppContent = () => {
           </div>
         </header>
 
-        {/* View Content */}
+        {/* View Content - Lazy loaded views ใช้ Suspense เพื่อไม่ block หน้าแรก */}
         <div className="p-6">
+          <Suspense fallback={
+            <div className="flex items-center justify-center min-h-[320px] text-slate-500 dark:text-slate-400">
+              <span>กำลังโหลด...</span>
+            </div>
+          }>
           {activeTab === 'dashboard' ? (
             <DashboardView
               onNavigateToVehicle={(vehicleId) => {
@@ -2037,6 +2060,15 @@ const AppContent = () => {
             <SettingsView />
           ) : activeTab === 'delivery-trips' ? (
             (() => {
+              if (deliveryTripView === 'metrics' && selectedDeliveryTripId) {
+                return (
+                  <TripMetricsView
+                    tripId={selectedDeliveryTripId}
+                    onSaved={() => setDeliveryTripView('detail')}
+                    onBack={() => setDeliveryTripView('detail')}
+                  />
+                );
+              }
               if (deliveryTripView === 'detail' && selectedDeliveryTripId) {
                 return (
                   <DeliveryTripDetailView
@@ -2045,6 +2077,7 @@ const AppContent = () => {
                       setSelectedDeliveryTripId(tripId);
                       setDeliveryTripView('form');
                     }}
+                    onRecordMetrics={() => setDeliveryTripView('metrics')}
                     onBack={() => {
                       // กลับไปหน้าที่เข้ามาล่าสุด
                       if (deliveryTripReturnContext === 'triplogs') {
@@ -2131,6 +2164,8 @@ const AppContent = () => {
             <CustomerTiersManagementView />
           ) : activeTab === 'product-pricing' ? (
             <ProductTierPricingView />
+          ) : activeTab === 'customers' ? (
+            <CustomerManagementView />
           ) : activeTab === 'create-order' ? (
             <CreateOrderView />
           ) : activeTab === 'track-orders' ? (
@@ -2150,6 +2185,7 @@ const AppContent = () => {
               <p>โมดูล {activeTab} กำลังอยู่ระหว่างการพัฒนา</p>
             </div>
           )}
+          </Suspense>
         </div>
 
       </main>

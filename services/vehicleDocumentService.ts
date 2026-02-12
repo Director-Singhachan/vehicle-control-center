@@ -70,8 +70,8 @@ export const vehicleDocumentService = {
             .from('vehicle_tax_records')
             .select('*')
             .eq('document_id', doc.id)
-            .single();
-          details.tax_record = taxData || null;
+            .limit(1);
+          details.tax_record = taxData?.[0] ?? null;
         }
 
         if (doc.document_type === 'insurance') {
@@ -79,8 +79,8 @@ export const vehicleDocumentService = {
             .from('vehicle_insurance_records')
             .select('*')
             .eq('document_id', doc.id)
-            .single();
-          details.insurance_record = insuranceData || null;
+            .limit(1);
+          details.insurance_record = insuranceData?.[0] ?? null;
         }
 
         return details;
@@ -117,8 +117,8 @@ export const vehicleDocumentService = {
             .from('vehicle_tax_records')
             .select('*')
             .eq('document_id', doc.id)
-            .single();
-          details.tax_record = taxData || null;
+            .limit(1);
+          details.tax_record = taxData?.[0] ?? null;
         }
 
         if (doc.document_type === 'insurance') {
@@ -126,8 +126,8 @@ export const vehicleDocumentService = {
             .from('vehicle_insurance_records')
             .select('*')
             .eq('document_id', doc.id)
-            .single();
-          details.insurance_record = insuranceData || null;
+            .limit(1);
+          details.insurance_record = insuranceData?.[0] ?? null;
         }
 
         return details;
@@ -157,8 +157,8 @@ export const vehicleDocumentService = {
         .from('vehicle_tax_records')
         .select('*')
         .eq('document_id', data.id)
-        .single();
-      details.tax_record = taxData || null;
+        .limit(1);
+      details.tax_record = taxData?.[0] ?? null;
     }
 
     if (data.document_type === 'insurance') {
@@ -166,8 +166,8 @@ export const vehicleDocumentService = {
         .from('vehicle_insurance_records')
         .select('*')
         .eq('document_id', data.id)
-        .single();
-      details.insurance_record = insuranceData || null;
+        .limit(1);
+      details.insurance_record = insuranceData?.[0] ?? null;
     }
 
     return details;
@@ -299,8 +299,8 @@ export const vehicleDocumentService = {
         .from('vehicle_tax_records')
         .select('*')
         .eq('document_id', data.id)
-        .single();
-      details.tax_record = taxData || null;
+        .limit(1);
+      details.tax_record = taxData?.[0] ?? null;
     }
 
     if (data.document_type === 'insurance') {
@@ -308,8 +308,8 @@ export const vehicleDocumentService = {
         .from('vehicle_insurance_records')
         .select('*')
         .eq('document_id', data.id)
-        .single();
-      details.insurance_record = insuranceData || null;
+        .limit(1);
+      details.insurance_record = insuranceData?.[0] ?? null;
     }
 
     return details;
@@ -446,8 +446,8 @@ export const vehicleDocumentService = {
             .from('vehicle_tax_records')
             .select('*')
             .eq('document_id', doc.id)
-            .single();
-          details.tax_record = taxData || null;
+            .limit(1);
+          details.tax_record = taxData?.[0] ?? null;
         }
 
         if (doc.document_type === 'insurance') {
@@ -455,8 +455,8 @@ export const vehicleDocumentService = {
             .from('vehicle_insurance_records')
             .select('*')
             .eq('document_id', doc.id)
-            .single();
-          details.insurance_record = insuranceData || null;
+            .limit(1);
+          details.insurance_record = insuranceData?.[0] ?? null;
         }
 
         return details;

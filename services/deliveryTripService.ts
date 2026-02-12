@@ -89,6 +89,7 @@ export interface DeliveryTripItemChangeWithDetails extends DeliveryTripItemChang
 export interface CreateDeliveryTripData {
   vehicle_id: string;
   driver_id?: string;
+  driver_staff_id?: string; // Service staff ID for driver (crew/commission system)
   helpers?: string[]; // Array of service_staff IDs
   planned_date: string; // ISO date string
   odometer_start?: number;
@@ -103,6 +104,7 @@ export interface CreateDeliveryTripData {
       quantity: number;
       notes?: string;
       is_bonus?: boolean;
+      selected_pallet_config_id?: string; // Phase 0: User-selected pallet config
     }>;
   }>;
 }
@@ -110,6 +112,7 @@ export interface CreateDeliveryTripData {
 export interface UpdateDeliveryTripData {
   vehicle_id?: string;
   driver_id?: string;
+  driver_staff_id?: string; // Service staff ID for driver (crew/commission system)
   planned_date?: string;
   odometer_start?: number;
   odometer_end?: number;
@@ -124,6 +127,7 @@ export interface UpdateDeliveryTripData {
       quantity: number;
       notes?: string;
       is_bonus?: boolean;
+      selected_pallet_config_id?: string; // Phase 0: User-selected pallet config
     }>;
   }>;
   helpers?: string[]; // Array of service_staff IDs to add as helpers
@@ -161,6 +165,7 @@ export const deliveryTripService = {
     planned_date_to?: string;
     has_item_changes?: boolean;
     search?: string; // Search term for trip_number, notes
+    branch?: string; // Filter by branch: 'HQ' (สำนักงานใหญ่), 'SD' (สอยดาว), or 'ALL' (default shows all)
     page?: number;
     pageSize?: number;
     lite?: boolean;
@@ -216,6 +221,11 @@ export const deliveryTripService = {
         query = query.or(
           `trip_number.ilike.${searchPattern},notes.ilike.${searchPattern}`
         );
+      }
+
+      // Filter by branch
+      if (filters?.branch && filters.branch !== 'ALL') {
+        query = query.eq('branch', filters.branch);
       }
 
       // Apply pagination AFTER all filters
@@ -315,13 +325,13 @@ export const deliveryTripService = {
         // ts.delivery_trip_store_id is an alias for ts.id (from the select statement)
         return ts.id || (ts as any).delivery_trip_store_id;
       }).filter(Boolean) as string[];
-      
+
       if (tripStoreIds.length > 0) {
         const { data: tripItems, error: itemsError } = await supabase
           .from('delivery_trip_items')
           .select('id, delivery_trip_store_id, product_id, quantity, notes, is_bonus')
           .in('delivery_trip_store_id', tripStoreIds);
-        
+
         if (itemsError) {
           console.error('[deliveryTripService] Error fetching trip items:', itemsError, {
             tripStoreIds,
@@ -355,12 +365,12 @@ export const deliveryTripService = {
       }
     }
 
-    // In FULL mode only, fetch crews for trips
+    // Fetch crews for trips (lite mode: basic info for status display, full mode: complete details)
     let tripCrewsMap = new Map<string, DeliveryTripCrewWithDetails[]>();
-    if (!lite && tripIds.length > 0) {
+    if (tripIds.length > 0) {
       const { data: tripCrews } = await supabase
         .from('delivery_trip_crews')
-        .select('*')
+        .select(lite ? 'id, delivery_trip_id, staff_id, role, status' : '*')
         .in('delivery_trip_id', tripIds)
         .eq('status', 'active')
         .order('created_at', { ascending: true });
@@ -624,20 +634,44 @@ export const deliveryTripService = {
 
     // 1.5 Ensure driver is also present in delivery_trip_crews as role = 'driver'
     try {
-      if (trip.driver_id) {
-        // Check if there is already an active driver crew for this trip (in case user added manually)
-        const { data: existingDriverCrews } = await supabase
-          .from('delivery_trip_crews')
-          .select('id')
-          .eq('delivery_trip_id', trip.id)
-          .eq('role', 'driver')
-          .eq('status', 'active')
-          .limit(1);
+      // Check if there is already an active driver crew for this trip (in case user added manually)
+      const { data: existingDriverCrews } = await supabase
+        .from('delivery_trip_crews')
+        .select('id')
+        .eq('delivery_trip_id', trip.id)
+        .eq('role', 'driver')
+        .eq('status', 'active')
+        .limit(1);
 
-        const hasDriverCrew = (existingDriverCrews || []).length > 0;
+      const hasDriverCrew = (existingDriverCrews || []).length > 0;
 
-        if (!hasDriverCrew) {
-          // Find matching service_staff by driver profile name
+      if (!hasDriverCrew) {
+        // Priority 1: Use explicit driver_staff_id if provided (from crew assignment UI)
+        if (data.driver_staff_id) {
+          const now = new Date().toISOString();
+          const { error: insertDriverCrewError } = await supabase
+            .from('delivery_trip_crews')
+            .insert({
+              delivery_trip_id: trip.id,
+              staff_id: data.driver_staff_id,
+              role: 'driver',
+              status: 'active',
+              start_at: now,
+              created_by: user.id,
+              updated_by: user.id,
+            });
+
+          if (insertDriverCrewError) {
+            console.error('[deliveryTripService] Error creating driver crew from driver_staff_id:', insertDriverCrewError);
+          } else {
+            console.log('[deliveryTripService] Created driver crew from explicit driver_staff_id:', {
+              trip_id: trip.id,
+              staff_id: data.driver_staff_id,
+            });
+          }
+        }
+        // Priority 2: Fallback to name-matching from profiles (legacy behavior)
+        else if (trip.driver_id) {
           const { data: driverProfile } = await supabase
             .from('profiles')
             .select('id, full_name')
@@ -647,21 +681,19 @@ export const deliveryTripService = {
           if (driverProfile?.full_name) {
             const driverName = driverProfile.full_name.trim();
 
-            // Try exact match first
             let { data: staffMatches, error: staffError } = await supabase
               .from('service_staff')
               .select('id, name, status')
               .eq('name', driverName)
               .limit(5);
 
-            // If no exact match, try case-insensitive match
             if (!staffError && (!staffMatches || staffMatches.length === 0)) {
               const { data: caseInsensitiveMatches, error: caseError } = await supabase
                 .from('service_staff')
                 .select('id, name, status')
                 .ilike('name', driverName)
                 .limit(5);
-              
+
               if (!caseError && caseInsensitiveMatches && caseInsensitiveMatches.length > 0) {
                 staffMatches = caseInsensitiveMatches;
               }
@@ -670,14 +702,9 @@ export const deliveryTripService = {
             if (staffError) {
               console.error('[deliveryTripService] Error matching driver to service_staff:', staffError);
             } else if (staffMatches && staffMatches.length > 0) {
-              // Prefer active staff, fall back to first match
-              const staff =
-                staffMatches.find(s => s.status === 'active') ||
-                staffMatches[0];
-
+              const staff = staffMatches.find(s => s.status === 'active') || staffMatches[0];
               if (staff) {
                 const now = new Date().toISOString();
-
                 const { error: insertDriverCrewError } = await supabase
                   .from('delivery_trip_crews')
                   .insert({
@@ -691,25 +718,9 @@ export const deliveryTripService = {
                   });
 
                 if (insertDriverCrewError) {
-                  console.error('[deliveryTripService] Error creating driver crew from trip driver_id:', insertDriverCrewError);
-                } else {
-                  console.log('[deliveryTripService] Synced driver to delivery_trip_crews as driver role:', {
-                    trip_id: trip.id,
-                    driver_profile_id: trip.driver_id,
-                    staff_id: staff.id,
-                    staff_name: staff.name,
-                  });
+                  console.error('[deliveryTripService] Error creating driver crew from name match:', insertDriverCrewError);
                 }
               }
-            } else {
-              // Only log as debug, not warning - this is expected if driver is not in service_staff table
-              // Many drivers may not be in service_staff if they're not part of the commission system
-              console.debug('[deliveryTripService] Driver not found in service_staff table (this is normal if driver is not part of commission system):', {
-                trip_id: trip.id,
-                driver_profile_id: trip.driver_id,
-                driver_name: driverName,
-                note: 'Driver can still be assigned manually via crew management if needed',
-              });
             }
           }
         }
@@ -767,7 +778,7 @@ export const deliveryTripService = {
         });
         // Use existing store instead of creating new one
         const tripStore = existingStore;
-        
+
         // Still create items for this store
         if (storeData.items && storeData.items.length > 0) {
           const itemsData = storeData.items.map(item => ({
@@ -777,6 +788,7 @@ export const deliveryTripService = {
             quantity: item.quantity,
             notes: item.notes,
             is_bonus: item.is_bonus || false,
+            selected_pallet_config_id: item.selected_pallet_config_id || null,
           }));
 
           const { error: itemsError } = await supabase
@@ -820,6 +832,7 @@ export const deliveryTripService = {
           quantity: item.quantity,
           notes: item.notes,
           is_bonus: item.is_bonus || false,
+          selected_pallet_config_id: item.selected_pallet_config_id || null,
         }));
 
         const { error: itemsError } = await supabase
@@ -1029,6 +1042,66 @@ export const deliveryTripService = {
       }
     }
 
+    // Handle driver_staff_id update if provided
+    if (data.driver_staff_id) {
+      try {
+        // Check current driver crew
+        const { data: existingDriverCrews } = await supabase
+          .from('delivery_trip_crews')
+          .select('id, staff_id')
+          .eq('delivery_trip_id', id)
+          .eq('role', 'driver')
+          .eq('status', 'active')
+          .limit(1);
+
+        const currentDriverCrew = existingDriverCrews?.[0];
+
+        if (currentDriverCrew && currentDriverCrew.staff_id !== data.driver_staff_id) {
+          // Swap driver: mark old as replaced, add new
+          const now = new Date().toISOString();
+          await supabase
+            .from('delivery_trip_crews')
+            .update({
+              status: 'replaced',
+              end_at: now,
+              replaced_by_staff_id: data.driver_staff_id,
+              reason_for_change: editReason || 'เปลี่ยนคนขับจากหน้าแก้ไขทริป',
+              updated_by: user.id,
+            })
+            .eq('id', currentDriverCrew.id);
+
+          await supabase
+            .from('delivery_trip_crews')
+            .insert({
+              delivery_trip_id: id,
+              staff_id: data.driver_staff_id,
+              role: 'driver',
+              status: 'active',
+              start_at: now,
+              created_by: user.id,
+              updated_by: user.id,
+            });
+        } else if (!currentDriverCrew) {
+          // No driver crew yet, add new one
+          await supabase
+            .from('delivery_trip_crews')
+            .insert({
+              delivery_trip_id: id,
+              staff_id: data.driver_staff_id,
+              role: 'driver',
+              status: 'active',
+              start_at: new Date().toISOString(),
+              created_by: user.id,
+              updated_by: user.id,
+            });
+        }
+        // If same driver, do nothing
+      } catch (driverCrewError) {
+        console.error('[deliveryTripService] Error updating driver crew:', driverCrewError);
+        // Don't throw - allow trip update to continue
+      }
+    }
+
     // If stores are provided, update them with audit logging
     if (stores) {
       // 1) Load existing stores & items to compare
@@ -1046,7 +1119,7 @@ export const deliveryTripService = {
 
       const { data: existingItems, error: existingItemsError } = existingStoreIds.length > 0 ? await supabase
         .from('delivery_trip_items')
-        .select('id, delivery_trip_store_id, product_id, quantity, notes, is_bonus')
+        .select('id, delivery_trip_store_id, product_id, quantity, notes, is_bonus, selected_pallet_config_id')
         .in('delivery_trip_store_id', existingStoreIds) : { data: [] as any[], error: null };
 
       if (existingItemsError) {
@@ -1088,7 +1161,7 @@ export const deliveryTripService = {
             delivery_trip_store_id,
             delivery_trip_item_id,
             product_id,
-            change_type: action,
+            action: action, // Use 'action' column name to match database schema
             old_quantity,
             new_quantity,
             reason: changeReason || null,
@@ -1102,11 +1175,38 @@ export const deliveryTripService = {
       };
 
       // 3) Delete stores (and their items) that are no longer present
-      const storeIdsToRemove = (existingStores || [])
-        .filter(s => !newStoresByStoreId.has(s.store_id))
-        .map(s => s.id);
+      const storesToRemove = (existingStores || []).filter(s => !newStoresByStoreId.has(s.store_id));
+      const storeIdsToRemove = storesToRemove.map(s => s.id);
+      const storeIdsToUnassign = storesToRemove.map((s: any) => s.store_id);
 
       if (storeIdsToRemove.length > 0) {
+        // ยกเลิกการผูกทริปและล้างรหัสออเดอร์สำหรับออเดอร์ของร้านที่ถูกลบออกจากทริป
+        if (storeIdsToUnassign.length > 0) {
+          const { data: ordersToReset } = await supabase
+            .from('orders')
+            .select('id')
+            .eq('delivery_trip_id', id)
+            .in('store_id', storeIdsToUnassign);
+
+          if (ordersToReset && ordersToReset.length > 0) {
+            const orderIdsToReset = ordersToReset.map(o => o.id);
+            const { error: resetOrdersError } = await supabase
+              .from('orders')
+              .update({
+                delivery_trip_id: null,
+                order_number: null,
+                status: 'confirmed',
+                updated_by: user.id,
+              })
+              .in('id', orderIdsToReset);
+
+            if (resetOrdersError) {
+              console.error('[deliveryTripService] Error resetting orders for removed stores:', resetOrdersError);
+              throw resetOrdersError;
+            }
+          }
+        }
+
         // Load items for these stores to log removals
         const { data: removedStoreItems } = await supabase
           .from('delivery_trip_items')
@@ -1185,6 +1285,7 @@ export const deliveryTripService = {
           quantity: number;
           notes?: string | null;
           is_bonus: boolean;
+          selected_pallet_config_id?: string | null;
         };
 
         const existingItemsForStore: TripItemRow[] = existingStore
@@ -1251,6 +1352,7 @@ export const deliveryTripService = {
                 quantity: item.quantity,
                 notes: item.notes,
                 is_bonus: item.is_bonus || false,
+                selected_pallet_config_id: item.selected_pallet_config_id || null,
               })
               .select();
 
@@ -1274,7 +1376,10 @@ export const deliveryTripService = {
             const oldQty = Number(existingItem.quantity);
             const newQty = Number(item.quantity);
 
-            const needsUpdate = oldQty !== newQty || (item.notes !== undefined);
+            const needsUpdate = oldQty !== newQty || 
+              (item.notes !== undefined) ||
+              (item.selected_pallet_config_id !== undefined && 
+               item.selected_pallet_config_id !== (existingItem as any).selected_pallet_config_id);
 
             if (needsUpdate) {
               const { error: updateItemError } = await supabase
@@ -1282,6 +1387,7 @@ export const deliveryTripService = {
                 .update({
                   quantity: item.quantity,
                   notes: item.notes,
+                  selected_pallet_config_id: item.selected_pallet_config_id || null,
                 })
                 .eq('id', existingItem.id);
 
@@ -1378,13 +1484,15 @@ export const deliveryTripService = {
       throw ordersError;
     }
 
-    // 2. อัพเดทออเดอร์ทั้งหมดกลับเป็น 'confirmed' และตั้ง delivery_trip_id เป็น null
+    // 2. อัพเดทออเดอร์ทั้งหมดกลับเป็น 'confirmed' และตั้ง delivery_trip_id และ order_number เป็น null
+    //    เพื่อให้สามารถสร้างทริปใหม่และสร้าง order_number ใหม่ได้
     if (orders && orders.length > 0) {
       const orderIds = orders.map(o => o.id);
       const { error: updateOrdersError } = await supabase
         .from('orders')
         .update({
           delivery_trip_id: null,
+          order_number: null, // Clear order_number so it can be regenerated for new trip
           status: 'confirmed',
           updated_by: user.id,
         })
@@ -1395,7 +1503,7 @@ export const deliveryTripService = {
         throw updateOrdersError;
       }
 
-      console.log(`[deliveryTripService] Updated ${orderIds.length} orders back to 'confirmed' status`);
+      console.log(`[deliveryTripService] Reset ${orderIds.length} orders (cleared delivery_trip_id and order_number)`);
     }
 
     // 3. ลบทริป (CASCADE จะลบข้อมูลที่เกี่ยวข้องอัตโนมัติ)
@@ -1498,6 +1606,35 @@ export const deliveryTripService = {
     }
 
     console.log('[deliveryTripService] Trip updated successfully:', updatedData?.[0]?.id);
+
+    // Reset orders: clear delivery_trip_id and order_number so they can be reassigned to a new trip
+    const { data: orders, error: ordersError } = await supabase
+      .from('orders')
+      .select('id')
+      .eq('delivery_trip_id', id);
+
+    if (ordersError) {
+      console.error('[deliveryTripService] Error fetching orders:', ordersError);
+      // Don't throw - trip is already cancelled, just log the error
+    } else if (orders && orders.length > 0) {
+      const orderIds = orders.map(o => o.id);
+      const { error: updateOrdersError } = await supabase
+        .from('orders')
+        .update({
+          delivery_trip_id: null,
+          order_number: null, // Clear order_number so it can be regenerated for new trip
+          status: 'confirmed',
+          updated_by: user.id,
+        })
+        .in('id', orderIds);
+
+      if (updateOrdersError) {
+        console.error('[deliveryTripService] Error resetting orders:', updateOrdersError);
+        // Don't throw - trip is already cancelled, just log the error
+      } else {
+        console.log(`[deliveryTripService] Reset ${orderIds.length} orders (cleared delivery_trip_id and order_number)`);
+      }
+    }
 
     // Return updated trip
     const updatedTrip = await deliveryTripService.getById(id);
@@ -1784,6 +1921,9 @@ export const deliveryTripService = {
 
   // Sync delivery trips status with completed trip_logs
   // This fixes delivery trips that should be 'completed' but are still 'planned' or 'in_progress'
+  // WARNING: This function links trip_logs to delivery_trips by matching vehicle+date.
+  // It will NOT overwrite existing links (trip_logs already linked to other delivery_trips).
+  // Use carefully as it may link unrelated usage (เคสนอกทริป) to delivery trips.
   syncStatusWithTripLogs: async (): Promise<{
     updated: number;
     details: Array<{
@@ -1883,8 +2023,9 @@ export const deliveryTripService = {
           continue;
         }
 
-        // Link trip_log to delivery_trip if not already linked
-        if (!tripLog.delivery_trip_id || tripLog.delivery_trip_id !== trip.id) {
+        // Link trip_log to delivery_trip ONLY if not already linked to avoid overwriting correct links
+        // If trip_log already has a different delivery_trip_id, skip linking to prevent conflicts
+        if (!tripLog.delivery_trip_id) {
           const { error: linkError } = await supabase
             .from('trip_logs')
             .update({ delivery_trip_id: trip.id })
@@ -1892,7 +2033,11 @@ export const deliveryTripService = {
 
           if (linkError) {
             console.error(`[deliveryTripService] Error linking trip_log to delivery_trip:`, linkError);
+          } else {
+            console.log(`[deliveryTripService] Linked trip_log ${tripLog.id} to delivery_trip ${trip.trip_number}`);
           }
+        } else if (tripLog.delivery_trip_id !== trip.id) {
+          console.warn(`[deliveryTripService] Trip log ${tripLog.id} already linked to different delivery_trip ${tripLog.delivery_trip_id}. Skipping link to avoid conflict.`);
         }
 
         // Update all stores' delivery_status to 'delivered'

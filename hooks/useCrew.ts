@@ -1,6 +1,6 @@
 // Custom hooks for crew management
-import { useState, useEffect } from 'react';
-import { crewService, type CrewMemberWithDetails, type CommissionCalculationResult } from '../services/crewService';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { crewService, type CrewMemberWithDetails, type CommissionCalculationResult, type StaffCommissionDetail, type TripCommissionStatus } from '../services/crewService';
 import type { Database } from '../types/database';
 
 type ServiceStaff = Database['public']['Tables']['service_staff']['Row'];
@@ -347,4 +347,121 @@ export function usePendingCommissionTrips() {
     }, []);
 
     return { trips, loading, error, refresh: fetchTrips };
+}
+
+/**
+ * Hook to fetch detailed commission data grouped by staff with trip-level breakdown.
+ * Used for the commission dashboard staff summary tab.
+ */
+export function useDetailedCommissionByStaff(startDate: Date, endDate: Date) {
+    const [data, setData] = useState<StaffCommissionDetail[]>([]);
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState<Error | null>(null);
+
+    const depKey = useMemo(
+        () => `${startDate.getTime()}-${endDate.getTime()}`,
+        [startDate.getTime(), endDate.getTime()]
+    );
+
+    const fetchData = useCallback(async () => {
+        setLoading(true);
+        setError(null);
+        try {
+            const result = await crewService.getDetailedCommissionByStaff(startDate, endDate);
+            setData(result);
+        } catch (err) {
+            setError(err instanceof Error ? err : new Error('Failed to fetch detailed commission data'));
+            console.error('[useDetailedCommissionByStaff] Error:', err);
+        } finally {
+            setLoading(false);
+        }
+    }, [depKey]);
+
+    useEffect(() => {
+        fetchData();
+    }, [fetchData]);
+
+    return { data, loading, error, refresh: fetchData };
+}
+
+/**
+ * Hook to fetch all trips with their commission calculation status.
+ * Used for the trip verification tab.
+ */
+export function useTripsWithCommissionStatus(startDate: Date, endDate: Date) {
+    const [trips, setTrips] = useState<TripCommissionStatus[]>([]);
+    const [stats, setStats] = useState({ total: 0, calculated: 0, pending: 0, totalCommission: 0 });
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState<Error | null>(null);
+
+    const depKey = useMemo(
+        () => `${startDate.getTime()}-${endDate.getTime()}`,
+        [startDate.getTime(), endDate.getTime()]
+    );
+
+    const fetchData = useCallback(async () => {
+        setLoading(true);
+        setError(null);
+        try {
+            const result = await crewService.getTripsWithCommissionStatus(startDate, endDate);
+            setTrips(result.trips);
+            setStats(result.stats);
+        } catch (err) {
+            setError(err instanceof Error ? err : new Error('Failed to fetch trip commission status'));
+            console.error('[useTripsWithCommissionStatus] Error:', err);
+        } finally {
+            setLoading(false);
+        }
+    }, [depKey]);
+
+    useEffect(() => {
+        fetchData();
+    }, [fetchData]);
+
+    return { trips, stats, loading, error, refresh: fetchData };
+}
+
+/**
+ * Hook for batch commission calculation with progress tracking.
+ */
+export function useBatchCommission() {
+    const [loading, setLoading] = useState(false);
+    const [progress, setProgress] = useState({ current: 0, total: 0 });
+    const [result, setResult] = useState<{ success: number; failed: number; errors: string[] } | null>(null);
+    const [error, setError] = useState<Error | null>(null);
+
+    const batchCalculate = useCallback(async (tripIds: string[]) => {
+        if (tripIds.length === 0) return null;
+
+        setLoading(true);
+        setError(null);
+        setResult(null);
+        setProgress({ current: 0, total: tripIds.length });
+
+        try {
+            const res = await crewService.batchCalculatePending(
+                tripIds,
+                (current, total) => {
+                    setProgress({ current, total });
+                }
+            );
+            setResult(res);
+            return res;
+        } catch (err) {
+            const e = err instanceof Error ? err : new Error('Batch calculation failed');
+            setError(e);
+            console.error('[useBatchCommission] Error:', err);
+            return null;
+        } finally {
+            setLoading(false);
+        }
+    }, []);
+
+    const reset = useCallback(() => {
+        setProgress({ current: 0, total: 0 });
+        setResult(null);
+        setError(null);
+    }, []);
+
+    return { batchCalculate, loading, progress, result, error, reset };
 }

@@ -41,6 +41,12 @@ export const VehicleFormView: React.FC<VehicleFormViewProps> = ({
     lat: '',
     lng: '',
     image_url: '',
+    // Capacity fields (optional)
+    cargo_length_cm: '',
+    cargo_width_cm: '',
+    cargo_height_cm: '',
+    max_weight_kg: '',
+    max_pallets: '',
   });
 
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
@@ -63,6 +69,18 @@ export const VehicleFormView: React.FC<VehicleFormViewProps> = ({
         lat: vehicle.lat?.toString() || '',
         lng: vehicle.lng?.toString() || '',
         image_url: vehicle.image_url || '',
+        cargo_length_cm: (vehicle as any).cargo_length_cm?.toString() || '',
+        cargo_width_cm: (vehicle as any).cargo_width_cm?.toString() || '',
+        cargo_height_cm: (vehicle as any).cargo_height_cm?.toString() || '',
+        max_weight_kg: (vehicle as any).max_weight_kg?.toString() || '',
+        // max_pallets เก็บไว้ใน loading_constraints.max_pallets (JSON)
+        max_pallets: (() => {
+          const constraints = (vehicle as any).loading_constraints as any;
+          if (constraints && typeof constraints === 'object' && constraints.max_pallets != null) {
+            return String(constraints.max_pallets);
+          }
+          return '';
+        })(),
       });
       if (vehicle.image_url) {
         setImagePreview(vehicle.image_url);
@@ -148,7 +166,13 @@ export const VehicleFormView: React.FC<VehicleFormViewProps> = ({
         }
       }
 
-      const data = {
+      const toNumberOrNull = (value: string) => {
+        if (!value) return null;
+        const num = Number(value);
+        return isNaN(num) ? null : num;
+      };
+
+      const data: any = {
         plate: formData.plate.trim(),
         make: formData.make.trim() || null,
         model: formData.model.trim() || null,
@@ -160,10 +184,34 @@ export const VehicleFormView: React.FC<VehicleFormViewProps> = ({
         image_url: imageUrl,
       };
 
+      // Optional: capacity fields
+      const cargo_length_cm = toNumberOrNull(formData.cargo_length_cm);
+      const cargo_width_cm = toNumberOrNull(formData.cargo_width_cm);
+      const cargo_height_cm = toNumberOrNull(formData.cargo_height_cm);
+      const max_weight_kg = toNumberOrNull(formData.max_weight_kg);
+
+      if (cargo_length_cm != null) data.cargo_length_cm = cargo_length_cm;
+      if (cargo_width_cm != null) data.cargo_width_cm = cargo_width_cm;
+      if (cargo_height_cm != null) data.cargo_height_cm = cargo_height_cm;
+      if (max_weight_kg != null) data.max_weight_kg = max_weight_kg;
+
+      // max_pallets จะถูกเก็บใน loading_constraints JSON
+      const max_pallets = toNumberOrNull(formData.max_pallets);
+      if (max_pallets != null) {
+        const existingConstraints =
+          (vehicle as any)?.loading_constraints && typeof (vehicle as any).loading_constraints === 'object'
+            ? (vehicle as any).loading_constraints
+            : {};
+        data.loading_constraints = {
+          ...existingConstraints,
+          max_pallets,
+        };
+      }
+
       if (isEdit && vehicleId) {
-        await vehicleService.update(vehicleId, data);
+        await vehicleService.update(vehicleId, data as any);
       } else {
-        await vehicleService.create(data);
+        await vehicleService.create(data as any);
       }
 
       setSuccess(true);
@@ -238,6 +286,60 @@ export const VehicleFormView: React.FC<VehicleFormViewProps> = ({
                   ป้ายทะเบียนไม่สามารถแก้ไขได้
                 </p>
               )}
+            </div>
+
+            {/* Capacity Section */}
+            <div className="md:col-span-2 border-t border-slate-200 dark:border-slate-700 pt-4 mt-2">
+              <h3 className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-3">
+                ความจุการบรรทุก (ไม่บังคับ แต่แนะนำให้กรอก)
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <Input
+                  label="ความยาวพื้นที่บรรทุก (ซม.)"
+                  type="number"
+                  value={formData.cargo_length_cm}
+                  onChange={(e) => handleChange('cargo_length_cm', e.target.value)}
+                  placeholder="เช่น 220"
+                  disabled={saving}
+                />
+                <Input
+                  label="ความกว้างพื้นที่บรรทุก (ซม.)"
+                  type="number"
+                  value={formData.cargo_width_cm}
+                  onChange={(e) => handleChange('cargo_width_cm', e.target.value)}
+                  placeholder="เช่น 150"
+                  disabled={saving}
+                />
+                <Input
+                  label="ความสูงพื้นที่บรรทุก (ซม.)"
+                  type="number"
+                  value={formData.cargo_height_cm}
+                  onChange={(e) => handleChange('cargo_height_cm', e.target.value)}
+                  placeholder="เช่น 160"
+                  disabled={saving}
+                />
+                <Input
+                  label="น้ำหนักบรรทุกสูงสุด (กก.)"
+                  type="number"
+                  value={formData.max_weight_kg}
+                  onChange={(e) => handleChange('max_weight_kg', e.target.value)}
+                  placeholder="เช่น 1500"
+                  disabled={saving}
+                />
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+                <Input
+                  label="จำนวนพาเลทมาตรฐานสูงสุด (โดยประมาณ)"
+                  type="number"
+                  value={formData.max_pallets}
+                  onChange={(e) => handleChange('max_pallets', e.target.value)}
+                  placeholder="เช่น 8"
+                  disabled={saving}
+                />
+                <p className="md:col-span-2 text-xs text-slate-500 dark:text-slate-400 mt-6">
+                  ค่านี้ใช้เป็นพื้นฐานให้ระบบแนะนำการจัดทริปในอนาคต (AI สามารถปรับจากค่านี้ได้ภายหลัง)
+                </p>
+              </div>
             </div>
 
             <Input

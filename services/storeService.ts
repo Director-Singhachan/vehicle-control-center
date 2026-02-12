@@ -14,46 +14,79 @@ export interface StoreWithRelations extends Store {
 export interface StoreFilters {
   search?: string;
   is_active?: boolean;
+  branch?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export interface StoreListResult {
+  data: Store[];
+  totalCount: number;
 }
 
 export const storeService = {
-  // Get all stores
-  getAll: async (filters?: StoreFilters): Promise<Store[]> => {
+  // Get all stores with pagination support
+  getAll: async (filters?: StoreFilters): Promise<StoreListResult> => {
+    const limit = filters?.limit || 100;
+    const offset = filters?.offset || 0;
+
     // If search is provided, use searchUtils for consistent search logic
     if (filters?.search) {
       const additionalFilters: Record<string, any> = {};
       if (filters?.is_active !== undefined) {
         additionalFilters.is_active = filters.is_active;
       }
+      if (filters?.branch) {
+        additionalFilters.branch = filters.branch;
+      }
       
-      return await searchWithMultipleFields<Store>(
+      // For search, we need to get total count separately
+      const searchResults = await searchWithMultipleFields<Store>(
         supabase,
         'stores',
         filters.search,
         ['customer_code', 'customer_name'],
         additionalFilters,
-        100
+        10000 // Large limit to get all matches for counting
       );
+
+      // Apply pagination to search results
+      const paginatedResults = searchResults.slice(offset, offset + limit);
+      
+      return {
+        data: paginatedResults,
+        totalCount: searchResults.length,
+      };
     }
     
-    // No search - use normal query
+    // No search - use normal query with count
     let query = supabase
       .from('stores')
-      .select('*')
+      .select('*', { count: 'exact' })
       .order('customer_name', { ascending: true });
 
     if (filters?.is_active !== undefined) {
       query = query.eq('is_active', filters.is_active);
     }
 
-    const { data, error } = await query;
+    if (filters?.branch) {
+      query = query.eq('branch', filters.branch);
+    }
+
+    // Apply pagination
+    query = query.range(offset, offset + limit - 1);
+
+    const { data, error, count } = await query;
 
     if (error) {
       console.error('[storeService] Error fetching stores:', error);
       throw error;
     }
 
-    return data || [];
+    return {
+      data: data || [],
+      totalCount: count || 0,
+    };
   },
 
   // Get store by ID

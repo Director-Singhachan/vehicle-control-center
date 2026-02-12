@@ -52,6 +52,7 @@ export function CreateOrderView() {
   const storeDropdownRef = useRef<HTMLDivElement>(null);
   const productDropdownRef = useRef<HTMLDivElement>(null);
   const priceUpdateTimeouts = useRef<Record<string, NodeJS.Timeout>>({});
+  const quantityInputRefs = useRef<Array<HTMLInputElement | null>>([]);
 
   // ปิด dropdown เมื่อคลิกข้างนอก
   useEffect(() => {
@@ -229,8 +230,6 @@ export function CreateOrderView() {
       };
 
       setOrderItems([...orderItems, newItem]);
-      setProductSearch('');
-      setShowProductBrowser(false);
       
       // เก็บ recent product
       addToRecentProducts(product.id);
@@ -276,6 +275,19 @@ export function CreateOrderView() {
           }
         }
       }, 500);
+    }
+  };
+
+  const handleQuantityKeyDown = (
+    index: number,
+    event: React.KeyboardEvent<HTMLInputElement>
+  ) => {
+    if (event.key !== 'Enter') return;
+    event.preventDefault();
+    const nextInput = quantityInputRefs.current[index + 1];
+    if (nextInput) {
+      nextInput.focus();
+      nextInput.select();
     }
   };
 
@@ -863,7 +875,11 @@ export function CreateOrderView() {
                                 type="number"
                                 value={item.quantity === '' ? '' : item.quantity}
                                 onChange={(e) => handleUpdateQuantity(index, e.target.value)}
-                                className="w-full px-2 py-1 border border-gray-300 dark:border-slate-600 rounded text-center bg-white dark:bg-slate-800 text-gray-900 dark:text-white"
+                                onKeyDown={(e) => handleQuantityKeyDown(index, e)}
+                                ref={(el) => {
+                                  quantityInputRefs.current[index] = el;
+                                }}
+                                className="no-spinner w-full px-2 py-1 border border-gray-300 dark:border-slate-600 rounded text-center bg-white dark:bg-slate-800 text-gray-900 dark:text-white"
                                 min="0"
                                 inputMode="decimal"
                                 placeholder="จำนวน"

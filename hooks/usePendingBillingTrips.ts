@@ -98,12 +98,13 @@ export const usePendingBillingTrips = () => {
   };
 
   useEffect(() => {
-    fetchPendingTrips();
-
-    // Refresh every 30 seconds
+    // เลื่อนการโหลดครั้งแรกเล็กน้อย เพื่อไม่ให้แข่งกับ auth และ prefetch หลัก (ลดหน่วงหน้าแรก)
+    const t = setTimeout(() => fetchPendingTrips(), 1200);
     const interval = setInterval(() => fetchPendingTrips(false), 30000);
-
-    return () => clearInterval(interval);
+    return () => {
+      clearTimeout(t);
+      clearInterval(interval);
+    };
   }, [profile?.role, isSales]);
 
   return {

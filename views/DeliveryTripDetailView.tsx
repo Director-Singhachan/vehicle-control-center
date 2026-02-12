@@ -1,5 +1,5 @@
 // Delivery Trip Detail View - Show detailed information about a delivery trip
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import {
   Package,
   Edit,
@@ -17,13 +17,17 @@ import {
   FileText,
   Users,
   BarChart3,
+  Plus,
+  Search,
 } from 'lucide-react';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
 import { PageLayout } from '../components/layout/PageLayout';
 import { ImageModal } from '../components/ui/ImageModal';
-import { useDeliveryTrip } from '../hooks';
+import { Modal } from '../components/ui/Modal';
+import { useDeliveryTrip, useAuth } from '../hooks';
 import { deliveryTripService } from '../services/deliveryTripService';
+import { ordersService, orderItemsService } from '../services/ordersService';
 import { pdfService } from '../services/pdfService';
 import { CrewAssignment } from '../components/crew/CrewAssignment';
 import type {
@@ -36,12 +40,14 @@ interface DeliveryTripDetailViewProps {
   tripId: string;
   onEdit?: (tripId: string) => void;
   onBack?: () => void;
+  onRecordMetrics?: () => void;
 }
 
 export const DeliveryTripDetailView: React.FC<DeliveryTripDetailViewProps> = ({
   tripId,
   onEdit,
   onBack,
+  onRecordMetrics,
 }) => {
   const { trip, loading, error, refetch } = useDeliveryTrip(tripId);
   const [printing, setPrinting] = useState(false);
@@ -67,6 +73,17 @@ export const DeliveryTripDetailView: React.FC<DeliveryTripDetailViewProps> = ({
   const [staffDistribution, setStaffDistribution] = useState<any[]>([]);
   const [productDistribution, setProductDistribution] = useState<any[]>([]);
   const [distributionLoading, setDistributionLoading] = useState(false);
+
+  // เพิ่มร้านในทริป (ออเดอร์ที่ตกหล่น)
+  const [addOrderModalOpen, setAddOrderModalOpen] = useState(false);
+  const [pendingOrders, setPendingOrders] = useState<any[]>([]);
+  const [pendingOrdersLoading, setPendingOrdersLoading] = useState(false);
+  const [addOrderSearch, setAddOrderSearch] = useState('');
+  const [selectedOrderToAdd, setSelectedOrderToAdd] = useState<any | null>(null);
+  const [addOrderReason, setAddOrderReason] = useState('');
+  const [addOrderSubmitting, setAddOrderSubmitting] = useState(false);
+  const [addOrderError, setAddOrderError] = useState<string | null>(null);
+  const { user } = useAuth();
 
   React.useEffect(() => {
     if (trip) {
@@ -134,6 +151,81 @@ export const DeliveryTripDetailView: React.FC<DeliveryTripDetailViewProps> = ({
 
     fetchEditHistory();
   }, [trip]);
+
+  // โหลดออเดอร์ที่รอจัดทริปเมื่อเปิดโมดัลเพิ่มร้าน
+  useEffect(() => {
+    if (!addOrderModalOpen || !trip) return;
+    setPendingOrdersLoading(true);
+    setAddOrderError(null);
+    setSelectedOrderToAdd(null);
+    setAddOrderReason('');
+    ordersService.getPendingOrders()
+      .then((data) => setPendingOrders(data || []))
+      .catch((err) => setAddOrderError(err?.message || 'โหลดรายการออเดอร์ไม่สำเร็จ'))
+      .finally(() => setPendingOrdersLoading(false));
+  }, [addOrderModalOpen, trip?.id]);
+
+  // ออเดอร์ที่แสดงในโมดัล (ตัดร้านที่มีในทริปแล้ว + ค้นหา)
+  const pendingOrdersToShow = useMemo(() => {
+    const storeIdsInTrip = new Set((trip?.stores || []).map((s: any) => s.store_id));
+    let list = (pendingOrders || []).filter((o: any) => !storeIdsInTrip.has(o.store_id));
+    if (addOrderSearch.trim()) {
+      const q = addOrderSearch.toLowerCase().trim();
+      list = list.filter((o: any) =>
+        (o.order_number && o.order_number.toLowerCase().includes(q)) ||
+        (o.customer_name && o.customer_name.toLowerCase().includes(q)) ||
+        (o.customer_code && o.customer_code.toLowerCase().includes(q))
+      );
+    }
+    return list;
+  }, [trip?.stores, pendingOrders, addOrderSearch]);
+
+  const handleAddOrderToTrip = useCallback(async () => {
+    if (!trip || !selectedOrderToAdd || !user?.id) return;
+    if (!addOrderReason.trim()) {
+      setAddOrderError('กรุณาระบุเหตุผลในการเพิ่มร้าน (เช่น เพิ่มร้านที่ตกหล่น)');
+      return;
+    }
+    setAddOrderSubmitting(true);
+    setAddOrderError(null);
+    try {
+      const orderItems = await orderItemsService.getByOrderId(selectedOrderToAdd.id);
+      const newStore = {
+        store_id: selectedOrderToAdd.store_id,
+        sequence_order: (trip.stores?.length || 0) + 1,
+        items: (orderItems || []).map((item: any) => ({
+          product_id: item.product_id,
+          quantity: Number(item.quantity) || 0,
+          notes: item.notes || undefined,
+          is_bonus: !!item.is_bonus,
+          selected_pallet_config_id: item.selected_pallet_config_id || undefined,
+        })),
+      };
+      const existingStores = (trip.stores || []).map((s: any) => ({
+        store_id: s.store_id,
+        sequence_order: s.sequence_order,
+        items: (s.items || []).map((i: any) => ({
+          product_id: i.product_id,
+          quantity: Number(i.quantity) || 0,
+          notes: i.notes || undefined,
+          is_bonus: !!i.is_bonus,
+          selected_pallet_config_id: i.selected_pallet_config_id || undefined,
+        })),
+      }));
+      const allStores = [...existingStores, newStore];
+      await deliveryTripService.update(trip.id, {
+        stores: allStores,
+        edit_reason: addOrderReason.trim(),
+      });
+      await ordersService.assignToTrip([selectedOrderToAdd.id], trip.id, user.id);
+      setAddOrderModalOpen(false);
+      refetch();
+    } catch (err: any) {
+      setAddOrderError(err?.message || 'ไม่สามารถเพิ่มร้านเข้ากับทริปได้');
+    } finally {
+      setAddOrderSubmitting(false);
+    }
+  }, [trip, selectedOrderToAdd, addOrderReason, user?.id, refetch]);
 
 
 
@@ -259,6 +351,18 @@ export const DeliveryTripDetailView: React.FC<DeliveryTripDetailViewProps> = ({
             <Download size={18} className="mr-2" />
             พิมพ์ A5 (โฟล์คลิฟท์)
           </Button>
+          {onRecordMetrics && (
+            <Button variant="outline" onClick={onRecordMetrics}>
+              <BarChart3 size={18} className="mr-2" />
+              บันทึกเมตริกซ์
+            </Button>
+          )}
+          {(trip.status === 'planned' || trip.status === 'in_progress') && (
+            <Button variant="outline" onClick={() => setAddOrderModalOpen(true)}>
+              <Plus size={18} className="mr-2" />
+              เพิ่มร้านในทริป
+            </Button>
+          )}
           {onEdit && (
             <Button variant="outline" onClick={() => onEdit(trip.id)}>
               <Edit size={18} className="mr-2" />
@@ -972,6 +1076,101 @@ export const DeliveryTripDetailView: React.FC<DeliveryTripDetailViewProps> = ({
           </Button>
         </div>
       )}
+
+      {/* Modal: เพิ่มร้านในทริป (ออเดอร์ที่ตกหล่น) */}
+      <Modal
+        isOpen={addOrderModalOpen}
+        onClose={() => {
+          if (!addOrderSubmitting) setAddOrderModalOpen(false);
+        }}
+        title="เพิ่มร้านในทริป"
+        size="large"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-slate-600 dark:text-slate-400">
+            เลือกออเดอร์ที่รอจัดทริปเพื่อเพิ่มร้านเข้ากับทริปนี้ (ไม่ต้องลบทริปแล้วสร้างใหม่)
+          </p>
+
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+            <input
+              type="text"
+              placeholder="ค้นหาเลขออเดอร์, ร้านค้า..."
+              value={addOrderSearch}
+              onChange={(e) => setAddOrderSearch(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
+            />
+          </div>
+
+          {addOrderError && (
+            <div className="p-3 rounded-lg bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 text-sm">
+              {addOrderError}
+            </div>
+          )}
+
+          <div>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+              เหตุผลในการเพิ่มร้าน <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="text"
+              value={addOrderReason}
+              onChange={(e) => setAddOrderReason(e.target.value)}
+              placeholder="เช่น เพิ่มร้านที่ตกหล่น"
+              className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
+            />
+          </div>
+
+          {pendingOrdersLoading ? (
+            <div className="py-8 text-center text-slate-500 dark:text-slate-400">กำลังโหลดออเดอร์...</div>
+          ) : pendingOrdersToShow.length === 0 ? (
+            <div className="py-8 text-center text-slate-500 dark:text-slate-400">
+              {pendingOrders.length === 0
+                ? 'ไม่มีออเดอร์ที่รอจัดทริป'
+                : 'ออเดอร์ที่รอจัดทริปทั้งหมดอยู่ในทริปนี้แล้ว หรือไม่ตรงกับคำค้นหา'}
+            </div>
+          ) : (
+            <div className="max-h-64 overflow-y-auto border border-slate-200 dark:border-slate-700 rounded-lg divide-y divide-slate-200 dark:divide-slate-700">
+              {pendingOrdersToShow.map((order: any) => (
+                <button
+                  key={order.id}
+                  type="button"
+                  onClick={() => setSelectedOrderToAdd(selectedOrderToAdd?.id === order.id ? null : order)}
+                  className={`w-full p-4 text-left transition-colors ${
+                    selectedOrderToAdd?.id === order.id
+                      ? 'bg-enterprise-100 dark:bg-enterprise-900/30 border-l-4 border-enterprise-600'
+                      : 'hover:bg-slate-50 dark:hover:bg-slate-800/50'
+                  }`}
+                >
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <span className="font-mono text-sm text-blue-600 dark:text-blue-400">{order.order_number}</span>
+                      <span className="ml-2 font-medium text-slate-900 dark:text-white">{order.customer_name}</span>
+                    </div>
+                    <span className="text-sm font-semibold text-slate-700 dark:text-slate-300">
+                      ฿{(order.total_amount || 0).toLocaleString()}
+                    </span>
+                  </div>
+                  <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">{order.customer_code}</div>
+                </button>
+              ))}
+            </div>
+          )}
+
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="outline" onClick={() => setAddOrderModalOpen(false)} disabled={addOrderSubmitting}>
+              ยกเลิก
+            </Button>
+            <Button
+              onClick={handleAddOrderToTrip}
+              disabled={!selectedOrderToAdd || !addOrderReason.trim() || addOrderSubmitting}
+              isLoading={addOrderSubmitting}
+            >
+              เพิ่มร้านเข้ากับทริป
+            </Button>
+          </div>
+        </div>
+      </Modal>
 
       {/* Image Modal */}
       <ImageModal

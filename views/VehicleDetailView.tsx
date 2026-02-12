@@ -1,5 +1,5 @@
 // Vehicle Detail View - Show detailed information about a vehicle
-import React from 'react';
+import React, { useState } from 'react';
 import { useVehicle, useMaintenanceHistory } from '../hooks';
 import { useAuth } from '../hooks';
 import {
@@ -22,6 +22,7 @@ import { VehicleDocumentManager } from '../components/vehicle/VehicleDocumentMan
 import { DocumentExpiryAlert } from '../components/vehicle/DocumentExpiryAlert';
 import { VehicleDriverHistory } from '../components/vehicle/VehicleDriverHistory';
 import { useTickets } from '../hooks';
+import { ImageModal } from '../components/ui/ImageModal';
 
 interface VehicleDetailViewProps {
   vehicleId: string;
@@ -38,6 +39,7 @@ export const VehicleDetailView: React.FC<VehicleDetailViewProps> = ({
   onViewTicket,
   onViewDeliveryTrip,
 }) => {
+  const [isImageOpen, setIsImageOpen] = useState(false);
   const { isManager, isAdmin } = useAuth();
   const { vehicle, loading, error } = useVehicle(vehicleId);
   const {
@@ -77,6 +79,10 @@ export const VehicleDetailView: React.FC<VehicleDetailViewProps> = ({
       />
     );
   }
+
+  const fallbackImageUrl =
+    'https://images.unsplash.com/photo-1533473359331-0135ef1b58bf?auto=format&fit=crop&q=80&w=1000';
+  const imageUrl = vehicle.image_url || fallbackImageUrl;
 
   // Get status (simplified - should use vehicles_with_status view)
   const status = 'idle'; // TODO: Get from vehicles_with_status
@@ -129,12 +135,19 @@ export const VehicleDetailView: React.FC<VehicleDetailViewProps> = ({
           <Card className="overflow-hidden">
             <div className="relative h-64 md:h-80 bg-slate-100 dark:bg-slate-800">
               <img
-                src={vehicle.image_url || 'https://images.unsplash.com/photo-1533473359331-0135ef1b58bf?auto=format&fit=crop&q=80&w=1000'}
+                src={imageUrl}
                 alt={vehicle.plate}
-                className="w-full h-full object-cover"
+                className="w-full h-full object-cover cursor-zoom-in"
                 onError={(e) => {
-                  (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1533473359331-0135ef1b58bf?auto=format&fit=crop&q=80&w=1000';
+                  (e.target as HTMLImageElement).src = fallbackImageUrl;
                 }}
+                onClick={() => setIsImageOpen(true)}
+              />
+              <ImageModal
+                isOpen={isImageOpen}
+                imageUrl={imageUrl}
+                alt={vehicle.plate}
+                onClose={() => setIsImageOpen(false)}
               />
               <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-6">
                 <div className="flex items-end justify-between">
@@ -223,6 +236,62 @@ export const VehicleDetailView: React.FC<VehicleDetailViewProps> = ({
                     })}
                   </p>
                 </div>
+
+                {/* Capacity info (if available) */}
+                {((vehicle as any).cargo_length_cm ||
+                  (vehicle as any).cargo_width_cm ||
+                  (vehicle as any).cargo_height_cm ||
+                  (vehicle as any).max_weight_kg ||
+                  ((vehicle as any).loading_constraints && (vehicle as any).loading_constraints.max_pallets)) && (
+                  <div className="md:col-span-2 border-t border-slate-200 dark:border-slate-700 pt-4 mt-2">
+                    <h3 className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-3">
+                      ความจุการบรรทุก
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-sm">
+                      {(vehicle as any).cargo_length_cm && (
+                        <div>
+                          <div className="text-slate-500 dark:text-slate-400 mb-1">ความยาว (ซม.)</div>
+                          <div className="text-slate-900 dark:text-white font-medium">
+                            {(vehicle as any).cargo_length_cm} ซม.
+                          </div>
+                        </div>
+                      )}
+                      {(vehicle as any).cargo_width_cm && (
+                        <div>
+                          <div className="text-slate-500 dark:text-slate-400 mb-1">ความกว้าง (ซม.)</div>
+                          <div className="text-slate-900 dark:text-white font-medium">
+                            {(vehicle as any).cargo_width_cm} ซม.
+                          </div>
+                        </div>
+                      )}
+                      {(vehicle as any).cargo_height_cm && (
+                        <div>
+                          <div className="text-slate-500 dark:text-slate-400 mb-1">ความสูง (ซม.)</div>
+                          <div className="text-slate-900 dark:text-white font-medium">
+                            {(vehicle as any).cargo_height_cm} ซม.
+                          </div>
+                        </div>
+                      )}
+                      {(vehicle as any).max_weight_kg && (
+                        <div>
+                          <div className="text-slate-500 dark:text-slate-400 mb-1">น้ำหนักบรรทุกสูงสุด</div>
+                          <div className="text-slate-900 dark:text-white font-medium">
+                            {(vehicle as any).max_weight_kg.toLocaleString()} กก.
+                          </div>
+                        </div>
+                      )}
+                      {((vehicle as any).loading_constraints &&
+                        (vehicle as any).loading_constraints.max_pallets) && (
+                        <div>
+                          <div className="text-slate-500 dark:text-slate-400 mb-1">จำนวนพาเลทโดยประมาณ</div>
+                          <div className="text-slate-900 dark:text-white font-medium">
+                            {(vehicle as any).loading_constraints.max_pallets} พาเลท
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
 
                 {vehicle.lat && vehicle.lng && (
                   <div className="md:col-span-2">

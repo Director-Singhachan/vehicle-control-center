@@ -1,5 +1,5 @@
 // Delivery Trip List View - Display all delivery trips
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Package,
   Plus,
@@ -9,11 +9,13 @@ import {
   Calendar,
   Truck,
   User,
+  Users,
   MapPin,
   CheckCircle,
   Clock,
   X,
   AlertCircle,
+  AlertTriangle,
   ChevronLeft,
   ChevronRight,
   Download,
@@ -40,7 +42,7 @@ export const DeliveryTripListView: React.FC<DeliveryTripListViewProps> = ({
   onCreate,
 }) => {
   const { vehicles } = useVehicles();
-  const { isReadOnly } = useAuth();
+  const { isReadOnly, profile } = useAuth(); // Get user profile for branch info
   // State for filters and pagination
   // Initialize from sessionStorage if available to persist state across navigation (e.g. back button)
   const getInitialState = <T,>(key: string, defaultValue: T): T => {
@@ -58,11 +60,18 @@ export const DeliveryTripListView: React.FC<DeliveryTripListViewProps> = ({
   const [searchTerm, setSearchTerm] = useState<string>(''); // Debounced search term (for query)
   const [statusFilter, setStatusFilter] = useState<string[] | 'all'>(() => getInitialState('statusFilter', 'all'));
   const [vehicleFilter, setVehicleFilter] = useState<string>(() => getInitialState('vehicleFilter', ''));
+  const [branchFilter, setBranchFilter] = useState<string>(() => {
+    // Default to user's branch, or 'ALL' if user is admin/manager
+    const saved = getInitialState('branchFilter', '');
+    if (saved) return saved;
+    return profile?.branch || 'ALL';
+  });
   const [dateFrom, setDateFrom] = useState<string>(() => getInitialState('dateFrom', ''));
   const [dateTo, setDateTo] = useState<string>(() => getInitialState('dateTo', ''));
   const [showFilters, setShowFilters] = useState(() => getInitialState('showFilters', false));
   const [onlyChanged, setOnlyChanged] = useState(() => getInitialState('onlyChanged', false));
   const [currentPage, setCurrentPage] = useState(() => getInitialState('currentPage', 1));
+  const [pageInput, setPageInput] = useState('');
 
   const itemsPerPage = 20;
 
@@ -81,6 +90,7 @@ export const DeliveryTripListView: React.FC<DeliveryTripListViewProps> = ({
       sessionStorage.setItem('deliveryTrips_searchInput', JSON.stringify(searchInput));
       sessionStorage.setItem('deliveryTrips_statusFilter', JSON.stringify(statusFilter));
       sessionStorage.setItem('deliveryTrips_vehicleFilter', JSON.stringify(vehicleFilter));
+      sessionStorage.setItem('deliveryTrips_branchFilter', JSON.stringify(branchFilter));
       sessionStorage.setItem('deliveryTrips_dateFrom', JSON.stringify(dateFrom));
       sessionStorage.setItem('deliveryTrips_dateTo', JSON.stringify(dateTo));
       sessionStorage.setItem('deliveryTrips_showFilters', JSON.stringify(showFilters));
@@ -89,7 +99,7 @@ export const DeliveryTripListView: React.FC<DeliveryTripListViewProps> = ({
     } catch (e) {
       console.error('Error saving state to sessionStorage:', e);
     }
-  }, [searchInput, statusFilter, vehicleFilter, dateFrom, dateTo, showFilters, onlyChanged, currentPage]);
+  }, [searchInput, statusFilter, vehicleFilter, branchFilter, dateFrom, dateTo, showFilters, onlyChanged, currentPage]);
 
   const [cancelTripId, setCancelTripId] = useState<string | null>(null);
   const [cancelReason, setCancelReason] = useState('');
@@ -106,31 +116,15 @@ export const DeliveryTripListView: React.FC<DeliveryTripListViewProps> = ({
     planned_date_to: dateTo || undefined,
     has_item_changes: onlyChanged ? true : undefined,
     search: searchTerm || undefined, // Pass search term to hook for database-level filtering
+    branch: branchFilter || undefined, // Pass branch filter
     autoFetch: true,
     page: currentPage,
     pageSize: itemsPerPage,
     lite: true, // Use lite mode for list view optimization (fetches less data)
   });
 
-  // Auto-refetch when component becomes visible (e.g., after check-in)
-  // Use useRef to store refetch function to avoid infinite loop
-  const refetchRef = useRef(refetch);
-  refetchRef.current = refetch;
-
-  useEffect(() => {
-    // Refetch immediately when component mounts (in case status was updated)
-    refetchRef.current();
-
-    // Refetch on window focus (user comes back to tab)
-    const handleFocus = () => {
-      refetchRef.current();
-    };
-    window.addEventListener('focus', handleFocus);
-
-    return () => {
-      window.removeEventListener('focus', handleFocus);
-    };
-  }, []); // Empty dependency array - only run once on mount
+  // Note: Removed auto-refetch on mount and window focus to avoid unnecessary reloads
+  // Data will be fetched automatically by useDeliveryTrips hook when needed
 
   // Use trips directly - filtering is now done at database level
   const filteredTrips = trips;
@@ -143,6 +137,7 @@ export const DeliveryTripListView: React.FC<DeliveryTripListViewProps> = ({
     setSearchInput(''); // Clear input (will trigger debounce to clear searchTerm)
     setStatusFilter('all');
     setVehicleFilter('');
+    setBranchFilter(profile?.branch || 'ALL'); // Reset to user's branch
     setDateFrom('');
     setDateTo('');
     setOnlyChanged(false);
@@ -150,24 +145,11 @@ export const DeliveryTripListView: React.FC<DeliveryTripListViewProps> = ({
     // Session storage will be updated by the effect
   };
 
+  // Reset to page 1 when filters or search change (like TripLogListView)
+  // Use searchTerm (debounced) instead of searchInput to avoid resetting on every keystroke
   useEffect(() => {
-    // Reset to page 1 ONLY if we are NOT restoring state (which is handled by initial state)
-    // AND IF the filters actually change interactively.
-    // However, simply resetting whenever filters change is tricky with persistence.
-    // We should only reset page if the filter change came from user interaction, not from mounting.
-
-    // Actually, for standard behavior: changing a filter *should* reset to page 1.
-    // The issue with persistence is distinguishing "restore" from "change".
-    // Since we initialize state from storage, the first render has the restored values.
-    // Any SUBSEQUENT change to filters should trigger page reset.
-    // We can't easily detect "mount" vs "update" in this single effect without a ref.
-  }, [/* dependencies removed - we will handle page reset manually in handlers if needed, or accept that changing filters might stay on page X if it exists */]);
-
-  // Handler for filter changes to ensure page reset
-  const handleFilterChange = (setter: any, value: any) => {
-    setter(value);
     setCurrentPage(1);
-  };
+  }, [statusFilter, vehicleFilter, branchFilter, dateFrom, dateTo, onlyChanged, searchTerm]); // Use debounced searchTerm, not searchInput
 
   const getStatusBadge = (status: string) => {
     const badges = {
@@ -238,7 +220,7 @@ export const DeliveryTripListView: React.FC<DeliveryTripListViewProps> = ({
             ตัวกรอง
           </h3>
           <div className="flex items-center gap-4">
-            {(statusFilter !== 'all' || vehicleFilter || dateFrom || dateTo || onlyChanged || searchInput) && (
+            {(statusFilter !== 'all' || vehicleFilter || branchFilter !== (profile?.branch || 'ALL') || dateFrom || dateTo || onlyChanged || searchInput) && (
               <button
                 onClick={clearFilters}
                 className="text-sm text-red-600 dark:text-red-400 hover:underline flex items-center gap-1"
@@ -257,7 +239,22 @@ export const DeliveryTripListView: React.FC<DeliveryTripListViewProps> = ({
         </div>
 
         {showFilters && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4 mb-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                สาขา
+              </label>
+              <select
+                value={branchFilter}
+                onChange={(e) => setBranchFilter(e.target.value)}
+                className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
+              >
+                <option value="ALL">ทั้งหมด</option>
+                <option value="HQ">สำนักงานใหญ่</option>
+                <option value="SD">สาขาสอยดาว</option>
+              </select>
+            </div>
+
             <div>
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                 สถานะ
@@ -266,7 +263,7 @@ export const DeliveryTripListView: React.FC<DeliveryTripListViewProps> = ({
                 value={Array.isArray(statusFilter) ? statusFilter.join(',') : statusFilter}
                 onChange={(e) => {
                   const value = e.target.value;
-                  handleFilterChange(setStatusFilter, value === 'all' ? 'all' : value.split(','));
+                  setStatusFilter(value === 'all' ? 'all' : value.split(','));
                 }}
                 className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
               >
@@ -284,7 +281,7 @@ export const DeliveryTripListView: React.FC<DeliveryTripListViewProps> = ({
               </label>
               <select
                 value={vehicleFilter}
-                onChange={(e) => handleFilterChange(setVehicleFilter, e.target.value)}
+                onChange={(e) => setVehicleFilter(e.target.value)}
                 className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
               >
                 <option value="">ทั้งหมด</option>
@@ -303,7 +300,7 @@ export const DeliveryTripListView: React.FC<DeliveryTripListViewProps> = ({
               <Input
                 type="date"
                 value={dateFrom}
-                onChange={(e) => handleFilterChange(setDateFrom, e.target.value)}
+                onChange={(e) => setDateFrom(e.target.value)}
               />
             </div>
 
@@ -314,7 +311,7 @@ export const DeliveryTripListView: React.FC<DeliveryTripListViewProps> = ({
               <Input
                 type="date"
                 value={dateTo}
-                onChange={(e) => handleFilterChange(setDateTo, e.target.value)}
+                onChange={(e) => setDateTo(e.target.value)}
               />
             </div>
 
@@ -324,7 +321,7 @@ export const DeliveryTripListView: React.FC<DeliveryTripListViewProps> = ({
                   type="checkbox"
                   className="rounded border-slate-300 dark:border-slate-600 text-enterprise-600 focus:ring-enterprise-500"
                   checked={onlyChanged}
-                  onChange={(e) => handleFilterChange(setOnlyChanged, e.target.checked)}
+                  onChange={(e) => setOnlyChanged(e.target.checked)}
                 />
                 แสดงเฉพาะทริปที่มีการแก้ไขสินค้า
               </label>
@@ -337,7 +334,7 @@ export const DeliveryTripListView: React.FC<DeliveryTripListViewProps> = ({
             label="ค้นหา"
             placeholder="ค้นหาจากรหัสทริป, ป้ายทะเบียน, ชื่อคนขับ..."
             value={searchInput}
-            onChange={(e) => handleFilterChange(setSearchInput, e.target.value)}
+            onChange={(e) => setSearchInput(e.target.value)}
             icon={<Search size={18} />}
           />
         </div>
@@ -366,7 +363,7 @@ export const DeliveryTripListView: React.FC<DeliveryTripListViewProps> = ({
         <Card className="p-12 text-center">
           <Package className="mx-auto mb-4 text-slate-400" size={48} />
           <p className="text-slate-600 dark:text-slate-400">
-            {searchInput || statusFilter !== 'all' || vehicleFilter || dateFrom || dateTo
+            {searchInput || statusFilter !== 'all' || vehicleFilter || branchFilter !== (profile?.branch || 'ALL') || dateFrom || dateTo
               ? 'ไม่พบข้อมูลที่ค้นหา'
               : 'ยังไม่มีทริปส่งสินค้า'}
           </p>
@@ -387,7 +384,7 @@ export const DeliveryTripListView: React.FC<DeliveryTripListViewProps> = ({
                   <div>
                     <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-2">
                       <span>
-                        {trip.trip_number || 
+                        {trip.trip_number ||
                           (trip.sequence_order ? `ทริป #${trip.sequence_order}` : `ทริป #${trip.id.substring(0, 8)}`)}
                       </span>
                       {trip.has_item_changes && (
@@ -455,6 +452,45 @@ export const DeliveryTripListView: React.FC<DeliveryTripListViewProps> = ({
                       <span>{trip.stores.length} ร้าน</span>
                     </div>
                   )}
+
+                  {/* Crew Status */}
+                  {(() => {
+                    const crews = trip.crews || [];
+                    const driverCrew = crews.find(c => c.role === 'driver');
+                    const helperCrews = crews.filter(c => c.role === 'helper');
+                    const hasCrew = crews.length > 0;
+                    const hasDriver = !!driverCrew;
+
+                    if (!hasCrew && trip.status !== 'cancelled') {
+                      return (
+                        <div className="flex items-center gap-2 text-sm">
+                          <AlertTriangle size={16} className="text-red-500" />
+                          <span className="text-red-600 dark:text-red-400 font-medium">
+                            ยังไม่ได้จัดพนักงาน
+                          </span>
+                        </div>
+                      );
+                    }
+
+                    if (hasCrew) {
+                      return (
+                        <div className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400">
+                          <Users size={16} className={hasDriver ? 'text-green-500' : 'text-amber-500'} />
+                          <span>
+                            {hasDriver
+                              ? `${driverCrew?.staff?.name || 'คนขับ'}`
+                              : <span className="text-amber-600 dark:text-amber-400">ยังไม่มีคนขับ</span>
+                            }
+                            {helperCrews.length > 0 && (
+                              <span className="text-slate-400"> + {helperCrews.length} พนักงานบริการ</span>
+                            )}
+                          </span>
+                        </div>
+                      );
+                    }
+
+                    return null;
+                  })()}
 
                   {trip.odometer_start && (
                     <div className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400">
@@ -602,6 +638,46 @@ export const DeliveryTripListView: React.FC<DeliveryTripListViewProps> = ({
                       });
                     })()}
                   </div>
+
+                  {/* Jump to Page Input */}
+                  {totalPages > 1 && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm text-slate-600 dark:text-slate-400">ไปที่หน้า:</span>
+                      <input
+                        type="number"
+                        min="1"
+                        max={totalPages}
+                        value={pageInput}
+                        onChange={(e) => setPageInput(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            const page = parseInt(pageInput);
+                            if (page >= 1 && page <= totalPages) {
+                              setCurrentPage(page);
+                              setPageInput('');
+                            }
+                          }
+                        }}
+                        className="w-20 px-2 py-1 text-sm border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-enterprise-500 focus:border-transparent"
+                        placeholder={`1-${totalPages}`}
+                      />
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          const page = parseInt(pageInput);
+                          if (page >= 1 && page <= totalPages) {
+                            setCurrentPage(page);
+                            setPageInput('');
+                          }
+                        }}
+                        disabled={!pageInput || parseInt(pageInput) < 1 || parseInt(pageInput) > totalPages}
+                      >
+                        ไป
+                      </Button>
+                    </div>
+                  )}
+
                   <Button
                     variant="outline"
                     size="sm"

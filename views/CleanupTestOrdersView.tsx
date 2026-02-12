@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Trash2, Search, Filter, Calendar, AlertTriangle, CheckCircle, Package, X } from 'lucide-react';
+import { Trash2, Search, Filter, Calendar, AlertTriangle, CheckCircle, Package, X, ChevronLeft, ChevronRight } from 'lucide-react';
 import { ordersService } from '../services/ordersService';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
@@ -38,6 +38,9 @@ export function CleanupTestOrdersView() {
   const [deleteMode, setDeleteMode] = useState<'selected' | 'all' | 'without_number' | 'date_range'>('selected');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageInput, setPageInput] = useState('');
+  const [itemsPerPage] = useState(100);
 
   // ตรวจสอบสิทธิ์
   const canDelete = isAdmin || isManager;
@@ -94,6 +97,21 @@ export function CleanupTestOrdersView() {
     return filtered;
   }, [orders, searchQuery, dateFilter, statusFilter, showWithoutNumber]);
 
+  // แบ่งหน้า: 1 หน้า 100 แถว (เหมือนหน้าจัดการลูกค้า)
+  const offset = (currentPage - 1) * itemsPerPage;
+  const paginatedOrders = useMemo(
+    () => filteredOrders.slice(offset, offset + itemsPerPage),
+    [filteredOrders, offset, itemsPerPage]
+  );
+  const totalPages = Math.ceil(filteredOrders.length / itemsPerPage) || 1;
+  const startIndex = offset;
+  const endIndex = Math.min(offset + itemsPerPage, filteredOrders.length);
+
+  // Reset ไปหน้า 1 เมื่อเปลี่ยนตัวกรอง
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, dateFilter, statusFilter, showWithoutNumber]);
+
   // Toggle selection
   const toggleOrderSelection = (orderId: string) => {
     const order = orders.find((o) => o.id === orderId);
@@ -111,14 +129,27 @@ export function CleanupTestOrdersView() {
   };
 
   const toggleSelectAll = () => {
-    // กรองออเดอร์ที่สามารถเลือกได้ (ไม่ถูกกำหนดทริป)
+    // กรองออเดอร์ที่สามารถเลือกได้ (ไม่ถูกกำหนดทริป) ทั้งหมดที่กรอง
     const selectableOrders = filteredOrders.filter((o) => !isOrderAssignedToTrip(o));
-    
     if (selectedOrders.size === selectableOrders.length && selectableOrders.length > 0) {
       setSelectedOrders(new Set());
     } else {
       setSelectedOrders(new Set(selectableOrders.map((o) => o.id)));
     }
+  };
+
+  // เลือก/ยกเลิกเลือกเฉพาะแถวในหน้านี้
+  const toggleSelectAllOnPage = () => {
+    const selectableOnPage = paginatedOrders.filter((o) => !isOrderAssignedToTrip(o));
+    if (selectableOnPage.length === 0) return;
+    const allOnPageSelected = selectableOnPage.every((o) => selectedOrders.has(o.id));
+    const next = new Set(selectedOrders);
+    if (allOnPageSelected) {
+      selectableOnPage.forEach((o) => next.delete(o.id));
+    } else {
+      selectableOnPage.forEach((o) => next.add(o.id));
+    }
+    setSelectedOrders(next);
   };
 
   // ตรวจสอบว่าออเดอร์ถูกกำหนดทริปแล้วหรือไม่
@@ -542,11 +573,11 @@ export function CleanupTestOrdersView() {
                       type="checkbox"
                       checked={
                         (() => {
-                          const selectableOrders = filteredOrders.filter((o) => !isOrderAssignedToTrip(o));
-                          return selectedOrders.size === selectableOrders.length && selectableOrders.length > 0;
+                          const selectableOnPage = paginatedOrders.filter((o) => !isOrderAssignedToTrip(o));
+                          return selectableOnPage.length > 0 && selectableOnPage.every((o) => selectedOrders.has(o.id));
                         })()
                       }
-                      onChange={toggleSelectAll}
+                      onChange={toggleSelectAllOnPage}
                       className="w-5 h-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
                     />
                   </th>
@@ -571,7 +602,7 @@ export function CleanupTestOrdersView() {
                 </tr>
               </thead>
               <tbody>
-                {filteredOrders.map((order) => {
+                {paginatedOrders.map((order) => {
                   const isAssigned = isOrderAssignedToTrip(order);
                   return (
                     <tr
@@ -649,6 +680,113 @@ export function CleanupTestOrdersView() {
               </tbody>
             </table>
           </div>
+
+          {/* Pagination - 1 หน้า 100 แถว เหมือนหน้าจัดการลูกค้า */}
+          {totalPages > 1 && (
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-4 px-4 py-4 border-t border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/30">
+              <div className="text-sm text-slate-600 dark:text-slate-400">
+                แสดง {startIndex + 1} - {endIndex} จาก {filteredOrders.length.toLocaleString('th-TH')} รายการ
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+                  disabled={currentPage === 1}
+                  className="flex items-center gap-1"
+                >
+                  <ChevronLeft size={16} />
+                  ก่อนหน้า
+                </Button>
+
+                <div className="flex items-center gap-1 flex-wrap">
+                  {(() => {
+                    const pages: (number | string)[] = [];
+                    if (totalPages <= 7) {
+                      for (let i = 1; i <= totalPages; i++) pages.push(i);
+                    } else {
+                      pages.push(1);
+                      const startPage = Math.max(2, currentPage - 2);
+                      const endPage = Math.min(totalPages - 1, currentPage + 2);
+                      if (startPage > 2) pages.push('ellipsis-start');
+                      for (let i = startPage; i <= endPage; i++) {
+                        if (i !== 1 && i !== totalPages) pages.push(i);
+                      }
+                      if (endPage < totalPages - 1) pages.push('ellipsis-end');
+                      pages.push(totalPages);
+                    }
+                    return pages.map((page) => {
+                      if (typeof page === 'string') {
+                        return <span key={page} className="px-2 text-slate-400">...</span>;
+                      }
+                      return (
+                        <button
+                          key={page}
+                          onClick={() => setCurrentPage(page)}
+                          className={`px-3 py-1 rounded-lg text-sm font-medium transition-colors ${
+                            currentPage === page
+                              ? 'bg-enterprise-600 text-white'
+                              : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+                          }`}
+                        >
+                          {page.toLocaleString('th-TH')}
+                        </button>
+                      );
+                    });
+                  })()}
+                </div>
+
+                {totalPages > 10 && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-slate-600 dark:text-slate-400">ไปที่หน้า:</span>
+                    <input
+                      type="number"
+                      min={1}
+                      max={totalPages}
+                      value={pageInput}
+                      onChange={(e) => setPageInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          const page = parseInt(pageInput, 10);
+                          if (page >= 1 && page <= totalPages) {
+                            setCurrentPage(page);
+                            setPageInput('');
+                          }
+                        }
+                      }}
+                      placeholder={`1-${totalPages}`}
+                      className="w-20 px-2 py-1 text-sm border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-enterprise-500 focus:border-transparent"
+                    />
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        const page = parseInt(pageInput, 10);
+                        if (page >= 1 && page <= totalPages) {
+                          setCurrentPage(page);
+                          setPageInput('');
+                        }
+                      }}
+                    >
+                      ไป
+                    </Button>
+                  </div>
+                )}
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
+                  disabled={currentPage === totalPages}
+                  className="flex items-center gap-1"
+                >
+                  ถัดไป
+                  <ChevronRight size={16} />
+                </Button>
+              </div>
+            </div>
+          )}
         </Card>
       )}
 

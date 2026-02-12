@@ -1,5 +1,54 @@
 import { supabase } from '../lib/supabase';
 
+// Helper: แปลง Supabase/Postgres error เกี่ยวกับ RLS ให้เป็นข้อความที่อ่านง่าย
+function mapOrdersError(error: any, action: 'create' | 'update' | 'assign' | 'unassign' | 'delete') {
+  const message: string = error?.message || '';
+  const code: string | undefined = error?.code;
+
+  const isRlsViolation =
+    code === '42501' || // Postgres insufficient_privilege (มักใช้กับ RLS)
+    message.includes('violates row-level security policy');
+
+  if (isRlsViolation) {
+    if (action === 'create') {
+      return new Error(
+        'คุณไม่มีสิทธิ์สร้างออเดอร์ในตารางนี้หรือสาขานี้\n' +
+          'กรุณาติดต่อผู้ดูแลระบบหรือผู้ดูแลสาขาให้เพิ่มสิทธิ์การเข้าถึงก่อน'
+      );
+    }
+
+    if (action === 'assign') {
+      return new Error(
+        'คุณไม่มีสิทธิ์จัดทริปให้กับออเดอร์เหล่านี้\n' +
+          'กรุณาติดต่อผู้ดูแลระบบหรือผู้ดูแลสาขาให้ตรวจสอบสิทธิ์การใช้งาน'
+      );
+    }
+
+    if (action === 'unassign') {
+      return new Error(
+        'คุณไม่มีสิทธิ์ยกเลิกการกำหนดทริปของออเดอร์นี้\n' +
+          'กรุณาติดต่อผู้ดูแลระบบหรือผู้ดูแลสาขาให้ตรวจสอบสิทธิ์การใช้งาน'
+      );
+    }
+
+    if (action === 'delete') {
+      return new Error(
+        'คุณไม่มีสิทธิ์ลบออเดอร์ในระบบ\n' +
+          'หากต้องการลบออเดอร์ กรุณาติดต่อผู้จัดการหรือผู้ดูแลระบบ'
+      );
+    }
+
+    // default สำหรับ update ทั่วไป
+    return new Error(
+      'คุณไม่มีสิทธิ์แก้ไขออเดอร์นี้\n' +
+        'กรุณาติดต่อผู้ดูแลระบบหรือผู้ดูแลสาขาให้ตรวจสอบสิทธิ์การใช้งาน'
+    );
+  }
+
+  // ถ้าไม่ใช่ RLS error ให้คืน error เดิม
+  return error;
+}
+
 // Temporary types until database.ts is regenerated
 type Order = {
   id: string;
@@ -155,7 +204,9 @@ export const ordersService = {
       .select()
       .single();
 
-    if (orderError) throw orderError;
+    if (orderError) {
+      throw mapOrdersError(orderError, 'create');
+    }
 
     // สร้างรายการสินค้า
     const orderItems = items.map((item) => {
@@ -202,7 +253,9 @@ export const ordersService = {
       .select()
       .single();
 
-    if (error) throw error;
+    if (error) {
+      throw mapOrdersError(error, 'update');
+    }
     return data;
   },
 
@@ -238,140 +291,109 @@ export const ordersService = {
 
   /**
    * กำหนดออเดอร์ให้กับทริป
-   * ระบบจะสร้าง order_number อัตโนมัติตามลำดับ sequence_order ในทริป
+   * ใช้ RPC assign_orders_to_trip เพื่อ assign + สร้าง order_number ใน transaction เดียว (ไม่ซ้ำ)
+   * ถ้า RPC ยังไม่มี (ยังไม่รัน migration) จะ fallback เป็นอัปเดตทีละออเดอร์
    */
   async assignToTrip(orderIds: string[], tripId: string, updatedBy: string) {
-    // 1. Update orders to assign to trip (trigger will generate order_number)
-    let updatedOrders: Array<{ id: string; status: string; delivery_trip_id: string }> | null = null;
-    
-    const { data: initialUpdated, error: updateError } = await supabase
-      .from('orders')
-      .update({
-        delivery_trip_id: tripId,
-        status: 'assigned',
-        updated_by: updatedBy,
-      })
-      .in('id', orderIds)
-      .select('id, status, delivery_trip_id');
-
-    if (updateError) {
-      console.error('[ordersService] Failed to update orders:', {
-        error: updateError,
-        orderIds,
-        tripId,
-        code: updateError.code,
-        message: updateError.message,
-        details: updateError.details,
-        hint: updateError.hint,
-      });
-      
-      // Provide more helpful error message
-      if (updateError.code === 'PGRST116') {
-        throw new Error('ไม่สามารถอัปเดตออเดอร์ได้: ไม่พบข้อมูลหรือไม่มีสิทธิ์ (RLS Policy) - กรุณารัน migration ใน Supabase Dashboard');
-      } else if (updateError.code === '42883') {
-        // Function doesn't exist - this might be from a trigger
-        // Try to update without triggering the function by updating directly
-        console.warn('[ordersService] Function missing, trying direct update without trigger...');
-        
-        // Retry update - this time it should work if RLS is fixed
-        const { data: retryUpdated, error: retryError } = await supabase
-          .from('orders')
-          .update({
-            delivery_trip_id: tripId,
-            status: 'assigned',
-            updated_by: updatedBy,
-          })
-          .in('id', orderIds)
-          .select('id, status, delivery_trip_id');
-        
-        if (retryError) {
-          throw new Error(`ไม่สามารถอัปเดตออเดอร์ได้: ${retryError.message || 'Unknown error'} - กรุณารัน migration: sql/FINAL_FIX.sql`);
-        }
-        
-        // Use retry result - set updatedOrders to continue
-        if (retryUpdated && retryUpdated.length > 0) {
-          updatedOrders = retryUpdated;
-          console.log(`[ordersService] Successfully updated ${retryUpdated.length} orders after retry`);
-        } else {
-          throw new Error('ไม่สามารถอัปเดตออเดอร์ได้: กรุณารัน migration: sql/FINAL_FIX.sql');
-        }
-      } else {
-        throw new Error(`ไม่สามารถอัปเดตออเดอร์ได้: ${updateError.message || 'Unknown error'}`);
-      }
-    } else {
-      updatedOrders = initialUpdated;
+    if (orderIds.length === 0) {
+      return { updated: 0, orderNumbersGenerated: 0 };
     }
 
-    // Verify that orders were actually updated
-    if (!updatedOrders || updatedOrders.length === 0) {
-      console.warn('[ordersService] No orders were updated. This might be an RLS policy issue.');
+    // 1. ลองใช้ RPC ก่อน (assign + สร้าง order_number ใน DB ครั้งเดียว ไม่ซ้ำ)
+    const { data: rpcResult, error: rpcError } = await supabase.rpc('assign_orders_to_trip', {
+      p_order_ids: orderIds,
+      p_trip_id: tripId,
+      p_updated_by: updatedBy,
+    });
+
+    if (!rpcError) {
+      const rows = Array.isArray(rpcResult) ? rpcResult : [];
+      const updatedCount = rows.length > 0 ? Number(rows[0]?.updated_count ?? rows.length) : 0;
+      return {
+        updated: updatedCount,
+        orderNumbersGenerated: rows.filter((r: any) => r?.order_number).length,
+      };
+    }
+
+    // ถ้า RPC ไม่มี (ยังไม่รัน migration) หรือ error อื่น → fallback อัปเดตทีละออเดอร์
+    if (rpcError.code === '42883') {
+      console.warn('[ordersService] assign_orders_to_trip RPC not found, falling back to one-by-one update. Run migration: sql/20260230000000_assign_orders_to_trip_rpc.sql');
+    } else {
+      console.warn('[ordersService] assign_orders_to_trip RPC failed, falling back to one-by-one:', rpcError.message);
+    }
+
+    const updatedOrders: Array<{ id: string; status: string; delivery_trip_id: string }> = [];
+    const payload = {
+      delivery_trip_id: tripId,
+      status: 'assigned' as const,
+      updated_by: updatedBy,
+    };
+
+    for (const orderId of orderIds) {
+      const { data: row, error: updateError } = await supabase
+        .from('orders')
+        .update(payload)
+        .eq('id', orderId)
+        .select('id, status, delivery_trip_id')
+        .single();
+
+      if (updateError) {
+        console.error('[ordersService] Failed to update orders:', {
+          error: updateError,
+          orderIds,
+          tripId,
+          code: updateError.code,
+          message: updateError.message,
+        });
+        if (updateError.code === 'PGRST116') {
+          throw new Error('ไม่สามารถอัปเดตออเดอร์ได้: ไม่พบข้อมูลหรือไม่มีสิทธิ์ (RLS Policy) - กรุณารัน migration ใน Supabase Dashboard');
+        }
+        if (updateError.code === '23505') {
+          throw new Error('ไม่สามารถอัปเดตออเดอร์ได้: เลขที่ออเดอร์ซ้ำ (duplicate order_number) - กรุณารัน migration: sql/20260230000000_assign_orders_to_trip_rpc.sql แล้วลองใหม่');
+        }
+        if (updateError.code === '42883') {
+          throw new Error(
+            `ไม่สามารถอัปเดตออเดอร์ได้: ${updateError.message || 'Unknown error'} - กรุณารัน migration: sql/FINAL_FIX.sql`
+          );
+        }
+        const mapped = mapOrdersError(updateError, 'assign');
+        if (mapped !== updateError) throw mapped;
+        throw new Error(`ไม่สามารถอัปเดตออเดอร์ได้: ${updateError.message || 'Unknown error'}`);
+      }
+      if (row) updatedOrders.push(row);
+    }
+
+    if (updatedOrders.length === 0) {
       throw new Error('ไม่สามารถอัปเดตออเดอร์ได้: อาจเป็นปัญหา RLS Policy - กรุณารัน migration: sql/FINAL_FIX.sql');
     }
 
-    if (updatedOrders.length !== orderIds.length) {
-      console.warn(`[ordersService] Only ${updatedOrders.length} of ${orderIds.length} orders were updated`);
-    }
-
-    // 2. Generate order numbers for all orders in trip (ตามลำดับ sequence_order)
-    // ใช้ database function เพื่อให้แน่ใจว่าเรียงตามลำดับที่ถูกต้อง
-    const { data: orderNumbers, error: generateError } = await supabase
-      .rpc('generate_order_numbers_for_trip', {
-        p_trip_id: tripId,
-      });
-
-    if (generateError) {
-      console.error('[ordersService] Error generating order numbers:', {
-        error: generateError,
-        tripId,
-        code: generateError.code,
-        message: generateError.message,
-      });
-      
-      // If function doesn't exist, provide helpful message
-      if (generateError.code === '42883') {
-        console.error('[ordersService] ⚠️ CRITICAL: Function generate_order_numbers_for_trip does not exist!');
-        console.error('[ordersService] ⚠️ Please run migration in Supabase Dashboard: sql/EXECUTE_THIS_NOW.sql');
-      }
-      // Don't throw - order_number generation is not critical if orders are already assigned
-    } else if (orderNumbers && orderNumbers.length > 0) {
-      console.log(`[ordersService] Generated ${orderNumbers.length} order numbers`);
-    }
-
-    // 3. Verify that all orders have order_numbers
-    const { data: ordersWithoutNumber, error: checkError } = await supabase
-      .from('orders')
-      .select('id')
-      .in('id', orderIds)
-      .or('order_number.is.null,order_number.eq.');
-
-    if (checkError) {
-      console.warn('[ordersService] Error checking order numbers:', checkError);
-    } else if (ordersWithoutNumber && ordersWithoutNumber.length > 0) {
-      console.warn(
-        `[ordersService] ${ordersWithoutNumber.length} orders still missing order_number after assignment`
-      );
-    }
+    const { data: orderNumbers } = await supabase.rpc('generate_order_numbers_for_trip', {
+      p_trip_id: tripId,
+    });
 
     return {
       updated: updatedOrders.length,
-      orderNumbersGenerated: orderNumbers?.length || 0,
+      orderNumbersGenerated: Array.isArray(orderNumbers) ? orderNumbers.length : 0,
     };
   },
 
   /**
-   * ยกเลิกการกำหนดทริป
+   * ยกเลิกการกำหนดทริป และล้างรหัสออเดอร์ (order_number) เพื่อให้สามารถจัดทริปใหม่ได้
    */
   async unassignFromTrip(orderIds: string[], updatedBy: string) {
     const { error } = await supabase
       .from('orders')
       .update({
         delivery_trip_id: null,
+        order_number: null,
         status: 'confirmed',
         updated_by: updatedBy,
       })
       .in('id', orderIds);
 
-    if (error) throw error;
+    if (error) {
+      throw mapOrdersError(error, 'unassign');
+    }
   },
 
   /**
@@ -379,7 +401,9 @@ export const ordersService = {
    */
   async delete(id: string) {
     const { error } = await supabase.from('orders').delete().eq('id', id);
-    if (error) throw error;
+    if (error) {
+      throw mapOrdersError(error, 'delete');
+    }
   },
 
   /**
@@ -404,8 +428,9 @@ export const ordersService = {
           .single();
 
         if (error) {
-          console.error(`[ordersService] Error deleting order ${id}:`, error);
-          errors.push({ id, error: error.message });
+          const mapped = mapOrdersError(error, 'delete');
+          console.error(`[ordersService] Error deleting order ${id}:`, mapped);
+          errors.push({ id, error: mapped.message });
         } else if (data) {
           deletedIds.push(id);
         } else {
