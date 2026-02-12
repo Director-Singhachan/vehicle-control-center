@@ -416,6 +416,58 @@ export const tripMetricsService = {
   },
 
   /**
+   * ดึงข้อมูล pattern การจัดเรียงจาก analytics views (pallet_weight_distribution + packing_product_affinity)
+   * ใช้เป็น packing_patterns context ให้ AI แนะนำการจัดสินค้าอย่างเฉพาะทาง
+   */
+  getPackingPatternInsights: async (): Promise<string> => {
+    const lines: string[] = [];
+
+    // 1) ดึงข้อมูลน้ำหนักพาเลทเฉลี่ย (position 1-4)
+    try {
+      const { data: weightData, error: weightErr } = await supabase
+        .from('pallet_weight_distribution')
+        .select('pallet_position, avg_weight_kg, max_weight_kg, min_weight_kg, weight_pattern, position_index')
+        .order('position_index', { ascending: true })
+        .limit(4);
+
+      if (!weightErr && weightData && weightData.length > 0) {
+        lines.push('📊 รูปแบบน้ำหนักพาเลทจากประวัติ:');
+        for (const row of weightData) {
+          const avg = typeof row.avg_weight_kg === 'number' ? row.avg_weight_kg.toFixed(0) : '?';
+          const max = typeof row.max_weight_kg === 'number' ? row.max_weight_kg.toFixed(0) : '?';
+          const min = typeof row.min_weight_kg === 'number' ? row.min_weight_kg.toFixed(0) : '?';
+          const pattern = row.weight_pattern || '';
+          lines.push(`- ${row.pallet_position}: เฉลี่ย ${avg}kg (${min}-${max}kg) ${pattern}`);
+        }
+      }
+    } catch {
+      // View อาจยังไม่ถูกสร้าง → ข้ามโดยไม่ error
+    }
+
+    // 2) ดึงคู่สินค้าที่มักจัดด้วยกัน (top 5 pairs)
+    try {
+      const { data: affinityData, error: affinityErr } = await supabase
+        .from('packing_product_affinity')
+        .select('product_pair, cooccurrence_count, trip_count, affinity_percentage')
+        .order('cooccurrence_count', { ascending: false })
+        .limit(5);
+
+      if (!affinityErr && affinityData && affinityData.length > 0) {
+        lines.push('');
+        lines.push('🔗 คู่สินค้าที่มักจัดด้วยกัน:');
+        for (const row of affinityData) {
+          const pct = typeof row.affinity_percentage === 'number' ? row.affinity_percentage.toFixed(0) : '?';
+          lines.push(`- ${row.product_pair}: ${row.cooccurrence_count} ครั้ง (${row.trip_count} ทริป, ${pct}%)`);
+        }
+      }
+    } catch {
+      // View อาจยังไม่ถูกสร้าง → ข้ามโดยไม่ error
+    }
+
+    return lines.join('\n');
+  },
+
+  /**
    * ดึงข้อมูลพื้นฐานของทริป (จำนวนสินค้า, ระยะทาง, ระยะเวลา) จากข้อมูลที่มีอยู่แล้ว
    * ใช้สำหรับเติมข้อมูลที่สามารถคำนวณได้จากระบบเดิม
    */

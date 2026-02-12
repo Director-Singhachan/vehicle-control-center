@@ -50,6 +50,7 @@ interface RequestBody {
   trip: TripSummary;
   vehicles: VehicleOption[];
   historical_context?: string;
+  packing_patterns?: string;
 }
 
 interface AIResponse {
@@ -146,19 +147,24 @@ function buildPrompt(body: RequestBody): string {
   if (trip.pallet_allocation && trip.pallet_allocation.length > 0) {
     palletAllocationBlock = `\nการจัดสรรพาเลทจากระบบ (แต่ละใบมีสินค้าดังนี้ — ใช้เป็นฐานในการแนะนำวิธีจัดเรียง/ซ้อน):
 ${trip.pallet_allocation
-  .map(
-    (p) =>
-      `  พาเลทที่ ${p.pallet_index}: ${p.items
         .map(
-          (i) =>
-            `${i.product_name || i.product_code || i.product_id} (${i.quantity} หน่วย, น้ำหนักรวม ${i.weight_kg.toFixed(1)} กก., ปริมาตร ${i.volume_liter.toFixed(0)} ลิตร)`
+          (p) =>
+            `  พาเลทที่ ${p.pallet_index}: ${p.items
+              .map(
+                (i) =>
+                  `${i.product_name || i.product_code || i.product_id} (${i.quantity} หน่วย, น้ำหนักรวม ${i.weight_kg.toFixed(1)} กก., ปริมาตร ${i.volume_liter.toFixed(0)} ลิตร)`
+              )
+              .join('; ')}`
         )
-        .join('; ')}`
-  )
-  .join('\n')}
+        .join('\n')}
 
 `;
   }
+
+  // Pattern insights จาก analytics views (ถ้ามี)
+  const packingPatternsBlock = body.packing_patterns
+    ? `\n${body.packing_patterns}\n`
+    : '';
 
   return `คุณเป็นผู้ช่วยแนะนำรถบรรทุกและวิธีจัดเรียงสินค้าสำหรับทริปส่งของ
 
@@ -173,14 +179,15 @@ ${palletAllocationBlock}
 รถที่เลือกได้:
 ${vehicleList}
 ${historical_context ? `\nทริปคล้ายกันจากประวัติ (สรุปโดยระบบ rule-based):\n${historical_context}` : ''}
-
+${packingPatternsBlock}
 คำแนะนำ:
 1) reasoning ต้องอ้างอิงข้อมูลจริง เช่น ทะเบียนรถ ความจุ เปรียบเทียบกับโหลดปัจจุบัน และสถิติจากทริปคล้ายกันด้านบน
 2) packing_tips ต้องเฉพาะทางและอ้างอิงรายการพาเลทด้านบน: แนะนำว่าสินค้าแต่ละชนิดควรไว้ล่างหรือบน ลำดับการซ้อนบนพาเลทเดียวกัน (เช่น พาเลทที่ 1 มี 3 อย่าง — ควรเรียงอย่างไร) และลำดับโหลด/ถอนตามร้าน ของหนัก/เปราะบาง อย่าพูดทั่วไป
-3) ห้ามเปลี่ยนรถที่ระบบหลักเลือกแล้วเอง ให้เสนอเป็น \"ข้อสังเกต/ความเสี่ยง/ข้อเสนอปรับปรุง\" เท่านั้น
+3) ถ้ามีข้อมูล "รูปแบบน้ำหนักพาเลท" หรือ "คู่สินค้าที่จัดด้วยกัน" ให้อ้างอิงข้อมูลนั้นใน packing_tips ด้วย เช่น "จากประวัติ พาเลทแรกมักหนัก ~800kg ควรวางของหนักที่สุดไว้" หรือ "เบียร์สิงห์+ลีโอ มักจัดคู่กัน"
+4) ห้ามเปลี่ยนรถที่ระบบหลักเลือกแล้วเอง ให้เสนอเป็น "ข้อสังเกต/ความเสี่ยง/ข้อเสนอปรับปรุง" เท่านั้น
 
 กรุณาตอบเป็น JSON เท่านั้น (ไม่ใส่ markdown):
-{"suggested_vehicle_id": "uuid ของรถที่แนะนำ", "reasoning": "เหตุผลสั้นๆ อ้างอิงข้อมูลทริป/รถและทริปคล้ายกัน", "packing_tips": "คำแนะนำจัดเรียงเฉพาะทาง เช่น แต่ละพาเลทควรซ้อนอย่างไร สินค้า 3 อย่างบนพาเลทเดียวกันเรียงอย่างไร ลำดับโหลด/ถอนตามร้าน และข้อควรระวังจากประวัติ"}
+{"suggested_vehicle_id": "uuid ของรถที่แนะนำ", "reasoning": "เหตุผลสั้นๆ อ้างอิงข้อมูลทริป/รถและทริปคล้ายกัน", "packing_tips": "คำแนะนำจัดเรียงเฉพาะทางจากข้อมูลจริง: แต่ละพาเลทควรมีสินค้าอะไร น้ำหนักเท่าไหร่ ซ้อนอย่างไร อ้างอิงจากรูปแบบในประวัติ"}
 
 ถ้าไม่มีรถที่เหมาะ ให้ suggested_vehicle_id เป็น null.`;
 }
@@ -220,7 +227,7 @@ async function callGeminiOnce(apiKey: string, prompt: string): Promise<{ res: Re
       contents: [{ role: 'user', parts: [{ text: prompt }] }],
       generationConfig: {
         temperature: 0.3,
-        maxOutputTokens: 512,
+        maxOutputTokens: 800,
       },
     }),
   });

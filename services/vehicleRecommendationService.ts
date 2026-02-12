@@ -220,6 +220,8 @@ export const vehicleRecommendationService = {
       branch?: string | null;
     }>;
     historical_context?: string;
+    /** ข้อมูล pattern การจัดเรียงจากประวัติ (จาก getPackingPatternInsights) */
+    packing_patterns?: string;
   }): Promise<{
     suggested_vehicle_id: string | null;
     reasoning: string | null;
@@ -232,6 +234,7 @@ export const vehicleRecommendationService = {
           trip: params.trip,
           vehicles: params.vehicles,
           historical_context: params.historical_context,
+          packing_patterns: params.packing_patterns,
         },
       });
       if (error) {

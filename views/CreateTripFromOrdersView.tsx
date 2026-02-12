@@ -450,6 +450,17 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
       } catch (err) {
         console.warn('[CreateTripFromOrdersView] getSimilarTripsForLoad error:', err);
       }
+
+      // ดึง packing pattern insights จาก analytics views
+      let packing_patterns: string | undefined;
+      try {
+        const patterns = await tripMetricsService.getPackingPatternInsights();
+        if (patterns.trim().length > 0) {
+          packing_patterns = patterns;
+        }
+      } catch (err) {
+        console.warn('[CreateTripFromOrdersView] getPackingPatternInsights error:', err);
+      }
       try {
         const packing = await calculatePalletAllocation(tripItems);
         if (packing.errors.length === 0) {
@@ -498,6 +509,7 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
         trip,
         vehicles,
         historical_context,
+        packing_patterns,
       });
       setAiExtraResult(result ?? null);
       if (result?.suggested_vehicle_id) {
@@ -1439,119 +1451,119 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
                       const warningsToShow = [...nonPalletWarnings, ...palletWarnings];
 
                       return (
-                      <div className="space-y-3">
-                        {errorsToShow.length > 0 && (
-                          <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
-                            <div className="flex items-center gap-2 text-red-800 mb-2">
-                              <AlertCircle size={16} />
-                              <span className="font-medium">ข้อผิดพลาด:</span>
+                        <div className="space-y-3">
+                          {errorsToShow.length > 0 && (
+                            <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+                              <div className="flex items-center gap-2 text-red-800 mb-2">
+                                <AlertCircle size={16} />
+                                <span className="font-medium">ข้อผิดพลาด:</span>
+                              </div>
+                              <ul className="list-disc list-inside text-sm text-red-700 space-y-1">
+                                {errorsToShow.map((error, idx) => (
+                                  <li key={idx}>{error}</li>
+                                ))}
+                              </ul>
                             </div>
-                            <ul className="list-disc list-inside text-sm text-red-700 space-y-1">
-                              {errorsToShow.map((error, idx) => (
-                                <li key={idx}>{error}</li>
-                              ))}
-                            </ul>
-                          </div>
-                        )}
-                        {warningsToShow.length > 0 && (
-                          <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
-                            <div className="flex items-center gap-2 text-amber-800 mb-2">
-                              <AlertCircle size={16} />
-                              <span className="font-medium">คำเตือน:</span>
+                          )}
+                          {warningsToShow.length > 0 && (
+                            <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                              <div className="flex items-center gap-2 text-amber-800 mb-2">
+                                <AlertCircle size={16} />
+                                <span className="font-medium">คำเตือน:</span>
+                              </div>
+                              <ul className="list-disc list-inside text-sm text-amber-700 space-y-1">
+                                {warningsToShow.map((warning, idx) => (
+                                  <li key={idx}>{warning}</li>
+                                ))}
+                              </ul>
                             </div>
-                            <ul className="list-disc list-inside text-sm text-amber-700 space-y-1">
-                              {warningsToShow.map((warning, idx) => (
-                                <li key={idx}>{warning}</li>
-                              ))}
-                            </ul>
-                          </div>
-                        )}
-                        <div className="grid grid-cols-2 gap-4">
-                          <div className="p-3 bg-gray-50 rounded-lg">
-                            <div className="text-sm text-gray-600 mb-1">
-                              {palletPackingResult
-                                ? 'จำนวนพาเลท (จัดรวม)'
-                                : 'จำนวนพาเลท'}
-                              <span className="block text-xs text-gray-500 font-normal mt-0.5">
+                          )}
+                          <div className="grid grid-cols-2 gap-4">
+                            <div className="p-3 bg-gray-50 rounded-lg">
+                              <div className="text-sm text-gray-600 mb-1">
                                 {palletPackingResult
-                                  ? 'หลายชนิดบนพาเลทเดียวกัน ตามน้ำหนัก/ปริมาตร'
-                                  : '(ค่าประมาณแยกตามชนิดสินค้า การจัดเรียงจริงอาจใช้น้อยกว่าถ้ารวมพาเลทได้)'}
-                              </span>
-                            </div>
-                            <div className="text-2xl font-bold text-gray-900">
-                              {displayPallets}
-                              {capacitySummary.vehicleMaxPallets !== null && (
-                                <span className="text-lg font-normal text-gray-500">
-                                  {' '}/ {capacitySummary.vehicleMaxPallets}
+                                  ? 'จำนวนพาเลท (จัดรวม)'
+                                  : 'จำนวนพาเลท'}
+                                <span className="block text-xs text-gray-500 font-normal mt-0.5">
+                                  {palletPackingResult
+                                    ? 'หลายชนิดบนพาเลทเดียวกัน ตามน้ำหนัก/ปริมาตร'
+                                    : '(ค่าประมาณแยกตามชนิดสินค้า การจัดเรียงจริงอาจใช้น้อยกว่าถ้ารวมพาเลทได้)'}
                                 </span>
-                              )}
-                            </div>
-                            {capacitySummary.vehicleMaxPallets !== null && (() => {
-                              const pct = (displayPallets / capacitySummary.vehicleMaxPallets) * 100;
-                              return (
-                                <div className="mt-2">
-                                  <div className="w-full bg-gray-200 rounded-full h-2">
-                                    <div
-                                      className={`h-2 rounded-full ${displayPallets > capacitySummary.vehicleMaxPallets
+                              </div>
+                              <div className="text-2xl font-bold text-gray-900">
+                                {displayPallets}
+                                {capacitySummary.vehicleMaxPallets !== null && (
+                                  <span className="text-lg font-normal text-gray-500">
+                                    {' '}/ {capacitySummary.vehicleMaxPallets}
+                                  </span>
+                                )}
+                              </div>
+                              {capacitySummary.vehicleMaxPallets !== null && (() => {
+                                const pct = (displayPallets / capacitySummary.vehicleMaxPallets) * 100;
+                                return (
+                                  <div className="mt-2">
+                                    <div className="w-full bg-gray-200 rounded-full h-2">
+                                      <div
+                                        className={`h-2 rounded-full ${displayPallets > capacitySummary.vehicleMaxPallets
                                           ? 'bg-red-500'
                                           : displayPallets > capacitySummary.vehicleMaxPallets * 0.9
                                             ? 'bg-amber-500'
                                             : 'bg-green-500'
-                                        }`}
-                                      style={{
-                                        width: `${Math.min(100, pct)}%`,
-                                      }}
-                                    />
+                                          }`}
+                                        style={{
+                                          width: `${Math.min(100, pct)}%`,
+                                        }}
+                                      />
+                                    </div>
+                                    <div className="text-xs text-gray-500 mt-1">
+                                      {Math.round(pct)}% ของความจุ
+                                    </div>
                                   </div>
-                                  <div className="text-xs text-gray-500 mt-1">
-                                    {Math.round(pct)}% ของความจุ
-                                  </div>
-                                </div>
-                              );
-                            })()}
-                          </div>
-                          <div className="p-3 bg-gray-50 rounded-lg">
-                            <div className="text-sm text-gray-600 mb-1">
-                              น้ำหนักรวม
+                                );
+                              })()}
                             </div>
-                            <div className="text-2xl font-bold text-gray-900">
-                              {capacitySummary.totalWeightKg.toFixed(2)} กก.
+                            <div className="p-3 bg-gray-50 rounded-lg">
+                              <div className="text-sm text-gray-600 mb-1">
+                                น้ำหนักรวม
+                              </div>
+                              <div className="text-2xl font-bold text-gray-900">
+                                {capacitySummary.totalWeightKg.toFixed(2)} กก.
+                                {capacitySummary.vehicleMaxWeightKg !== null && (
+                                  <span className="text-lg font-normal text-gray-500">
+                                    {' '}/ {capacitySummary.vehicleMaxWeightKg} กก.
+                                  </span>
+                                )}
+                              </div>
                               {capacitySummary.vehicleMaxWeightKg !== null && (
-                                <span className="text-lg font-normal text-gray-500">
-                                  {' '}/ {capacitySummary.vehicleMaxWeightKg} กก.
-                                </span>
-                              )}
-                            </div>
-                            {capacitySummary.vehicleMaxWeightKg !== null && (
-                              <div className="mt-2">
-                                <div className="w-full bg-gray-200 rounded-full h-2">
-                                  <div
-                                    className={`h-2 rounded-full ${capacitySummary.totalWeightKg > capacitySummary.vehicleMaxWeightKg
+                                <div className="mt-2">
+                                  <div className="w-full bg-gray-200 rounded-full h-2">
+                                    <div
+                                      className={`h-2 rounded-full ${capacitySummary.totalWeightKg > capacitySummary.vehicleMaxWeightKg
                                         ? 'bg-red-500'
                                         : capacitySummary.totalWeightKg > capacitySummary.vehicleMaxWeightKg * 0.9
                                           ? 'bg-amber-500'
                                           : 'bg-green-500'
-                                      }`}
-                                    style={{
-                                      width: `${Math.min(
-                                        100,
-                                        (capacitySummary.totalWeightKg / capacitySummary.vehicleMaxWeightKg) * 100
-                                      )}%`,
-                                    }}
-                                  />
+                                        }`}
+                                      style={{
+                                        width: `${Math.min(
+                                          100,
+                                          (capacitySummary.totalWeightKg / capacitySummary.vehicleMaxWeightKg) * 100
+                                        )}%`,
+                                      }}
+                                    />
+                                  </div>
+                                  <div className="text-xs text-gray-500 mt-1">
+                                    {Math.round(
+                                      (capacitySummary.totalWeightKg / capacitySummary.vehicleMaxWeightKg) * 100
+                                    )}
+                                    % ของความจุ
+                                  </div>
                                 </div>
-                                <div className="text-xs text-gray-500 mt-1">
-                                  {Math.round(
-                                    (capacitySummary.totalWeightKg / capacitySummary.vehicleMaxWeightKg) * 100
-                                  )}
-                                  % ของความจุ
-                                </div>
-                              </div>
-                            )}
+                              )}
+                            </div>
+                            {/* ตัดการแสดงความสูงรวมออกจากหน้านี้ตามคำขอ (ยังคำนวณภายในแต่ไม่แสดง) */}
                           </div>
-                          {/* ตัดการแสดงความสูงรวมออกจากหน้านี้ตามคำขอ (ยังคำนวณภายในแต่ไม่แสดง) */}
                         </div>
-                      </div>
                       );
                     })() : (
                       <div className="text-sm text-gray-500">
