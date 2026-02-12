@@ -37,6 +37,7 @@ import type {
 } from '../services/deliveryTripService';
 import { tripMetricsService, type PostTripAnalysisEntry } from '../services/tripMetricsService';
 import { TripPostAnalysisPanel } from '../components/trip/TripPostAnalysisPanel';
+import { PackingLayoutEditor } from '../components/trip/PackingLayoutEditor';
 
 interface DeliveryTripDetailViewProps {
   tripId: string;
@@ -57,6 +58,7 @@ export const DeliveryTripDetailView: React.FC<DeliveryTripDetailViewProps> = ({
   const [vehicleImageError, setVehicleImageError] = useState(false);
   const [driverImageError, setDriverImageError] = useState(false);
   const [selectedImage, setSelectedImage] = useState<{ url: string; alt: string } | null>(null);
+  const [showPackingLayout, setShowPackingLayout] = useState(false);
 
   // Get aggregated products
   const [aggregatedProducts, setAggregatedProducts] = useState<any[]>([]);
@@ -1097,6 +1099,35 @@ export const DeliveryTripDetailView: React.FC<DeliveryTripDetailViewProps> = ({
                 </div>
               );
             })}
+          </div>
+        )}
+      </Card>
+
+      {/* Packing Layout Section */}
+      <Card>
+        <div className="flex items-center justify-between">
+          <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+            <Package size={20} />
+            การจัดเรียงสินค้า
+          </h3>
+          <Button
+            variant={showPackingLayout ? 'outline' : 'primary'}
+            size="sm"
+            onClick={() => setShowPackingLayout(!showPackingLayout)}
+          >
+            {showPackingLayout ? 'ซ่อน' : 'ดูการจัดเรียง / บันทึก'}
+          </Button>
+        </div>
+        {showPackingLayout && (
+          <div className="mt-4">
+            <PackingLayoutEditor
+              tripId={tripId}
+              tripStatus={trip.status || 'planned'}
+              onClose={() => setShowPackingLayout(false)}
+              onSaved={() => {
+                refetch();
+              }}
+            />
           </div>
         )}
       </Card>
