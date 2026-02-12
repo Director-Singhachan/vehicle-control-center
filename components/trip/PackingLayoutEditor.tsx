@@ -5,7 +5,11 @@
  * 1) โหมดง่าย (default): สินค้า + จำนวนชั้น → เช่น "เบียร์ 60 ลัง, 4 ชั้น"
  * 2) โหมดละเอียด (toggle): ระบุสินค้าทีละชั้น → เช่น "ชั้น 1: เบียร์ 15 + น้ำ 10"
  *
+ * สินค้ารหัสเดียวกันจากหลายร้านจะถูกรวมเป็นรายการเดียว (group by product_id)
+ * เมื่อบันทึก จะกระจาย quantity กลับไปตาม delivery_trip_item_id ต้นทาง
+ *
  * Features: Undo/Redo, Auto-save draft, Read-only mode, Progress bar, Validation
+ * Layout: พาเลทแสดง 2 คอลัมน์ (1|2, 3|4) ลดการ scroll
  */
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
@@ -22,22 +26,30 @@ import {
 
 // ==================== Types ====================
 
+/** แหล่งที่มาของสินค้า (1 product อาจมาจากหลาย delivery_trip_items) */
+interface SourceItem {
+    delivery_trip_item_id: string;
+    quantity: number;
+}
+
+/** สินค้าที่รวมแล้ว (group by product_id) */
 interface TripItem {
-    id: string;
     product_id: string;
     product_code: string;
     product_name: string;
     category: string;
     unit: string;
-    quantity: number;
+    total_quantity: number; // รวม qty จากทุกร้าน
     weight_kg: number | null;
     is_bonus: boolean;
+    sources: SourceItem[]; // delivery_trip_item_id ต้นทาง
 }
 
+/** สินค้าที่จัดลงพาเลท — อ้างอิงด้วย product_id */
 interface PositionItem {
-    delivery_trip_item_id: string;
+    product_id: string;
     quantity: number;
-    layer_index: number | null; // null = โหมดง่าย, 0+ = โหมดละเอียด
+    layer_index: number | null;
 }
 
 interface Position {
@@ -47,7 +59,7 @@ interface Position {
     total_layers: number;
     notes: string;
     items: PositionItem[];
-    detailedMode: boolean; // true = แยกตามชั้น
+    detailedMode: boolean;
     collapsed: boolean;
 }
 
@@ -68,7 +80,7 @@ const uid = () =>
         return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16);
     });
 
-const DRAFT_KEY = 'packing-layout-draft-v4-';
+const DRAFT_KEY = 'packing-layout-draft-v5-';
 
 // ==================== Main Component ====================
 
@@ -91,34 +103,62 @@ export const PackingLayoutEditor: React.FC<Props> = ({ tripId, tripStatus, onClo
         const load = async () => {
             setLoadingItems(true);
             try {
-                const items = await tripMetricsService.getTripItemsDetails(tripId);
+                const details = await tripMetricsService.getTripItemsDetails(tripId);
                 const { supabase } = await import('../../lib/supabase');
                 const { data: rawItems } = await supabase
                     .from('delivery_trip_items')
                     .select('id, product_id, quantity, is_bonus')
                     .eq('delivery_trip_id', tripId);
 
-                const finalItems: TripItem[] = (rawItems ?? []).map((ri: any) => {
-                    const d = items.find((i) => i.product_id === ri.product_id);
-                    return {
-                        id: ri.id,
-                        product_id: ri.product_id,
-                        product_code: d?.product_code || '',
-                        product_name: d?.product_name || '',
-                        category: d?.category || '',
-                        unit: (d as any)?.packaging_type || 'หน่วย',
-                        quantity: Number(ri.quantity || 0),
-                        weight_kg: d?.weight_kg ?? null,
-                        is_bonus: !!ri.is_bonus,
-                    };
-                });
+                // ===== Group by product_id =====
+                const productMap = new Map<string, TripItem>();
+                for (const ri of rawItems ?? []) {
+                    const pid = ri.product_id;
+                    const existing = productMap.get(pid);
+                    const d = details.find((i) => i.product_id === pid);
+                    if (existing) {
+                        existing.total_quantity += Number(ri.quantity || 0);
+                        existing.sources.push({ delivery_trip_item_id: ri.id, quantity: Number(ri.quantity || 0) });
+                        if (ri.is_bonus) existing.is_bonus = true;
+                    } else {
+                        productMap.set(pid, {
+                            product_id: pid,
+                            product_code: d?.product_code || '',
+                            product_name: d?.product_name || '',
+                            category: d?.category || '',
+                            unit: (d as any)?.packaging_type || 'หน่วย',
+                            total_quantity: Number(ri.quantity || 0),
+                            weight_kg: d?.weight_kg ?? null,
+                            is_bonus: !!ri.is_bonus,
+                            sources: [{ delivery_trip_item_id: ri.id, quantity: Number(ri.quantity || 0) }],
+                        });
+                    }
+                }
+                const finalItems = [...productMap.values()].sort((a, b) => a.product_code.localeCompare(b.product_code));
                 setTripItems(finalItems);
 
-                // Load existing from DB
+                // Load existing layout from DB
                 const existing = await tripMetricsService.getTripPackingLayout(tripId);
                 if (existing && existing.positions.length > 0) {
+                    // Build delivery_trip_item_id → product_id map
+                    const dtiToProduct = new Map<string, string>();
+                    for (const ti of finalItems) {
+                        for (const s of ti.sources) dtiToProduct.set(s.delivery_trip_item_id, ti.product_id);
+                    }
+
                     const positions: Position[] = existing.positions.map((pos) => {
                         const isDetailed = pos.items.some((i) => i.layer_index !== null && i.layer_index !== undefined);
+
+                        // Merge items by product_id (+layer_index)
+                        const mergedMap = new Map<string, PositionItem>();
+                        for (const item of pos.items) {
+                            const pid = item.product_id || dtiToProduct.get(item.delivery_trip_item_id) || item.delivery_trip_item_id;
+                            const key = `${pid}-${item.layer_index ?? 'null'}`;
+                            const ex = mergedMap.get(key);
+                            if (ex) { ex.quantity += item.quantity; }
+                            else { mergedMap.set(key, { product_id: pid, quantity: item.quantity, layer_index: item.layer_index ?? null }); }
+                        }
+
                         return {
                             id: uid(),
                             position_type: pos.position_type,
@@ -127,17 +167,12 @@ export const PackingLayoutEditor: React.FC<Props> = ({ tripId, tripStatus, onClo
                             notes: pos.notes || '',
                             collapsed: false,
                             detailedMode: isDetailed,
-                            items: pos.items.map((item) => ({
-                                delivery_trip_item_id: item.delivery_trip_item_id,
-                                quantity: item.quantity,
-                                layer_index: item.layer_index ?? null,
-                            })),
+                            items: [...mergedMap.values()],
                         };
                     });
                     const s: LayoutState = { positions };
                     setLayout(s); setHistory([s]); setHistoryIdx(0); setIsReadOnly(true);
                 } else {
-                    // Check draft
                     try {
                         const draft = localStorage.getItem(draftKey);
                         if (draft) {
@@ -191,30 +226,30 @@ export const PackingLayoutEditor: React.FC<Props> = ({ tripId, tripStatus, onClo
         const m = new Map<string, number>();
         for (const p of layout.positions)
             for (const i of p.items)
-                m.set(i.delivery_trip_item_id, (m.get(i.delivery_trip_item_id) || 0) + i.quantity);
+                m.set(i.product_id, (m.get(i.product_id) || 0) + i.quantity);
         return m;
     }, [layout]);
 
     const errors = useMemo(() => {
         const e: string[] = [];
         for (const ti of tripItems) {
-            const a = allocated.get(ti.id) || 0;
-            if (a > ti.quantity) e.push(`${ti.product_name}: จัดเกิน (มี ${ti.quantity} แต่จัด ${a})`);
+            const a = allocated.get(ti.product_id) || 0;
+            if (a > ti.total_quantity) e.push(`${ti.product_name}: จัดเกิน (มี ${ti.total_quantity} แต่จัด ${a})`);
         }
         return e;
     }, [tripItems, allocated]);
 
-    const unalloc = useMemo(() => tripItems.filter((ti) => (allocated.get(ti.id) || 0) < ti.quantity), [tripItems, allocated]);
+    const unalloc = useMemo(() => tripItems.filter((ti) => (allocated.get(ti.product_id) || 0) < ti.total_quantity), [tripItems, allocated]);
     const totalAlloc = useMemo(() => { let c = 0; allocated.forEach((v) => c += v); return c; }, [allocated]);
-    const totalTrip = useMemo(() => tripItems.reduce((s, t) => s + t.quantity, 0), [tripItems]);
+    const totalTrip = useMemo(() => tripItems.reduce((s, t) => s + t.total_quantity, 0), [tripItems]);
     const pct = useMemo(() => totalTrip === 0 ? 0 : Math.min(100, Math.round((totalAlloc / totalTrip) * 100)), [totalAlloc, totalTrip]);
 
-    const remaining = useCallback((id: string) => {
-        const ti = tripItems.find((t) => t.id === id);
-        return ti ? ti.quantity - (allocated.get(id) || 0) : 0;
+    const remaining = useCallback((pid: string) => {
+        const ti = tripItems.find((t) => t.product_id === pid);
+        return ti ? ti.total_quantity - (allocated.get(pid) || 0) : 0;
     }, [tripItems, allocated]);
 
-    const getItem = useCallback((id: string) => tripItems.find((t) => t.id === id), [tripItems]);
+    const getItem = useCallback((pid: string) => tripItems.find((t) => t.product_id === pid), [tripItems]);
 
     // ==================== Actions ====================
     const addPos = useCallback((type: 'pallet' | 'floor') => {
@@ -227,16 +262,13 @@ export const PackingLayoutEditor: React.FC<Props> = ({ tripId, tripStatus, onClo
         });
     }, [layout, push]);
 
-    const removePos = useCallback((id: string) => {
-        push({ positions: layout.positions.filter((p) => p.id !== id) });
-    }, [layout, push]);
+    const removePos = useCallback((id: string) => push({ positions: layout.positions.filter((p) => p.id !== id) }), [layout, push]);
 
     const setLayers = useCallback((posId: string, n: number) => {
         const newN = Math.max(1, n);
         push({
             positions: layout.positions.map((p) => {
                 if (p.id !== posId) return p;
-                // ถ้าลดชั้น ลบ items ที่อยู่ชั้นที่เกินออก (detailed mode)
                 if (p.detailedMode && newN < p.total_layers) {
                     return { ...p, total_layers: newN, items: p.items.filter((i) => i.layer_index === null || i.layer_index < newN) };
                 }
@@ -246,18 +278,14 @@ export const PackingLayoutEditor: React.FC<Props> = ({ tripId, tripStatus, onClo
     }, [layout, push]);
 
     const toggleCollapse = useCallback((posId: string) => {
-        setLayout((prev) => ({
-            positions: prev.positions.map((p) => p.id === posId ? { ...p, collapsed: !p.collapsed } : p),
-        }));
+        setLayout((prev) => ({ positions: prev.positions.map((p) => p.id === posId ? { ...p, collapsed: !p.collapsed } : p) }));
     }, []);
 
-    /** สลับโหมดง่าย ↔ ละเอียด */
     const toggleDetailed = useCallback((posId: string) => {
         push({
             positions: layout.positions.map((p) => {
                 if (p.id !== posId) return p;
                 if (!p.detailedMode) {
-                    // ง่าย → ละเอียด: กระจายสินค้าลงทุกชั้นเท่าๆ กัน
                     if (p.items.length === 0 || p.total_layers <= 1) {
                         return { ...p, detailedMode: true, items: p.items.map((i) => ({ ...i, layer_index: 0 })) };
                     }
@@ -272,56 +300,53 @@ export const PackingLayoutEditor: React.FC<Props> = ({ tripId, tripStatus, onClo
                     }
                     return { ...p, detailedMode: true, items: newItems };
                 } else {
-                    // ละเอียด → ง่าย: merge สินค้ากลับ
                     const merged = new Map<string, number>();
-                    for (const i of p.items) merged.set(i.delivery_trip_item_id, (merged.get(i.delivery_trip_item_id) || 0) + i.quantity);
-                    const items: PositionItem[] = [...merged.entries()].map(([id, qty]) => ({ delivery_trip_item_id: id, quantity: qty, layer_index: null }));
+                    for (const i of p.items) merged.set(i.product_id, (merged.get(i.product_id) || 0) + i.quantity);
+                    const items: PositionItem[] = [...merged.entries()].map(([pid, qty]) => ({ product_id: pid, quantity: qty, layer_index: null }));
                     return { ...p, detailedMode: false, items };
                 }
             }),
         });
     }, [layout, push]);
 
-    /** เพิ่มสินค้า — โหมดง่าย */
-    const addItem = useCallback((posId: string, itemId: string, qty: number) => {
+    const addItem = useCallback((posId: string, pid: string, qty: number) => {
         if (qty <= 0) return;
         push({
             positions: layout.positions.map((pos) => {
                 if (pos.id !== posId) return pos;
-                const ex = pos.items.find((i) => i.delivery_trip_item_id === itemId && i.layer_index === null);
+                const ex = pos.items.find((i) => i.product_id === pid && i.layer_index === null);
                 if (ex) return { ...pos, items: pos.items.map((i) => i === ex ? { ...i, quantity: i.quantity + qty } : i) };
-                return { ...pos, items: [...pos.items, { delivery_trip_item_id: itemId, quantity: qty, layer_index: null }] };
+                return { ...pos, items: [...pos.items, { product_id: pid, quantity: qty, layer_index: null }] };
             }),
         });
     }, [layout, push]);
 
-    /** เพิ่มสินค้า — โหมดละเอียด (ระบุชั้น) */
-    const addItemToLayer = useCallback((posId: string, itemId: string, qty: number, layerIdx: number) => {
+    const addItemToLayer = useCallback((posId: string, pid: string, qty: number, layerIdx: number) => {
         if (qty <= 0) return;
         push({
             positions: layout.positions.map((pos) => {
                 if (pos.id !== posId) return pos;
-                const ex = pos.items.find((i) => i.delivery_trip_item_id === itemId && i.layer_index === layerIdx);
+                const ex = pos.items.find((i) => i.product_id === pid && i.layer_index === layerIdx);
                 if (ex) return { ...pos, items: pos.items.map((i) => i === ex ? { ...i, quantity: i.quantity + qty } : i) };
-                return { ...pos, items: [...pos.items, { delivery_trip_item_id: itemId, quantity: qty, layer_index: layerIdx }] };
+                return { ...pos, items: [...pos.items, { product_id: pid, quantity: qty, layer_index: layerIdx }] };
             }),
         });
     }, [layout, push]);
 
-    const updateQty = useCallback((posId: string, itemId: string, layerIdx: number | null, newQty: number) => {
+    const updateQty = useCallback((posId: string, pid: string, layerIdx: number | null, newQty: number) => {
         push({
             positions: layout.positions.map((pos) => {
                 if (pos.id !== posId) return pos;
-                if (newQty <= 0) return { ...pos, items: pos.items.filter((i) => !(i.delivery_trip_item_id === itemId && i.layer_index === layerIdx)) };
-                return { ...pos, items: pos.items.map((i) => (i.delivery_trip_item_id === itemId && i.layer_index === layerIdx) ? { ...i, quantity: newQty } : i) };
+                if (newQty <= 0) return { ...pos, items: pos.items.filter((i) => !(i.product_id === pid && i.layer_index === layerIdx)) };
+                return { ...pos, items: pos.items.map((i) => (i.product_id === pid && i.layer_index === layerIdx) ? { ...i, quantity: newQty } : i) };
             }),
         });
     }, [layout, push]);
 
-    const removeItem = useCallback((posId: string, itemId: string, layerIdx: number | null) => {
+    const removeItem = useCallback((posId: string, pid: string, layerIdx: number | null) => {
         push({
             positions: layout.positions.map((pos) => pos.id !== posId ? pos : {
-                ...pos, items: pos.items.filter((i) => !(i.delivery_trip_item_id === itemId && i.layer_index === layerIdx)),
+                ...pos, items: pos.items.filter((i) => !(i.product_id === pid && i.layer_index === layerIdx)),
             }),
         });
     }, [layout, push]);
@@ -329,6 +354,7 @@ export const PackingLayoutEditor: React.FC<Props> = ({ tripId, tripStatus, onClo
     const clearAll = useCallback(() => push({ positions: layout.positions.map((p) => ({ ...p, items: [] })) }), [layout, push]);
 
     // ==================== Save ====================
+    // กระจาย quantity กลับไปตาม delivery_trip_item_id ต้นทาง (proportional)
     const handleSave = useCallback(async () => {
         if (errors.length > 0) return;
         setSaving(true); setSaveError(null); setSaveSuccess(false);
@@ -339,11 +365,37 @@ export const PackingLayoutEditor: React.FC<Props> = ({ tripId, tripStatus, onClo
                     position_index: p.position_index,
                     total_layers: p.total_layers,
                     notes: p.notes || undefined,
-                    items: p.items.map((i) => ({
-                        delivery_trip_item_id: i.delivery_trip_item_id,
-                        quantity: i.quantity,
-                        layer_index: i.layer_index,
-                    })),
+                    items: p.items.flatMap((posItem) => {
+                        // หา sources ของ product นี้
+                        const ti = tripItems.find((t) => t.product_id === posItem.product_id);
+                        if (!ti || ti.sources.length === 0) return [];
+
+                        if (ti.sources.length === 1) {
+                            // 1 source = ใส่ตรงๆ
+                            return [{
+                                delivery_trip_item_id: ti.sources[0].delivery_trip_item_id,
+                                quantity: posItem.quantity,
+                                layer_index: posItem.layer_index,
+                            }];
+                        }
+
+                        // หลาย sources → กระจายตามสัดส่วน
+                        const result: Array<{ delivery_trip_item_id: string; quantity: number; layer_index: number | null }> = [];
+                        let remaining = posItem.quantity;
+                        for (let si = 0; si < ti.sources.length && remaining > 0; si++) {
+                            const src = ti.sources[si];
+                            const qty = Math.min(remaining, src.quantity);
+                            if (qty > 0) {
+                                result.push({
+                                    delivery_trip_item_id: src.delivery_trip_item_id,
+                                    quantity: qty,
+                                    layer_index: posItem.layer_index,
+                                });
+                                remaining -= qty;
+                            }
+                        }
+                        return result;
+                    }),
                 })),
             };
             await tripMetricsService.saveTripPackingLayout(tripId, payload);
@@ -353,7 +405,7 @@ export const PackingLayoutEditor: React.FC<Props> = ({ tripId, tripStatus, onClo
         } catch (err: any) {
             setSaveError(err?.message || 'บันทึกไม่สำเร็จ');
         } finally { setSaving(false); setShowConfirm(false); }
-    }, [layout, tripId, errors, draftKey, onSaved]);
+    }, [layout, tripId, tripItems, errors, draftKey, onSaved]);
 
     // ==================== Render ====================
     if (loadingItems) {
@@ -372,7 +424,7 @@ export const PackingLayoutEditor: React.FC<Props> = ({ tripId, tripStatus, onClo
             <div className="flex items-center justify-between flex-wrap gap-3">
                 <div>
                     <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-2"><Layers size={20} />บันทึกการจัดเรียงสินค้า</h3>
-                    <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">จัดสินค้าลงพาเลท/บนพื้นรถ · รองรับโหมดง่ายและละเอียด</p>
+                    <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">จัดสินค้าลงพาเลท/บนพื้นรถ · สินค้าเดียวกันจากหลายร้านรวมกันแล้ว</p>
                 </div>
                 <div className="flex items-center gap-2">
                     {!isReadOnly && (
@@ -390,7 +442,7 @@ export const PackingLayoutEditor: React.FC<Props> = ({ tripId, tripStatus, onClo
             {/* Progress */}
             <Card className="p-3">
                 <div className="flex items-center justify-between text-sm mb-2">
-                    <span className="text-slate-600 dark:text-slate-400">จัดเรียงแล้ว <span className="font-semibold text-slate-900 dark:text-slate-100">{totalAlloc}</span>/{totalTrip} ชิ้น</span>
+                    <span className="text-slate-600 dark:text-slate-400">จัดเรียงแล้ว <span className="font-semibold text-slate-900 dark:text-slate-100">{totalAlloc}</span>/{totalTrip} ชิ้น ({tripItems.length} สินค้า)</span>
                     <span className={`font-semibold ${pct === 100 ? 'text-green-600' : 'text-blue-600'}`}>{pct}%</span>
                 </div>
                 <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2.5">
@@ -412,9 +464,9 @@ export const PackingLayoutEditor: React.FC<Props> = ({ tripId, tripStatus, onClo
                     <div className="flex items-center gap-2 text-amber-700 dark:text-amber-400 font-medium text-sm mb-1"><AlertTriangle size={16} />สินค้าที่ยังไม่ได้จัดเรียง ({unalloc.length})</div>
                     <div className="mt-2 space-y-1 max-h-32 overflow-auto">
                         {unalloc.map((item) => (
-                            <div key={item.id} className="text-sm text-amber-600 dark:text-amber-400 ml-6 flex justify-between">
-                                <span>• {item.product_code} - {item.product_name}</span>
-                                <span className="text-xs font-medium ml-2">เหลือ {remaining(item.id)}/{item.quantity}</span>
+                            <div key={item.product_id} className="text-sm text-amber-600 dark:text-amber-400 ml-6 flex justify-between">
+                                <span>• {item.product_code} {item.product_name}{item.sources.length > 1 && <span className="text-xs ml-1">({item.sources.length} ร้าน)</span>}</span>
+                                <span className="text-xs font-medium ml-2">เหลือ {remaining(item.product_id)}/{item.total_quantity}</span>
                             </div>
                         ))}
                     </div>
@@ -424,7 +476,7 @@ export const PackingLayoutEditor: React.FC<Props> = ({ tripId, tripStatus, onClo
             {saveSuccess && <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-3 flex items-center gap-2"><CheckCircle size={18} className="text-green-600" /><span className="text-green-700 dark:text-green-400 font-medium text-sm">บันทึกเรียบร้อยแล้ว!</span></div>}
             {saveError && <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-3 flex items-center gap-2"><AlertTriangle size={18} className="text-red-600" /><span className="text-red-700 dark:text-red-400 font-medium text-sm">{saveError}</span></div>}
 
-            {/* Pallet Cards — 2 columns (1|2, 3|4, 5|6) */}
+            {/* Pallet Cards — 2 columns (1|2, 3|4) */}
             {pallets.length > 0 && (
                 <div>
                     <div className="flex items-center gap-2 mb-2">
@@ -433,24 +485,20 @@ export const PackingLayoutEditor: React.FC<Props> = ({ tripId, tripStatus, onClo
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                         {pallets.map((pos) => (
-                            <PosCard
-                                key={pos.id} pos={pos} tripItems={tripItems} getItem={getItem}
+                            <PosCard key={pos.id} pos={pos} tripItems={tripItems} getItem={getItem}
                                 remaining={remaining} allocated={allocated} isReadOnly={isReadOnly}
-                                onToggleCollapse={() => toggleCollapse(pos.id)}
-                                onRemove={() => removePos(pos.id)}
-                                onSetLayers={(n) => setLayers(pos.id, n)}
-                                onToggleDetailed={() => toggleDetailed(pos.id)}
-                                onAddItem={(iid, q) => addItem(pos.id, iid, q)}
-                                onAddItemToLayer={(iid, q, li) => addItemToLayer(pos.id, iid, q, li)}
-                                onUpdateQty={(iid, li, q) => updateQty(pos.id, iid, li, q)}
-                                onRemoveItem={(iid, li) => removeItem(pos.id, iid, li)}
-                            />
+                                onToggleCollapse={() => toggleCollapse(pos.id)} onRemove={() => removePos(pos.id)}
+                                onSetLayers={(n) => setLayers(pos.id, n)} onToggleDetailed={() => toggleDetailed(pos.id)}
+                                onAddItem={(pid, q) => addItem(pos.id, pid, q)}
+                                onAddItemToLayer={(pid, q, li) => addItemToLayer(pos.id, pid, q, li)}
+                                onUpdateQty={(pid, li, q) => updateQty(pos.id, pid, li, q)}
+                                onRemoveItem={(pid, li) => removeItem(pos.id, pid, li)} />
                         ))}
                     </div>
                 </div>
             )}
 
-            {/* Floor Zone Cards — 2 columns */}
+            {/* Floor Cards — 2 columns */}
             {floors.length > 0 && (
                 <div>
                     <div className="flex items-center gap-2 mb-2">
@@ -459,18 +507,14 @@ export const PackingLayoutEditor: React.FC<Props> = ({ tripId, tripStatus, onClo
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                         {floors.map((pos) => (
-                            <PosCard
-                                key={pos.id} pos={pos} tripItems={tripItems} getItem={getItem}
+                            <PosCard key={pos.id} pos={pos} tripItems={tripItems} getItem={getItem}
                                 remaining={remaining} allocated={allocated} isReadOnly={isReadOnly}
-                                onToggleCollapse={() => toggleCollapse(pos.id)}
-                                onRemove={() => removePos(pos.id)}
-                                onSetLayers={(n) => setLayers(pos.id, n)}
-                                onToggleDetailed={() => toggleDetailed(pos.id)}
-                                onAddItem={(iid, q) => addItem(pos.id, iid, q)}
-                                onAddItemToLayer={(iid, q, li) => addItemToLayer(pos.id, iid, q, li)}
-                                onUpdateQty={(iid, li, q) => updateQty(pos.id, iid, li, q)}
-                                onRemoveItem={(iid, li) => removeItem(pos.id, iid, li)}
-                            />
+                                onToggleCollapse={() => toggleCollapse(pos.id)} onRemove={() => removePos(pos.id)}
+                                onSetLayers={(n) => setLayers(pos.id, n)} onToggleDetailed={() => toggleDetailed(pos.id)}
+                                onAddItem={(pid, q) => addItem(pos.id, pid, q)}
+                                onAddItemToLayer={(pid, q, li) => addItemToLayer(pos.id, pid, q, li)}
+                                onUpdateQty={(pid, li, q) => updateQty(pos.id, pid, li, q)}
+                                onRemoveItem={(pid, li) => removeItem(pos.id, pid, li)} />
                         ))}
                     </div>
                 </div>
@@ -523,18 +567,18 @@ export const PackingLayoutEditor: React.FC<Props> = ({ tripId, tripStatus, onClo
 interface PosCardProps {
     pos: Position;
     tripItems: TripItem[];
-    getItem: (id: string) => TripItem | undefined;
-    remaining: (id: string) => number;
+    getItem: (pid: string) => TripItem | undefined;
+    remaining: (pid: string) => number;
     allocated: Map<string, number>;
     isReadOnly: boolean;
     onToggleCollapse: () => void;
     onRemove: () => void;
     onSetLayers: (n: number) => void;
     onToggleDetailed: () => void;
-    onAddItem: (itemId: string, qty: number) => void;
-    onAddItemToLayer: (itemId: string, qty: number, layerIdx: number) => void;
-    onUpdateQty: (itemId: string, layerIdx: number | null, newQty: number) => void;
-    onRemoveItem: (itemId: string, layerIdx: number | null) => void;
+    onAddItem: (pid: string, qty: number) => void;
+    onAddItemToLayer: (pid: string, qty: number, layerIdx: number) => void;
+    onUpdateQty: (pid: string, layerIdx: number | null, newQty: number) => void;
+    onRemoveItem: (pid: string, layerIdx: number | null) => void;
 }
 
 const PosCard: React.FC<PosCardProps> = ({
@@ -548,12 +592,11 @@ const PosCard: React.FC<PosCardProps> = ({
     const hc = isPallet ? 'text-blue-700 dark:text-blue-400' : 'text-amber-700 dark:text-amber-400';
     const ib = isPallet ? 'bg-blue-100 dark:bg-blue-900' : 'bg-amber-100 dark:bg-amber-900';
 
-    const tw = pos.items.reduce((s, i) => { const ti = getItem(i.delivery_trip_item_id); return s + (ti?.weight_kg ? ti.weight_kg * i.quantity : 0); }, 0);
+    const tw = pos.items.reduce((s, i) => { const ti = getItem(i.product_id); return s + (ti?.weight_kg ? ti.weight_kg * i.quantity : 0); }, 0);
     const tq = pos.items.reduce((s, i) => s + i.quantity, 0);
 
     return (
         <div className={`rounded-xl border ${bg} overflow-hidden`}>
-            {/* Header */}
             <div className="flex items-center justify-between px-4 py-3 cursor-pointer select-none" onClick={onToggleCollapse}>
                 <div className="flex items-center gap-3">
                     <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${ib}`}>
@@ -576,13 +619,12 @@ const PosCard: React.FC<PosCardProps> = ({
                 </div>
             </div>
 
-            {/* Body */}
             {!pos.collapsed && (
                 <div className="px-4 pb-4 space-y-3">
                     {/* Layers + Mode toggle */}
                     <div className="flex items-center gap-3 p-2.5 rounded-lg bg-white/70 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 flex-wrap">
                         <Layers size={16} className="text-slate-500 flex-shrink-0" />
-                        <span className="text-sm text-slate-600 dark:text-slate-400">จำนวนชั้น:</span>
+                        <span className="text-sm text-slate-600 dark:text-slate-400">ชั้น:</span>
                         {!isReadOnly ? (
                             <div className="flex items-center gap-1">
                                 <button className="w-7 h-7 rounded bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 flex items-center justify-center" onClick={() => onSetLayers(pos.total_layers - 1)} disabled={pos.total_layers <= 1}><Minus size={12} /></button>
@@ -592,23 +634,17 @@ const PosCard: React.FC<PosCardProps> = ({
                         ) : (
                             <span className="font-bold text-sm text-slate-900 dark:text-slate-100">{pos.total_layers}</span>
                         )}
-
-                        {/* Mode toggle */}
                         {!isReadOnly && pos.total_layers > 1 && (
                             <button
-                                className={`ml-auto flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${pos.detailedMode ? 'bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300' : 'bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 hover:bg-purple-50 dark:hover:bg-purple-900/20 hover:text-purple-600'}`}
-                                onClick={onToggleDetailed}
-                            >
+                                className={`ml-auto flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${pos.detailedMode ? 'bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300' : 'bg-slate-100 dark:bg-slate-700 text-slate-500 hover:bg-purple-50 hover:text-purple-600'}`}
+                                onClick={onToggleDetailed}>
                                 {pos.detailedMode ? <ToggleRight size={14} /> : <ToggleLeft size={14} />}
                                 {pos.detailedMode ? 'โหมดละเอียด' : 'แยกตามชั้น'}
                             </button>
                         )}
-                        {isReadOnly && pos.detailedMode && (
-                            <span className="ml-auto text-xs text-purple-600 dark:text-purple-400 flex items-center gap-1"><ToggleRight size={14} />โหมดละเอียด</span>
-                        )}
+                        {isReadOnly && pos.detailedMode && <span className="ml-auto text-xs text-purple-600 dark:text-purple-400 flex items-center gap-1"><ToggleRight size={14} />ละเอียด</span>}
                     </div>
 
-                    {/* Content: Simple or Detailed */}
                     {pos.detailedMode ? (
                         <DetailedContent pos={pos} tripItems={tripItems} getItem={getItem} remaining={remaining} allocated={allocated} isReadOnly={isReadOnly}
                             onAddItemToLayer={onAddItemToLayer} onUpdateQty={onUpdateQty} onRemoveItem={onRemoveItem} />
@@ -622,58 +658,45 @@ const PosCard: React.FC<PosCardProps> = ({
     );
 };
 
-// ==================== Simple Content (โหมดง่าย) ====================
+// ==================== Simple Content ====================
 
-interface SimpleProps {
+interface ContentProps {
     pos: Position;
     tripItems: TripItem[];
-    getItem: (id: string) => TripItem | undefined;
-    remaining: (id: string) => number;
+    getItem: (pid: string) => TripItem | undefined;
+    remaining: (pid: string) => number;
     allocated: Map<string, number>;
     isReadOnly: boolean;
-    onAddItem: (itemId: string, qty: number) => void;
-    onUpdateQty: (itemId: string, layerIdx: number | null, newQty: number) => void;
-    onRemoveItem: (itemId: string, layerIdx: number | null) => void;
 }
 
-const SimpleContent: React.FC<SimpleProps> = ({ pos, tripItems, getItem, remaining, allocated, isReadOnly, onAddItem, onUpdateQty, onRemoveItem }) => {
-    return (
-        <>
-            {pos.items.length === 0 && <div className="text-xs text-slate-400 py-3 text-center italic">ยังไม่มีสินค้า</div>}
+interface SimpleProps extends ContentProps {
+    onAddItem: (pid: string, qty: number) => void;
+    onUpdateQty: (pid: string, layerIdx: number | null, newQty: number) => void;
+    onRemoveItem: (pid: string, layerIdx: number | null) => void;
+}
 
-            {pos.items.map((item) => (
-                <ItemRow key={`${item.delivery_trip_item_id}-s`} item={item} getItem={getItem} allocated={allocated} isReadOnly={isReadOnly}
-                    remaining={remaining} onUpdateQty={(q) => onUpdateQty(item.delivery_trip_item_id, null, q)} onRemove={() => onRemoveItem(item.delivery_trip_item_id, null)} />
-            ))}
+const SimpleContent: React.FC<SimpleProps> = ({ pos, tripItems, getItem, remaining, allocated, isReadOnly, onAddItem, onUpdateQty, onRemoveItem }) => (
+    <>
+        {pos.items.length === 0 && <div className="text-xs text-slate-400 py-3 text-center italic">ยังไม่มีสินค้า</div>}
+        {pos.items.map((item) => (
+            <ItemRow key={`${item.product_id}-s`} item={item} getItem={getItem} allocated={allocated} isReadOnly={isReadOnly}
+                remaining={remaining} onUpdateQty={(q) => onUpdateQty(item.product_id, null, q)} onRemove={() => onRemoveItem(item.product_id, null)} />
+        ))}
+        {!isReadOnly && <ItemPicker tripItems={tripItems} remaining={remaining} onAdd={(pid, q) => onAddItem(pid, q)} />}
+        {pos.items.length === 1 && pos.total_layers > 1 && <div className="text-xs text-slate-400 text-center">≈ ชั้นละ {Math.round(pos.items[0].quantity / pos.total_layers)} ชิ้น</div>}
+    </>
+);
 
-            {!isReadOnly && (
-                <ItemPicker tripItems={tripItems} remaining={remaining} onAdd={(id, q) => onAddItem(id, q)} />
-            )}
+// ==================== Detailed Content ====================
 
-            {/* Per-layer hint */}
-            {pos.items.length === 1 && pos.total_layers > 1 && (
-                <div className="text-xs text-slate-400 text-center">≈ ชั้นละ {Math.round(pos.items[0].quantity / pos.total_layers)} ชิ้น</div>
-            )}
-        </>
-    );
-};
-
-// ==================== Detailed Content (โหมดละเอียด) ====================
-
-interface DetailedProps {
-    pos: Position;
-    tripItems: TripItem[];
-    getItem: (id: string) => TripItem | undefined;
-    remaining: (id: string) => number;
-    allocated: Map<string, number>;
-    isReadOnly: boolean;
-    onAddItemToLayer: (itemId: string, qty: number, layerIdx: number) => void;
-    onUpdateQty: (itemId: string, layerIdx: number | null, newQty: number) => void;
-    onRemoveItem: (itemId: string, layerIdx: number | null) => void;
+interface DetailedProps extends ContentProps {
+    onAddItemToLayer: (pid: string, qty: number, layerIdx: number) => void;
+    onUpdateQty: (pid: string, layerIdx: number | null, newQty: number) => void;
+    onRemoveItem: (pid: string, layerIdx: number | null) => void;
 }
 
 const DetailedContent: React.FC<DetailedProps> = ({ pos, tripItems, getItem, remaining, allocated, isReadOnly, onAddItemToLayer, onUpdateQty, onRemoveItem }) => {
-    const getLayerLabel = (li: number) => {
+    const getLabel = (li: number) => {
         if (li === 0) return `ชั้น 1 (ล่างสุด)`;
         if (li === pos.total_layers - 1) return `ชั้น ${li + 1} (บนสุด)`;
         return `ชั้น ${li + 1}`;
@@ -683,32 +706,24 @@ const DetailedContent: React.FC<DetailedProps> = ({ pos, tripItems, getItem, rem
         <div className="space-y-2">
             {Array.from({ length: pos.total_layers }, (_, li) => {
                 const layerItems = pos.items.filter((i) => i.layer_index === li);
-                const layerWeight = layerItems.reduce((s, i) => { const ti = getItem(i.delivery_trip_item_id); return s + (ti?.weight_kg ? ti.weight_kg * i.quantity : 0); }, 0);
+                const lw = layerItems.reduce((s, i) => { const ti = getItem(i.product_id); return s + (ti?.weight_kg ? ti.weight_kg * i.quantity : 0); }, 0);
 
                 return (
                     <div key={li} className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 overflow-hidden">
-                        {/* Layer header */}
-                        <div className="flex items-center justify-between px-3 py-1.5 bg-gradient-to-r from-purple-50 to-transparent dark:from-purple-900/20 dark:to-transparent">
+                        <div className="flex items-center justify-between px-3 py-1.5 bg-gradient-to-r from-purple-50 to-transparent dark:from-purple-900/20">
                             <div className="flex items-center gap-2">
-                                <Layers size={13} className="text-purple-500 dark:text-purple-400" />
-                                <span className="text-xs font-medium text-purple-700 dark:text-purple-300">{getLayerLabel(li)}</span>
+                                <Layers size={13} className="text-purple-500" />
+                                <span className="text-xs font-medium text-purple-700 dark:text-purple-300">{getLabel(li)}</span>
                             </div>
-                            <span className="text-xs text-slate-400">
-                                {layerItems.length} รายการ{layerWeight > 0 && ` · ${layerWeight.toFixed(1)} kg`}
-                            </span>
+                            <span className="text-xs text-slate-400">{layerItems.length} รายการ{lw > 0 && ` · ${lw.toFixed(1)} kg`}</span>
                         </div>
-
                         <div className="px-3 pb-2 pt-1 space-y-1.5">
                             {layerItems.length === 0 && <div className="text-xs text-slate-400 py-1.5 text-center italic">ว่าง</div>}
-
                             {layerItems.map((item) => (
-                                <ItemRow key={`${item.delivery_trip_item_id}-${li}`} item={item} getItem={getItem} allocated={allocated} isReadOnly={isReadOnly}
-                                    remaining={remaining} onUpdateQty={(q) => onUpdateQty(item.delivery_trip_item_id, li, q)} onRemove={() => onRemoveItem(item.delivery_trip_item_id, li)} />
+                                <ItemRow key={`${item.product_id}-${li}`} item={item} getItem={getItem} allocated={allocated} isReadOnly={isReadOnly}
+                                    remaining={remaining} onUpdateQty={(q) => onUpdateQty(item.product_id, li, q)} onRemove={() => onRemoveItem(item.product_id, li)} />
                             ))}
-
-                            {!isReadOnly && (
-                                <ItemPicker tripItems={tripItems} remaining={remaining} onAdd={(id, q) => onAddItemToLayer(id, q, li)} compact />
-                            )}
+                            {!isReadOnly && <ItemPicker tripItems={tripItems} remaining={remaining} onAdd={(pid, q) => onAddItemToLayer(pid, q, li)} compact />}
                         </div>
                     </div>
                 );
@@ -721,33 +736,35 @@ const DetailedContent: React.FC<DetailedProps> = ({ pos, tripItems, getItem, rem
 
 interface ItemRowProps {
     item: PositionItem;
-    getItem: (id: string) => TripItem | undefined;
+    getItem: (pid: string) => TripItem | undefined;
     allocated: Map<string, number>;
-    remaining: (id: string) => number;
+    remaining: (pid: string) => number;
     isReadOnly: boolean;
     onUpdateQty: (newQty: number) => void;
     onRemove: () => void;
 }
 
 const ItemRow: React.FC<ItemRowProps> = ({ item, getItem, allocated, remaining, isReadOnly, onUpdateQty, onRemove }) => {
-    const ti = getItem(item.delivery_trip_item_id);
+    const ti = getItem(item.product_id);
     if (!ti) return null;
-    const a = allocated.get(item.delivery_trip_item_id) || 0;
-    const over = a > ti.quantity;
+    const a = allocated.get(item.product_id) || 0;
+    const over = a > ti.total_quantity;
 
     return (
         <div className={`flex items-center gap-2 p-2 rounded-md border ${over ? 'border-red-300 dark:border-red-700 bg-red-50 dark:bg-red-900/10' : 'border-slate-200 dark:border-slate-700'}`}>
             <div className="flex-1 min-w-0">
-                <div className="text-sm font-medium text-slate-900 dark:text-slate-100 truncate">{ti.product_code} - {ti.product_name}</div>
+                <div className="text-sm font-medium text-slate-900 dark:text-slate-100 truncate">{ti.product_code} {ti.product_name}</div>
                 <div className="text-xs text-slate-500 dark:text-slate-400">
-                    {ti.category}{ti.weight_kg && ` · ${ti.weight_kg} kg`}{ti.is_bonus && <span className="ml-1 text-green-600">(แถม)</span>}
+                    {ti.category}{ti.weight_kg && ` · ${ti.weight_kg} kg`}
+                    {ti.sources.length > 1 && <span className="ml-1 text-blue-500">({ti.sources.length} ร้าน)</span>}
+                    {ti.is_bonus && <span className="ml-1 text-green-600">(แถม)</span>}
                 </div>
             </div>
             <div className="flex items-center gap-1">
                 {!isReadOnly && <button className="w-6 h-6 rounded bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 flex items-center justify-center" onClick={() => onUpdateQty(item.quantity - 1)}><Minus size={12} /></button>}
                 <span className={`min-w-[2.5rem] text-center font-bold text-sm ${over ? 'text-red-600' : 'text-slate-900 dark:text-slate-100'}`}>{item.quantity}</span>
                 {!isReadOnly && <button className="w-6 h-6 rounded bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 flex items-center justify-center"
-                    onClick={() => { if (remaining(item.delivery_trip_item_id) > 0) onUpdateQty(item.quantity + 1); }}><Plus size={12} /></button>}
+                    onClick={() => { if (remaining(item.product_id) > 0) onUpdateQty(item.quantity + 1); }}><Plus size={12} /></button>}
                 {!isReadOnly && <button className="w-6 h-6 rounded hover:bg-red-100 dark:hover:bg-red-900/30 text-red-500 flex items-center justify-center ml-0.5" onClick={onRemove}><X size={12} /></button>}
             </div>
         </div>
@@ -758,8 +775,8 @@ const ItemRow: React.FC<ItemRowProps> = ({ item, getItem, allocated, remaining, 
 
 interface ItemPickerProps {
     tripItems: TripItem[];
-    remaining: (id: string) => number;
-    onAdd: (itemId: string, qty: number) => void;
+    remaining: (pid: string) => number;
+    onAdd: (pid: string, qty: number) => void;
     compact?: boolean;
 }
 
@@ -768,22 +785,16 @@ const ItemPicker: React.FC<ItemPickerProps> = ({ tripItems, remaining, onAdd, co
     const [sel, setSel] = useState('');
     const [qty, setQty] = useState(0);
 
-    const avail = tripItems.filter((ti) => remaining(ti.id) > 0);
+    const avail = tripItems.filter((ti) => remaining(ti.product_id) > 0);
 
-    const pick = (id: string) => { setSel(id); setQty(remaining(id)); };
-
-    const confirm = () => {
-        if (sel && qty > 0) { onAdd(sel, qty); setSel(''); setQty(0); setOpen(false); }
-    };
+    const pick = (pid: string) => { setSel(pid); setQty(remaining(pid)); };
+    const confirm = () => { if (sel && qty > 0) { onAdd(sel, qty); setSel(''); setQty(0); setOpen(false); } };
 
     if (!open) {
         return (
-            <button
-                className={`w-full ${compact ? 'py-1.5 text-xs' : 'py-2.5 text-sm'} rounded-md border-2 border-dashed border-slate-300 dark:border-slate-600 text-slate-500 hover:border-blue-400 hover:text-blue-500 transition-colors flex items-center justify-center gap-1.5`}
-                onClick={() => setOpen(true)} disabled={avail.length === 0}
-            >
-                <Plus size={compact ? 12 : 14} />
-                {avail.length > 0 ? 'เพิ่มสินค้า' : 'ครบแล้ว'}
+            <button className={`w-full ${compact ? 'py-1.5 text-xs' : 'py-2.5 text-sm'} rounded-md border-2 border-dashed border-slate-300 dark:border-slate-600 text-slate-500 hover:border-blue-400 hover:text-blue-500 transition-colors flex items-center justify-center gap-1.5`}
+                onClick={() => setOpen(true)} disabled={avail.length === 0}>
+                <Plus size={compact ? 12 : 14} />{avail.length > 0 ? 'เพิ่มสินค้า' : 'ครบแล้ว'}
             </button>
         );
     }
@@ -796,11 +807,11 @@ const ItemPicker: React.FC<ItemPickerProps> = ({ tripItems, remaining, onAdd, co
             </div>
             <div className="max-h-36 overflow-auto space-y-1">
                 {avail.map((ai) => (
-                    <button key={ai.id}
-                        className={`w-full text-left px-2.5 py-1.5 rounded text-xs transition-colors ${sel === ai.id ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 ring-1 ring-blue-400' : 'hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300'}`}
-                        onClick={() => pick(ai.id)}>
-                        <div className="font-medium truncate">{ai.product_code} - {ai.product_name}</div>
-                        <div className="text-slate-500">เหลือ {remaining(ai.id)}/{ai.quantity} · {ai.category}</div>
+                    <button key={ai.product_id}
+                        className={`w-full text-left px-2.5 py-1.5 rounded text-xs transition-colors ${sel === ai.product_id ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 ring-1 ring-blue-400' : 'hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300'}`}
+                        onClick={() => pick(ai.product_id)}>
+                        <div className="font-medium truncate">{ai.product_code} {ai.product_name}{ai.sources.length > 1 && ` (${ai.sources.length} ร้าน)`}</div>
+                        <div className="text-slate-500">เหลือ {remaining(ai.product_id)}/{ai.total_quantity} · {ai.category}</div>
                     </button>
                 ))}
             </div>

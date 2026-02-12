@@ -1273,4 +1273,27 @@ export const tripMetricsService = {
       return null;
     }
   },
+
+  /**
+   * Batch check: ทริปไหนมี packing layout แล้วบ้าง
+   * คืน Set<tripId> ที่มี layout อย่างน้อย 1 position
+   */
+  getTripsWithPackingLayout: async (tripIds: string[]): Promise<Set<string>> => {
+    if (tripIds.length === 0) return new Set();
+    try {
+      const { data, error } = await supabase
+        .from('trip_packing_layout')
+        .select('delivery_trip_id')
+        .in('delivery_trip_id', tripIds);
+
+      if (error) {
+        console.warn('[tripMetricsService] getTripsWithPackingLayout error:', error);
+        return new Set();
+      }
+
+      return new Set((data ?? []).map((d) => d.delivery_trip_id));
+    } catch {
+      return new Set();
+    }
+  },
 };
