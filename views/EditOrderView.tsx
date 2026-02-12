@@ -219,43 +219,43 @@ export function EditOrderView({ orderId, onSave, onCancel }: EditOrderViewProps)
   // กรองสินค้า - ค้นหาทั้งชื่อ, รหัส, barcode, description
   const filteredProducts = useMemo(() => {
     if (!products || products.length === 0) return [];
-    
+
     // ถ้ามีการค้นหา ให้ค้นหาตามคำค้นหา
     if (productSearch) {
       const searchLower = productSearch.toLowerCase();
-      const filtered = products.filter((product: any) => 
+      const filtered = products.filter((product: any) =>
         product.product_name?.toLowerCase().includes(searchLower) ||
         product.product_code?.toLowerCase().includes(searchLower) ||
         product.barcode?.toLowerCase().includes(searchLower) ||
         product.description?.toLowerCase().includes(searchLower) ||
         product.category?.toLowerCase().includes(searchLower)
       );
-      
+
       // เรียงลำดับ: ตรงกับรหัสสินค้า > ตรงกับชื่อ > อื่นๆ
       const sorted = filtered.sort((a: any, b: any) => {
         const aCodeMatch = a.product_code?.toLowerCase().startsWith(searchLower) ? 0 : 1;
         const bCodeMatch = b.product_code?.toLowerCase().startsWith(searchLower) ? 0 : 1;
         if (aCodeMatch !== bCodeMatch) return aCodeMatch - bCodeMatch;
-        
+
         const aNameMatch = a.product_name?.toLowerCase().startsWith(searchLower) ? 0 : 1;
         const bNameMatch = b.product_name?.toLowerCase().startsWith(searchLower) ? 0 : 1;
         if (aNameMatch !== bNameMatch) return aNameMatch - bNameMatch;
-        
+
         return 0;
       });
-      
+
       return sorted.slice(0, 20); // แสดงสูงสุด 20 รายการ
     }
-    
+
     // ถ้ายังไม่พิมพ์ แสดงสินค้าตามหมวดหมู่ที่เลือก
     if (selectedCategory === 'all') {
       return products?.slice(0, 50) || []; // แสดง 50 รายการแรก
     }
-    
+
     if (selectedCategory === 'recent') {
       return []; // recent products จะแสดงแยก
     }
-    
+
     return products?.filter((p: any) => p.category === selectedCategory).slice(0, 50) || [];
   }, [products, productSearch, selectedCategory]);
 
@@ -309,7 +309,7 @@ export function EditOrderView({ orderId, onSave, onCancel }: EditOrderViewProps)
       setOrderItems([...orderItems, newItem]);
       setProductSearch('');
       setShowProductBrowser(false);
-      
+
       // เก็บ recent product
       addToRecentProducts(product.id);
     } catch (error: any) {
@@ -381,15 +381,15 @@ export function EditOrderView({ orderId, onSave, onCancel }: EditOrderViewProps)
     const updated = [...orderItems];
     const item = updated[index];
     const newIsBonus = !item.is_bonus;
-    
+
     updated[index] = {
       ...item,
       is_bonus: newIsBonus,
       unit_price: newIsBonus ? 0 : (item.product?.base_price || 0), // ถ้าเป็นของแถมให้ราคาเป็น 0
     };
-    
+
     setOrderItems(updated);
-    
+
     // ถ้าเปลี่ยนจากของแถมเป็นปกติ ต้องคำนวณราคาใหม่
     if (!newIsBonus && selectedStore && item.product_id) {
       const qty = Number(item.quantity || 0);
@@ -399,7 +399,7 @@ export function EditOrderView({ orderId, onSave, onCancel }: EditOrderViewProps)
           selectedStore.id,
           qty
         ).then(price => {
-          setOrderItems(prev => prev.map((p, i) => 
+          setOrderItems(prev => prev.map((p, i) =>
             i === index ? { ...p, unit_price: price || p.product?.base_price || 0 } : p
           ));
         }).catch(err => {
@@ -621,18 +621,16 @@ export function EditOrderView({ orderId, onSave, onCancel }: EditOrderViewProps)
                     <div
                       key={wh.id}
                       onClick={() => setSelectedWarehouse(wh)}
-                      className={`cursor-pointer p-4 rounded-xl border-2 transition-all ${
-                        selectedWarehouse?.id === wh.id
+                      className={`cursor-pointer p-4 rounded-xl border-2 transition-all ${selectedWarehouse?.id === wh.id
                           ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
                           : 'border-gray-200 dark:border-slate-700 hover:border-blue-300 dark:hover:border-blue-700'
-                      }`}
+                        }`}
                     >
                       <div className="flex items-center justify-between mb-2">
-                        <span className={`text-sm font-medium px-2 py-0.5 rounded ${
-                          wh.type === 'main'
+                        <span className={`text-sm font-medium px-2 py-0.5 rounded ${wh.type === 'main'
                             ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300'
                             : 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300'
-                        }`}>
+                          }`}>
                           {wh.type === 'main' ? 'สำนักงานใหญ่' : 'สาขา'}
                         </span>
                         {selectedWarehouse?.id === wh.id && (
@@ -733,7 +731,7 @@ export function EditOrderView({ orderId, onSave, onCancel }: EditOrderViewProps)
                   {showProductBrowser ? 'ซ่อน' : 'เลือกสินค้า'}
                 </Button>
               </div>
-              
+
               <div className="relative mb-4" ref={productDropdownRef}>
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 dark:text-gray-500" />
                 <input
@@ -764,17 +762,16 @@ export function EditOrderView({ orderId, onSave, onCancel }: EditOrderViewProps)
 
                 {/* Product Browser - แสดงเมื่อยังไม่พิมพ์หรือกดปุ่มเลือกสินค้า */}
                 {showProductBrowser && !productSearch && !productsLoading && selectedStore && (
-                  <div className="absolute z-50 w-full mt-2 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-xl shadow-lg dark:shadow-black/50 max-h-96 overflow-y-auto">
+                  <div className="absolute z-50 w-full mt-2 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-xl shadow-lg dark:shadow-black/50 max-h-[600px] overflow-y-auto">
                     {/* Tabs: Recent, Categories */}
                     <div className="sticky top-0 bg-white dark:bg-slate-800 border-b border-gray-200 dark:border-slate-700 p-2 flex gap-2 overflow-x-auto">
                       {recentProductsList.length > 0 && (
                         <button
                           onClick={() => setSelectedCategory('recent')}
-                          className={`px-3 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition-colors flex items-center gap-1 ${
-                            selectedCategory === 'recent'
+                          className={`px-3 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition-colors flex items-center gap-1 ${selectedCategory === 'recent'
                               ? 'bg-blue-500 text-white'
                               : 'bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-slate-600'
-                          }`}
+                            }`}
                         >
                           <Clock className="w-4 h-4" />
                           ใช้ล่าสุด ({recentProductsList.length})
@@ -782,11 +779,10 @@ export function EditOrderView({ orderId, onSave, onCancel }: EditOrderViewProps)
                       )}
                       <button
                         onClick={() => setSelectedCategory('all')}
-                        className={`px-3 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
-                          selectedCategory === 'all'
+                        className={`px-3 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${selectedCategory === 'all'
                             ? 'bg-blue-500 text-white'
                             : 'bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-slate-600'
-                        }`}
+                          }`}
                       >
                         ทั้งหมด
                       </button>
@@ -794,11 +790,10 @@ export function EditOrderView({ orderId, onSave, onCancel }: EditOrderViewProps)
                         <button
                           key={cat.id || cat.name}
                           onClick={() => setSelectedCategory(cat.name || cat.id)}
-                          className={`px-3 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
-                            selectedCategory === (cat.name || cat.id)
+                          className={`px-3 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${selectedCategory === (cat.name || cat.id)
                               ? 'bg-blue-500 text-white'
                               : 'bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-slate-600'
-                          }`}
+                            }`}
                         >
                           {cat.name || cat.id}
                         </button>
@@ -809,7 +804,7 @@ export function EditOrderView({ orderId, onSave, onCancel }: EditOrderViewProps)
                     <div className="p-4">
                       {/* แสดงสินค้าที่ใช้ล่าสุด */}
                       {selectedCategory === 'recent' && recentProductsList.length > 0 && (
-                        <div className="grid grid-cols-1 gap-2 max-h-80 overflow-y-auto">
+                        <div className="grid grid-cols-1 gap-2 max-h-[500px] overflow-y-auto">
                           {recentProductsList.map((product: any) => (
                             <div
                               key={product.id}
@@ -853,7 +848,7 @@ export function EditOrderView({ orderId, onSave, onCancel }: EditOrderViewProps)
 
                       {/* แสดงสินค้าตามหมวดหมู่ */}
                       {selectedCategory !== 'recent' && (
-                        <div className="grid grid-cols-1 gap-2 max-h-80 overflow-y-auto">
+                        <div className="grid grid-cols-1 gap-2 max-h-[500px] overflow-y-auto">
                           {filteredProducts.length > 0 ? (
                             filteredProducts.slice(0, 30).map((product: any) => (
                               <div
@@ -895,8 +890,8 @@ export function EditOrderView({ orderId, onSave, onCancel }: EditOrderViewProps)
                             ))
                           ) : (
                             <p className="text-sm text-gray-500 dark:text-gray-400 text-center py-8">
-                              {selectedCategory === 'all' 
-                                ? 'ยังไม่มีสินค้าในระบบ' 
+                              {selectedCategory === 'all'
+                                ? 'ยังไม่มีสินค้าในระบบ'
                                 : 'ไม่พบสินค้าในหมวดหมู่นี้'}
                             </p>
                           )}
@@ -917,7 +912,7 @@ export function EditOrderView({ orderId, onSave, onCancel }: EditOrderViewProps)
                 {productSearch && !productsLoading && (
                   <>
                     {filteredProducts.length > 0 ? (
-                      <div className="absolute z-50 w-full mt-2 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-xl shadow-lg dark:shadow-black/50 max-h-60 overflow-y-auto">
+                      <div className="absolute z-50 w-full mt-2 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-xl shadow-lg dark:shadow-black/50 max-h-[500px] overflow-y-auto">
                         {filteredProducts.map((product: any) => (
                           <div
                             key={product.id}
@@ -960,7 +955,7 @@ export function EditOrderView({ orderId, onSave, onCancel }: EditOrderViewProps)
                     ) : (
                       <div className="absolute z-50 w-full mt-2 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-xl shadow-lg dark:shadow-black/50 p-4">
                         <p className="text-sm text-gray-500 dark:text-gray-400 text-center">
-                          {products && products.length > 0 
+                          {products && products.length > 0
                             ? `ไม่พบสินค้าที่ค้นหา "${productSearch}"`
                             : 'ยังไม่มีข้อมูลสินค้าในระบบ กรุณาเพิ่มสินค้าก่อน'}
                         </p>
@@ -1180,19 +1175,18 @@ export function EditOrderView({ orderId, onSave, onCancel }: EditOrderViewProps)
                 <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
                   รายการสินค้า ({orderItems.length} รายการ)
                 </h3>
-                
+
                 <div className="space-y-2 max-h-[600px] overflow-y-auto">
                   {orderItems.map((item, index) => {
                     const qty = Number(item.quantity || 0);
-                    
+
                     return (
                       <div
                         key={index}
-                        className={`p-3 rounded-lg border transition-all ${
-                          item.is_bonus
+                        className={`p-3 rounded-lg border transition-all ${item.is_bonus
                             ? 'border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-900/20'
                             : 'border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:border-blue-300 dark:hover:border-blue-700'
-                        }`}
+                          }`}
                       >
                         <div className="flex items-start justify-between gap-3">
                           <div className="flex-1 min-w-0">
