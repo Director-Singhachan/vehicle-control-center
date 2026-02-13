@@ -29,7 +29,7 @@ export function CreateOrderView() {
   const { products, loading: productsLoading } = useProducts();
   const { warehouses, loading: warehousesLoading } = useWarehouses();
   const { categories, loading: categoriesLoading } = useProductCategories();
-  const { user } = useAuth();
+  const { profile } = useAuth();
   const { toasts, success, error, warning, dismissToast } = useToast();
 
   const [selectedStore, setSelectedStore] = useState<any>(null);
@@ -47,6 +47,23 @@ export function CreateOrderView() {
   const [deliveryDate, setDeliveryDate] = useState('');
 
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Filter warehouses based on user branch
+  const filteredWarehouses = useMemo(() => {
+    if (!warehouses) return [];
+    const isHighLevel = profile?.role === 'admin' || profile?.role === 'manager' || profile?.role === 'inspector' || profile?.role === 'executive';
+    if (isHighLevel || profile?.branch === 'HQ') {
+      return warehouses;
+    }
+    return warehouses.filter(w => w.branch === profile?.branch);
+  }, [warehouses, profile]);
+
+  // Set default warehouse if only one is available
+  useEffect(() => {
+    if (filteredWarehouses.length === 1 && !selectedWarehouse) {
+      setSelectedWarehouse(filteredWarehouses[0]);
+    }
+  }, [filteredWarehouses, selectedWarehouse]);
 
   // Refs สำหรับ click outside
   const storeDropdownRef = useRef<HTMLDivElement>(null);
@@ -88,12 +105,19 @@ export function CreateOrderView() {
 
     setStoresLoading(true);
     try {
-      const { data, error } = await supabase
+      let queryBuilder = supabase
         .from('stores')
         .select('*, customer_tiers(tier_name, tier_code, color)')
         .or(`customer_name.ilike.%${query}%,customer_code.ilike.%${query}%`)
-        .eq('is_active', true)
-        .limit(10);
+        .eq('is_active', true);
+
+      // Filter by branch for restricted users
+      const isHighLevel = profile?.role === 'admin' || profile?.role === 'manager' || profile?.role === 'inspector' || profile?.role === 'executive';
+      if (!isHighLevel && profile?.branch && profile?.branch !== 'HQ') {
+        queryBuilder = queryBuilder.eq('branch', profile.branch);
+      }
+
+      const { data, error } = await queryBuilder.limit(10);
 
       if (error) throw error;
       setStores(data || []);
@@ -402,7 +426,7 @@ export function CreateOrderView() {
           delivery_address: selectedStore.address || null,
           // บันทึกวันที่ต้องการส่ง (ถ้าไม่ได้เลือก ให้เป็น null)
           delivery_date: deliveryDate || null,
-          created_by: user?.id,
+          created_by: profile?.id,
           warehouse_id: selectedWarehouse?.id || null,
         },
         orderItems.map(item => ({
@@ -447,19 +471,19 @@ export function CreateOrderView() {
                   </div>
                 ) : (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    {warehouses?.map((wh) => (
+                    {filteredWarehouses?.map((wh) => (
                       <div
                         key={wh.id}
                         onClick={() => setSelectedWarehouse(wh)}
                         className={`cursor-pointer p-4 rounded-xl border-2 transition-all ${selectedWarehouse?.id === wh.id
-                            ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
-                            : 'border-gray-200 dark:border-slate-700 hover:border-blue-300 dark:hover:border-blue-700'
+                          ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
+                          : 'border-gray-200 dark:border-slate-700 hover:border-blue-300 dark:hover:border-blue-700'
                           }`}
                       >
                         <div className="flex items-center justify-between mb-2">
                           <span className={`text-sm font-medium px-2 py-0.5 rounded ${wh.type === 'main'
-                              ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300'
-                              : 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300'
+                            ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300'
+                            : 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300'
                             }`}>
                             {wh.type === 'main' ? 'สำนักงานใหญ่' : 'สาขา'}
                           </span>
@@ -599,8 +623,8 @@ export function CreateOrderView() {
                           <button
                             onClick={() => setSelectedCategory('recent')}
                             className={`px-3 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition-colors flex items-center gap-1 ${selectedCategory === 'recent'
-                                ? 'bg-blue-500 text-white'
-                                : 'bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-slate-600'
+                              ? 'bg-blue-500 text-white'
+                              : 'bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-slate-600'
                               }`}
                           >
                             <Clock className="w-4 h-4" />
@@ -610,8 +634,8 @@ export function CreateOrderView() {
                         <button
                           onClick={() => setSelectedCategory('all')}
                           className={`px-3 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${selectedCategory === 'all'
-                              ? 'bg-blue-500 text-white'
-                              : 'bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-slate-600'
+                            ? 'bg-blue-500 text-white'
+                            : 'bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-slate-600'
                             }`}
                         >
                           ทั้งหมด
@@ -621,8 +645,8 @@ export function CreateOrderView() {
                             key={cat.id || cat.name}
                             onClick={() => setSelectedCategory(cat.name || cat.id)}
                             className={`px-3 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${selectedCategory === (cat.name || cat.id)
-                                ? 'bg-blue-500 text-white'
-                                : 'bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-slate-600'
+                              ? 'bg-blue-500 text-white'
+                              : 'bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-slate-600'
                               }`}
                           >
                             {cat.name || cat.id}
@@ -1006,8 +1030,8 @@ export function CreateOrderView() {
                         <div
                           key={index}
                           className={`p-3 rounded-lg border transition-all ${item.is_bonus
-                              ? 'border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-900/20'
-                              : 'border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:border-blue-300 dark:hover:border-blue-700'
+                            ? 'border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-900/20'
+                            : 'border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:border-blue-300 dark:hover:border-blue-700'
                             }`}
                         >
                           <div className="flex items-start justify-between gap-3">

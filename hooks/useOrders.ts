@@ -6,6 +6,7 @@ export function useOrders(filters?: {
   storeId?: string;
   dateFrom?: string;
   dateTo?: string;
+  branch?: string;
 }) {
   const [orders, setOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -26,12 +27,14 @@ export function useOrders(filters?: {
 
   useEffect(() => {
     fetchOrders();
-  }, [filters?.status, filters?.storeId, filters?.dateFrom, filters?.dateTo]);
+  }, [filters?.status, filters?.storeId, filters?.dateFrom, filters?.dateTo, filters?.branch]);
 
   return { orders, loading, error, refetch: fetchOrders };
 }
 
-export function usePendingOrders() {
+export function usePendingOrders(filters?: {
+  branch?: string;
+}) {
   const [orders, setOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
@@ -39,7 +42,7 @@ export function usePendingOrders() {
   const fetchOrders = async () => {
     try {
       setLoading(true);
-      const data = await ordersService.getPendingOrders();
+      const data = await ordersService.getPendingOrders(filters);
       setOrders(data);
       setError(null);
     } catch (err) {
@@ -51,7 +54,7 @@ export function usePendingOrders() {
 
   useEffect(() => {
     fetchOrders();
-  }, []);
+  }, [filters?.branch]); // Added filters?.branch to dependency array
 
   return { orders, loading, error, refetch: fetchOrders };
 }

@@ -13,35 +13,35 @@ function mapOrdersError(error: any, action: 'create' | 'update' | 'assign' | 'un
     if (action === 'create') {
       return new Error(
         'คุณไม่มีสิทธิ์สร้างออเดอร์ในตารางนี้หรือสาขานี้\n' +
-          'กรุณาติดต่อผู้ดูแลระบบหรือผู้ดูแลสาขาให้เพิ่มสิทธิ์การเข้าถึงก่อน'
+        'กรุณาติดต่อผู้ดูแลระบบหรือผู้ดูแลสาขาให้เพิ่มสิทธิ์การเข้าถึงก่อน'
       );
     }
 
     if (action === 'assign') {
       return new Error(
         'คุณไม่มีสิทธิ์จัดทริปให้กับออเดอร์เหล่านี้\n' +
-          'กรุณาติดต่อผู้ดูแลระบบหรือผู้ดูแลสาขาให้ตรวจสอบสิทธิ์การใช้งาน'
+        'กรุณาติดต่อผู้ดูแลระบบหรือผู้ดูแลสาขาให้ตรวจสอบสิทธิ์การใช้งาน'
       );
     }
 
     if (action === 'unassign') {
       return new Error(
         'คุณไม่มีสิทธิ์ยกเลิกการกำหนดทริปของออเดอร์นี้\n' +
-          'กรุณาติดต่อผู้ดูแลระบบหรือผู้ดูแลสาขาให้ตรวจสอบสิทธิ์การใช้งาน'
+        'กรุณาติดต่อผู้ดูแลระบบหรือผู้ดูแลสาขาให้ตรวจสอบสิทธิ์การใช้งาน'
       );
     }
 
     if (action === 'delete') {
       return new Error(
         'คุณไม่มีสิทธิ์ลบออเดอร์ในระบบ\n' +
-          'หากต้องการลบออเดอร์ กรุณาติดต่อผู้จัดการหรือผู้ดูแลระบบ'
+        'หากต้องการลบออเดอร์ กรุณาติดต่อผู้จัดการหรือผู้ดูแลระบบ'
       );
     }
 
     // default สำหรับ update ทั่วไป
     return new Error(
       'คุณไม่มีสิทธิ์แก้ไขออเดอร์นี้\n' +
-        'กรุณาติดต่อผู้ดูแลระบบหรือผู้ดูแลสาขาให้ตรวจสอบสิทธิ์การใช้งาน'
+      'กรุณาติดต่อผู้ดูแลระบบหรือผู้ดูแลสาขาให้ตรวจสอบสิทธิ์การใช้งาน'
     );
   }
 
@@ -132,6 +132,7 @@ export const ordersService = {
     storeId?: string;
     dateFrom?: string;
     dateTo?: string;
+    branch?: string;
   }) {
     let query = supabase
       .from('orders_with_details')
@@ -150,6 +151,9 @@ export const ordersService = {
     if (filters?.dateTo) {
       query = query.lte('order_date', filters.dateTo);
     }
+    if (filters?.branch && filters.branch !== 'ALL') {
+      query = query.eq('branch', filters.branch);
+    }
 
     const { data, error } = await query;
     if (error) throw error;
@@ -159,13 +163,19 @@ export const ordersService = {
   /**
    * ดึงออเดอร์ที่รอจัดทริป
    */
-  async getPendingOrders() {
-    const { data, error } = await supabase
-      .from('pending_orders')
+  async getPendingOrders(filters?: { branch?: string }) {
+    let query = supabase
+      .from('orders_with_details')
       .select('*')
-      .order('order_date')
-      .order('created_at');
+      .eq('status', 'confirmed')
+      .is('delivery_trip_id', null)
+      .order('created_at', { ascending: true });
 
+    if (filters?.branch && filters.branch !== 'ALL') {
+      query = query.eq('branch', filters.branch);
+    }
+
+    const { data, error } = await query;
     if (error) throw error;
     return data;
   },
