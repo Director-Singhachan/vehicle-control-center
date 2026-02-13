@@ -52,6 +52,9 @@ const CONFIDENCE_CONFIG = {
 
 const SCORE_LABELS: Record<string, { label: string; icon: React.ElementType }> = {
   capacity_fit: { label: 'ขนาดรถ', icon: Truck },
+  load_similarity: { label: 'น้ำหนักใกล้เคียง', icon: Weight },
+  product_compatibility: { label: 'รองรับสินค้า', icon: Shield },
+  pallet_efficiency: { label: 'พาเลท', icon: Package },
   historical_success: { label: 'ประวัติใช้งาน', icon: TrendingUp },
   availability: { label: 'ว่างใช้งาน', icon: CheckCircle },
   branch_match: { label: 'ตรงสาขา', icon: MapPin },
@@ -109,9 +112,9 @@ function RecommendationCard({
         {/* Rank badge */}
         <div className={`
           w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-bold
-          ${rec.rank === 1 ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-400' : 
+          ${rec.rank === 1 ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-400' :
             rec.rank === 2 ? 'bg-gray-100 text-gray-600 dark:bg-slate-700 dark:text-gray-300' :
-            'bg-gray-50 text-gray-500 dark:bg-slate-700 dark:text-gray-400'}
+              'bg-gray-50 text-gray-500 dark:bg-slate-700 dark:text-gray-400'}
         `}>
           #{rec.rank}
         </div>
@@ -139,8 +142,8 @@ function RecommendationCard({
             text-lg font-bold
             ${rec.overall_score >= 80 ? 'text-green-600 dark:text-green-400' :
               rec.overall_score >= 60 ? 'text-blue-600 dark:text-blue-400' :
-              rec.overall_score >= 40 ? 'text-amber-600 dark:text-amber-400' :
-              'text-red-500 dark:text-red-400'}
+                rec.overall_score >= 40 ? 'text-amber-600 dark:text-amber-400' :
+                  'text-red-500 dark:text-red-400'}
           `}>
             {rec.overall_score}
           </span>

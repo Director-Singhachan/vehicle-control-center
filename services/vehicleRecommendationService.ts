@@ -23,6 +23,9 @@ export interface VehicleRecommendation {
   rank: number;
   scores: {
     capacity_fit: number; // 0-100
+    load_similarity: number; // 0-100 ★ NEW: น้ำหนักทริปใกล้เคียงประวัติรถ
+    product_compatibility: number; // 0-100 ★ NEW: สินค้า fragile/liquid/temp vs รถ
+    pallet_efficiency: number; // 0-100 ★ NEW: จำนวนพาเลท vs พื้นที่รถ
     historical_success: number; // 0-100
     availability: number; // 0-100
     branch_match: number; // 0-100
@@ -57,6 +60,7 @@ interface VehicleRow {
   cargo_length_cm: number | null;
   cargo_width_cm: number | null;
   cargo_height_cm: number | null;
+  has_shelves: boolean;
   loading_constraints: any;
 }
 
@@ -73,6 +77,8 @@ interface HistoricalTripStats {
   avg_weight_kg: number | null;
   issue_count: number;
   store_ids_served: string[];
+  weight_range: { min: number; max: number } | null;
+  packing_score_avg: number | null;
 }
 
 // ============================================================
@@ -80,11 +86,14 @@ interface HistoricalTripStats {
 // ============================================================
 
 const WEIGHTS = {
-  capacity_fit: 0.35,
-  historical_success: 0.25,
-  availability: 0.20,
-  branch_match: 0.10,
-  store_familiarity: 0.10,
+  capacity_fit: 0.25,
+  load_similarity: 0.15,
+  product_compatibility: 0.10,
+  pallet_efficiency: 0.10,
+  historical_success: 0.15,
+  availability: 0.15,
+  branch_match: 0.05,
+  store_familiarity: 0.05,
 };
 
 // ============================================================
@@ -104,7 +113,7 @@ export const vehicleRecommendationService = {
       const vehicles = await fetchVehicles();
       if (vehicles.length === 0) return [];
 
-      // 2. Estimate total load from items
+      // 2. Estimate total load from items (enhanced: includes pallets + product properties)
       const loadEstimate = await estimateLoad(input.items);
 
       // 3. Check vehicle availability on planned date
@@ -113,23 +122,43 @@ export const vehicleRecommendationService = {
       // 4. Fetch historical trip data (last 90 days)
       const historicalStats = await getHistoricalStats();
 
-      // 5. Score each vehicle
+      // 5. Score each vehicle (8 dimensions)
       const scored = vehicles.map((vehicle) => {
         const scores = {
           capacity_fit: scoreCapacityFit(vehicle, loadEstimate),
+          load_similarity: scoreLoadSimilarity(vehicle.id, historicalStats, loadEstimate),
+          product_compatibility: scoreProductCompatibility(vehicle, loadEstimate),
+          pallet_efficiency: scorePalletEfficiency(vehicle, loadEstimate),
           historical_success: scoreHistoricalSuccess(vehicle.id, historicalStats, loadEstimate),
           availability: scoreAvailability(vehicle.id, busyVehicleIds),
           branch_match: scoreBranchMatch(vehicle.branch, input.branch),
           store_familiarity: scoreStoreFamiliarity(vehicle.id, input.store_ids, historicalStats),
         };
 
-        const overall = Math.round(
+        const overall_raw = Math.round(
           scores.capacity_fit * WEIGHTS.capacity_fit +
+          scores.load_similarity * WEIGHTS.load_similarity +
+          scores.product_compatibility * WEIGHTS.product_compatibility +
+          scores.pallet_efficiency * WEIGHTS.pallet_efficiency +
           scores.historical_success * WEIGHTS.historical_success +
           scores.availability * WEIGHTS.availability +
           scores.branch_match * WEIGHTS.branch_match +
           scores.store_familiarity * WEIGHTS.store_familiarity
         );
+
+        // Hard penalty: ถ้าพาเลทไม่พอ หรือสินค้าไม่เข้ากับรถ → ลดคะแนนรวมอย่างรุนแรง
+        let overall = overall_raw;
+        if (scores.pallet_efficiency === 0) {
+          overall = Math.min(overall, 35); // Cap ที่ 35 ถ้าพาเลทไม่พอแน่ๆ
+        } else if (scores.pallet_efficiency < 30) {
+          overall = Math.round(overall * 0.65); // ลด 35%
+        }
+        if (scores.product_compatibility < 30) {
+          overall = Math.round(overall * 0.7); // ลด 30% ถ้าสินค้าไม่เข้ากัน
+        }
+        if (scores.capacity_fit === 0) {
+          overall = 0; // เกินพิกัดชัดเจน → 0
+        }
 
         const confidence = determineConfidence(historicalStats, vehicle.id);
         const reasoning = generateReasoning(scores, vehicle, loadEstimate, confidence);
@@ -220,6 +249,12 @@ export const vehicleRecommendationService = {
       branch?: string | null;
     }>;
     historical_context?: string;
+    /** ข้อมูล pattern การจัดเรียงจากประวัติ (จาก getPackingPatternInsights) */
+    packing_patterns?: string;
+    /** โปรไฟล์การจัดเรียงสินค้าแต่ละตัวจากประวัติรถคันนี้ (จาก getProductPackingProfiles) */
+    product_packing_profiles?: string;
+    /** ร่างแผนจัดเรียงที่ระบบ rule-based คำนวณมาให้ (จาก computePackingPlan) */
+    computed_packing_plan?: string;
   }): Promise<{
     suggested_vehicle_id: string | null;
     reasoning: string | null;
@@ -232,6 +267,9 @@ export const vehicleRecommendationService = {
           trip: params.trip,
           vehicles: params.vehicles,
           historical_context: params.historical_context,
+          packing_patterns: params.packing_patterns,
+          product_packing_profiles: params.product_packing_profiles,
+          computed_packing_plan: params.computed_packing_plan,
         },
       });
       if (error) {
@@ -298,7 +336,7 @@ export const vehicleRecommendationService = {
 async function fetchVehicles(): Promise<VehicleRow[]> {
   const { data, error } = await supabase
     .from('vehicles')
-    .select('id, plate, type, make, model, branch, max_weight_kg, cargo_volume_liter, cargo_length_cm, cargo_width_cm, cargo_height_cm, loading_constraints')
+    .select('id, plate, type, make, model, branch, max_weight_kg, cargo_volume_liter, cargo_length_cm, cargo_width_cm, cargo_height_cm, has_shelves, loading_constraints')
     .order('plate');
 
   if (error) {
@@ -308,30 +346,45 @@ async function fetchVehicles(): Promise<VehicleRow[]> {
   return (data || []) as VehicleRow[];
 }
 
+interface LoadEstimate {
+  totalWeightKg: number;
+  totalVolumeLiter: number;
+  totalItems: number;
+  estimatedPallets: number;
+  hasFragile: boolean;
+  hasLiquid: boolean;
+  hasTemperatureReq: boolean;
+  tempRequirements: string[];
+}
+
 async function estimateLoad(
   items: Array<{ product_id: string; quantity: number }>
-): Promise<{ totalWeightKg: number; totalVolumeLiter: number; totalItems: number }> {
+): Promise<LoadEstimate> {
   const productIds = [...new Set(items.map((i) => i.product_id))];
   if (productIds.length === 0) {
-    return { totalWeightKg: 0, totalVolumeLiter: 0, totalItems: 0 };
+    return { totalWeightKg: 0, totalVolumeLiter: 0, totalItems: 0, estimatedPallets: 0, hasFragile: false, hasLiquid: false, hasTemperatureReq: false, tempRequirements: [] };
   }
 
   const { data: products, error } = await supabase
     .from('products')
-    .select('id, weight_kg, volume_liter')
+    .select('id, weight_kg, volume_liter, is_fragile, is_liquid, requires_temperature, uses_pallet')
     .in('id', productIds);
 
   if (error) {
     console.error('[vehicleRecommendation] estimateLoad error:', error);
-    return { totalWeightKg: 0, totalVolumeLiter: 0, totalItems: items.length };
+    return { totalWeightKg: 0, totalVolumeLiter: 0, totalItems: items.length, estimatedPallets: 0, hasFragile: false, hasLiquid: false, hasTemperatureReq: false, tempRequirements: [] };
   }
 
-  const productMap = new Map<string, ProductInfo>();
+  const productMap = new Map<string, any>();
   (products || []).forEach((p: any) => productMap.set(p.id, p));
 
   let totalWeightKg = 0;
   let totalVolumeLiter = 0;
   let totalItems = 0;
+  let hasFragile = false;
+  let hasLiquid = false;
+  let hasTemperatureReq = false;
+  const tempReqSet = new Set<string>();
 
   for (const item of items) {
     const product = productMap.get(item.product_id);
@@ -339,10 +392,32 @@ async function estimateLoad(
     if (product) {
       totalWeightKg += (product.weight_kg || 0) * item.quantity;
       totalVolumeLiter += (product.volume_liter || 0) * item.quantity;
+      if (product.is_fragile) hasFragile = true;
+      if (product.is_liquid) hasLiquid = true;
+      if (product.requires_temperature) {
+        hasTemperatureReq = true;
+        tempReqSet.add(product.requires_temperature);
+      }
     }
   }
 
-  return { totalWeightKg, totalVolumeLiter, totalItems };
+  // Estimate pallets: ~800kg per standard pallet or volume-based
+  const PALLET_MAX_KG = 800;
+  const PALLET_MAX_LITER = 960; // ~120cm × 100cm × 80cm usable height
+  const palletsByWeight = totalWeightKg > 0 ? Math.ceil(totalWeightKg / PALLET_MAX_KG) : 0;
+  const palletsByVolume = totalVolumeLiter > 0 ? Math.ceil(totalVolumeLiter / PALLET_MAX_LITER) : 0;
+  const estimatedPallets = Math.max(palletsByWeight, palletsByVolume, 1);
+
+  return {
+    totalWeightKg,
+    totalVolumeLiter,
+    totalItems,
+    estimatedPallets,
+    hasFragile,
+    hasLiquid,
+    hasTemperatureReq,
+    tempRequirements: Array.from(tempReqSet),
+  };
 }
 
 async function getBusyVehicles(plannedDate: string): Promise<Set<string>> {
@@ -374,6 +449,7 @@ async function getHistoricalStats(): Promise<HistoricalTripStats[]> {
       space_utilization_percent,
       actual_weight_kg,
       had_packing_issues,
+      packing_efficiency_score,
       delivery_trip_stores (store_id)
     `)
     .eq('status', 'completed')
@@ -397,6 +473,8 @@ async function getHistoricalStats(): Promise<HistoricalTripStats[]> {
         avg_weight_kg: null,
         issue_count: 0,
         store_ids_served: [],
+        weight_range: null,
+        packing_score_avg: null,
       });
     }
 
@@ -416,6 +494,20 @@ async function getHistoricalStats(): Promise<HistoricalTripStats[]> {
     if (trip.actual_weight_kg !== null && trip.actual_weight_kg !== undefined) {
       const prevTotal = (stat.avg_weight_kg ?? 0) * (stat.completed_trips - 1);
       stat.avg_weight_kg = (prevTotal + trip.actual_weight_kg) / stat.completed_trips;
+      // Track weight range
+      if (!stat.weight_range) {
+        stat.weight_range = { min: trip.actual_weight_kg, max: trip.actual_weight_kg };
+      } else {
+        stat.weight_range.min = Math.min(stat.weight_range.min, trip.actual_weight_kg);
+        stat.weight_range.max = Math.max(stat.weight_range.max, trip.actual_weight_kg);
+      }
+    }
+
+    // Track packing score
+    const packScore = (trip as any).packing_efficiency_score;
+    if (packScore !== null && packScore !== undefined) {
+      const prevPackTotal = (stat.packing_score_avg ?? 0) * (stat.completed_trips - 1);
+      stat.packing_score_avg = (prevPackTotal + packScore) / stat.completed_trips;
     }
 
     // Collect store IDs served
@@ -517,6 +609,15 @@ function scoreHistoricalSuccess(
     }
   }
 
+  // Bonus for good packing score
+  if (vehicleStat.packing_score_avg !== null) {
+    if (vehicleStat.packing_score_avg >= 80) {
+      score += 10;
+    } else if (vehicleStat.packing_score_avg >= 60) {
+      score += 5;
+    }
+  }
+
   // Penalty for packing issues
   const issueRate = vehicleStat.issue_count / vehicleStat.completed_trips;
   if (issueRate > 0.3) {
@@ -526,6 +627,99 @@ function scoreHistoricalSuccess(
   }
 
   return Math.max(0, Math.min(100, Math.round(score)));
+}
+
+// ★ NEW: เทียบน้ำหนักทริปปัจจุบันกับประวัติน้ำหนักของรถคันนี้
+function scoreLoadSimilarity(
+  vehicleId: string,
+  stats: HistoricalTripStats[],
+  load: LoadEstimate
+): number {
+  const vehicleStat = stats.find((s) => s.vehicle_id === vehicleId);
+  if (!vehicleStat || vehicleStat.avg_weight_kg === null || load.totalWeightKg <= 0) {
+    return 50; // No data: neutral
+  }
+
+  const avgWeight = vehicleStat.avg_weight_kg;
+  const diff = Math.abs(load.totalWeightKg - avgWeight);
+  const diffPct = diff / avgWeight;
+
+  // ±15% → 100, ±30% → 75, ±50% → 50, >80% → 25
+  if (diffPct <= 0.15) return 100;
+  if (diffPct <= 0.30) return 85;
+  if (diffPct <= 0.50) return 65;
+  if (diffPct <= 0.80) return 40;
+  return 25;
+}
+
+// ★ NEW: เช็คคุณสมบัติสินค้า vs ข้อจำกัดรถ
+function scoreProductCompatibility(
+  vehicle: VehicleRow,
+  load: LoadEstimate
+): number {
+  let score = 80; // Base: assume compatible
+  const constraints = vehicle.loading_constraints || {};
+
+  // Temperature: สินค้าต้องคุมอุณหภูมิ แต่รถไม่มีตู้เย็น → penalty หนัก
+  if (load.hasTemperatureReq) {
+    if (constraints.has_temperature_control) {
+      score += 20; // Perfect match
+    } else {
+      score -= 50; // Severe penalty
+    }
+  }
+
+  // Fragile: สินค้าเปราะบาง → รถที่มีชั้นวางได้โบนัส
+  if (load.hasFragile) {
+    if (vehicle.has_shelves) {
+      score += 10;
+    } else {
+      score -= 10;
+    }
+  }
+
+  // Liquid: ไม่ penalty แต่ถ้ามี constraint ที่ห้ามก็ลด
+  if (load.hasLiquid && constraints.no_liquid) {
+    score -= 30;
+  }
+
+  return Math.max(0, Math.min(100, score));
+}
+
+// ★ NEW: จำนวนพาเลทที่ต้องการ vs ที่รถรับได้ (จาก cargo dimensions)
+function scorePalletEfficiency(
+  vehicle: VehicleRow,
+  load: LoadEstimate
+): number {
+  if (load.estimatedPallets <= 0) return 80; // ไม่มีข้อมูลพาเลท
+
+  // คำนวณ max pallets จาก cargo dimensions (pallet footprint= 120×100cm)
+  let maxPallets = 0;
+  if (vehicle.cargo_length_cm && vehicle.cargo_width_cm) {
+    // จัดเรียง 2 แนว: ยาวตามรถ vs ขวางรถ เอาแบบที่ได้มากกว่า
+    const lengthAligned = Math.floor(vehicle.cargo_length_cm / 120) * Math.floor(vehicle.cargo_width_cm / 100);
+    const widthAligned = Math.floor(vehicle.cargo_length_cm / 100) * Math.floor(vehicle.cargo_width_cm / 120);
+    maxPallets = Math.max(lengthAligned, widthAligned);
+  }
+
+  if (maxPallets <= 0) {
+    // ไม่มีข้อมูล dimensions → ประเมินจาก volume (pallet ~960L)
+    if (vehicle.cargo_volume_liter) {
+      maxPallets = Math.floor(vehicle.cargo_volume_liter / 960);
+    }
+    if (maxPallets <= 0) return 50; // ไม่สามารถประเมินได้
+  }
+
+  if (load.estimatedPallets > maxPallets) {
+    // ไม่พอ → 0 ทันที (hard fail)
+    return 0;
+  }
+
+  // พอดีหรือเหลือ → ยิ่งพอดียิ่งดี
+  const ratio = load.estimatedPallets / maxPallets;
+  if (ratio >= 0.6) return 100; // ใช้ 60-100% → เหมาะสมมาก
+  if (ratio >= 0.3) return 80; // ใช้ 30-60% → โอเค
+  return 60; // ใช้น้อยมาก → รถใหญ่เกินไป
 }
 
 function scoreAvailability(vehicleId: string, busyVehicleIds: Set<string>): number {
@@ -601,23 +795,54 @@ function getVehicleHistoricalSummary(
 function generateReasoning(
   scores: VehicleRecommendation['scores'],
   vehicle: VehicleRow,
-  load: { totalWeightKg: number; totalVolumeLiter: number },
+  load: LoadEstimate,
   confidence: 'high' | 'medium' | 'low'
 ): string {
   const parts: string[] = [];
 
-  // Capacity
-  if (scores.capacity_fit >= 80) {
-    parts.push('ขนาดรถเหมาะสมกับปริมาณสินค้า');
-  } else if (scores.capacity_fit >= 50) {
-    parts.push('ขนาดรถพอใช้ได้');
-  } else if (scores.capacity_fit > 0) {
-    parts.push('รถอาจเล็ก/ใหญ่เกินไปสำหรับสินค้าชุดนี้');
+  // Capacity — แสดง % utilization จริง
+  if (vehicle.max_weight_kg && load.totalWeightKg > 0) {
+    const pct = Math.round((load.totalWeightKg / vehicle.max_weight_kg) * 100);
+    if (pct > 100) {
+      parts.push(`⚠️ น้ำหนักเกินพิกัด (${pct}%)`);
+    } else if (pct >= 50) {
+      parts.push(`ใช้ความจุน้ำหนัก ${pct}%`);
+    } else {
+      parts.push(`ใช้ความจุแค่ ${pct}% (รถอาจใหญ่เกินไป)`);
+    }
+  }
+
+  // Pallet efficiency
+  if (scores.pallet_efficiency < 50 && load.estimatedPallets > 0) {
+    parts.push(`⚠️ ต้องการ ${load.estimatedPallets} พาเลท อาจไม่พอ`);
+  } else if (scores.pallet_efficiency >= 80 && load.estimatedPallets > 0) {
+    parts.push(`รับ ${load.estimatedPallets} พาเลทได้สบาย`);
+  }
+
+  // Load similarity
+  if (scores.load_similarity >= 85) {
+    parts.push('น้ำหนักใกล้เคียงทริปเก่าที่เคยส่งสำเร็จ');
+  } else if (scores.load_similarity <= 40) {
+    parts.push('น้ำหนักต่างจากที่เคยส่ง');
+  }
+
+  // Product compatibility warnings
+  if (scores.product_compatibility < 50) {
+    if (load.hasTemperatureReq) {
+      parts.push(`🌡️ สินค้าต้องคุมอุณหภูมิ (${load.tempRequirements.join(', ')}) แต่รถอาจไม่มีตู้เย็น`);
+    }
+    if (load.hasFragile) {
+      parts.push('⚠️ มีสินค้าเปราะบางแต่รถไม่มีชั้นวาง');
+    }
+  } else if (scores.product_compatibility >= 90) {
+    if (load.hasTemperatureReq) {
+      parts.push('✅ รถมีตู้เย็นรองรับสินค้าคุมอุณหภูมิ');
+    }
   }
 
   // Availability
   if (scores.availability < 50) {
-    parts.push('รถมีทริปอื่นในวันเดียวกัน');
+    parts.push('⚠️ รถมีทริปอื่นในวันเดียวกัน');
   }
 
   // History

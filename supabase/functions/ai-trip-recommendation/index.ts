@@ -50,6 +50,10 @@ interface RequestBody {
   trip: TripSummary;
   vehicles: VehicleOption[];
   historical_context?: string;
+  packing_patterns?: string;
+  product_packing_profiles?: string;
+  /** ร่างแผนจัดเรียงที่ระบบ rule-based คำนวณมาให้ (จำนวนชั้น/พาเลท) */
+  computed_packing_plan?: string;
 }
 
 interface AIResponse {
@@ -131,59 +135,135 @@ function extractFieldsFromRawText(text: string): AIResponse | null {
 
 function buildPrompt(body: RequestBody): string {
   const { trip, vehicles, historical_context } = body;
+
+  // ★ สร้าง mapping table: ทะเบียน → UUID (ให้ AI ดู mapping แยก ไม่ต้องแสดง UUID ใน text)
+  const vehicleIdMap = vehicles
+    .map((v) => `${v.plate} = ${v.vehicle_id}`)
+    .join('\n');
+
+  // ★ Vehicle list สำหรับแสดง (ไม่มี UUID)
   const vehicleList = vehicles
     .map(
       (v) =>
-        `- ${v.plate} (id: ${v.vehicle_id}) ความจุน้ำหนัก ${v.max_weight_kg ?? 'N/A'} kg, ปริมาตร ${v.cargo_volume_liter ?? 'N/A'} L`
+        `- ${v.plate}: ความจุน้ำหนัก ${v.max_weight_kg ?? 'N/A'} kg, ปริมาตร ${v.cargo_volume_liter ?? 'N/A'} L`
     )
     .join('\n');
+
+  // บอก AI ว่ารถที่ user เลือกคือคันไหน
+  const selectedPlateNote = (trip as any).selected_vehicle_plate
+    ? `- ⭐ รถที่ผู้ใช้เลือกแล้ว: ${(trip as any).selected_vehicle_plate}\n`
+    : '';
 
   const palletNote = trip.estimated_pallets != null
     ? `- จำนวนพาเลทที่ระบบคำนวณ (จัดรวมหลายชนิดบนพาเลทเดียวกัน): ${trip.estimated_pallets}\n`
     : '';
 
+  // ★ ข้อมูลพาเลทสูงสุดของรถ vs จำนวนพาเลทที่ต้องการ
+  const vehicleMaxPallets = (trip as any).vehicle_max_pallets;
+  const estimatedPallets = trip.estimated_pallets ?? 0;
+  let spaceNote = '';
+  if (vehicleMaxPallets != null && vehicleMaxPallets > 0) {
+    const emptySlots = Math.max(0, vehicleMaxPallets - estimatedPallets);
+    spaceNote = `- 🚛 รถรองรับได้สูงสุด: ${vehicleMaxPallets} พาเลท | ใช้จริง: ${estimatedPallets} พาเลท | ว่าง: ${emptySlots} ตำแหน่ง\n`;
+    if (emptySlots > 0) {
+      spaceNote += `- 💡 มีพื้นที่ว่างบนรถอีก ${emptySlots} ตำแหน่งพาเลท → สินค้าจำนวนน้อยไม่จำเป็นต้องซ้อนบนพาเลทเดียว สามารถวางแยกบนพื้นรถได้\n`;
+    }
+  }
+
   let palletAllocationBlock = '';
   if (trip.pallet_allocation && trip.pallet_allocation.length > 0) {
     palletAllocationBlock = `\nการจัดสรรพาเลทจากระบบ (แต่ละใบมีสินค้าดังนี้ — ใช้เป็นฐานในการแนะนำวิธีจัดเรียง/ซ้อน):
 ${trip.pallet_allocation
-  .map(
-    (p) =>
-      `  พาเลทที่ ${p.pallet_index}: ${p.items
         .map(
-          (i) =>
-            `${i.product_name || i.product_code || i.product_id} (${i.quantity} หน่วย, น้ำหนักรวม ${i.weight_kg.toFixed(1)} กก., ปริมาตร ${i.volume_liter.toFixed(0)} ลิตร)`
+          (p) =>
+            `  พาเลทที่ ${p.pallet_index}: ${p.items
+              .map(
+                (i) =>
+                  `${i.product_name || i.product_code || i.product_id} (${i.quantity} หน่วย, น้ำหนักรวม ${i.weight_kg.toFixed(1)} กก., ปริมาตร ${i.volume_liter.toFixed(0)} ลิตร)`
+              )
+              .join('; ')}`
         )
-        .join('; ')}`
-  )
-  .join('\n')}
+        .join('\n')}
 
 `;
   }
 
-  return `คุณเป็นผู้ช่วยแนะนำรถบรรทุกและวิธีจัดเรียงสินค้าสำหรับทริปส่งของ
+  // Pattern insights จาก analytics views (ถ้ามี)
+  const packingPatternsBlock = body.packing_patterns
+    ? `\n${body.packing_patterns}\n`
+    : '';
 
-ข้อมูลทริป:
-- น้ำหนักโดยประมาณ: ${trip.estimated_weight_kg ?? 'ไม่ระบุ'} kg
-- ปริมาตรโดยประมาณ: ${trip.estimated_volume_liter ?? 'ไม่ระบุ'} ลิตร
-${palletNote}- จำนวนร้าน: ${trip.store_count ?? 'ไม่ระบุ'}
+  // Per-product packing profiles จากประวัติรถคันนี้ (ถ้ามี)
+  const productProfilesBlock = body.product_packing_profiles
+    ? `\n${body.product_packing_profiles}\n`
+    : '';
+
+  // ระบุว่า historical_context เป็นของรถคันไหน
+  const histContextLabel = (trip as any).selected_vehicle_plate
+    ? `\nทริปที่คล้ายกันจากประวัติรถ "${(trip as any).selected_vehicle_plate}" (ถ้าไม่มีจะ fallback เป็นรถทุกคัน):\n`
+    : '\nทริปคล้ายกันจากประวัติ (สรุปโดยระบบ rule-based):\n';
+
+  return `คุณเป็นผู้เชี่ยวชาญด้านการจัดเรียงสินค้าบนรถบรรทุก มีประสบการณ์สูงในการอ่านข้อมูลประวัติ/สถิติและแปลงเป็นคำแนะนำที่เจาะจง
+
+===== ข้อมูลทริปปัจจุบัน =====
+- น้ำหนักรวม: ${trip.estimated_weight_kg ?? 'ไม่ระบุ'} kg
+- ปริมาตรรวม: ${trip.estimated_volume_liter ?? 'ไม่ระบุ'} ลิตร
+${palletNote}${spaceNote}${selectedPlateNote}- จำนวนร้าน: ${trip.store_count ?? 'ไม่ระบุ'}
 - จำนวนรายการสินค้า: ${trip.item_count ?? 'ไม่ระบุ'}
-${trip.items_summary ? `- รายการสินค้า (สรุป): ${trip.items_summary}` : ''}
+${trip.items_summary ? `- รายการสินค้า: ${trip.items_summary}` : ''}
 ${trip.planned_date ? `- วันที่วางแผน: ${trip.planned_date}` : ''}
 ${palletAllocationBlock}
-รถที่เลือกได้:
+
+===== รถที่เลือกได้ =====
 ${vehicleList}
-${historical_context ? `\nทริปคล้ายกันจากประวัติ (สรุปโดยระบบ rule-based):\n${historical_context}` : ''}
 
-คำแนะนำ:
-1) reasoning ต้องอ้างอิงข้อมูลจริง เช่น ทะเบียนรถ ความจุ เปรียบเทียบกับโหลดปัจจุบัน และสถิติจากทริปคล้ายกันด้านบน
-2) packing_tips ต้องเฉพาะทางและอ้างอิงรายการพาเลทด้านบน: แนะนำว่าสินค้าแต่ละชนิดควรไว้ล่างหรือบน ลำดับการซ้อนบนพาเลทเดียวกัน (เช่น พาเลทที่ 1 มี 3 อย่าง — ควรเรียงอย่างไร) และลำดับโหลด/ถอนตามร้าน ของหนัก/เปราะบาง อย่าพูดทั่วไป
-3) ห้ามเปลี่ยนรถที่ระบบหลักเลือกแล้วเอง ให้เสนอเป็น \"ข้อสังเกต/ความเสี่ยง/ข้อเสนอปรับปรุง\" เท่านั้น
+===== ตารางอ้างอิง: ทะเบียนรถ → UUID (ใช้เฉพาะในฟิลด์ suggested_vehicle_id เท่านั้น ห้ามแสดงในข้อความ) =====
+${vehicleIdMap}
+${historical_context ? `\n===== ทริปประวัติที่คล้ายกัน =====\n${histContextLabel}${historical_context}` : ''}
+${packingPatternsBlock ? `\n===== สถิติน้ำหนักพาเลทจากประวัติ =====\n${packingPatternsBlock}` : ''}
+${productProfilesBlock ? `\n===== โปรไฟล์การจัดเรียงสินค้าจากประวัติ =====\n${productProfilesBlock}` : ''}
+${body.computed_packing_plan ? `\n===== ★ ร่างแผนจัดเรียงจากระบบ (Rule-based — คำนวณจากจำนวนหน่วยต่อชั้นจริงในประวัติ) =====\n${body.computed_packing_plan}\n` : ''}
 
-กรุณาตอบเป็น JSON เท่านั้น (ไม่ใส่ markdown):
-{"suggested_vehicle_id": "uuid ของรถที่แนะนำ", "reasoning": "เหตุผลสั้นๆ อ้างอิงข้อมูลทริป/รถและทริปคล้ายกัน", "packing_tips": "คำแนะนำจัดเรียงเฉพาะทาง เช่น แต่ละพาเลทควรซ้อนอย่างไร สินค้า 3 อย่างบนพาเลทเดียวกันเรียงอย่างไร ลำดับโหลด/ถอนตามร้าน และข้อควรระวังจากประวัติ"}
+===== กฎการตอบอย่างเคร่งครัด =====
+
+📌 กฎข้อ 0: ห้ามแสดง UUID ในข้อความ
+- ฟิลด์ reasoning และ packing_tips ห้ามมี UUID อย่างเด็ดขาด
+- ใช้แค่ทะเบียนรถ เช่น "รถ บว 2136" (ไม่ใช่ "รถ บว 2136 (id: xxx)")
+- ค่า UUID ใช้เฉพาะในฟิลด์ suggested_vehicle_id จาก "ตารางอ้างอิง" ด้านบน
+
+📌 กฎข้อ 7 (สำคัญที่สุด): ถ้ามี "ร่างแผนจัดเรียงจากระบบ" → ใช้เป็นฐานหลัก
+⚠️ ร่างแผนนี้ถูกคำนวณจากประวัติ layout จริง (จำนวนหน่วยต่อชั้น × จำนวนสินค้า = จำนวนชั้น)
+- ต้องนำเสนอแผนนี้เป็น packing_tips หลัก: เช่น "พาเลทที่ 1: โซดาสิงห์ 35 หน่วย (3 ชั้น), พาเลทที่ 2: ..."
+- ห้ามคิดแผนเอง ถ้ามีร่างแผนจากระบบ — เว้นแต่พบปัญหาจึงเสนอปรับ
+- ถ้าร่างแผนแนะนำ "วางบนพื้นรถ" → ให้เสนอตามนั้น เพราะระบบคำนวณแล้วว่ามีที่ว่าง
+- AI ควรเพิ่มเติมเฉพาะ:
+  * ข้อสังเกตจากประวัติ (เช่น "จากทริป DT-0083 สินค้านี้มักวางชั้นล่าง")
+  * การเตือนเรื่องความปลอดภัย (เฉพาะเจาะจง ไม่ใช่คำเตือนทั่วไป)
+  * ลำดับการส่ง (ถ้ามีข้อมูลร้านค้า)
+
+📌 กฎข้อ 1: reasoning ต้องเจาะจง
+- ต้องระบุทะเบียนรถ ความจุน้ำหนัก (kg) เปรียบเทียบกับน้ำหนักจริง
+- ถ้ามีทริปประวัติ → ต้องระบุ "ทริป DT-XXXX ของรถ บว XXXX เคยขนส่งสินค้าประเภทเดียวกัน (โซดา, เบียร์) สำเร็จ"
+- บอก % ของความจุที่ใช้: เช่น "ใช้ 18% ของความจุน้ำหนัก (539/3000 kg)"
+
+📌 กฎข้อ 2: packing_tips — ใช้ร่างแผนจากระบบเป็นฐาน ห้ามตอบกว้างๆ
+⚠️ ห้ามเด็ดขาด:
+- ห้ามเขียน "จัดวางสินค้าที่มีน้ำหนักมากไว้ด้านล่าง" โดยไม่ระบุว่าสินค้าอะไร กี่ชั้น
+- ห้ามเขียน "ตรวจสอบให้แน่ใจว่าสินค้าจัดวางอย่างปลอดภัย"
+- ห้ามคิดแผนเองขัดกับ "ร่างแผนจัดเรียงจากระบบ"
+
+📌 กฎข้อ 3: ถ้ามีข้อมูลจาก "ประวัติรถทุกคัน" ก็ยังต้องใช้เต็มที่
+
+📌 กฎข้อ 4: ห้ามเปลี่ยนรถที่ผู้ใช้เลือก ถ้ามีข้อสังเกตให้เสนอเป็นหมายเหตุ
+
+📌 กฎข้อ 5: พิจารณาพื้นที่ว่างบนรถ — สินค้าเศษไม่ต้องซ้อน
+
+===== รูปแบบ JSON ที่ต้องตอบ (ไม่ใส่ markdown) =====
+{"suggested_vehicle_id": "uuid จากตารางอ้างอิงด้านบน", "reasoning": "เหตุผลเจาะจง อ้างอิงตัวเลข ใช้แค่ทะเบียนรถ ห้ามมี UUID", "packing_tips": "นำเสนอร่างแผนจากระบบเป็นฐาน + เพิ่มข้อสังเกตจากประวัติ ห้ามมี UUID"}
 
 ถ้าไม่มีรถที่เหมาะ ให้ suggested_vehicle_id เป็น null.`;
 }
+
 
 // Gemini 2.0 Flash Lite — ราคาถูกกว่า Flash ($0.07/1M input, $0.30/1M output)
 // ถ้า 404 ลอง gemini-2.0-flash หรือ gemini-1.5-flash-001
@@ -220,7 +300,7 @@ async function callGeminiOnce(apiKey: string, prompt: string): Promise<{ res: Re
       contents: [{ role: 'user', parts: [{ text: prompt }] }],
       generationConfig: {
         temperature: 0.3,
-        maxOutputTokens: 512,
+        maxOutputTokens: 800,
       },
     }),
   });
