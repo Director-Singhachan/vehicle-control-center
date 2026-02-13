@@ -430,7 +430,10 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
       let pallet_allocation: typeof undefined | Array<{ pallet_index: number; items: Array<{ product_id: string; product_name?: string | null; product_code?: string | null; quantity: number; weight_kg: number; volume_liter: number }>; total_weight_kg?: number; total_volume_liter?: number }> = undefined;
       let historical_context: string | undefined;
 
-      // ดึงทริปที่คล้ายกันจากประวัติ เพื่อใช้เป็น historical_context ให้ AI วิเคราะห์เป็น insight
+      // ใช้รถที่ user เลือกจริง (หรือ fallback เป็นรถที่ AI แนะนำอันดับ 1)
+      const targetVehicleId = selectedVehicleId || first.vehicle_id;
+
+      // ดึงทริปที่คล้ายกันจากประวัติ — กรองเฉพาะทะเบียนรถที่เลือก (ถ้ามี)
       try {
         const rawProductIds: string[] = input.items.map(
           (i: any) => i.product_id as string
@@ -441,7 +444,8 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
           totalVolumeLiter: first.capacity_info.estimated_volume_liter,
           storeIds: input.store_ids,
           productIds,
-          limit: 8,
+          vehicleId: targetVehicleId, // กรองเฉพาะรถคันนี้ก่อน ถ้าไม่มีจะ fallback อัตโนมัติ
+          limit: 10,
         });
         const ctx = await tripMetricsService.buildSimilarTripsContext(similarTrips);
         if (ctx.trim().length > 0) {
@@ -462,7 +466,7 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
         console.warn('[CreateTripFromOrdersView] getPackingPatternInsights error:', err);
       }
 
-      // ดึงโปรไฟล์การจัดเรียงสินค้าแต่ละตัว จากประวัติรถคันที่แนะนำอันดับ 1
+      // ดึงโปรไฟล์การจัดเรียงสินค้าแต่ละตัว จากประวัติรถคันที่ user เลือก (ไม่ใช่แค่อันดับ 1)
       let product_packing_profiles: string | undefined;
       try {
         const rawProductIds: string[] = input.items.map(
@@ -471,13 +475,52 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
         const uniqueProductIds = Array.from(new Set<string>(rawProductIds));
         const profiles = await tripMetricsService.getProductPackingProfiles(
           uniqueProductIds,
-          first.vehicle_id
+          targetVehicleId // ใช้รถที่ user เลือกจริง ไม่ใช่แค่อันดับ 1
         );
         if (profiles.trim().length > 0) {
           product_packing_profiles = profiles;
         }
       } catch (err) {
         console.warn('[CreateTripFromOrdersView] getProductPackingProfiles error:', err);
+      }
+
+      // ★ คำนวณ "ร่างแผนจัดเรียง" ด้วย rule-based (units_per_layer จากประวัติ)
+      let computed_packing_plan: string | undefined;
+      try {
+        // รวมสินค้าจาก pallet_allocation หรือ input.items
+        const planItems: Array<{ product_id: string; product_name: string; quantity: number; weight_kg: number }> = [];
+        if (pallet_allocation && pallet_allocation.length > 0) {
+          const merged = new Map<string, { product_id: string; product_name: string; quantity: number; weight_kg: number }>();
+          for (const p of pallet_allocation) {
+            for (const item of p.items) {
+              const existing = merged.get(item.product_id);
+              if (existing) {
+                existing.quantity += item.quantity;
+                existing.weight_kg += item.weight_kg;
+              } else {
+                merged.set(item.product_id, {
+                  product_id: item.product_id,
+                  product_name: item.product_name || item.product_code || item.product_id,
+                  quantity: item.quantity,
+                  weight_kg: item.weight_kg,
+                });
+              }
+            }
+          }
+          planItems.push(...merged.values());
+        }
+
+        if (planItems.length > 0) {
+          const plan = await tripMetricsService.computePackingPlan({
+            items: planItems,
+            vehicleMaxPallets: capacitySummary?.vehicleMaxPallets ?? null,
+          });
+          if (plan.trim().length > 0) {
+            computed_packing_plan = plan;
+          }
+        }
+      } catch (err) {
+        console.warn('[CreateTripFromOrdersView] computePackingPlan error:', err);
       }
       try {
         const packing = await calculatePalletAllocation(tripItems);
@@ -500,35 +543,82 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
       } catch {
         // Fallback: ใช้คำนวณแบบเดิม (แยกตามชนิดสินค้า)
         try {
-          const cap = await calculateTripCapacity(tripItems, first.vehicle_id);
+          const cap = await calculateTripCapacity(tripItems, targetVehicleId);
           estimated_pallets = cap.summary.totalPallets;
         } catch {
           /* ไม่ส่ง estimated_pallets */
         }
       }
+
+      // สร้าง items_summary ที่ละเอียดขึ้น (ชื่อสินค้า + จำนวน) แทนแค่ "X รายการสินค้า"
+      let items_summary = `${input.items.length} รายการสินค้า`;
+      if (pallet_allocation && pallet_allocation.length > 0) {
+        // ดึงชื่อสินค้าจาก pallet_allocation (มีชื่ออยู่แล้ว)
+        const productSummaries = new Map<string, { name: string; qty: number }>();
+        for (const p of pallet_allocation) {
+          for (const item of p.items) {
+            const key = item.product_id;
+            const existing = productSummaries.get(key);
+            if (existing) {
+              existing.qty += item.quantity;
+            } else {
+              productSummaries.set(key, {
+                name: item.product_name || item.product_code || item.product_id,
+                qty: item.quantity,
+              });
+            }
+          }
+        }
+        const summaryLines = Array.from(productSummaries.values())
+          .map(({ name, qty }) => `${name} (${qty} หน่วย)`)
+          .join(', ');
+        if (summaryLines) {
+          items_summary = summaryLines;
+        }
+      }
+
+      // หาทะเบียนรถที่ user เลือก
+      const selectedVehicleObj = vehicles.find(v => v.id === targetVehicleId);
+      const selectedPlate = selectedVehicleObj?.plate || 'ไม่ระบุ';
+
       const trip = {
         estimated_weight_kg: first.capacity_info.estimated_weight_kg,
         estimated_volume_liter: first.capacity_info.estimated_volume_liter,
         store_count: input.store_ids.length,
         item_count: input.items.length,
-        items_summary: `${input.items.length} รายการสินค้า`,
+        items_summary,
         planned_date: input.planned_date,
+        selected_vehicle_plate: selectedPlate, // บอก AI ว่ารถที่เลือกคือคันไหน
+        // บอก AI ว่ารถรับพาเลทได้กี่ใบ (จาก capacitySummary ที่คำนวณไว้)
+        vehicle_max_pallets: capacitySummary?.vehicleMaxPallets ?? null,
         ...(estimated_pallets != null && { estimated_pallets }),
         ...(pallet_allocation != null && pallet_allocation.length > 0 && { pallet_allocation }),
       };
-      const vehicles = aiRecommendations.slice(0, 5).map((r) => ({
+      const vehiclesList = aiRecommendations.slice(0, 5).map((r) => ({
         vehicle_id: r.vehicle_id,
         plate: r.vehicle_plate,
         max_weight_kg: r.capacity_info.max_weight_kg,
         cargo_volume_liter: r.capacity_info.max_volume_liter,
         branch: null as string | null,
       }));
+      console.log('[AI Debug] === ข้อมูลที่ส่งให้ AI ===');
+      console.log('[AI Debug] targetVehicleId:', targetVehicleId);
+      console.log('[AI Debug] selectedPlate:', selectedPlate);
+      console.log('[AI Debug] items_summary:', items_summary);
+      console.log('[AI Debug] historical_context:', historical_context ? historical_context.substring(0, 500) : '(ไม่มี)');
+      console.log('[AI Debug] packing_patterns:', packing_patterns ? packing_patterns.substring(0, 300) : '(ไม่มี)');
+      console.log('[AI Debug] product_packing_profiles:', product_packing_profiles ? product_packing_profiles.substring(0, 300) : '(ไม่มี)');
+      console.log('[AI Debug] computed_packing_plan:', computed_packing_plan ? computed_packing_plan.substring(0, 500) : '(ไม่มี)');
+      console.log('[AI Debug] estimated_pallets:', estimated_pallets);
+      console.log('[AI Debug] pallet_allocation count:', pallet_allocation?.length ?? 0);
+      console.log('[AI Debug] vehicles:', vehiclesList.map(v => `${v.plate} (wt:${v.max_weight_kg}, vol:${v.cargo_volume_liter})`));
       const result = await vehicleRecommendationService.getAIRecommendation({
         trip,
-        vehicles,
+        vehicles: vehiclesList,
         historical_context,
         packing_patterns,
         product_packing_profiles,
+        computed_packing_plan,
       });
       setAiExtraResult(result ?? null);
       if (result?.suggested_vehicle_id) {
@@ -542,7 +632,7 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
     } finally {
       setAiExtraLoading(false);
     }
-  }, [recommendationInput, aiRecommendations]);
+  }, [recommendationInput, aiRecommendations, selectedVehicleId, vehicles]);
 
   // นับถอยหลัง cooldown ทุก 1 วินาที
   useEffect(() => {
@@ -638,17 +728,59 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
         return;
       }
       if (capacitySummary?.errors?.length) {
-        warning(`คัน 1: ${capacitySummary.errors.join(', ')}`);
-        return;
+        // กรณีแบ่ง 2 คัน: ใช้ palletPackingResult ถ้ามี เพื่อ override pallet error
+        const dp1 = palletPackingResult
+          ? palletPackingResult.totalPallets
+          : capacitySummary.totalPallets;
+        const nonPalletErrors1 = capacitySummary.errors.filter(
+          (msg) => !msg.startsWith('จำนวนพาเลท')
+        );
+        const recalc1 = [...nonPalletErrors1];
+        if (
+          capacitySummary.vehicleMaxPallets !== null &&
+          dp1 > capacitySummary.vehicleMaxPallets
+        ) {
+          recalc1.push(
+            `จำนวนพาเลทเกินความจุ: ${dp1} พาเลท (สูงสุด ${capacitySummary.vehicleMaxPallets} พาเลท)`
+          );
+        }
+        if (recalc1.length > 0) {
+          warning(`คัน 1: ${recalc1.join(', ')}`);
+          return;
+        }
       }
       if (capacitySummary2?.errors?.length) {
+        // คัน 2 ยังไม่มี bin packing result แยก จึงใช้ errors ตรง ๆ
         warning(`คัน 2: ${capacitySummary2.errors.join(', ')}`);
         return;
       }
     } else {
       if (capacitySummary && capacitySummary.errors.length > 0) {
-        warning(`ไม่สามารถสร้างทริปได้: ${capacitySummary.errors.join(', ')}`);
-        return;
+        // ใช้ค่าพาเลทจาก bin packing (palletPackingResult) ถ้ามี เพราะแม่นยำกว่า
+        // เหมือนกับที่ UI แสดงผลในส่วนสรุปความจุ
+        const displayPallets = palletPackingResult
+          ? palletPackingResult.totalPallets
+          : capacitySummary.totalPallets;
+
+        // กรอง error เดิมที่เกี่ยวกับพาเลทออก แล้วคำนวณใหม่ด้วย displayPallets
+        const nonPalletErrors = capacitySummary.errors.filter(
+          (msg) => !msg.startsWith('จำนวนพาเลท')
+        );
+
+        const recalculatedErrors = [...nonPalletErrors];
+        if (
+          capacitySummary.vehicleMaxPallets !== null &&
+          displayPallets > capacitySummary.vehicleMaxPallets
+        ) {
+          recalculatedErrors.push(
+            `จำนวนพาเลทเกินความจุ: ${displayPallets} พาเลท (สูงสุด ${capacitySummary.vehicleMaxPallets} พาเลท)`
+          );
+        }
+
+        if (recalculatedErrors.length > 0) {
+          warning(`ไม่สามารถสร้างทริปได้: ${recalculatedErrors.join(', ')}`);
+          return;
+        }
       }
     }
 

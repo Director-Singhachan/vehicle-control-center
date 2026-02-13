@@ -253,6 +253,8 @@ export const vehicleRecommendationService = {
     packing_patterns?: string;
     /** โปรไฟล์การจัดเรียงสินค้าแต่ละตัวจากประวัติรถคันนี้ (จาก getProductPackingProfiles) */
     product_packing_profiles?: string;
+    /** ร่างแผนจัดเรียงที่ระบบ rule-based คำนวณมาให้ (จาก computePackingPlan) */
+    computed_packing_plan?: string;
   }): Promise<{
     suggested_vehicle_id: string | null;
     reasoning: string | null;
@@ -267,6 +269,7 @@ export const vehicleRecommendationService = {
           historical_context: params.historical_context,
           packing_patterns: params.packing_patterns,
           product_packing_profiles: params.product_packing_profiles,
+          computed_packing_plan: params.computed_packing_plan,
         },
       });
       if (error) {

@@ -63,6 +63,7 @@ export interface SimilarTripsQueryInput {
   totalVolumeLiter: number;
   storeIds?: string[];
   productIds?: string[];
+  vehicleId?: string; // กรองเฉพาะรถคันนี้ (ทะเบียนเดียวกัน) เพื่อให้ historical context แม่นยำขึ้น
   limit?: number;
 }
 
@@ -278,6 +279,40 @@ export const tripMetricsService = {
     const tripIds = similarTrips.map(t => t.delivery_trip_id);
     const tripsWithLayout = await tripMetricsService.getTripsWithPackingLayout(tripIds);
 
+    // ★ Batch ดึงสินค้าของทริปเหล่านี้ (delivery_trip_items + products)
+    let tripItemsMap = new Map<string, Array<{ product_name: string; quantity: number; unit: string; weight_kg: number | null }>>();
+    try {
+      const { data: allTripItems, error: tiErr } = await supabase
+        .from('delivery_trip_items')
+        .select(`
+          delivery_trip_id,
+          quantity,
+          products!inner (
+            product_name,
+            unit,
+            weight_kg
+          )
+        `)
+        .in('delivery_trip_id', tripIds);
+
+      if (!tiErr && allTripItems) {
+        for (const item of allTripItems) {
+          const tid = item.delivery_trip_id;
+          const existing = tripItemsMap.get(tid) || [];
+          const prod = (item as any).products;
+          existing.push({
+            product_name: prod?.product_name || 'ไม่ทราบ',
+            quantity: Number(item.quantity),
+            unit: prod?.unit || 'หน่วย',
+            weight_kg: prod?.weight_kg ?? null,
+          });
+          tripItemsMap.set(tid, existing);
+        }
+      }
+    } catch (err) {
+      console.warn('[tripMetricsService] buildSimilarTripsContext: fetch items error', err);
+    }
+
     for (const t of similarTrips.slice(0, 10)) {
       const tripLabel = t.trip_number || t.delivery_trip_id?.substring(0, 8) || 'ไม่ทราบรหัสทริป';
       const vehicleLabel = t.vehicle_plate || 'ไม่ระบุรถ';
@@ -320,7 +355,26 @@ export const tripMetricsService = {
 
       lines.push('- ' + parts.join(' | ') + layoutScoreLabel);
 
-      // เพิ่มข้อมูลการจัดเรียงจริง ถ้ามี
+      // ★ แสดงรายการสินค้าของทริปนี้ (จำนวน + น้ำหนัก)
+      const tripItems = tripItemsMap.get(t.delivery_trip_id);
+      if (tripItems && tripItems.length > 0) {
+        // จัดเรียงตามน้ำหนักรวม (มาก → น้อย)
+        const sortedItems = [...tripItems].sort((a, b) => {
+          const wa = (a.weight_kg ?? 0) * a.quantity;
+          const wb = (b.weight_kg ?? 0) * b.quantity;
+          return wb - wa;
+        });
+
+        const totalWeightCalc = sortedItems.reduce((s, i) => s + (i.weight_kg ?? 0) * i.quantity, 0);
+        lines.push(`  🛒 สินค้าในทริป (รวม ${totalWeightCalc.toFixed(0)} kg):`);
+        for (const item of sortedItems) {
+          const itemWeight = (item.weight_kg ?? 0) * item.quantity;
+          const weightNote = itemWeight > 0 ? ` (${itemWeight.toFixed(1)} kg)` : '';
+          lines.push(`    • ${item.product_name}: ${item.quantity} ${item.unit}${weightNote}`);
+        }
+      }
+
+      // ★ เพิ่มข้อมูลการจัดเรียงจริง ถ้ามี (layer-by-layer)
       if (tripsWithLayout.has(t.delivery_trip_id)) {
         const layoutSummary = await tripMetricsService.getTripPackingLayoutSummary(t.delivery_trip_id);
         if (layoutSummary) {
@@ -396,22 +450,68 @@ export const tripMetricsService = {
     if (input.productIds && input.productIds.length > 0) {
       payload.p_product_ids = input.productIds;
     }
+    if (input.vehicleId) {
+      payload.p_vehicle_id = input.vehicleId;
+    }
+
+    console.log('[tripMetricsService] getSimilarTripsForLoad payload:', JSON.stringify(payload, null, 2));
 
     const { data, error } = await supabase.rpc('get_similar_trips', payload);
 
     if (error) {
-      if (error.code === '42883') {
-        // Function ยังไม่ถูกสร้าง (ยังไม่รัน migration) → ไม่ถือเป็น error ร้ายแรง
+      console.error('[tripMetricsService] getSimilarTripsForLoad error:', error.code, error.message);
+
+      // 42883 = function not found, 42725 = function is not unique (มี overload ซ้ำ)
+      if (error.code === '42883' || error.code === '42725') {
         console.warn(
-          '[tripMetricsService] get_similar_trips RPC not found. Run migration: sql/20260228000007_create_similar_trips_function.sql'
+          '[tripMetricsService] get_similar_trips RPC error. Trying without p_vehicle_id. Run migration: sql/20260213000001_add_vehicle_filter_to_similar_trips.sql'
         );
-        return [];
+        const fallbackPayload = { ...payload };
+        delete fallbackPayload.p_vehicle_id;
+        const { data: fbData, error: fbError } = await supabase.rpc('get_similar_trips', fallbackPayload);
+        if (fbError) {
+          console.error('[tripMetricsService] getSimilarTripsForLoad fallback also failed:', fbError.code, fbError.message);
+          return [];
+        }
+        const fbRows = (Array.isArray(fbData) ? fbData : []) as SimilarTripSummary[];
+        console.log(`[tripMetricsService] getSimilarTripsForLoad fallback returned ${fbRows.length} rows`);
+        return fbRows;
       }
-      console.error('[tripMetricsService] getSimilarTripsForLoad error:', error);
-      throw error;
+      // ถ้า SQL function ยังไม่รองรับ p_vehicle_id → ลองเรียกโดยไม่ส่ง p_vehicle_id
+      if (error.message?.includes('p_vehicle_id')) {
+        console.warn(
+          '[tripMetricsService] get_similar_trips does not support p_vehicle_id yet, calling without it'
+        );
+        const fallbackPayload = { ...payload };
+        delete fallbackPayload.p_vehicle_id;
+        const { data: fbData, error: fbError } = await supabase.rpc('get_similar_trips', fallbackPayload);
+        if (fbError) {
+          console.error('[tripMetricsService] getSimilarTripsForLoad fallback error:', fbError);
+          return [];
+        }
+        return (Array.isArray(fbData) ? fbData : []) as SimilarTripSummary[];
+      }
+      console.error('[tripMetricsService] getSimilarTripsForLoad unexpected error:', error);
+      return [];
     }
 
-    const rows = (Array.isArray(data) ? data : []) as SimilarTripSummary[];
+    let rows = (Array.isArray(data) ? data : []) as SimilarTripSummary[];
+    console.log(`[tripMetricsService] getSimilarTripsForLoad returned ${rows.length} rows for vehicleId=${input.vehicleId || '(all)'}`);
+
+    // ถ้ากรองเฉพาะรถแล้วไม่มีผลลัพธ์ → fallback ดึงจากทุกคัน (แต่ label ไว้ว่าเป็น fallback)
+    if (rows.length === 0 && input.vehicleId) {
+      console.info(
+        '[tripMetricsService] No similar trips for vehicleId, falling back to all vehicles'
+      );
+      const fallbackPayload = { ...payload };
+      delete fallbackPayload.p_vehicle_id;
+      const { data: fbData, error: fbError } = await supabase.rpc('get_similar_trips', fallbackPayload);
+      if (!fbError && fbData) {
+        rows = (Array.isArray(fbData) ? fbData : []) as SimilarTripSummary[];
+        console.log(`[tripMetricsService] getSimilarTripsForLoad fallback returned ${rows.length} rows`);
+      }
+    }
+
     return rows;
   },
 
@@ -482,57 +582,367 @@ export const tripMetricsService = {
 
     try {
       // ลองดึงเฉพาะรถคันที่เลือก
+      console.log('[tripMetricsService] getProductPackingProfiles: vehicleId=', vehicleId, 'productIds=', productIds.length);
       const { data, error } = await supabase.rpc('get_product_packing_profiles', {
         p_vehicle_id: vehicleId,
         p_product_ids: productIds,
       });
 
+      if (error) {
+        console.warn('[tripMetricsService] getProductPackingProfiles error:', error.message, error.code);
+      }
+
       let profiles = (!error && data && data.length > 0) ? data : null;
+      let fromAllVehicles = false;
 
-      // ถ้ารถคันนี้ไม่มีข้อมูลเลย → ยังไม่ fallback (ส่งเปล่า ให้ AI ใช้หลักทั่วไป)
+      // ★ ถ้ารถคันนี้ไม่มีข้อมูล → fallback ดึงจากรถทุกคัน (ส่ง null vehicle_id)
       if (!profiles || profiles.length === 0) {
-        return '';
+        console.info('[tripMetricsService] No packing profiles for this vehicle, trying all vehicles...');
+        try {
+          // เรียกด้วย vehicle_id = null (ดึงจากทุกคัน)
+          // ★ ถ้า SQL function ไม่รับ null → ใช้ query ตรงแทน
+          const { data: fbData, error: fbError } = await supabase
+            .from('trip_packing_layout_items')
+            .select(`
+              id,
+              trip_packing_layout_id,
+              delivery_trip_item_id,
+              quantity,
+              layer_index,
+              trip_packing_layout!inner (
+                id,
+                delivery_trip_id,
+                position_index,
+                position_type,
+                total_layers,
+                delivery_trips!inner (
+                  id,
+                  status,
+                  vehicle_id
+                )
+              ),
+              delivery_trip_items!inner (
+                product_id,
+                products!inner (
+                  id,
+                  product_name
+                )
+              )
+            `)
+            .limit(200);
+
+          if (!fbError && fbData && fbData.length > 0) {
+            // สินค้าที่ตรงกับ productIds
+            const matchingItems = fbData.filter((item: any) => {
+              const pid = item.delivery_trip_items?.product_id;
+              return productIds.includes(pid);
+            });
+
+            if (matchingItems.length > 0) {
+              fromAllVehicles = true;
+              // สร้าง summary เอง
+              const productMap = new Map<string, { name: string; count: number; positions: Map<number, number>; layers: Map<string, number> }>();
+
+              for (const item of matchingItems) {
+                const pid = item.delivery_trip_items?.product_id;
+                const pname = item.delivery_trip_items?.products?.product_name || 'ไม่ทราบ';
+                const posIdx = (item.trip_packing_layout as any)?.position_index ?? 0;
+                const layerIdx = item.layer_index;
+                const totalLayers = (item.trip_packing_layout as any)?.total_layers;
+
+                let entry = productMap.get(pid);
+                if (!entry) {
+                  entry = { name: pname, count: 0, positions: new Map(), layers: new Map() };
+                  productMap.set(pid, entry);
+                }
+                entry.count++;
+                entry.positions.set(posIdx, (entry.positions.get(posIdx) || 0) + 1);
+
+                const layerLabel = layerIdx == null ? 'ไม่ระบุชั้น'
+                  : layerIdx === 0 ? 'ล่างสุด'
+                    : (totalLayers != null && layerIdx >= totalLayers - 1) ? 'บนสุด'
+                      : 'กลาง';
+                entry.layers.set(layerLabel, (entry.layers.get(layerLabel) || 0) + 1);
+              }
+
+              lines.push('📦 โปรไฟล์การจัดเรียงสินค้า (จากประวัติรถทุกคัน — ไม่มีข้อมูลเฉพาะรถคันนี้):');
+              for (const [, entry] of productMap) {
+                const posStr = Array.from(entry.positions.entries())
+                  .sort(([, a], [, b]) => b - a)
+                  .map(([pos, cnt]) => `พาเลท ${pos}: ${Math.round(cnt / entry.count * 100)}%`)
+                  .join(', ');
+                const layerStr = Array.from(entry.layers.entries())
+                  .sort(([, a], [, b]) => b - a)
+                  .map(([layer, cnt]) => `${layer}: ${Math.round(cnt / entry.count * 100)}%`)
+                  .join(', ');
+                lines.push(`- ${entry.name} (${entry.count} ครั้ง): ตำแหน่ง [${posStr}] ชั้น [${layerStr}]`);
+              }
+            }
+          }
+        } catch (fbErr) {
+          console.warn('[tripMetricsService] fallback query error:', fbErr);
+        }
+
+        if (!fromAllVehicles) {
+          console.info('[tripMetricsService] No packing profiles found at all');
+          return '';
+        }
+      } else {
+        lines.push('📦 โปรไฟล์การจัดเรียงสินค้า (จากประวัติรถคันนี้):');
+
+        for (const p of profiles) {
+          const name = p.product_name || 'ไม่ทราบชื่อ';
+          const packed = p.times_packed || 0;
+          if (packed < 1) continue;
+
+          const posDist = typeof p.position_distribution === 'object' && p.position_distribution
+            ? Object.entries(p.position_distribution as Record<string, number>)
+              .sort(([, a], [, b]) => (b as number) - (a as number))
+              .map(([pos, pct]) => `พาเลท ${pos}: ${pct}%`)
+              .join(', ')
+            : '';
+
+          const layerDist = typeof p.layer_distribution === 'object' && p.layer_distribution
+            ? Object.entries(p.layer_distribution as Record<string, number>)
+              .sort(([, a], [, b]) => (b as number) - (a as number))
+              .map(([layer, pct]) => `${layer}: ${pct}%`)
+              .join(', ')
+            : '';
+
+          const avgQty = typeof p.avg_qty_per_pallet === 'number' ? p.avg_qty_per_pallet.toFixed(0) : '?';
+          const maxQty = typeof p.max_qty_per_pallet === 'number' ? p.max_qty_per_pallet.toFixed(0) : '?';
+
+          const coPacked = Array.isArray(p.top_copacked) && p.top_copacked.length > 0
+            ? p.top_copacked.join(', ')
+            : '';
+
+          let line = `- ${name} (บันทึก ${packed} ครั้ง):`;
+          if (posDist) line += ` ตำแหน่ง [${posDist}]`;
+          if (layerDist) line += ` ชั้น [${layerDist}]`;
+          line += ` เฉลี่ย ${avgQty} ต่อพาเลท (max ${maxQty})`;
+          if (coPacked) line += ` จัดคู่กับ: ${coPacked}`;
+
+          lines.push(line);
+        }
       }
-
-      lines.push('📦 โปรไฟล์การจัดเรียงสินค้า (จากประวัติรถคันนี้):');
-
-      for (const p of profiles) {
-        const name = p.product_name || 'ไม่ทราบชื่อ';
-        const packed = p.times_packed || 0;
-        if (packed < 1) continue;
-
-        const posDist = typeof p.position_distribution === 'object' && p.position_distribution
-          ? Object.entries(p.position_distribution as Record<string, number>)
-            .sort(([, a], [, b]) => (b as number) - (a as number))
-            .map(([pos, pct]) => `พาเลท ${pos}: ${pct}%`)
-            .join(', ')
-          : '';
-
-        const layerDist = typeof p.layer_distribution === 'object' && p.layer_distribution
-          ? Object.entries(p.layer_distribution as Record<string, number>)
-            .sort(([, a], [, b]) => (b as number) - (a as number))
-            .map(([layer, pct]) => `${layer}: ${pct}%`)
-            .join(', ')
-          : '';
-
-        const avgQty = typeof p.avg_qty_per_pallet === 'number' ? p.avg_qty_per_pallet.toFixed(0) : '?';
-        const maxQty = typeof p.max_qty_per_pallet === 'number' ? p.max_qty_per_pallet.toFixed(0) : '?';
-
-        const coPacked = Array.isArray(p.top_copacked) && p.top_copacked.length > 0
-          ? p.top_copacked.join(', ')
-          : '';
-
-        let line = `- ${name} (บันทึก ${packed} ครั้ง):`;
-        if (posDist) line += ` ตำแหน่ง [${posDist}]`;
-        if (layerDist) line += ` ชั้น [${layerDist}]`;
-        line += ` เฉลี่ย ${avgQty} ต่อพาเลท (max ${maxQty})`;
-        if (coPacked) line += ` จัดคู่กับ: ${coPacked}`;
-
-        lines.push(line);
-      }
-    } catch {
-      // RPC อาจยังไม่ถูกสร้าง → ข้ามโดยไม่ error
+    } catch (err) {
+      console.error('[tripMetricsService] getProductPackingProfiles unexpected error:', err);
     }
+
+    return lines.join('\n');
+  },
+
+  /**
+   * ★ คำนวณ "ร่างแผนจัดเรียง" จาก rule-based
+   * ดึง "จำนวนหน่วยต่อชั้น (units_per_layer)" จากประวัติ layout จริง
+   * แล้วคำนวณว่าทริปปัจจุบันต้องใช้กี่ชั้น กี่พาเลท
+   * ส่งให้ AI ใช้เป็นฐาน (ไม่ต้องคิดเอง)
+   */
+  computePackingPlan: async (params: {
+    items: Array<{
+      product_id: string;
+      product_name: string;
+      quantity: number;
+      weight_kg: number;  // น้ำหนักรวม (qty × unit_weight)
+    }>;
+    vehicleMaxPallets?: number | null;
+  }): Promise<string> => {
+    if (!params.items || params.items.length === 0) return '';
+
+    const MAX_LAYERS_PER_PALLET = 4; // standard pallet = 4 ชั้น
+    const lines: string[] = [];
+
+    // ===== 1) ดึง units_per_layer จากประวัติ layout จริง =====
+    const productIds = [...new Set(params.items.map(i => i.product_id))];
+    const unitsPerLayerMap = new Map<string, number>(); // product_id → avg units per layer
+
+    try {
+      // ดึง layout items ที่มี layer_index (ตำแหน่งชั้นจริง) สำหรับสินค้าเหล่านี้
+      const { data: layoutItems, error } = await supabase
+        .from('trip_packing_layout_items')
+        .select(`
+          quantity,
+          layer_index,
+          delivery_trip_item_id,
+          delivery_trip_items!inner (
+            product_id
+          )
+        `)
+        .limit(500);
+
+      if (!error && layoutItems && layoutItems.length > 0) {
+        // กรองเฉพาะ product ที่ตรงกัน + มี layer_index
+        const relevant = layoutItems.filter((item: any) => {
+          const pid = item.delivery_trip_items?.product_id;
+          return productIds.includes(pid) && item.layer_index !== null;
+        });
+
+        // คำนวณ avg units per layer ต่อ product
+        const productLayerData = new Map<string, number[]>(); // product_id → [qty per record]
+        for (const item of relevant) {
+          const pid = (item as any).delivery_trip_items?.product_id;
+          if (!pid) continue;
+          const existing = productLayerData.get(pid) || [];
+          existing.push(Number(item.quantity));
+          productLayerData.set(pid, existing);
+        }
+
+        for (const [pid, quantities] of productLayerData) {
+          if (quantities.length > 0) {
+            const avg = quantities.reduce((a, b) => a + b, 0) / quantities.length;
+            unitsPerLayerMap.set(pid, Math.round(avg));
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('[tripMetricsService] computePackingPlan: layout query error', err);
+    }
+
+    // ★ ถ้าไม่มีข้อมูล layout → ดึง avg จากข้อมูลอื่น
+    // (ไม่มี layout บันทึกมาก่อน → ใช้ approximate: ~10 ลัง/ชั้น สำหรับขวดเบียร์/โซดามาตรฐาน)
+    const DEFAULT_UNITS_PER_LAYER = 10;
+
+    // ===== 2) คำนวณ layers ต่อ product =====
+    interface ProductPlan {
+      product_id: string;
+      product_name: string;
+      quantity: number;
+      weight_kg: number;
+      units_per_layer: number;
+      layers_needed: number;
+      data_source: 'ประวัติจริง' | 'ประมาณค่า';
+    }
+
+    const productPlans: ProductPlan[] = params.items
+      .filter(i => i.quantity > 0)
+      .map(item => {
+        const histUPL = unitsPerLayerMap.get(item.product_id);
+        const upl = histUPL ?? DEFAULT_UNITS_PER_LAYER;
+        const layers = Math.ceil(item.quantity / upl);
+        return {
+          ...item,
+          units_per_layer: upl,
+          layers_needed: layers,
+          data_source: histUPL ? 'ประวัติจริง' as const : 'ประมาณค่า' as const,
+        };
+      })
+      // เรียงตามน้ำหนัก มาก → น้อย (ของหนักวางก่อน)
+      .sort((a, b) => b.weight_kg - a.weight_kg);
+
+    const totalLayers = productPlans.reduce((s, p) => s + p.layers_needed, 0);
+    const totalPalletsNeeded = Math.ceil(totalLayers / MAX_LAYERS_PER_PALLET);
+    const vehicleMax = params.vehicleMaxPallets ?? null;
+
+    // ===== 3) จัดลงพาเลท =====
+    interface PalletPlan {
+      pallet_index: number;
+      items: Array<{ product_name: string; quantity: number; layers: number; weight_kg: number; layer_start: number }>;
+      total_layers: number;
+      total_weight_kg: number;
+    }
+
+    const pallets: PalletPlan[] = [];
+    let currentPallet: PalletPlan = { pallet_index: 1, items: [], total_layers: 0, total_weight_kg: 0 };
+
+    for (const plan of productPlans) {
+      let remaining = plan.layers_needed;
+      let remainingQty = plan.quantity;
+
+      while (remaining > 0) {
+        const available = MAX_LAYERS_PER_PALLET - currentPallet.total_layers;
+        if (available <= 0) {
+          // พาเลทเต็ม → เปิดพาเลทใหม่
+          pallets.push(currentPallet);
+          currentPallet = { pallet_index: pallets.length + 1, items: [], total_layers: 0, total_weight_kg: 0 };
+          continue;
+        }
+
+        const layersToUse = Math.min(remaining, available);
+        const qtyForThis = Math.min(remainingQty, layersToUse * plan.units_per_layer);
+        const weightForThis = plan.quantity > 0 ? (plan.weight_kg * qtyForThis / plan.quantity) : 0;
+
+        currentPallet.items.push({
+          product_name: plan.product_name,
+          quantity: qtyForThis,
+          layers: layersToUse,
+          weight_kg: weightForThis,
+          layer_start: currentPallet.total_layers,
+        });
+        currentPallet.total_layers += layersToUse;
+        currentPallet.total_weight_kg += weightForThis;
+
+        remaining -= layersToUse;
+        remainingQty -= qtyForThis;
+      }
+    }
+    if (currentPallet.items.length > 0) {
+      pallets.push(currentPallet);
+    }
+
+    // ===== 4) ตรวจ overflow: สินค้าเศษน้อย → วางพื้นถ้ารถมีที่ว่าง =====
+    const floorItems: Array<{ product_name: string; quantity: number; weight_kg: number; reason: string }> = [];
+    if (vehicleMax && vehicleMax > totalPalletsNeeded) {
+      // มีพื้นที่ว่าง → สินค้าที่มีแค่ 1 ชั้นและน้ำหนักรวม < 50 kg → ย้ายลงพื้น
+      for (const pallet of pallets) {
+        const smallItems = pallet.items.filter(i => i.layers === 1 && i.weight_kg < 50);
+        for (const smallItem of smallItems) {
+          floorItems.push({
+            product_name: smallItem.product_name,
+            quantity: smallItem.quantity,
+            weight_kg: smallItem.weight_kg,
+            reason: `จำนวนน้อย (${smallItem.quantity} หน่วย, ${smallItem.weight_kg.toFixed(0)} kg) — วางแยกบนพื้นรถได้ ง่ายต่อการหยิบ`,
+          });
+          // ลบออกจากพาเลท
+          pallet.items = pallet.items.filter(i => i !== smallItem);
+          pallet.total_layers -= smallItem.layers;
+          pallet.total_weight_kg -= smallItem.weight_kg;
+        }
+      }
+    }
+
+    // ===== 5) สร้าง output text =====
+    lines.push('🔧 ร่างแผนจัดเรียงจากระบบ (Rule-based — คำนวณจากประวัติ layout จริง):');
+    lines.push('');
+
+    // แสดงข้อมูลสินค้า + จำนวนชั้นที่ต้องใช้
+    lines.push('📐 การประมาณจำนวนชั้น:');
+    for (const plan of productPlans) {
+      lines.push(`  • ${plan.product_name}: ${plan.quantity} หน่วย ÷ ${plan.units_per_layer} ต่อชั้น = ${plan.layers_needed} ชั้น (${plan.data_source}) น้ำหนัก ${plan.weight_kg.toFixed(0)} kg`);
+    }
+    lines.push(`  → รวมทั้งหมด: ${totalLayers} ชั้น = ${totalPalletsNeeded} พาเลท (พาเลทละ ${MAX_LAYERS_PER_PALLET} ชั้น)`);
+    if (vehicleMax) {
+      lines.push(`  → รถรองรับ: ${vehicleMax} พาเลท | ใช้: ${totalPalletsNeeded} | ว่าง: ${Math.max(0, vehicleMax - totalPalletsNeeded)} ตำแหน่ง`);
+    }
+    lines.push('');
+
+    // แสดงแผนจัดเรียง
+    lines.push('📋 แผนจัดเรียงแนะนำ (หนักอยู่ล่าง → เบาอยู่บน):');
+    for (const pallet of pallets.filter(p => p.items.length > 0)) {
+      lines.push(`  พาเลทที่ ${pallet.pallet_index} (${pallet.total_layers} ชั้น, ${pallet.total_weight_kg.toFixed(0)} kg):`);
+      for (const item of pallet.items) {
+        const layerEnd = item.layer_start + item.layers;
+        const layerLabel = item.layers === 1
+          ? `ชั้น ${item.layer_start + 1}`
+          : `ชั้น ${item.layer_start + 1}-${layerEnd}`;
+
+        let position = '';
+        if (item.layer_start === 0) position = ' (ล่างสุด)';
+        else if (layerEnd >= pallet.total_layers) position = ' (บนสุด)';
+
+        lines.push(`    ${layerLabel}${position}: ${item.product_name} ${item.quantity} หน่วย (${item.weight_kg.toFixed(0)} kg)`);
+      }
+    }
+
+    if (floorItems.length > 0) {
+      lines.push('');
+      lines.push('  🚛 วางบนพื้นรถ (แยกจากพาเลท):');
+      for (const item of floorItems) {
+        lines.push(`    • ${item.product_name}: ${item.quantity} หน่วย — ${item.reason}`);
+      }
+    }
+
+    lines.push('');
+    lines.push('⚠️ นี่คือร่างแผนจากระบบ — AI กรุณาตรวจสอบ ปรับ และเสนอความเห็นเพิ่มเติมจากข้อมูลประวัติ');
 
     return lines.join('\n');
   },
