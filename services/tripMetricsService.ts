@@ -468,6 +468,76 @@ export const tripMetricsService = {
   },
 
   /**
+   * ดึง profile การจัดเรียงสินค้าแต่ละตัว จากประวัติ layout จริง (เฉพาะรถคันที่ระบุ)
+   * เช่น "เบียร์ลีโอขวด: วางพาเลทแรก 80%, ชั้นล่าง 90%, เฉลี่ย 80 หน่วย/พาเลท"
+   * ถ้ารถคันนั้นไม่มีข้อมูล → fallback ดูจากทุกคัน (ส่ง null เป็น vehicle_id)
+   */
+  getProductPackingProfiles: async (
+    productIds: string[],
+    vehicleId: string
+  ): Promise<string> => {
+    if (!productIds || productIds.length === 0) return '';
+
+    const lines: string[] = [];
+
+    try {
+      // ลองดึงเฉพาะรถคันที่เลือก
+      const { data, error } = await supabase.rpc('get_product_packing_profiles', {
+        p_vehicle_id: vehicleId,
+        p_product_ids: productIds,
+      });
+
+      let profiles = (!error && data && data.length > 0) ? data : null;
+
+      // ถ้ารถคันนี้ไม่มีข้อมูลเลย → ยังไม่ fallback (ส่งเปล่า ให้ AI ใช้หลักทั่วไป)
+      if (!profiles || profiles.length === 0) {
+        return '';
+      }
+
+      lines.push('📦 โปรไฟล์การจัดเรียงสินค้า (จากประวัติรถคันนี้):');
+
+      for (const p of profiles) {
+        const name = p.product_name || 'ไม่ทราบชื่อ';
+        const packed = p.times_packed || 0;
+        if (packed < 1) continue;
+
+        const posDist = typeof p.position_distribution === 'object' && p.position_distribution
+          ? Object.entries(p.position_distribution as Record<string, number>)
+            .sort(([, a], [, b]) => (b as number) - (a as number))
+            .map(([pos, pct]) => `พาเลท ${pos}: ${pct}%`)
+            .join(', ')
+          : '';
+
+        const layerDist = typeof p.layer_distribution === 'object' && p.layer_distribution
+          ? Object.entries(p.layer_distribution as Record<string, number>)
+            .sort(([, a], [, b]) => (b as number) - (a as number))
+            .map(([layer, pct]) => `${layer}: ${pct}%`)
+            .join(', ')
+          : '';
+
+        const avgQty = typeof p.avg_qty_per_pallet === 'number' ? p.avg_qty_per_pallet.toFixed(0) : '?';
+        const maxQty = typeof p.max_qty_per_pallet === 'number' ? p.max_qty_per_pallet.toFixed(0) : '?';
+
+        const coPacked = Array.isArray(p.top_copacked) && p.top_copacked.length > 0
+          ? p.top_copacked.join(', ')
+          : '';
+
+        let line = `- ${name} (บันทึก ${packed} ครั้ง):`;
+        if (posDist) line += ` ตำแหน่ง [${posDist}]`;
+        if (layerDist) line += ` ชั้น [${layerDist}]`;
+        line += ` เฉลี่ย ${avgQty} ต่อพาเลท (max ${maxQty})`;
+        if (coPacked) line += ` จัดคู่กับ: ${coPacked}`;
+
+        lines.push(line);
+      }
+    } catch {
+      // RPC อาจยังไม่ถูกสร้าง → ข้ามโดยไม่ error
+    }
+
+    return lines.join('\n');
+  },
+
+  /**
    * ดึงข้อมูลพื้นฐานของทริป (จำนวนสินค้า, ระยะทาง, ระยะเวลา) จากข้อมูลที่มีอยู่แล้ว
    * ใช้สำหรับเติมข้อมูลที่สามารถคำนวณได้จากระบบเดิม
    */

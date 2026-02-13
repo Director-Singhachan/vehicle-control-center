@@ -461,6 +461,24 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
       } catch (err) {
         console.warn('[CreateTripFromOrdersView] getPackingPatternInsights error:', err);
       }
+
+      // ดึงโปรไฟล์การจัดเรียงสินค้าแต่ละตัว จากประวัติรถคันที่แนะนำอันดับ 1
+      let product_packing_profiles: string | undefined;
+      try {
+        const rawProductIds: string[] = input.items.map(
+          (i: any) => i.product_id as string
+        );
+        const uniqueProductIds = Array.from(new Set<string>(rawProductIds));
+        const profiles = await tripMetricsService.getProductPackingProfiles(
+          uniqueProductIds,
+          first.vehicle_id
+        );
+        if (profiles.trim().length > 0) {
+          product_packing_profiles = profiles;
+        }
+      } catch (err) {
+        console.warn('[CreateTripFromOrdersView] getProductPackingProfiles error:', err);
+      }
       try {
         const packing = await calculatePalletAllocation(tripItems);
         if (packing.errors.length === 0) {
@@ -510,6 +528,7 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
         vehicles,
         historical_context,
         packing_patterns,
+        product_packing_profiles,
       });
       setAiExtraResult(result ?? null);
       if (result?.suggested_vehicle_id) {
