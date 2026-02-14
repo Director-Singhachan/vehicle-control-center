@@ -101,12 +101,18 @@ export function EditOrderView({ orderId, onSave, onCancel }: EditOrderViewProps)
         }
       }
 
-      // โหลด warehouse
+      // โหลด warehouse จาก DB โดยตรง (ไม่พึ่ง warehouses list ที่อาจยังไม่โหลด)
       if (orderData.warehouse_id) {
-        const warehouse = warehouses?.find(w => w.id === orderData.warehouse_id);
-        if (warehouse) {
-          setSelectedWarehouse(warehouse);
+        const { data: warehouseData } = await supabase
+          .from('warehouses')
+          .select('*')
+          .eq('id', orderData.warehouse_id)
+          .single();
+        if (warehouseData) {
+          setSelectedWarehouse(warehouseData);
         }
+      } else {
+        setSelectedWarehouse(null);
       }
 
       // โหลด order items
