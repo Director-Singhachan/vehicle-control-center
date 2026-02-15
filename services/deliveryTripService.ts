@@ -40,6 +40,7 @@ export interface DeliveryTripItemWithProduct extends DeliveryTripItem {
     product_code: string;
     product_name: string;
     unit: string;
+    weight_kg?: number | null;
   };
 }
 
@@ -526,7 +527,7 @@ export const deliveryTripService = {
       const productIds = (tripItems || []).map(item => item.product_id).filter(Boolean);
       const { data: products } = productIds.length > 0 ? await supabase
         .from('products')
-        .select('id, category, product_code, product_name, unit')
+        .select('id, category, product_code, product_name, unit, weight_kg')
         .in('id', productIds) : { data: [] };
 
       const productMap = new Map((products || []).map(p => [p.id, p]));

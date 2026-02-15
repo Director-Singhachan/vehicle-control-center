@@ -334,6 +334,8 @@ export const PackingSimulator: React.FC<SimulatorProps> = ({ tripId, onClose }) 
     const [aiSuggestions, setAiSuggestions] = useState<string | null>(null);
     const [showAi, setShowAi] = useState(false);
     const [showSaveConfirm, setShowSaveConfirm] = useState(false);
+    /** พาเลท/พื้นรถที่รอยืนยันลบ (ป้องกันกดผิดปุ่มลบ) */
+    const [positionToDelete, setPositionToDelete] = useState<string | null>(null);
     const [packingStandards, setPackingStandards] = useState<Map<string, PackingStandard>>(new Map());
     /** ทุก config ต่อสินค้า (สำหรับปุ่มเต็มพาเลท 60, 75 ฯลฯ) */
     const [packingConfigs, setPackingConfigs] = useState<Map<string, PackingStandard[]>>(new Map());
@@ -402,7 +404,7 @@ export const PackingSimulator: React.FC<SimulatorProps> = ({ tripId, onClose }) 
                             category: product.category || 'อื่นๆ',
                             unit: product.unit || 'หน่วย',
                             quantity: Number(item.quantity) || 0,
-                            weight_kg: (product as any).weight_kg ?? null,
+                            weight_kg: product.weight_kg ?? null,
                             store_name: store.store?.customer_name || undefined,
                         });
                     }
@@ -1250,6 +1252,31 @@ export const PackingSimulator: React.FC<SimulatorProps> = ({ tripId, onClose }) 
                 onCancel={() => setShowSaveConfirm(false)}
             />
 
+            <ConfirmDialog
+                isOpen={positionToDelete != null}
+                title="ยืนยันการลบ"
+                message={(() => {
+                    const pos = layout.positions.find(p => p.id === positionToDelete);
+                    if (!pos) return 'ต้องการลบตำแหน่งนี้จริงหรือไม่?';
+                    const label = pos.position_type === 'pallet' ? `พาเลท #${pos.position_index}` : `พื้นรถ #${pos.position_index}`;
+                    const itemCount = pos.items.reduce((s, i) => s + i.quantity, 0);
+                    if (itemCount > 0) {
+                        return `ต้องการลบ${label} จริงหรือไม่? ตำแหน่งนี้มีสินค้าจัดไว้แล้ว ${itemCount} ชิ้น — การลบจะนำสินค้าออกจากตำแหน่งนี้ (สามารถจัดใหม่ได้)`;
+                    }
+                    return `ต้องการลบ${label} จริงหรือไม่?`;
+                })()}
+                confirmText="ลบ"
+                cancelText="ยกเลิก"
+                variant="danger"
+                onConfirm={() => {
+                    if (positionToDelete) {
+                        removePosition(positionToDelete);
+                        setPositionToDelete(null);
+                    }
+                }}
+                onCancel={() => setPositionToDelete(null)}
+            />
+
             {/* AI Suggestions Panel */}
             {showAi && aiSuggestions && (
                 <Card className="bg-gradient-to-r from-violet-50 to-blue-50 dark:from-violet-950/20 dark:to-blue-950/20 border-violet-200 dark:border-violet-800">
@@ -1325,8 +1352,10 @@ export const PackingSimulator: React.FC<SimulatorProps> = ({ tripId, onClose }) 
                                             {pos.collapsed ? <Eye className="text-white" size={16} /> : <EyeOff className="text-white" size={16} />}
                                         </button>
                                         <button
-                                            onClick={() => removePosition(pos.id)}
+                                            type="button"
+                                            onClick={() => setPositionToDelete(pos.id)}
                                             className="p-2 rounded-lg bg-white/10 hover:bg-red-500/30 transition-colors"
+                                            title="ลบพาเลท"
                                         >
                                             <Trash2 className="text-white" size={16} />
                                         </button>
