@@ -117,14 +117,15 @@ export const useAuthStore = create<AuthState>()(
           if (user) {
             try {
               console.log('[Auth] Fetching profile for user:', user.id);
-              set({ loading: false });
-
+              // Keep loading true until profile is fetched so driver/sales don't see full menu flash
               getCurrentProfile().then(profile => {
                 console.log('[Auth] Profile fetched:', profile ? `role: ${profile.role}` : 'null');
                 get().setProfile(profile);
+                set({ loading: false });
               }).catch(err => {
                 console.warn('[Auth] Failed to fetch profile:', err);
                 get().setProfile(null);
+                set({ loading: false });
               });
             } catch (err) {
               console.warn('[Auth] Failed to fetch profile:', err);

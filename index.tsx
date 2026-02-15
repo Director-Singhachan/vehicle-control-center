@@ -794,6 +794,18 @@ const AppContent = () => {
   const sidebarTransformClass = isMobile ? (isSidebarOpen ? 'translate-x-0' : '-translate-x-full') : 'translate-x-0';
   const contentMarginClass = isMobile ? 'ml-0' : (isSidebarOpen ? 'ml-64' : 'ml-20');
 
+  // ไม่แสดง sidebar/content จนกว่า profile จะโหลด — ป้องกันคนขับ/ฝ่ายขายเห็นเมนูอื่นแวบแล้วหาย
+  if (user && !profile) {
+    return (
+      <div className="min-h-screen bg-gray-50 dark:bg-charcoal-950 flex items-center justify-center font-sans">
+        <div className="flex flex-col items-center gap-4 text-slate-500 dark:text-slate-400">
+          <div className="w-12 h-12 border-2 border-enterprise-500 border-t-transparent rounded-full animate-spin" />
+          <p className="text-sm">กำลังโหลด...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-charcoal-950 flex font-sans selection:bg-enterprise-500 selection:text-white">
 
