@@ -772,6 +772,46 @@ export const tripMetricsService = {
   },
 
   /**
+   * ดึง config การจัดเรียงทุกแบบต่อสินค้า (สำหรับแสดงตัวเลือกเต็มพาเลท 60, 75 ฯลฯ)
+   */
+  getProductPackingConfigs: async (productIds: string[]): Promise<Map<string, Array<{ units_per_layer: number; layers: number; total_units: number; config_name: string | null }>>> => {
+    const map = new Map<string, Array<{ units_per_layer: number; layers: number; total_units: number; config_name: string | null }>>();
+    if (!productIds || productIds.length === 0) return map;
+    try {
+      const { data: rows, error } = await supabase
+        .from('product_pallet_configs')
+        .select('id, product_id, config_name, layers, units_per_layer, total_units')
+        .in('product_id', productIds)
+        .eq('is_active', true)
+        .order('is_default', { ascending: false })
+        .order('created_at', { ascending: true });
+
+      if (error) {
+        console.warn('[tripMetricsService] getProductPackingConfigs error:', error);
+        return map;
+      }
+      for (const row of rows ?? []) {
+        const pid = (row as any).product_id;
+        if (!pid) continue;
+        const layers = Number((row as any).layers) || 1;
+        const upl = Number((row as any).units_per_layer) || 0;
+        const total = Number((row as any).total_units) ?? layers * upl;
+        const entry = {
+          units_per_layer: upl,
+          layers,
+          total_units: total > 0 ? total : layers * upl,
+          config_name: (row as any).config_name ?? null,
+        };
+        if (!map.has(pid)) map.set(pid, []);
+        map.get(pid)!.push(entry);
+      }
+    } catch (err) {
+      console.warn('[tripMetricsService] getProductPackingConfigs unexpected error:', err);
+    }
+    return map;
+  },
+
+  /**
    * ★ คำนวณ "ร่างแผนจัดเรียง" จาก rule-based (มาตรฐาน → ประวัติ → ประมาณ) คืนค่าเป็นตัวเลข
    * ใช้ตอนสร้างทริปและแนะนำรถ ให้ใช้ logic เดียวกับ Packing Simulation
    */

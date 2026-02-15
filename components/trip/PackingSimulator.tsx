@@ -141,10 +141,11 @@ const ItemPicker: React.FC<{
     itemsPerStore: PickerRow[];
     itemsAggregated: AggregatedPickerRow[];
     packingStandards: Map<string, PackingStandard>;
+    packingConfigs: Map<string, PackingStandard[]>;
     onAddByItem: (itemId: string, qty: number) => void;
     onAddByProduct: (productId: string, qty: number) => void;
     onClose: () => void;
-}> = ({ itemsPerStore, itemsAggregated, packingStandards, onAddByItem, onAddByProduct, onClose }) => {
+}> = ({ itemsPerStore, itemsAggregated, packingStandards, packingConfigs, onAddByItem, onAddByProduct, onClose }) => {
     const [search, setSearch] = useState('');
     const [mode, setMode] = useState<'aggregated' | 'per-store'>('aggregated');
 
@@ -211,10 +212,15 @@ const ItemPicker: React.FC<{
                         ? filteredAggregated.map(row => {
                             const catColor = getCategoryColor(row.category);
                             if (row.totalRemaining <= 0) return null;
+                            const configs: PackingStandard[] = packingConfigs.get(row.product_id)?.length
+                                ? packingConfigs.get(row.product_id)!
+                                : packingStandards.get(row.product_id) ? [packingStandards.get(row.product_id)!] : [];
+                            const uniquePerLayer = [...new Set(configs.map(c => c.units_per_layer).filter((u): u is number => u > 0))];
+                            const stdQty = uniquePerLayer[0] ?? packingStandards.get(row.product_id)?.units_per_layer ?? 1;
+                            const addWithQty = (qty: number) => { onAddByProduct(row.product_id, Math.min(row.totalRemaining, qty)); onClose(); };
                             return (
-                                <button
+                                <div
                                     key={row.product_id}
-                                    onClick={() => { onAddByProduct(row.product_id, Math.min(row.totalRemaining, 1)); onClose(); }}
                                     className="w-full text-left flex items-center gap-3 p-3 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors group"
                                 >
                                     <div className={`w-10 h-10 rounded-lg bg-gradient-to-br ${catColor.gradient} flex items-center justify-center flex-shrink-0`}>
@@ -226,25 +232,48 @@ const ItemPicker: React.FC<{
                                             {row.product_code} · {row.category} · {row.unit}
                                             {row.storeCount > 1 && <span className="text-enterprise-600 dark:text-enterprise-400 ml-1">· {row.storeCount} ร้าน</span>}
                                         </div>
-                                        {packingStandards.get(row.product_id) && (
+                                        {configs.length > 0 && (
                                             <div className="text-xs text-enterprise-600 dark:text-enterprise-400 mt-0.5">
-                                                มาตรฐาน: ชั้นละ {packingStandards.get(row.product_id)!.units_per_layer} ชิ้น · พาเลทละ {packingStandards.get(row.product_id)!.total_units} ชิ้น
+                                                รูปแบบ: ชั้นละ {[...new Set(configs.map(c => c.units_per_layer))].join(', ')} · พาเลทละ {configs.map(c => c.total_units).join(', ')}
                                             </div>
                                         )}
                                     </div>
-                                    <div className="text-right flex-shrink-0">
+                                    <div className="text-right flex-shrink-0 flex flex-col items-end gap-1">
                                         <div className="text-sm font-semibold text-enterprise-600 dark:text-enterprise-400">เหลือ {row.totalRemaining}</div>
                                         <div className="text-xs text-slate-400">จาก {row.totalQuantity}</div>
+                                        {uniquePerLayer.length > 1 ? (
+                                            <div className="flex flex-wrap gap-1 justify-end mt-1">
+                                                {uniquePerLayer.map((upl) => (
+                                                    <button
+                                                        key={upl}
+                                                        type="button"
+                                                        onClick={(e) => { e.stopPropagation(); addWithQty(Math.min(row.totalRemaining, upl)); }}
+                                                        className="text-[10px] px-2 py-0.5 rounded bg-enterprise-100 dark:bg-enterprise-900/40 text-enterprise-700 dark:text-enterprise-300 hover:bg-enterprise-200 dark:hover:bg-enterprise-800/60"
+                                                    >
+                                                        ชั้นละ {upl}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        ) : (
+                                            <button type="button" onClick={() => addWithQty(stdQty)} className="text-xs px-2 py-1 rounded bg-enterprise-100 dark:bg-enterprise-900/40 text-enterprise-700 dark:text-enterprise-300 hover:bg-enterprise-200 dark:hover:bg-enterprise-800/60 mt-1">
+                                                เพิ่ม
+                                            </button>
+                                        )}
                                     </div>
-                                </button>
+                                </div>
                             );
                         })
                         : filteredPerStore.map(row => {
                             const catColor = getCategoryColor(row.category);
+                            const configs: PackingStandard[] = packingConfigs.get(row.product_id)?.length
+                                ? packingConfigs.get(row.product_id)!
+                                : packingStandards.get(row.product_id) ? [packingStandards.get(row.product_id)!] : [];
+                            const uniquePerLayer = [...new Set(configs.map(c => c.units_per_layer).filter((u): u is number => u > 0))];
+                            const stdQty = uniquePerLayer[0] ?? packingStandards.get(row.product_id)?.units_per_layer ?? 1;
+                            const addWithQty = (qty: number) => { onAddByItem(row.itemId, Math.min(row.remaining, qty)); onClose(); };
                             return (
-                                <button
+                                <div
                                     key={row.itemId}
-                                    onClick={() => { onAddByItem(row.itemId, Math.min(row.remaining, 1)); onClose(); }}
                                     className="w-full text-left flex items-center gap-3 p-3 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors group"
                                 >
                                     <div className={`w-10 h-10 rounded-lg bg-gradient-to-br ${catColor.gradient} flex items-center justify-center flex-shrink-0`}>
@@ -256,17 +285,35 @@ const ItemPicker: React.FC<{
                                             {row.store_name && <span className="text-enterprise-600 dark:text-enterprise-400 ml-1">· {row.store_name}</span>}
                                         </div>
                                         <div className="text-xs text-slate-500 dark:text-slate-400">{row.product_code} · {row.category} · {row.unit}</div>
-                                        {packingStandards.get(row.product_id) && (
+                                        {configs.length > 0 && (
                                             <div className="text-xs text-enterprise-600 dark:text-enterprise-400 mt-0.5">
-                                                มาตรฐาน: ชั้นละ {packingStandards.get(row.product_id)!.units_per_layer} ชิ้น · พาเลทละ {packingStandards.get(row.product_id)!.total_units} ชิ้น
+                                                รูปแบบ: ชั้นละ {[...new Set(configs.map(c => c.units_per_layer))].join(', ')} · พาเลทละ {configs.map(c => c.total_units).join(', ')}
                                             </div>
                                         )}
                                     </div>
-                                    <div className="text-right flex-shrink-0">
+                                    <div className="text-right flex-shrink-0 flex flex-col items-end gap-1">
                                         <div className="text-sm font-semibold text-enterprise-600 dark:text-enterprise-400">เหลือ {row.remaining}</div>
                                         <div className="text-xs text-slate-400">จาก {row.quantity}</div>
+                                        {uniquePerLayer.length > 1 ? (
+                                            <div className="flex flex-wrap gap-1 justify-end mt-1">
+                                                {uniquePerLayer.map((upl) => (
+                                                    <button
+                                                        key={upl}
+                                                        type="button"
+                                                        onClick={(e) => { e.stopPropagation(); addWithQty(Math.min(row.remaining, upl)); }}
+                                                        className="text-[10px] px-2 py-0.5 rounded bg-enterprise-100 dark:bg-enterprise-900/40 text-enterprise-700 dark:text-enterprise-300 hover:bg-enterprise-200 dark:hover:bg-enterprise-800/60"
+                                                    >
+                                                        ชั้นละ {upl}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        ) : (
+                                            <button type="button" onClick={() => addWithQty(stdQty)} className="text-xs px-2 py-1 rounded bg-enterprise-100 dark:bg-enterprise-900/40 text-enterprise-700 dark:text-enterprise-300 hover:bg-enterprise-200 dark:hover:bg-enterprise-800/60 mt-1">
+                                                เพิ่ม
+                                            </button>
+                                        )}
                                     </div>
-                                </button>
+                                </div>
                             );
                         })}
                 </div>
@@ -289,6 +336,8 @@ export const PackingSimulator: React.FC<SimulatorProps> = ({ tripId, onClose }) 
     const [showAi, setShowAi] = useState(false);
     const [showSaveConfirm, setShowSaveConfirm] = useState(false);
     const [packingStandards, setPackingStandards] = useState<Map<string, PackingStandard>>(new Map());
+    /** ทุก config ต่อสินค้า (สำหรับปุ่มเต็มพาเลท 60, 75 ฯลฯ) */
+    const [packingConfigs, setPackingConfigs] = useState<Map<string, PackingStandard[]>>(new Map());
 
     // Undo/redo
     const [history, setHistory] = useState<LayoutState[]>([]);
@@ -401,10 +450,12 @@ export const PackingSimulator: React.FC<SimulatorProps> = ({ tripId, onClose }) 
     useEffect(() => {
         if (tripItems.length === 0) {
             setPackingStandards(new Map());
+            setPackingConfigs(new Map());
             return;
         }
         const productIds = [...new Set(tripItems.map((i) => i.product_id))] as string[];
         tripMetricsService.getPackingStandards(productIds).then(setPackingStandards);
+        tripMetricsService.getProductPackingConfigs(productIds).then(setPackingConfigs);
     }, [tripItems]);
 
     // Auto-save draft
@@ -632,6 +683,108 @@ export const PackingSimulator: React.FC<SimulatorProps> = ({ tripId, onClose }) 
         });
     }, [layout, push]);
 
+    /** ลบสินค้าทั้งกลุ่มออกจากตำแหน่ง (สินค้าชนิดเดียวกันในพาเลทเดียว = 1 กลุ่ม) */
+    const removeGroupFromPosition = useCallback((posId: string, productId: string, itemId: string) => {
+        push({
+            positions: layout.positions.map(pos =>
+                pos.id !== posId ? pos : { ...pos, items: pos.items.filter(i => !(i.product_id === productId && i.delivery_trip_item_id === itemId)) }
+            ),
+        });
+    }, [layout, push]);
+
+    /** ตั้งจำนวนรวมของกลุ่มสินค้าในตำแหน่ง แล้วแจกจำนวนลงแต่ละชั้นเท่าๆ กัน */
+    const setGroupQuantity = useCallback((posId: string, productId: string, itemId: string, newTotal: number) => {
+        const tripItem = tripItems.find(i => i.id === itemId);
+        if (!tripItem) return;
+        push({
+            positions: layout.positions.map(pos => {
+                if (pos.id !== posId) return pos;
+                const groupItems = pos.items.filter(i => i.product_id === productId && i.delivery_trip_item_id === itemId);
+                if (groupItems.length === 0) return pos;
+                const used = allocated.get(itemId) || 0;
+                const groupQty = groupItems.reduce((s, i) => s + i.quantity, 0);
+                const usedElsewhere = used - groupQty;
+                const maxAllowed = tripItem.quantity - usedElsewhere;
+                const clamped = Math.max(0, Math.min(newTotal, maxAllowed));
+                if (clamped <= 0) {
+                    return { ...pos, items: pos.items.filter(i => !(i.product_id === productId && i.delivery_trip_item_id === itemId)) };
+                }
+                const n = groupItems.length;
+                const perLayer = Math.floor(clamped / n);
+                const remainder = clamped % n;
+                const sorted = [...groupItems].sort((a, b) => (a.layer_index ?? 0) - (b.layer_index ?? 0));
+                const newItems = pos.items.filter(i => !(i.product_id === productId && i.delivery_trip_item_id === itemId));
+                sorted.forEach((it, idx) => {
+                    const qty = perLayer + (idx < remainder ? 1 : 0);
+                    if (qty > 0) newItems.push({ ...it, quantity: qty });
+                });
+                return { ...pos, items: newItems };
+            }),
+        });
+    }, [tripItems, layout, allocated, push]);
+
+    /** ปรับจำนวนรวมของกลุ่ม (+/-) */
+    const adjustGroupQty = useCallback((posId: string, productId: string, itemId: string, delta: number) => {
+        const pos = layout.positions.find(p => p.id === posId);
+        if (!pos) return;
+        const groupItems = pos.items.filter(i => i.product_id === productId && i.delivery_trip_item_id === itemId);
+        const currentTotal = groupItems.reduce((s, i) => s + i.quantity, 0);
+        setGroupQuantity(posId, productId, itemId, currentTotal + delta);
+    }, [layout.positions, setGroupQuantity]);
+
+    /** เติมเต็มพาเลท: ใช้ total_units + layers จาก config แจกจำนวนลงแต่ละชั้น และตั้งจำนวนชั้นของ position (รองรับ 60/4 ชั้น, 75/5 ชั้น ฯลฯ) */
+    const fillFullPalletForGroup = useCallback((posId: string, productId: string, itemId: string, config?: PackingStandard) => {
+        const pos = layout.positions.find(p => p.id === posId);
+        const tripItem = tripItems.find(i => i.id === itemId);
+        const std = config ?? packingStandards.get(productId);
+        if (!pos || !tripItem || !std?.total_units) return;
+        const totalLayers = Math.max(1, std.layers);
+        const newPositionLayers = Math.max(pos.total_layers, totalLayers);
+        const groupItems = pos.items.filter(i => i.product_id === productId && i.delivery_trip_item_id === itemId);
+        const currentTotal = groupItems.reduce((s, i) => s + i.quantity, 0);
+        const allocatedTotal = allocated.get(itemId) || 0;
+        const maxAllowed = tripItem.quantity - allocatedTotal + currentTotal;
+        const toFill = Math.min(std.total_units, Math.max(0, Math.floor(maxAllowed)));
+        if (toFill <= 0) return;
+
+        const perLayer = Math.floor(toFill / totalLayers);
+        const remainder = toFill % totalLayers;
+        const template = groupItems[0] || {
+            delivery_trip_item_id: itemId,
+            product_id: tripItem.product_id,
+            product_name: tripItem.product_name,
+            product_code: tripItem.product_code,
+            category: tripItem.category,
+            unit: tripItem.unit,
+            weight_kg: tripItem.weight_kg,
+            quantity: 0,
+            layer_index: 0,
+        };
+
+        const newLayerItems: PositionItem[] = [];
+        for (let li = 0; li < totalLayers; li++) {
+            const qty = perLayer + (li < remainder ? 1 : 0);
+            if (qty > 0)
+                newLayerItems.push({ ...template, layer_index: li, quantity: qty });
+        }
+
+        push({
+            positions: layout.positions.map(p => {
+                if (p.id !== posId) return p;
+                const otherItems = p.items.filter(i => !(i.product_id === productId && i.delivery_trip_item_id === itemId));
+                const needsDetailed = p.detailedMode || newPositionLayers > 1;
+                return {
+                    ...p,
+                    detailedMode: needsDetailed || p.detailedMode,
+                    total_layers: newPositionLayers,
+                    items: needsDetailed
+                        ? [...otherItems, ...newLayerItems]
+                        : [...otherItems, { ...template, layer_index: null, quantity: toFill }],
+                };
+            }),
+        });
+    }, [layout, tripItems, packingStandards, allocated, push]);
+
     // Adjust item quantity (+/-)
     const adjustItemQty = useCallback((posId: string, itemId: string, delta: number, layerIndex?: number | null) => {
         const tripItem = tripItems.find(i => i.id === itemId);
@@ -841,6 +994,23 @@ export const PackingSimulator: React.FC<SimulatorProps> = ({ tripId, onClose }) 
         });
     }, [layout, push]);
 
+    /** สลับชั้น: สลับสินค้าทั้งหมดระหว่างชั้น layerA กับ layerB */
+    const swapLayers = useCallback((posId: string, layerA: number, layerB: number) => {
+        if (layerA === layerB) return;
+        push({
+            positions: layout.positions.map(pos => {
+                if (pos.id !== posId) return pos;
+                const items = pos.items.map(item => {
+                    const idx = item.layer_index;
+                    if (idx === layerA) return { ...item, layer_index: layerB };
+                    if (idx === layerB) return { ...item, layer_index: layerA };
+                    return item;
+                });
+                return { ...pos, items };
+            }),
+        });
+    }, [layout, push]);
+
     // Save to DB (apply simulation) — เรียกจาก ConfirmDialog หลังกดยืนยัน
     const [saveError, setSaveError] = useState<string | null>(null);
     const handleApply = useCallback(async () => {
@@ -947,7 +1117,8 @@ export const PackingSimulator: React.FC<SimulatorProps> = ({ tripId, onClose }) 
     const storeCount = tripData.stores?.length || 0;
 
     return (
-        <div className="space-y-6">
+        <div className="relative">
+            <div className="space-y-6 pb-24">
             {/* Trip Summary Banner */}
             <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 p-6 shadow-xl">
                 <div className="absolute inset-0 bg-gradient-to-r from-enterprise-600/10 via-blue-600/10 to-indigo-600/10" />
@@ -1103,6 +1274,21 @@ export const PackingSimulator: React.FC<SimulatorProps> = ({ tripId, onClose }) 
                 {layout.positions.map(pos => {
                     const posWeight = pos.items.reduce((sum, i) => sum + (i.weight_kg || 0) * i.quantity, 0);
                     const posItemCount = pos.items.reduce((sum, i) => sum + i.quantity, 0);
+                    // จัดกลุ่ม: สินค้าชนิดเดียวกันในพาเลทเดียว = 1 รายการ (ลีโอ 60 ลัง 4 ชั้น → 1 รายการ)
+                    const positionGroups = (() => {
+                        const byKey = new Map<string, { product_id: string; delivery_trip_item_id: string; product_name: string; product_code: string; category: string; unit: string; weight_kg: number | null; totalQty: number; layerCount: number; items: PositionItem[] }>();
+                        for (const it of pos.items) {
+                            const key = `${it.product_id}|${it.delivery_trip_item_id}`;
+                            if (!byKey.has(key)) {
+                                byKey.set(key, { product_id: it.product_id, delivery_trip_item_id: it.delivery_trip_item_id, product_name: it.product_name, product_code: it.product_code, category: it.category, unit: it.unit, weight_kg: it.weight_kg, totalQty: 0, layerCount: 0, items: [] });
+                            }
+                            const g = byKey.get(key)!;
+                            g.totalQty += it.quantity;
+                            g.layerCount += 1;
+                            g.items.push(it);
+                        }
+                        return Array.from(byKey.values());
+                    })();
                     const isPallet = pos.position_type === 'pallet';
                     const headerGradient = isPallet
                         ? 'from-enterprise-500 to-blue-600'
@@ -1128,7 +1314,7 @@ export const PackingSimulator: React.FC<SimulatorProps> = ({ tripId, onClose }) 
                                                 )}
                                             </div>
                                             <div className="text-white/70 text-xs">
-                                                ทั้งหมด {posItemCount} ชิ้น · {pos.items.length} รายการ · {posWeight.toFixed(0)} kg
+                                                ทั้งหมด {posItemCount} ชิ้น · {positionGroups.length} รายการ · {posWeight.toFixed(0)} kg
                                             </div>
                                         </div>
                                     </div>
@@ -1149,8 +1335,39 @@ export const PackingSimulator: React.FC<SimulatorProps> = ({ tripId, onClose }) 
                                 </div>
                             </div>
 
-                            {/* Position Content */}
-                            {!pos.collapsed && (
+                            {/* Position Content: ซ่อน = แสดงแค่รายการคร่าวๆ, เปิด = แสดงเต็ม */}
+                            {pos.collapsed ? (
+                                <div className="p-3 border-t border-slate-100 dark:border-slate-800">
+                                    {pos.items.length > 0 ? (() => {
+                                        const byProduct = new Map<string, { name: string; unit: string; parts: { store: string; qty: number }[] }>();
+                                        for (const it of pos.items) {
+                                            const storeName = tripItems.find(t => t.id === it.delivery_trip_item_id)?.store_name || 'ไม่ระบุร้าน';
+                                            const ex = byProduct.get(it.product_id);
+                                            if (!ex) byProduct.set(it.product_id, { name: it.product_name, unit: it.unit, parts: [{ store: storeName, qty: it.quantity }] });
+                                            else {
+                                                const part = ex.parts.find(p => p.store === storeName);
+                                                if (part) part.qty += it.quantity;
+                                                else ex.parts.push({ store: storeName, qty: it.quantity });
+                                            }
+                                        }
+                                        return (
+                                            <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-slate-600 dark:text-slate-400">
+                                                {Array.from(byProduct.entries()).map(([, v]) => {
+                                                    const total = v.parts.reduce((s, p) => s + p.qty, 0);
+                                                    const detail = v.parts.length > 1 ? v.parts.map(p => `${p.store} ${p.qty} ${v.unit}`).join(', ') : `${total} ${v.unit}`;
+                                                    return (
+                                                        <span key={v.name} className="bg-slate-100 dark:bg-slate-800/60 rounded px-2 py-0.5">
+                                                            {v.name}: {detail}
+                                                        </span>
+                                                    );
+                                                })}
+                                            </div>
+                                        );
+                                    })() : (
+                                        <p className="text-xs text-slate-400 dark:text-slate-500">ยังไม่มีสินค้าในตำแหน่งนี้</p>
+                                    )}
+                                </div>
+                            ) : (
                                 <div className="p-4 space-y-3">
                                     {/* สรุป: สินค้าแยกร้าน (เบียร์: ร้าน A 75 ลัง, ร้าน B 25 ลัง) */}
                                     {pos.items.length > 0 && (() => {
@@ -1212,8 +1429,24 @@ export const PackingSimulator: React.FC<SimulatorProps> = ({ tripId, onClose }) 
                                                 const layerLabel = li === 0 ? 'ชั้น 1 (ล่าง)' : li === pos.total_layers - 1 ? `ชั้น ${li + 1} (บน)` : `ชั้น ${li + 1}`;
                                                 return (
                                                     <div key={li} className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/30 p-3">
-                                                        <div className="flex items-center justify-between mb-2">
-                                                            <span className="text-xs font-semibold text-slate-600 dark:text-slate-400">{layerLabel}</span>
+                                                        <div className="flex items-center justify-between mb-2 gap-2">
+                                                            <div className="flex items-center gap-1.5">
+                                                                <span className="text-xs font-semibold text-slate-600 dark:text-slate-400">{layerLabel}</span>
+                                                                {pos.total_layers > 1 && (
+                                                                    <span className="flex items-center gap-0.5">
+                                                                        {li > 0 && (
+                                                                            <button type="button" onClick={() => swapLayers(pos.id, li, li - 1)} title="สลับกับชั้นล่าง" className="p-1 rounded bg-slate-200 dark:bg-slate-600 hover:bg-slate-300 dark:hover:bg-slate-500 text-slate-600 dark:text-slate-300">
+                                                                                <ChevronDown size={14} />
+                                                                            </button>
+                                                                        )}
+                                                                        {li < pos.total_layers - 1 && (
+                                                                            <button type="button" onClick={() => swapLayers(pos.id, li, li + 1)} title="สลับกับชั้นบน" className="p-1 rounded bg-slate-200 dark:bg-slate-600 hover:bg-slate-300 dark:hover:bg-slate-500 text-slate-600 dark:text-slate-300">
+                                                                                <ChevronUp size={14} />
+                                                                            </button>
+                                                                        )}
+                                                                    </span>
+                                                                )}
+                                                            </div>
                                                             <button type="button" onClick={() => setShowItemPicker({ posId: pos.id, layerIndex: li })} className="text-xs text-enterprise-600 dark:text-enterprise-400 hover:underline flex items-center gap-1">
                                                                 <Plus size={12} /> เพิ่มสินค้า
                                                             </button>
@@ -1242,27 +1475,61 @@ export const PackingSimulator: React.FC<SimulatorProps> = ({ tripId, onClose }) 
                                                                                 </div>
                                                                                 <div className="text-xs text-slate-500 dark:text-slate-400">{item.product_code} · {(item.weight_kg || 0) * item.quantity} kg</div>
                                                                             </div>
-                                                                            <div className="flex items-center gap-1 flex-shrink-0">
-                                                                                <button type="button" onClick={() => adjustItemQty(pos.id, item.delivery_trip_item_id, -1, li)} disabled={item.quantity <= 1} className="w-6 h-6 rounded bg-white dark:bg-slate-800 border flex items-center justify-center disabled:opacity-40"><Minus size={10} /></button>
-                                                                                <input
-                                                                                    type="number"
-                                                                                    min={1}
-                                                                                    max={maxCanAdd}
-                                                                                    value={displayQty}
-                                                                                    onChange={e => setQuantityEdit(prev => (prev?.posId === pos.id && prev?.itemId === item.delivery_trip_item_id && prev?.layerIndex === li ? { ...prev, value: e.target.value } : { posId: pos.id, itemId: item.delivery_trip_item_id, layerIndex: li, value: e.target.value }))}
-                                                                                    onFocus={() => setQuantityEdit({ posId: pos.id, itemId: item.delivery_trip_item_id, layerIndex: li, value: String(item.quantity) })}
-                                                                                    onBlur={e => {
-                                                                                        const raw = (e.target as HTMLInputElement).value;
-                                                                                        const n = parseInt(raw, 10);
-                                                                                        const clamped = isNaN(n) || n < 1 ? 1 : Math.min(n, maxCanAdd);
-                                                                                        setItemQuantity(pos.id, item.delivery_trip_item_id, clamped, li);
-                                                                                        setQuantityEdit(null);
-                                                                                    }}
-                                                                                    onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
-                                                                                    className="w-12 text-center py-1 rounded border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-sm font-semibold text-slate-900 dark:text-slate-100 tabular-nums"
-                                                                                />
-                                                                                <button type="button" onClick={() => adjustItemQty(pos.id, item.delivery_trip_item_id, 1, li)} disabled={item.quantity >= maxCanAdd} className="w-6 h-6 rounded bg-white dark:bg-slate-800 border flex items-center justify-center disabled:opacity-40"><Plus size={10} /></button>
-                                                                                <button type="button" onClick={() => removeItemFromLayer(pos.id, item.delivery_trip_item_id, li)} className="w-6 h-6 rounded border border-red-200 dark:border-red-800 text-red-500 flex items-center justify-center"><X size={10} /></button>
+                                                                            <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                                                                                <div className="flex items-center gap-1">
+                                                                                    <button type="button" onClick={() => adjustItemQty(pos.id, item.delivery_trip_item_id, -1, li)} disabled={item.quantity <= 1} className="w-6 h-6 rounded bg-white dark:bg-slate-800 border flex items-center justify-center disabled:opacity-40"><Minus size={10} /></button>
+                                                                                    <input
+                                                                                        type="number"
+                                                                                        min={1}
+                                                                                        max={maxCanAdd}
+                                                                                        value={displayQty}
+                                                                                        onChange={e => setQuantityEdit(prev => (prev?.posId === pos.id && prev?.itemId === item.delivery_trip_item_id && prev?.layerIndex === li ? { ...prev, value: e.target.value } : { posId: pos.id, itemId: item.delivery_trip_item_id, layerIndex: li, value: e.target.value }))}
+                                                                                        onFocus={() => setQuantityEdit({ posId: pos.id, itemId: item.delivery_trip_item_id, layerIndex: li, value: String(item.quantity) })}
+                                                                                        onBlur={e => {
+                                                                                            const raw = (e.target as HTMLInputElement).value;
+                                                                                            const n = parseInt(raw, 10);
+                                                                                            const clamped = isNaN(n) || n < 1 ? 1 : Math.min(n, maxCanAdd);
+                                                                                            setItemQuantity(pos.id, item.delivery_trip_item_id, clamped, li);
+                                                                                            setQuantityEdit(null);
+                                                                                        }}
+                                                                                        onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+                                                                                        className="w-12 text-center py-1 rounded border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-sm font-semibold text-slate-900 dark:text-slate-100 tabular-nums"
+                                                                                    />
+                                                                                    <button type="button" onClick={() => adjustItemQty(pos.id, item.delivery_trip_item_id, 1, li)} disabled={item.quantity >= maxCanAdd} className="w-6 h-6 rounded bg-white dark:bg-slate-800 border flex items-center justify-center disabled:opacity-40"><Plus size={10} /></button>
+                                                                                    <button type="button" onClick={() => removeItemFromLayer(pos.id, item.delivery_trip_item_id, li)} className="w-6 h-6 rounded border border-red-200 dark:border-red-800 text-red-500 flex items-center justify-center"><X size={10} /></button>
+                                                                                </div>
+                                                                                <div className="flex flex-wrap gap-1 justify-end">
+                                                                                    {(() => {
+                                                                                        const configs: PackingStandard[] = packingConfigs.get(item.product_id)?.length
+                                                                                            ? packingConfigs.get(item.product_id)!
+                                                                                            : packingStandards.get(item.product_id) ? [packingStandards.get(item.product_id)!] : [];
+                                                                                        const uniquePerLayer = [...new Set(configs.map(c => c.units_per_layer).filter((u): u is number => u > 0))];
+                                                                                        return uniquePerLayer.map((upl) => (
+                                                                                            <button
+                                                                                                key={upl}
+                                                                                                type="button"
+                                                                                                onClick={() => setItemQuantity(pos.id, item.delivery_trip_item_id, Math.min(maxCanAdd, upl), li)}
+                                                                                                className="text-[10px] px-2 py-0.5 rounded bg-enterprise-100 dark:bg-enterprise-900/40 text-enterprise-700 dark:text-enterprise-300 hover:bg-enterprise-200 dark:hover:bg-enterprise-800/60"
+                                                                                            >
+                                                                                                ชั้นละ {upl}
+                                                                                            </button>
+                                                                                        ));
+                                                                                    })()}
+                                                                                    {(packingConfigs.get(item.product_id)?.length
+                                                                                        ? packingConfigs.get(item.product_id)!
+                                                                                        : packingStandards.get(item.product_id) ? [packingStandards.get(item.product_id)!] : []
+                                                                                    ).map((std) => (
+                                                                                        <button
+                                                                                            key={std.total_units}
+                                                                                            type="button"
+                                                                                            onClick={() => fillFullPalletForGroup(pos.id, item.product_id, item.delivery_trip_item_id, std)}
+                                                                                            title={`เต็มพาเลท ${std.total_units} · ${std.layers} ชั้น · ชั้นละ ${std.units_per_layer}`}
+                                                                                            className="text-[10px] px-2 py-0.5 rounded bg-violet-100 dark:bg-violet-900/40 text-violet-700 dark:text-violet-300 hover:bg-violet-200 dark:hover:bg-violet-800/60"
+                                                                                        >
+                                                                                            เต็มพาเลท {std.total_units}
+                                                                                        </button>
+                                                                                    ))}
+                                                                                </div>
                                                                             </div>
                                                                         </div>
                                                                     );
@@ -1284,20 +1551,19 @@ export const PackingSimulator: React.FC<SimulatorProps> = ({ tripId, onClose }) 
                                                 </div>
                                             ) : (
                                                 <>
-                                                    {pos.items.map(item => {
-                                                        const catColor = getCategoryColor(item.category);
-                                                        const itemWeight = (item.weight_kg || 0) * item.quantity;
-                                                        const tripItem = tripItems.find(ti => ti.id === item.delivery_trip_item_id);
+                                                    {positionGroups.map((group) => {
+                                                        const catColor = getCategoryColor(group.category);
+                                                        const groupWeight = (group.weight_kg || 0) * group.totalQty;
+                                                        const tripItem = tripItems.find(ti => ti.id === group.delivery_trip_item_id);
                                                         const totalQty = tripItem?.quantity || 0;
-                                                        const usedTotal = allocated.get(item.delivery_trip_item_id) || 0;
-                                                        const usedElsewhere = usedTotal - item.quantity;
+                                                        const usedTotal = allocated.get(group.delivery_trip_item_id) || 0;
+                                                        const usedElsewhere = usedTotal - group.totalQty;
                                                         const maxCanAdd = totalQty - usedElsewhere;
-                                                        const layerKey = item.layer_index ?? null;
-                                                        const isEditing = quantityEdit?.posId === pos.id && quantityEdit?.itemId === item.delivery_trip_item_id && quantityEdit?.layerIndex === layerKey;
-                                                        const displayQty = isEditing ? quantityEdit!.value : String(item.quantity);
+                                                        const isEditingGroup = quantityEdit?.posId === pos.id && quantityEdit?.itemId === group.delivery_trip_item_id && quantityEdit?.layerIndex == null;
+                                                        const displayQty = isEditingGroup ? quantityEdit!.value : String(group.totalQty);
                                                         return (
                                                             <div
-                                                                key={item.delivery_trip_item_id + (item.layer_index ?? 'n')}
+                                                                key={`${group.product_id}|${group.delivery_trip_item_id}`}
                                                                 className={`flex items-center gap-3 p-3 rounded-xl ${catColor.bg} border ${catColor.border} transition-all duration-200 hover:shadow-md`}
                                                             >
                                                                 <div className={`w-9 h-9 rounded-lg bg-gradient-to-br ${catColor.gradient} flex items-center justify-center flex-shrink-0`}>
@@ -1305,18 +1571,16 @@ export const PackingSimulator: React.FC<SimulatorProps> = ({ tripId, onClose }) 
                                                                 </div>
                                                                 <div className="flex-1 min-w-0">
                                                                     <div className="text-sm font-medium text-slate-900 dark:text-slate-100 truncate">
-                                                                        {item.product_name}
+                                                                        {group.product_name}
                                                                         {tripItem?.store_name && <span className="text-enterprise-600 dark:text-enterprise-400 ml-1">· {tripItem.store_name}</span>}
                                                                     </div>
-                                                                    <div className="text-xs text-slate-500 dark:text-slate-400">{item.product_code} · {itemWeight > 0 ? `${itemWeight.toFixed(1)} kg` : item.unit}</div>
-                                                                    {isPallet && pos.total_layers > 1 && !pos.detailedMode && (
-                                                                        <div className="text-xs text-enterprise-600 dark:text-enterprise-400 mt-0.5 font-medium">
-                                                                            ชั้น 1–{pos.total_layers} · ชั้นละ {Math.round(item.quantity / pos.total_layers)} ชิ้น
-                                                                        </div>
-                                                                    )}
+                                                                    <div className="text-xs text-slate-500 dark:text-slate-400">
+                                                                        {group.product_code} · {groupWeight > 0 ? `${groupWeight.toFixed(1)} kg` : group.unit}
+                                                                        {group.layerCount > 1 && <span className="text-enterprise-600 dark:text-enterprise-400 ml-1">· {group.layerCount} ชั้น</span>}
+                                                                    </div>
                                                                 </div>
                                                                 <div className="flex items-center gap-1.5 flex-shrink-0">
-                                                                    <button type="button" onClick={() => adjustItemQty(pos.id, item.delivery_trip_item_id, -1, layerKey)} disabled={item.quantity <= 1} className="w-7 h-7 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 flex items-center justify-center hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-30 transition-colors">
+                                                                    <button type="button" onClick={() => adjustGroupQty(pos.id, group.product_id, group.delivery_trip_item_id, -1)} disabled={group.totalQty <= 1} className="w-7 h-7 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 flex items-center justify-center hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-30 transition-colors">
                                                                         <Minus size={12} />
                                                                     </button>
                                                                     <input
@@ -1324,24 +1588,39 @@ export const PackingSimulator: React.FC<SimulatorProps> = ({ tripId, onClose }) 
                                                                         min={1}
                                                                         max={maxCanAdd}
                                                                         value={displayQty}
-                                                                        onChange={e => setQuantityEdit(prev => (prev?.posId === pos.id && prev?.itemId === item.delivery_trip_item_id && prev?.layerIndex === layerKey ? { ...prev, value: e.target.value } : { posId: pos.id, itemId: item.delivery_trip_item_id, layerIndex: layerKey, value: e.target.value }))}
-                                                                        onFocus={() => setQuantityEdit({ posId: pos.id, itemId: item.delivery_trip_item_id, layerIndex: layerKey, value: String(item.quantity) })}
+                                                                        onChange={e => setQuantityEdit(prev => (prev?.posId === pos.id && prev?.itemId === group.delivery_trip_item_id && prev?.layerIndex == null ? { ...prev, value: e.target.value } : { posId: pos.id, itemId: group.delivery_trip_item_id, layerIndex: null, value: e.target.value }))}
+                                                                        onFocus={() => setQuantityEdit({ posId: pos.id, itemId: group.delivery_trip_item_id, layerIndex: null, value: String(group.totalQty) })}
                                                                         onBlur={e => {
                                                                             const raw = (e.target as HTMLInputElement).value;
                                                                             const n = parseInt(raw, 10);
                                                                             const clamped = isNaN(n) || n < 1 ? 1 : Math.min(n, maxCanAdd);
-                                                                            setItemQuantity(pos.id, item.delivery_trip_item_id, clamped, layerKey ?? undefined);
+                                                                            setGroupQuantity(pos.id, group.product_id, group.delivery_trip_item_id, clamped);
                                                                             setQuantityEdit(null);
                                                                         }}
                                                                         onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
                                                                         className="w-14 text-center py-1.5 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-sm font-bold text-slate-900 dark:text-slate-100 tabular-nums focus:outline-none focus:ring-2 focus:ring-enterprise-500"
                                                                     />
-                                                                    <button type="button" onClick={() => adjustItemQty(pos.id, item.delivery_trip_item_id, 1, layerKey)} disabled={item.quantity >= maxCanAdd} className="w-7 h-7 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 flex items-center justify-center hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-30 transition-colors">
+                                                                    <button type="button" onClick={() => adjustGroupQty(pos.id, group.product_id, group.delivery_trip_item_id, 1)} disabled={group.totalQty >= maxCanAdd} className="w-7 h-7 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 flex items-center justify-center hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-30 transition-colors">
                                                                         <Plus size={12} />
                                                                     </button>
-                                                                    <button type="button" onClick={() => pos.detailedMode ? removeItemFromLayer(pos.id, item.delivery_trip_item_id, item.layer_index!) : removeItemFromPosition(pos.id, item.delivery_trip_item_id)} className="w-7 h-7 rounded-lg border border-red-200 dark:border-red-800 text-red-500 flex items-center justify-center hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors ml-1">
+                                                                    <button type="button" onClick={() => removeGroupFromPosition(pos.id, group.product_id, group.delivery_trip_item_id)} className="w-7 h-7 rounded-lg border border-red-200 dark:border-red-800 text-red-500 flex items-center justify-center hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors ml-1">
                                                                         <X size={12} />
                                                                     </button>
+                                                                    {(packingConfigs.get(group.product_id)?.length
+                                                                        ? packingConfigs.get(group.product_id)!
+                                                                        : packingStandards.get(group.product_id) ? [packingStandards.get(group.product_id)!] : []
+                                                                    ).map((std) => (
+                                                                        <button
+                                                                            key={std.total_units}
+                                                                            type="button"
+                                                                            onClick={() => fillFullPalletForGroup(pos.id, group.product_id, group.delivery_trip_item_id, std)}
+                                                                            disabled={maxCanAdd <= 0}
+                                                                            title={`เต็มพาเลท ${std.total_units} ชิ้น · ${std.layers} ชั้น · ชั้นละ ${std.units_per_layer}`}
+                                                                            className="ml-1 px-2 py-1 rounded-lg text-[10px] font-medium bg-enterprise-100 dark:bg-enterprise-900/50 text-enterprise-700 dark:text-enterprise-300 hover:bg-enterprise-200 dark:hover:bg-enterprise-800/60 disabled:opacity-40"
+                                                                        >
+                                                                            เต็มพาเลท {std.total_units}
+                                                                        </button>
+                                                                    ))}
                                                                 </div>
                                                             </div>
                                                         );
@@ -1383,6 +1662,19 @@ export const PackingSimulator: React.FC<SimulatorProps> = ({ tripId, onClose }) 
                     </div>
                 </div>
             )}
+            </div>
+
+            {/* Sticky bottom bar: เพิ่มพาเลท/พื้นรถ — ไม่ต้องเลื่อนขึ้นบนเมื่อมีหลายพาเลท */}
+            {layout.positions.length > 0 && (
+                <div className="fixed bottom-0 left-0 right-0 z-30 flex items-center justify-center gap-3 py-3 px-4 bg-white/95 dark:bg-slate-900/95 border-t border-slate-200 dark:border-slate-700 shadow-[0_-4px_20px_rgba(0,0,0,0.08)] dark:shadow-[0_-4px_20px_rgba(0,0,0,0.3)] backdrop-blur-sm">
+                    <Button variant="primary" size="sm" onClick={() => addPosition('pallet')}>
+                        <Plus size={18} className="mr-1.5" /> เพิ่มพาเลท
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={() => addPosition('floor')}>
+                        <Plus size={18} className="mr-1.5" /> พื้นรถ
+                    </Button>
+                </div>
+            )}
 
             {/* Item Picker Modal */}
             {showItemPicker && (
@@ -1390,6 +1682,7 @@ export const PackingSimulator: React.FC<SimulatorProps> = ({ tripId, onClose }) 
                     itemsPerStore={pickerItemsPerStore}
                     itemsAggregated={pickerItemsAggregated}
                     packingStandards={packingStandards}
+                    packingConfigs={packingConfigs}
                     onAddByItem={(itemId, qty) => {
                         if (typeof showItemPicker === 'string') {
                             addItemToPosition(showItemPicker, itemId, qty);
