@@ -233,6 +233,22 @@ function RecommendationCard({
                 </div>
               )}
             </div>
+            {(rec.capacity_info.estimated_pallets != null && rec.capacity_info.estimated_pallets > 0) && (
+              <div className="p-2 bg-gray-50 dark:bg-slate-900/40 rounded-lg">
+                <div className="flex items-center gap-1.5 mb-1">
+                  <Package className="w-3 h-3 text-gray-400" />
+                  <span className="text-[10px] text-gray-500 dark:text-gray-400">พาเลท</span>
+                </div>
+                <div className="text-xs font-medium text-gray-900 dark:text-white">
+                  ต้องการ {rec.capacity_info.estimated_pallets} พาเลท
+                  {rec.capacity_info.max_pallets != null && (
+                    <span className="text-gray-400 dark:text-gray-500 font-normal">
+                      {' '}/ รถรับได้ {rec.capacity_info.max_pallets} พาเลท
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Historical stats + Confidence */}

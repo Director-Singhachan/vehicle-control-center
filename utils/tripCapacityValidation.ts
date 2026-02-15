@@ -1,8 +1,10 @@
 // Utility functions for validating trip capacity (pallets and weight)
 import { supabase } from '../lib/supabase';
+import { tripMetricsService } from '../services/tripMetricsService';
 
 interface ProductData {
   id: string;
+  product_name?: string | null;
   uses_pallet?: boolean | null;
   pallet_id?: string | null;
   weight_kg?: number | null;
@@ -127,6 +129,7 @@ export async function calculateTripCapacity(
     .from('products')
     .select(`
       id,
+      product_name,
       uses_pallet,
       pallet_id,
       weight_kg,
@@ -193,6 +196,7 @@ export async function calculateTripCapacity(
   (products || []).forEach((p: any) => {
     productMap.set(p.id, {
       id: p.id,
+      product_name: p.product_name,
       uses_pallet: p.uses_pallet,
       pallet_id: p.pallet_id,
       weight_kg: p.weight_kg,
@@ -201,8 +205,7 @@ export async function calculateTripCapacity(
     });
   });
 
-  // รวม quantity ต่อ product (และต่อ config ถ้ามี) — สินค้าเดียวกันจากหลายออเดอร์/ร้านนับเป็นจำนวนรวมแล้วค่อยคำนวณพาเลท
-  // หมายเหตุ: totalPallets ที่ได้เป็น "แยกตามชนิดสินค้า" — การจัดเรียงจริงอาจใช้พาเลทน้อยกว่าถ้านำหลายชนิดมาวางรวม/ซ้อนบนพาเลทเดียวกัน
+  // รวม quantity ต่อ product — สินค้าเดียวกันจากหลายออเดอร์/ร้านนับเป็นจำนวนรวม
   const aggregatedMap = new Map<string, { product_id: string; quantity: number; selected_pallet_config_id?: string }>();
   for (const item of items) {
     const key = `${item.product_id}|${item.selected_pallet_config_id ?? ''}`;
@@ -219,116 +222,84 @@ export async function calculateTripCapacity(
   }
   const aggregatedItems = Array.from(aggregatedMap.values());
 
-  // Calculate totals
   let totalPallets = 0;
   let totalWeightKg = 0;
-  // ความสูงที่ใช้จริง = "ความสูงกองสูงสุด" ไม่ใช่เอาทุกกองมาต่อเป็นตึก
-  // ใช้ค่านี้ไปเทียบกับความสูงสูงสุดของรถ (ต่อกอง/ต่อพาเลท)
   let totalHeightCm = 0;
   const missingConfigProducts: string[] = [];
 
-  for (const item of aggregatedItems) {
-    const product = productMap.get(item.product_id);
-    if (!product) {
-      errors.push(`ไม่พบข้อมูลสินค้า ID: ${item.product_id}`);
-      continue;
-    }
+  // ★ ใช้ logic เดียวกับ Packing Simulation (มาตรฐาน → ประวัติ → ประมาณ) สำหรับพาเลทและน้ำหนัก
+  const planItems = aggregatedItems
+    .map((item) => {
+      const product = productMap.get(item.product_id);
+      if (!product) return null;
+      return {
+        product_id: item.product_id,
+        product_name: product.product_name || product.id,
+        quantity: item.quantity,
+        weight_kg: (product.weight_kg ?? 0) * item.quantity,
+      };
+    })
+    .filter((x): x is NonNullable<typeof x> => x != null);
 
-    // NEW LOGIC: Prioritize pallet configs over uses_pallet flag
-    // If product has pallet configs, calculate pallets regardless of uses_pallet
-    const hasValidPalletConfigs = product.product_pallet_configs && product.product_pallet_configs.length > 0;
-
-    // PHASE 0: Priority order for config selection:
-    // 1. User-selected config (from selected_pallet_config_id)
-    // 2. Default config (is_default = true)
-    // 3. First available config
-    let configToUse = null;
-
-    // 1. Check if user selected a specific config
-    if (item.selected_pallet_config_id && hasValidPalletConfigs) {
-      configToUse = product.product_pallet_configs.find(
-        c => c.id === item.selected_pallet_config_id
-      );
-      if (!configToUse) {
-        warnings.push(
-          `สินค้า ${product.id}: config ที่เลือกไว้ไม่พบ จะใช้ default แทน`
-        );
+  if (planItems.length > 0) {
+    try {
+      const summary = await tripMetricsService.computePackingPlanSummary({
+        items: planItems,
+        vehicleMaxPallets: maxPallets,
+      });
+      totalPallets = summary.totalPallets;
+      totalWeightKg = summary.totalWeightKg + 25 * summary.totalPallets; // น้ำหนักสินค้า + ประมาณพาเลท
+    } catch (err) {
+      console.warn('[calculateTripCapacity] computePackingPlanSummary error, using fallback', err);
+      // Fallback: คำนวณแบบเดิม (แยกตามชนิดสินค้า)
+      for (const item of aggregatedItems) {
+        const product = productMap.get(item.product_id);
+        if (!product) continue;
+        const hasValidPalletConfigs = product.product_pallet_configs && product.product_pallet_configs.length > 0;
+        let configToUse = hasValidPalletConfigs
+          ? (product.product_pallet_configs!.find((c) => c.id === item.selected_pallet_config_id) ||
+             product.product_pallet_configs!.find((c) => c.is_default) ||
+             product.product_pallet_configs![0])
+          : null;
+        if (hasValidPalletConfigs && configToUse) {
+          const unitsPerPallet = configToUse.total_units;
+          totalPallets += Math.ceil(item.quantity / unitsPerPallet);
+          totalWeightKg += (product.weight_kg ?? 0) * item.quantity + 25 * Math.ceil(item.quantity / unitsPerPallet);
+        } else if (product.uses_pallet) {
+          const est = Math.max(1, Math.ceil(item.quantity / 50));
+          totalPallets += est;
+          totalWeightKg += (product.weight_kg ?? 0) * item.quantity + 25 * est;
+        } else if (product.weight_kg) {
+          totalWeightKg += product.weight_kg * item.quantity;
+        }
       }
     }
+  }
 
-    // 2. Fallback to default config
-    if (!configToUse && hasValidPalletConfigs) {
-      configToUse = product.product_pallet_configs.find(
-        config => config.is_default
-      );
+  // ความสูง: ยังใช้ config ต่อสินค้า (ความสูงกองสูงสุด)
+  for (const item of aggregatedItems) {
+    const product = productMap.get(item.product_id);
+    if (!product) continue;
+    const hasValidPalletConfigs = product.product_pallet_configs && product.product_pallet_configs.length > 0;
+    let configToUse = null;
+    if (item.selected_pallet_config_id && hasValidPalletConfigs) {
+      configToUse = product.product_pallet_configs!.find((c) => c.id === item.selected_pallet_config_id);
     }
-
-    // 3. Fallback to first available config
     if (!configToUse && hasValidPalletConfigs) {
-      configToUse = product.product_pallet_configs[0];
-      warnings.push(
-        `สินค้า ${product.id} ไม่มี default Pallet Config - ใช้ config แรกในการคำนวณ (แนะนำให้เลือก default)`
-      );
+      configToUse = product.product_pallet_configs!.find((c) => c.is_default) || product.product_pallet_configs![0];
     }
-
-    // Case 1: Product has valid pallet configs - use them!
     if (hasValidPalletConfigs && configToUse) {
-      // Calculate pallets needed from standard arrangement (จำนวนชั้น × ต่อชั้น)
-      const unitsPerPallet = configToUse.total_units;
-      const palletsNeeded = Math.ceil(item.quantity / unitsPerPallet);
-      totalPallets += palletsNeeded;
-
-      // น้ำหนักรวมทริป = น้ำหนักสินค้าจริง (น้ำหนักต่อหน่วย × จำนวน) + น้ำหนักพาเลทประมาณ
-      // ไม่ใช้ config.total_weight_kg × palletsNeeded เพราะจะไม่ตรงกับน้ำหนักจริงเมื่อ config เก็บค่าอื่น
-      const productWeight = (product.weight_kg ?? 0) * item.quantity;
-      const palletWeightEstimate = 25 * palletsNeeded; // กก. ต่อพาเลทประมาณ
-      totalWeightKg += productWeight + palletWeightEstimate;
-
-      // ความสูงกองหนึ่ง (ไม่คูณจำนวนพาเลท) ใช้เทียบกับ max height ของรถ
       let stackHeight = 0;
       if (configToUse.total_height_cm != null && configToUse.total_height_cm > 0) {
         stackHeight = configToUse.total_height_cm;
-      } else if (configToUse.layers != null && configToUse.layers > 0 && product.height_cm != null) {
-        // Fallback: ความสูงมาตรฐาน = จำนวนชั้น × ความสูงต่อหน่วย ต่อพาเลท
+      } else if (configToUse.layers != null && product.height_cm != null) {
         stackHeight = configToUse.layers * product.height_cm;
       }
-      if (stackHeight > 0) {
-        // ใช้ค่าที่ "สูงสุด" ของทุกกองเป็นตัวแทนในการเช็กกับรถ
-        totalHeightCm = Math.max(totalHeightCm, stackHeight);
-      }
-
-      // Already warned about config selection issues above if needed
-      continue;
-    }
-
-    // Case 2: Product uses pallet but has no configs - ใช้ค่าประมาณเท่านั้น
-    if (product.uses_pallet) {
-      // ประมาณจำนวนพาเลท: ไม่ทราบหน่วยต่อพาเลท จึงใช้ประมาณ 50 หน่วย/พาเลท (แนะนำให้ตั้ง Pallet Config)
-      const estimatedPallets = Math.max(1, Math.ceil(item.quantity / 50));
-      totalPallets += estimatedPallets;
-
-      // น้ำหนัก = น้ำหนักสินค้าจริง + น้ำหนักพาเลทประมาณ
-      if (product.weight_kg) {
-        totalWeightKg += product.weight_kg * item.quantity + 25 * estimatedPallets;
-      }
-
-      // ไม่มี config จึงไม่ทราบความสูงมาตรฐานจัดเรียง - ไม่บวกความสูง (หลีกเลี่ยงค่าผิด)
-      // แนะนำให้ตั้งค่า Pallet Configuration เพื่อได้ความสูงรวมที่ถูกต้อง
-
-      warnings.push(
-        `สินค้า ${product.id} ไม่มีข้อมูลการจัดเรียงบนพาเลท ใช้ค่าประมาณ (แนะนำให้ตั้งค่า Pallet Configuration)`
-      );
-      continue;
-    }
-
-    // Case 3: Product doesn't use pallet - only calculate weight
-    if (product.weight_kg) {
-      totalWeightKg += product.weight_kg * item.quantity;
-    }
-    // สำหรับสินค้าที่ไม่ขึ้นพาเลท ยังไม่มี model ที่ดีในการคิดความสูงรวมของทั้งโหลด
-    // เบื้องต้นถือว่าใช้ "ความสูงต่อหน่วย" เป็น candidate หนึ่งของกอง แล้วหา max รวมกับกองอื่น ๆ
-    if (product.height_cm) {
+      if (stackHeight > 0) totalHeightCm = Math.max(totalHeightCm, stackHeight);
+    } else if (product.height_cm) {
       totalHeightCm = Math.max(totalHeightCm, product.height_cm);
+    } else if (hasValidPalletConfigs && !configToUse) {
+      missingConfigProducts.push(product.id);
     }
   }
 
