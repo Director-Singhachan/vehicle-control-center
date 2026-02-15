@@ -532,7 +532,7 @@ export const PackingSimulator: React.FC<SimulatorProps> = ({ tripId, onClose }) 
             .sort((a, b) => a.product_name.localeCompare(b.product_name));
     }, [tripItems, allocated]);
 
-    // Stats
+    // Stats (น้ำหนักใช้ weight_kg จากรายการใน layout หรือ fallback จาก tripItem ถ้าโหลดจาก draft เก่าที่ไม่มี weight_kg)
     const stats = useMemo(() => {
         const pallets = layout.positions.filter(p => p.position_type === 'pallet').length;
         const floors = layout.positions.filter(p => p.position_type === 'floor').length;
@@ -543,9 +543,8 @@ export const PackingSimulator: React.FC<SimulatorProps> = ({ tripId, onClose }) 
         for (const pos of layout.positions) {
             for (const item of pos.items) {
                 totalAllocated += item.quantity;
-                if (item.weight_kg) {
-                    totalWeight += item.weight_kg * item.quantity;
-                }
+                const w = item.weight_kg ?? tripItems.find(t => t.id === item.delivery_trip_item_id)?.weight_kg ?? 0;
+                totalWeight += w * item.quantity;
             }
         }
 
@@ -1298,7 +1297,10 @@ export const PackingSimulator: React.FC<SimulatorProps> = ({ tripId, onClose }) 
             {/* Pallet Grid */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {layout.positions.map((pos) => {
-                    const posWeight = pos.items.reduce((sum, i) => sum + (i.weight_kg || 0) * i.quantity, 0);
+                    const posWeight = pos.items.reduce((sum, i) => {
+                        const w = i.weight_kg ?? tripItems.find(t => t.id === i.delivery_trip_item_id)?.weight_kg ?? 0;
+                        return sum + w * i.quantity;
+                    }, 0);
                     const posItemCount = pos.items.reduce((sum, i) => sum + i.quantity, 0);
                     // จัดกลุ่ม: สินค้าชนิดเดียวกันในพาเลทเดียว = 1 รายการ (ลีโอ 60 ลัง 4 ชั้น → 1 รายการ)
                     const positionGroups = (() => {
@@ -1485,8 +1487,9 @@ export const PackingSimulator: React.FC<SimulatorProps> = ({ tripId, onClose }) 
                                                             <div className="space-y-2">
                                                                 {layerItems.map(item => {
                                                                     const catColor = getCategoryColor(item.category);
-                                                                    const itemWeight = (item.weight_kg || 0) * item.quantity;
                                                                     const tripItem = tripItems.find(ti => ti.id === item.delivery_trip_item_id);
+                                                                    const w = item.weight_kg ?? tripItem?.weight_kg ?? 0;
+                                                                    const itemWeight = w * item.quantity;
                                                                     const totalQty = tripItem?.quantity || 0;
                                                                     const usedTotal = allocated.get(item.delivery_trip_item_id) || 0;
                                                                     const usedElsewhere = usedTotal - item.quantity;
@@ -1502,7 +1505,7 @@ export const PackingSimulator: React.FC<SimulatorProps> = ({ tripId, onClose }) 
                                                                                         {item.product_name}
                                                                                         {tripItem?.store_name && <span className="text-enterprise-600 dark:text-enterprise-400 ml-1">· {tripItem.store_name}</span>}
                                                                                     </div>
-                                                                                    <div className="text-xs text-slate-500 dark:text-slate-400 truncate">{item.product_code} · {(item.weight_kg || 0) * item.quantity} kg</div>
+                                                                                    <div className="text-xs text-slate-500 dark:text-slate-400 truncate">{item.product_code} · {itemWeight} kg</div>
                                                                                 </div>
                                                                                 <div className="flex items-center gap-1 flex-shrink-0">
                                                                                     <button type="button" onClick={() => adjustItemQty(pos.id, item.delivery_trip_item_id, -1, li)} disabled={item.quantity <= 1} className="w-6 h-6 rounded bg-white dark:bg-slate-800 border flex items-center justify-center disabled:opacity-40"><Minus size={10} /></button>
@@ -1581,8 +1584,8 @@ export const PackingSimulator: React.FC<SimulatorProps> = ({ tripId, onClose }) 
                                                 <>
                                                     {positionGroups.map((group) => {
                                                         const catColor = getCategoryColor(group.category);
-                                                        const groupWeight = (group.weight_kg || 0) * group.totalQty;
                                                         const tripItem = tripItems.find(ti => ti.id === group.delivery_trip_item_id);
+                                                        const groupWeight = (group.weight_kg ?? tripItem?.weight_kg ?? 0) * group.totalQty;
                                                         const totalQty = tripItem?.quantity || 0;
                                                         const usedTotal = allocated.get(group.delivery_trip_item_id) || 0;
                                                         const usedElsewhere = usedTotal - group.totalQty;

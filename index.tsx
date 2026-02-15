@@ -239,6 +239,7 @@ const AppContent = () => {
   const logisticsMenuRef = React.useRef<HTMLDivElement>(null);
   const logisticsTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
   const [logisticsFlyoutPosition, setLogisticsFlyoutPosition] = useState({ top: 0, left: 0 });
+  const [logisticsFlyoutMaxHeight, setLogisticsFlyoutMaxHeight] = useState<number>(400);
 
   const commissionTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
   const [flyoutPosition, setFlyoutPosition] = useState({ top: 0, left: 0 });
@@ -448,13 +449,15 @@ const AppContent = () => {
 
     const rect = e.currentTarget.getBoundingClientRect();
     const viewportHeight = window.innerHeight;
-    const flyoutEstimatedHeight = 480;
-
+    const margin = 16;
+    // บนมือถือใช้ความสูงไม่เกิน 85% ของจอ แล้ว clamp ตำแหน่งให้ flyout อยู่ภายใน viewport ทั้งหมด
+    const maxFlyoutHeight = Math.min(560, Math.floor(viewportHeight * 0.85) - margin);
     let top = rect.top;
-    if (top + flyoutEstimatedHeight > viewportHeight - 10) {
-      top = Math.max(10, viewportHeight - flyoutEstimatedHeight - 10);
+    if (top + maxFlyoutHeight > viewportHeight - margin) {
+      top = Math.max(margin, viewportHeight - maxFlyoutHeight - margin);
     }
-
+    const actualMaxHeight = viewportHeight - top - margin;
+    setLogisticsFlyoutMaxHeight(actualMaxHeight);
     setLogisticsFlyoutPosition({
       top,
       left: rect.right + 8,
@@ -824,7 +827,7 @@ const AppContent = () => {
           )}
         </div>
 
-        <div className="flex-1 px-3 space-y-1 mt-4 overflow-y-auto overflow-x-clip scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-700 scrollbar-track-transparent hover:scrollbar-thumb-gray-400 dark:hover:scrollbar-thumb-gray-600 [&:has(.group\/menu:hover)]:overflow-x-visible">
+        <div className="flex-1 min-h-0 px-3 space-y-1 mt-4 overflow-y-auto overflow-x-clip scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-700 scrollbar-track-transparent hover:scrollbar-thumb-gray-400 dark:hover:scrollbar-thumb-gray-600 [&:has(.group\/menu:hover)]:overflow-x-visible">
           {/* 1. รายงาน (Reports) */}
           {!isDriver && !isSales && (
             <SidebarItem
@@ -1105,7 +1108,10 @@ const AppContent = () => {
                   onMouseEnter={handleLogisticsFlyoutMouseEnter}
                   onMouseLeave={handleLogisticsFlyoutMouseLeave}
                 >
-                  <div className="bg-white dark:bg-charcoal-900 border border-slate-200 dark:border-slate-700 rounded-xl shadow-2xl min-w-[240px] py-2 ring-1 ring-black/5 dark:ring-white/10 animate-in fade-in slide-in-from-left-2 duration-150 max-h-[85vh] overflow-y-auto">
+                  <div
+                    className="bg-white dark:bg-charcoal-900 border border-slate-200 dark:border-slate-700 rounded-xl shadow-2xl min-w-[240px] py-2 ring-1 ring-black/5 dark:ring-white/10 animate-in fade-in slide-in-from-left-2 duration-150 overflow-y-auto"
+                    style={{ maxHeight: logisticsFlyoutMaxHeight }}
+                  >
                     <div className="px-4 pb-2 mb-2 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between">
                       <p className="text-[10px] font-black text-blue-500 uppercase tracking-widest">ฝ่ายขนส่ง (Logistics)</p>
                       <div className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"></div>
