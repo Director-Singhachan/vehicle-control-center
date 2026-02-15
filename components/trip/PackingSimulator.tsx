@@ -1271,7 +1271,7 @@ export const PackingSimulator: React.FC<SimulatorProps> = ({ tripId, onClose }) 
 
             {/* Pallet Grid */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {layout.positions.map(pos => {
+                {layout.positions.map((pos) => {
                     const posWeight = pos.items.reduce((sum, i) => sum + (i.weight_kg || 0) * i.quantity, 0);
                     const posItemCount = pos.items.reduce((sum, i) => sum + i.quantity, 0);
                     // จัดกลุ่ม: สินค้าชนิดเดียวกันในพาเลทเดียว = 1 รายการ (ลีโอ 60 ลัง 4 ชั้น → 1 รายการ)
@@ -1466,17 +1466,17 @@ export const PackingSimulator: React.FC<SimulatorProps> = ({ tripId, onClose }) 
                                                                     const isEditing = quantityEdit?.posId === pos.id && quantityEdit?.itemId === item.delivery_trip_item_id && quantityEdit?.layerIndex === li;
                                                                     const displayQty = isEditing ? quantityEdit!.value : String(item.quantity);
                                                                     return (
-                                                                        <div key={`${item.delivery_trip_item_id}-${li}`} className={`flex items-center gap-2 p-2 rounded-lg ${catColor.bg} border ${catColor.border}`}>
-                                                                            <Package className={`flex-shrink-0 ${catColor.text}`} size={14} />
-                                                                            <div className="flex-1 min-w-0">
-                                                                                <div className="text-sm font-medium text-slate-900 dark:text-slate-100 truncate">
-                                                                                    {item.product_name}
-                                                                                    {tripItem?.store_name && <span className="text-enterprise-600 dark:text-enterprise-400 ml-1">· {tripItem.store_name}</span>}
+                                                                        <div key={`${item.delivery_trip_item_id}-${li}`} className={`flex flex-col sm:flex-row sm:items-center gap-2 p-2 rounded-lg ${catColor.bg} border ${catColor.border}`}>
+                                                                            <div className="flex items-center gap-2 min-w-0 flex-1">
+                                                                                <Package className={`flex-shrink-0 ${catColor.text}`} size={14} />
+                                                                                <div className="flex-1 min-w-0">
+                                                                                    <div className="text-sm font-medium text-slate-900 dark:text-slate-100 truncate">
+                                                                                        {item.product_name}
+                                                                                        {tripItem?.store_name && <span className="text-enterprise-600 dark:text-enterprise-400 ml-1">· {tripItem.store_name}</span>}
+                                                                                    </div>
+                                                                                    <div className="text-xs text-slate-500 dark:text-slate-400 truncate">{item.product_code} · {(item.weight_kg || 0) * item.quantity} kg</div>
                                                                                 </div>
-                                                                                <div className="text-xs text-slate-500 dark:text-slate-400">{item.product_code} · {(item.weight_kg || 0) * item.quantity} kg</div>
-                                                                            </div>
-                                                                            <div className="flex flex-col items-end gap-1 flex-shrink-0">
-                                                                                <div className="flex items-center gap-1">
+                                                                                <div className="flex items-center gap-1 flex-shrink-0">
                                                                                     <button type="button" onClick={() => adjustItemQty(pos.id, item.delivery_trip_item_id, -1, li)} disabled={item.quantity <= 1} className="w-6 h-6 rounded bg-white dark:bg-slate-800 border flex items-center justify-center disabled:opacity-40"><Minus size={10} /></button>
                                                                                     <input
                                                                                         type="number"
@@ -1498,7 +1498,8 @@ export const PackingSimulator: React.FC<SimulatorProps> = ({ tripId, onClose }) 
                                                                                     <button type="button" onClick={() => adjustItemQty(pos.id, item.delivery_trip_item_id, 1, li)} disabled={item.quantity >= maxCanAdd} className="w-6 h-6 rounded bg-white dark:bg-slate-800 border flex items-center justify-center disabled:opacity-40"><Plus size={10} /></button>
                                                                                     <button type="button" onClick={() => removeItemFromLayer(pos.id, item.delivery_trip_item_id, li)} className="w-6 h-6 rounded border border-red-200 dark:border-red-800 text-red-500 flex items-center justify-center"><X size={10} /></button>
                                                                                 </div>
-                                                                                <div className="flex flex-wrap gap-1 justify-end">
+                                                                            </div>
+                                                                            <div className="flex flex-wrap gap-1.5 w-full sm:w-auto sm:justify-end min-w-0">
                                                                                     {(() => {
                                                                                         const configs: PackingStandard[] = packingConfigs.get(item.product_id)?.length
                                                                                             ? packingConfigs.get(item.product_id)!
@@ -1530,7 +1531,6 @@ export const PackingSimulator: React.FC<SimulatorProps> = ({ tripId, onClose }) 
                                                                                         </button>
                                                                                     ))}
                                                                                 </div>
-                                                                            </div>
                                                                         </div>
                                                                     );
                                                                 })}
@@ -1564,22 +1564,24 @@ export const PackingSimulator: React.FC<SimulatorProps> = ({ tripId, onClose }) 
                                                         return (
                                                             <div
                                                                 key={`${group.product_id}|${group.delivery_trip_item_id}`}
-                                                                className={`flex items-center gap-3 p-3 rounded-xl ${catColor.bg} border ${catColor.border} transition-all duration-200 hover:shadow-md`}
+                                                                className={`flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 p-3 rounded-xl ${catColor.bg} border ${catColor.border} transition-all duration-200 hover:shadow-md`}
                                                             >
-                                                                <div className={`w-9 h-9 rounded-lg bg-gradient-to-br ${catColor.gradient} flex items-center justify-center flex-shrink-0`}>
-                                                                    <Package className="text-white" size={14} />
-                                                                </div>
-                                                                <div className="flex-1 min-w-0">
-                                                                    <div className="text-sm font-medium text-slate-900 dark:text-slate-100 truncate">
-                                                                        {group.product_name}
-                                                                        {tripItem?.store_name && <span className="text-enterprise-600 dark:text-enterprise-400 ml-1">· {tripItem.store_name}</span>}
+                                                                <div className="flex items-center gap-3 min-w-0 flex-1">
+                                                                    <div className={`w-9 h-9 rounded-lg bg-gradient-to-br ${catColor.gradient} flex items-center justify-center flex-shrink-0`}>
+                                                                        <Package className="text-white" size={14} />
                                                                     </div>
-                                                                    <div className="text-xs text-slate-500 dark:text-slate-400">
-                                                                        {group.product_code} · {groupWeight > 0 ? `${groupWeight.toFixed(1)} kg` : group.unit}
-                                                                        {group.layerCount > 1 && <span className="text-enterprise-600 dark:text-enterprise-400 ml-1">· {group.layerCount} ชั้น</span>}
+                                                                    <div className="flex-1 min-w-0">
+                                                                        <div className="text-sm font-medium text-slate-900 dark:text-slate-100 truncate">
+                                                                            {group.product_name}
+                                                                            {tripItem?.store_name && <span className="text-enterprise-600 dark:text-enterprise-400 ml-1">· {tripItem.store_name}</span>}
+                                                                        </div>
+                                                                        <div className="text-xs text-slate-500 dark:text-slate-400 truncate">
+                                                                            {group.product_code} · {groupWeight > 0 ? `${groupWeight.toFixed(1)} kg` : group.unit}
+                                                                            {group.layerCount > 1 && <span className="text-enterprise-600 dark:text-enterprise-400 ml-1">· {group.layerCount} ชั้น</span>}
+                                                                        </div>
                                                                     </div>
                                                                 </div>
-                                                                <div className="flex items-center gap-1.5 flex-shrink-0">
+                                                                <div className="flex flex-wrap items-center gap-1.5 w-full sm:w-auto">
                                                                     <button type="button" onClick={() => adjustGroupQty(pos.id, group.product_id, group.delivery_trip_item_id, -1)} disabled={group.totalQty <= 1} className="w-7 h-7 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 flex items-center justify-center hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-30 transition-colors">
                                                                         <Minus size={12} />
                                                                     </button>
@@ -1642,6 +1644,7 @@ export const PackingSimulator: React.FC<SimulatorProps> = ({ tripId, onClose }) 
             </div>
 
             {/* Empty state */}
+
             {layout.positions.length === 0 && (
                 <div className="text-center py-16">
                     <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-enterprise-500 to-blue-600 flex items-center justify-center mx-auto mb-6 shadow-xl shadow-enterprise-500/30">
