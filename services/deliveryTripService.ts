@@ -147,6 +147,7 @@ export const deliveryTripService = {
     planned_date_to?: string;
     sortAscending?: boolean; // If true, sort by planned_date ASC (earliest first)
     lite?: boolean; // If false, fetch full store details
+    branch?: string; // Filter by branch: 'HQ' (สำนักงานใหญ่), 'SD' (สอยดาว), or omit for all
   }): Promise<DeliveryTripWithRelations[]> => {
     const result = await deliveryTripService.getAllWithPagination({
       ...filters,
@@ -607,6 +608,17 @@ export const deliveryTripService = {
       sequenceOrder = maxSequence + 1;
     }
 
+    // ดึงสาขาของรถเพื่อใส่ในทริป (ให้ทริปแสดงในรายการเมื่อกรองตามสาขา เช่น สำนักงานใหญ่ HQ / สอยดาว SD)
+    let vehicleBranch: string | null = null;
+    const { data: vehicleRow } = await supabase
+      .from('vehicles')
+      .select('branch')
+      .eq('id', data.vehicle_id)
+      .single();
+    if (vehicleRow?.branch) {
+      vehicleBranch = vehicleRow.branch;
+    }
+
     // Start transaction-like operation
     // 1. Create delivery trip
     const tripData: DeliveryTripInsert = {
@@ -617,6 +629,7 @@ export const deliveryTripService = {
       manual_distance_km: data.manual_distance_km,
       notes: data.notes,
       sequence_order: sequenceOrder,
+      branch: vehicleBranch,
       created_by: user.id,
       updated_by: user.id,
     };
@@ -903,6 +916,18 @@ export const deliveryTripService = {
       sequence_order: data.sequence_order,
       updated_by: user.id,
     };
+
+    // ถ้าเปลี่ยน vehicle_id ให้ดึง branch ของรถใหม่มาใส่ด้วย (ให้ทริปแสดงในรายการตามสาขา)
+    if (data.vehicle_id != null) {
+      const { data: vehicleRow } = await supabase
+        .from('vehicles')
+        .select('branch')
+        .eq('id', data.vehicle_id)
+        .single();
+      if (vehicleRow?.branch != null) {
+        updateData.branch = vehicleRow.branch;
+      }
+    }
 
     // Remove undefined fields
     Object.keys(updateData).forEach(key => {
@@ -1865,11 +1890,23 @@ export const deliveryTripService = {
       throw new Error('รถคันใหม่ต้องไม่ใช่รถคันเดิม');
     }
 
-    // อัปเดตรถใหม่
+    // ดึงสาขาของรถใหม่เพื่ออัปเดต branch ของทริป
+    let newVehicleBranch: string | null = null;
+    const { data: vehicleRow } = await supabase
+      .from('vehicles')
+      .select('branch')
+      .eq('id', newVehicleId)
+      .single();
+    if (vehicleRow?.branch) {
+      newVehicleBranch = vehicleRow.branch;
+    }
+
+    // อัปเดตรถใหม่และสาขา
     const { error: updateError } = await supabase
       .from('delivery_trips')
       .update({
         vehicle_id: newVehicleId,
+        branch: newVehicleBranch,
         updated_at: new Date().toISOString(),
         updated_by: user.id,
       })

@@ -948,6 +948,62 @@ export const tripMetricsService = {
   },
 
   /**
+   * ดึงคำแนะนำการจัดเรียงสำหรับ simulation (รวม pattern insights + product profiles + packing plan)
+   * ใช้ในหน้า Packing Simulation — ไม่บันทึกลง DB
+   */
+  getSimulationSuggestions: async (params: {
+    tripId: string;
+    vehicleId?: string | null;
+    items: Array<{
+      product_id: string;
+      product_name: string;
+      quantity: number;
+      weight_kg: number;
+    }>;
+    vehicleMaxPallets?: number | null;
+  }): Promise<string> => {
+    const sections: string[] = [];
+
+    try {
+      const [patternInsights, productProfiles, packingPlan] = await Promise.all([
+        tripMetricsService.getPackingPatternInsights(),
+        params.vehicleId && params.items.length > 0
+          ? tripMetricsService.getProductPackingProfiles(
+              [...new Set(params.items.map((i) => i.product_id))],
+              params.vehicleId
+            )
+          : '',
+        params.items.length > 0
+          ? tripMetricsService.computePackingPlan({
+              items: params.items.map((i) => ({
+                product_id: i.product_id,
+                product_name: i.product_name,
+                quantity: i.quantity,
+                weight_kg: i.weight_kg,
+              })),
+              vehicleMaxPallets: params.vehicleMaxPallets ?? null,
+            })
+          : '',
+      ]);
+
+      if (patternInsights.trim()) {
+        sections.push(patternInsights);
+      }
+      if (productProfiles.trim()) {
+        sections.push('📦 ประวัติการจัดสินค้านี้ (ตามรถ):\n' + productProfiles);
+      }
+      if (packingPlan.trim()) {
+        sections.push(packingPlan);
+      }
+    } catch (err) {
+      console.error('[tripMetricsService] getSimulationSuggestions error:', err);
+      return 'ไม่สามารถโหลดคำแนะนำได้ กรุณาลองใหม่ในภายหลัง';
+    }
+
+    return sections.length > 0 ? sections.join('\n\n---\n\n') : 'ไม่มีข้อมูลแนะนำสำหรับทริปนี้';
+  },
+
+  /**
    * ดึงข้อมูลพื้นฐานของทริป (จำนวนสินค้า, ระยะทาง, ระยะเวลา) จากข้อมูลที่มีอยู่แล้ว
    * ใช้สำหรับเติมข้อมูลที่สามารถคำนวณได้จากระบบเดิม
    */
