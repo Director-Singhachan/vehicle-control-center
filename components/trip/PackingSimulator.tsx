@@ -204,7 +204,6 @@ const ItemPicker: React.FC<{
                         value={search}
                         onChange={e => setSearch(e.target.value)}
                         className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-enterprise-500"
-                        autoFocus
                     />
                 </div>
                 <div className="overflow-y-auto flex-1 min-h-0 p-2 max-h-[55vh]">
