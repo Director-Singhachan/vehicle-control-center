@@ -31,6 +31,7 @@ import {
 } from 'lucide-react';
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
+import { ConfirmDialog } from '../ui/ConfirmDialog';
 import { deliveryTripService } from '../../services/deliveryTripService';
 import { tripMetricsService } from '../../services/tripMetricsService';
 
@@ -194,6 +195,7 @@ export const PackingSimulator: React.FC<SimulatorProps> = ({ tripId, onClose }) 
     const [saved, setSaved] = useState(false);
     const [aiSuggestions, setAiSuggestions] = useState<string | null>(null);
     const [showAi, setShowAi] = useState(false);
+    const [showSaveConfirm, setShowSaveConfirm] = useState(false);
 
     // Undo/redo
     const [history, setHistory] = useState<LayoutState[]>([]);
@@ -586,12 +588,13 @@ export const PackingSimulator: React.FC<SimulatorProps> = ({ tripId, onClose }) 
         });
     }, [layout, push]);
 
-    // Save to DB (apply simulation)
+    // Save to DB (apply simulation) — เรียกจาก ConfirmDialog หลังกดยืนยัน
     const [saveError, setSaveError] = useState<string | null>(null);
     const handleApply = useCallback(async () => {
         if (layout.positions.length === 0) return;
         setSaving(true);
         setSaveError(null);
+        setShowSaveConfirm(false);
         try {
             const payload = {
                 positions: layout.positions.map(pos => ({
@@ -621,6 +624,13 @@ export const PackingSimulator: React.FC<SimulatorProps> = ({ tripId, onClose }) 
             setSaving(false);
         }
     }, [layout, tripId, draftKey]);
+
+    // กดบันทึก: ถ้าจัดไม่ครบห้ามบันทึก; ถ้าครบแล้วให้ขึ้นเตือนยืนยัน
+    const handleSaveClick = useCallback(() => {
+        if (stats.totalAllocated < stats.totalItems || stats.totalItems === 0) return;
+        if (layout.positions.length === 0) return;
+        setShowSaveConfirm(true);
+    }, [stats.totalAllocated, stats.totalItems, layout.positions.length]);
 
     // Load AI suggestions (pattern insights + product profiles + packing plan)
     const loadAiSuggestions = useCallback(async () => {
@@ -788,14 +798,34 @@ export const PackingSimulator: React.FC<SimulatorProps> = ({ tripId, onClose }) 
                 </Button>
                 <Button
                     variant="primary"
-                    onClick={handleApply}
+                    onClick={handleSaveClick}
                     isLoading={saving}
-                    disabled={layout.positions.length === 0 || stats.totalAllocated === 0}
+                    disabled={
+                        layout.positions.length === 0 ||
+                        stats.totalAllocated === 0 ||
+                        stats.totalAllocated < stats.totalItems
+                    }
+                    title={
+                        stats.totalAllocated < stats.totalItems && stats.totalItems > 0
+                            ? 'จัดให้ครบทุกชิ้นก่อนจึงจะบันทึกได้'
+                            : undefined
+                    }
                 >
                     <Save size={16} className="mr-1" />
                     {saved ? 'บันทึกแล้ว ✓' : 'บันทึกการจัดเรียง'}
                 </Button>
             </div>
+
+            <ConfirmDialog
+                isOpen={showSaveConfirm}
+                title="ยืนยันการบันทึก"
+                message="คุณต้องการบันทึกการจัดเรียงจริงหรือไม่? กรุณาตรวจสอบให้แน่ใจว่าจัดครบทุกชิ้นแล้ว"
+                confirmText="บันทึก"
+                cancelText="ยกเลิก"
+                variant="info"
+                onConfirm={() => handleApply()}
+                onCancel={() => setShowSaveConfirm(false)}
+            />
 
             {/* AI Suggestions Panel */}
             {showAi && aiSuggestions && (

@@ -10,15 +10,18 @@ import {
     ChevronDown,
     RotateCcw,
     Building2,
+    Check,
 } from 'lucide-react';
 import { PageLayout } from '../components/layout/PageLayout';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { deliveryTripService } from '../services/deliveryTripService';
+import { tripMetricsService } from '../services/tripMetricsService';
 import { PackingSimulator } from '../components/trip/PackingSimulator';
 import { useAuth } from '../hooks';
+import { supabase } from '../lib/supabase';
 
-// Simplified trip list item
+// Simplified trip list item (crews ใช้กรองพนักงานบริการเฉพาะทริปที่ตัวเองอยู่)
 interface TripListItem {
     id: string;
     trip_number: string | null;
@@ -30,7 +33,17 @@ interface TripListItem {
     items?: any[];
     total_weight_kg?: number;
     estimated_pallets?: number;
+    crews?: { staff_id: string; role: string }[];
 }
+
+// วันนี้ใน timezone ท้องถิ่น เป็น YYYY-MM-DD สำหรับกรองทริป (เริ่มใหม่ทุกวัน)
+const getTodayLocal = () => {
+    const d = new Date();
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+};
 
 const BRANCH_OPTIONS: { value: string; label: string }[] = [
     { value: 'ALL', label: 'ทุกสาขา' },
@@ -39,17 +52,44 @@ const BRANCH_OPTIONS: { value: string; label: string }[] = [
 ];
 
 export const PackingSimulationView: React.FC = () => {
-    const { profile } = useAuth();
+    const { profile, isDriver, isServiceStaff } = useAuth();
     const [trips, setTrips] = useState<TripListItem[]>([]);
     const [loading, setLoading] = useState(true);
     const [selectedTripId, setSelectedTripId] = useState<string | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
     const [tripDropdownOpen, setTripDropdownOpen] = useState(false);
+    const [myServiceStaffId, setMyServiceStaffId] = useState<string | null>(null);
+    // ทริปที่จัดเรียงบันทึกแล้ว (มี packing layout) — แสดงสถานะ "จัดไปแล้ว" แต่ยังเลือกและบันทึกซ้ำได้
+    const [tripIdsWithLayout, setTripIdsWithLayout] = useState<Set<string>>(new Set());
     // กรองตามสาขา — ค่าเริ่มต้นตามสาขาของผู้ใช้ เพื่อไม่ให้สับสนระหว่างสาขา
     const [branchFilter, setBranchFilter] = useState<string>(() => profile?.branch || 'ALL');
 
-    // Load upcoming trips (planned / in_progress) แยกตามสาขา
+    // แสดงเฉพาะทริปวันนี้ (เริ่มใหม่ทุกวัน) + ตามบุคคล: คนขับเห็นเฉพาะทริปของตัวเอง, พนักงานบริการเห็นเฉพาะทริปที่ตัวเองอยู่ใน crew
+    const today = getTodayLocal();
+
+    // พนักงานบริการ: หา service_staff.id ของตัวเอง (เทียบจากชื่อ) เพื่อกรองทริปที่ตัวเองอยู่
     useEffect(() => {
+        if (!isServiceStaff || !profile?.full_name) {
+            setMyServiceStaffId(null);
+            return;
+        }
+        const resolve = async () => {
+            const { data } = await supabase
+                .from('service_staff')
+                .select('id')
+                .ilike('name', profile.full_name!.trim())
+                .eq('status', 'active')
+                .limit(1)
+                .maybeSingle();
+            setMyServiceStaffId(data?.id ?? null);
+        };
+        resolve();
+    }, [isServiceStaff, profile?.full_name]);
+
+    // Load trips: วันนี้เท่านั้น, ตามสาขา, คนขับกรอง driver_id; พนักงานบริการรอ resolve myStaffId ก่อนแล้วกรองตาม crew
+    const canLoadForServiceStaff = !isServiceStaff || myServiceStaffId !== undefined;
+    useEffect(() => {
+        if (!canLoadForServiceStaff) return;
         const loadTrips = async () => {
             setLoading(true);
             try {
@@ -57,17 +97,32 @@ export const PackingSimulationView: React.FC = () => {
                     status: ['planned', 'in_progress'],
                     sortAscending: true,
                     branch: branchFilter === 'ALL' ? undefined : branchFilter,
+                    planned_date_from: today,
+                    planned_date_to: today,
+                    ...(isDriver && profile?.id ? { driver_id: profile.id } : {}),
                 });
-                setTrips(result || []);
+                let list = (result || []) as TripListItem[];
+                // พนักงานบริการ: แสดงเฉพาะทริปที่ตัวเองอยู่ใน crew (ถ้าไม่มี myStaffId แสดงทั้งหมดของวันนี้)
+                if (isServiceStaff && myServiceStaffId) {
+                    list = list.filter(t => t.crews?.some(c => c.staff_id === myServiceStaffId));
+                }
+                setTrips(list);
+                if (list.length > 0) {
+                    const ids = await tripMetricsService.getTripsWithPackingLayout(list.map(t => t.id));
+                    setTripIdsWithLayout(ids);
+                } else {
+                    setTripIdsWithLayout(new Set());
+                }
             } catch (err) {
                 console.error('[PackingSimulationView] Error loading trips:', err);
                 setTrips([]);
+                setTripIdsWithLayout(new Set());
             } finally {
                 setLoading(false);
             }
         };
         loadTrips();
-    }, [branchFilter]);
+    }, [branchFilter, today, isDriver, profile?.id, isServiceStaff, myServiceStaffId, canLoadForServiceStaff]);
 
     // Filter trips by search
     const filteredTrips = useMemo(() => {
@@ -96,6 +151,18 @@ export const PackingSimulationView: React.FC = () => {
         setSelectedTripId(tripId);
         setTripDropdownOpen(false);
     }, []);
+
+    // เมื่อปิดตัวจำลอง (กลับไปรายการทริป) รีเฟรชว่าทริปไหนจัดแล้ว เพื่อให้ badge "จัดไปแล้ว" อัปเดต
+    const refreshLayoutStatus = useCallback(async () => {
+        if (trips.length === 0) return;
+        const ids = await tripMetricsService.getTripsWithPackingLayout(trips.map(t => t.id));
+        setTripIdsWithLayout(ids);
+    }, [trips]);
+
+    const handleCloseSimulator = useCallback(() => {
+        setSelectedTripId(null);
+        refreshLayoutStatus();
+    }, [refreshLayoutStatus]);
 
     // Close dropdown when clicking outside
     useEffect(() => {
@@ -172,6 +239,11 @@ export const PackingSimulationView: React.FC = () => {
                                         แสดงเฉพาะทริปของ{branchFilter === 'HQ' ? 'สำนักงานใหญ่' : 'สอยดาว'}
                                     </span>
                                 )}
+                                <span className="text-xs text-slate-500 dark:text-slate-400">
+                                    · แสดงทริปวันนี้เท่านั้น
+                                    {isDriver && ' · เฉพาะทริปที่คุณเป็นคนขับ'}
+                                    {isServiceStaff && ' · เฉพาะทริปที่คุณอยู่ในทีม'}
+                                </span>
                             </div>
                             <div className="relative">
                                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
@@ -196,10 +268,12 @@ export const PackingSimulationView: React.FC = () => {
                             <div className="p-12 text-center">
                                 <Package className="mx-auto mb-4 text-slate-300 dark:text-slate-600" size={48} />
                                 <p className="text-slate-500 dark:text-slate-400 font-medium">
-                                    {searchQuery ? 'ไม่พบทริปที่ตรงกับคำค้นหา' : 'ไม่มีทริปที่รอจัดเรียง'}
+                                    {searchQuery ? 'ไม่พบทริปที่ตรงกับคำค้นหา' : 'ไม่มีทริปวันนี้ที่รอจัดเรียง'}
                                 </p>
                                 <p className="text-sm text-slate-400 dark:text-slate-500 mt-1">
-                                    ต้องมีทริปในสถานะ "วางแผน" หรือ "กำลังดำเนินการ"
+                                    แสดงเฉพาะทริปวันนี้ในสถานะ "วางแผน" หรือ "กำลังดำเนินการ"
+                                    {isDriver && ' (เฉพาะทริปที่คุณเป็นคนขับ)'}
+                                    {isServiceStaff && ' (เฉพาะทริปที่คุณอยู่ในทีม)'}
                                 </p>
                             </div>
                         ) : (
@@ -226,13 +300,19 @@ export const PackingSimulationView: React.FC = () => {
 
                                                 {/* Trip info */}
                                                 <div className="flex-1 min-w-0">
-                                                    <div className="flex items-center gap-2 mb-1">
+                                                    <div className="flex items-center gap-2 mb-1 flex-wrap">
                                                         <span className="font-semibold text-slate-900 dark:text-slate-100">
                                                             {trip.trip_number || `ทริป #${trip.id.substring(0, 8)}`}
                                                         </span>
                                                         <span className={`px-2 py-0.5 rounded-full text-[11px] font-medium ${statusColors}`}>
                                                             {statusLabel}
                                                         </span>
+                                                        {tripIdsWithLayout.has(trip.id) && (
+                                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300">
+                                                                <Check size={12} />
+                                                                จัดไปแล้ว
+                                                            </span>
+                                                        )}
                                                     </div>
 
                                                     <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-slate-500 dark:text-slate-400">
@@ -279,7 +359,7 @@ export const PackingSimulationView: React.FC = () => {
             {selectedTripId && (
                 <PackingSimulator
                     tripId={selectedTripId}
-                    onClose={() => setSelectedTripId(null)}
+                    onClose={handleCloseSimulator}
                 />
             )}
         </PageLayout>
