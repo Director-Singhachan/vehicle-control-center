@@ -78,6 +78,10 @@ interface LayoutState {
 interface SimulatorProps {
     tripId: string;
     onClose: () => void;
+    /** เรียกหลังบันทึกสำเร็จ (เช่น ให้ parent refetch ข้อมูลทริป) */
+    onSaved?: () => void;
+    /** ใช้ในหน้ารายละเอียดทริป (ปรับข้อความปุ่ม/ข้อความสำเร็จ) */
+    embedInDetailView?: boolean;
 }
 
 // ==================== Helpers ====================
@@ -322,7 +326,7 @@ const ItemPicker: React.FC<{
 };
 
 // ==================== Main Component ====================
-export const PackingSimulator: React.FC<SimulatorProps> = ({ tripId, onClose }) => {
+export const PackingSimulator: React.FC<SimulatorProps> = ({ tripId, onClose, onSaved, embedInDetailView }) => {
     const [tripItems, setTripItems] = useState<TripItem[]>([]);
     const [tripData, setTripData] = useState<any>(null);
     const [layout, setLayout] = useState<LayoutState>({ positions: [] });
@@ -1037,6 +1041,7 @@ export const PackingSimulator: React.FC<SimulatorProps> = ({ tripId, onClose }) 
             await tripMetricsService.saveTripPackingLayout(tripId, payload);
             localStorage.removeItem(draftKey);
             setSaved(true);
+            onSaved?.();
             setTimeout(() => setSaved(false), 5000);
         } catch (err: unknown) {
             console.error('[PackingSimulator] Save error:', err);
@@ -1046,7 +1051,7 @@ export const PackingSimulator: React.FC<SimulatorProps> = ({ tripId, onClose }) 
         } finally {
             setSaving(false);
         }
-    }, [layout, tripId, draftKey]);
+    }, [layout, tripId, draftKey, onSaved]);
 
     // กดบันทึก: ถ้าจัดไม่ครบห้ามบันทึก; ถ้าครบแล้วให้ขึ้นเตือนยืนยัน
     const handleSaveClick = useCallback(() => {
@@ -1194,10 +1199,10 @@ export const PackingSimulator: React.FC<SimulatorProps> = ({ tripId, onClose }) 
                     <Check className="text-green-500 flex-shrink-0" size={20} />
                     <div className="flex-1">
                         <div className="text-sm font-medium text-green-800 dark:text-green-200">บันทึกการจัดเรียงแล้ว</div>
-                        <div className="text-xs text-green-600 dark:text-green-300 mt-0.5">ดูการจัดเรียงได้ที่หน้ารายละเอียดทริป</div>
+                        {!embedInDetailView && <div className="text-xs text-green-600 dark:text-green-300 mt-0.5">ดูการจัดเรียงได้ที่หน้ารายละเอียดทริป</div>}
                     </div>
                     <Button variant="outline" size="sm" onClick={onClose} className="border-green-300 text-green-800 dark:text-green-200 hover:bg-green-100 dark:hover:bg-green-900/30">
-                        กลับไปรายการทริป
+                        {embedInDetailView ? 'ปิด' : 'กลับไปรายการทริป'}
                     </Button>
                 </div>
             )}
