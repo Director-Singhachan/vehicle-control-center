@@ -1,6 +1,7 @@
 // Vehicle Recommendation Service - AI-powered vehicle suggestions for trip planning
 // Phase 1: Rule-based scoring algorithm using historical trip data
 import { supabase } from '../lib/supabase';
+import { tripMetricsService } from './tripMetricsService';
 
 // ============================================================
 // Interfaces
@@ -38,6 +39,10 @@ export interface VehicleRecommendation {
     estimated_volume_liter: number;
     max_volume_liter: number | null;
     volume_utilization_pct: number | null;
+    /** จำนวนพาเลทที่ระบบคำนวณจากสินค้า */
+    estimated_pallets: number;
+    /** จำนวนพาเลทที่รถรับได้ (จาก loading_constraints.max_pallets หรือประเมินจากขนาด) */
+    max_pallets: number | null;
   };
   historical_stats: {
     similar_trips_count: number;
@@ -186,6 +191,8 @@ export const vehicleRecommendationService = {
             volume_utilization_pct: vehicle.cargo_volume_liter
               ? Math.round((loadEstimate.totalVolumeLiter / vehicle.cargo_volume_liter) * 100)
               : null,
+            estimated_pallets: loadEstimate.estimatedPallets,
+            max_pallets: getVehicleMaxPallets(vehicle),
           },
           historical_stats: getVehicleHistoricalSummary(vehicle.id, historicalStats),
           reasoning,
@@ -193,18 +200,17 @@ export const vehicleRecommendationService = {
         } as VehicleRecommendation;
       });
 
-      // 6. กรองรถที่บรรทุกไม่ได้; เรียงตามความแข็งแกร่งของประวัติทริปก่อน แล้วค่อยคะแนนรวม
+      // 6. กรองรถที่บรรทุกไม่ได้ (น้ำหนัก/พาเลทไม่พอ); เรียงตามประวัติทริปก่อน แล้วค่อยคะแนนรวม
       const tripHistoryScore = (r: VehicleRecommendation) =>
         (r.scores.load_similarity + r.scores.historical_success + r.scores.store_familiarity) / 3;
 
       const filtered = scored
-        .filter((r) => r.scores.capacity_fit > 0) // Exclude vehicles that definitely can't fit
+        .filter((r) => r.scores.capacity_fit > 0) // น้ำหนัก/ปริมาตรเกินพิกัด → ตัดออก
+        .filter((r) => r.scores.pallet_efficiency > 0) // ใส่พาเลทไม่พอ → ตัดออก
         .sort((a, b) => {
           const historyA = tripHistoryScore(a);
           const historyB = tripHistoryScore(b);
-          // ลำดับที่ 1: รถที่มีประวัติทริปแข็งแกร่ง (เคยวิ่งคล้าย/ร้านเดียวกัน) มาก่อน
           if (Math.abs(historyB - historyA) >= 2) return historyB - historyA;
-          // ลำดับที่ 2: คะแนนรวม
           return b.overall_score - a.overall_score;
         })
         .slice(0, limit);
@@ -380,7 +386,7 @@ async function estimateLoad(
 
   const { data: products, error } = await supabase
     .from('products')
-    .select('id, weight_kg, volume_liter, is_fragile, is_liquid, requires_temperature, uses_pallet')
+    .select('id, product_name, weight_kg, volume_liter, is_fragile, is_liquid, requires_temperature, uses_pallet')
     .in('id', productIds);
 
   if (error) {
@@ -414,12 +420,44 @@ async function estimateLoad(
     }
   }
 
-  // Estimate pallets: ~800kg per standard pallet or volume-based
-  const PALLET_MAX_KG = 800;
-  const PALLET_MAX_LITER = 960; // ~120cm × 100cm × 80cm usable height
-  const palletsByWeight = totalWeightKg > 0 ? Math.ceil(totalWeightKg / PALLET_MAX_KG) : 0;
-  const palletsByVolume = totalVolumeLiter > 0 ? Math.ceil(totalVolumeLiter / PALLET_MAX_LITER) : 0;
-  const estimatedPallets = Math.max(palletsByWeight, palletsByVolume, 1);
+  // ★ ใช้ logic เดียวกับ Packing Simulation (มาตรฐาน → ประวัติ → ประมาณ) สำหรับจำนวนพาเลท
+  let estimatedPallets = 1;
+  const byProduct = new Map<string, number>();
+  for (const item of items) {
+    byProduct.set(item.product_id, (byProduct.get(item.product_id) || 0) + item.quantity);
+  }
+  const planItems = Array.from(byProduct.entries())
+    .map(([product_id, quantity]) => {
+      const p = productMap.get(product_id);
+      return p
+        ? { product_id, product_name: p.product_name || product_id, quantity, weight_kg: (p.weight_kg || 0) * quantity }
+        : null;
+    })
+    .filter((x): x is NonNullable<typeof x> => x != null);
+
+  if (planItems.length > 0) {
+    try {
+      const summary = await tripMetricsService.computePackingPlanSummary({
+        items: planItems,
+        vehicleMaxPallets: null,
+      });
+      estimatedPallets = Math.max(1, summary.totalPallets);
+      totalWeightKg = summary.totalWeightKg; // ใช้น้ำหนักจากแผนจัดเรียง (สอดคล้องกับพาเลท)
+    } catch (err) {
+      console.warn('[vehicleRecommendation] computePackingPlanSummary error, using fallback', err);
+      const PALLET_MAX_KG = 800;
+      const PALLET_MAX_LITER = 960;
+      const palletsByWeight = totalWeightKg > 0 ? Math.ceil(totalWeightKg / PALLET_MAX_KG) : 0;
+      const palletsByVolume = totalVolumeLiter > 0 ? Math.ceil(totalVolumeLiter / PALLET_MAX_LITER) : 0;
+      estimatedPallets = Math.max(palletsByWeight, palletsByVolume, 1);
+    }
+  } else {
+    const PALLET_MAX_KG = 800;
+    const PALLET_MAX_LITER = 960;
+    const palletsByWeight = totalWeightKg > 0 ? Math.ceil(totalWeightKg / PALLET_MAX_KG) : 0;
+    const palletsByVolume = totalVolumeLiter > 0 ? Math.ceil(totalVolumeLiter / PALLET_MAX_LITER) : 0;
+    estimatedPallets = Math.max(palletsByWeight, palletsByVolume, 1);
+  }
 
   return {
     totalWeightKg,
@@ -699,40 +737,45 @@ function scoreProductCompatibility(
   return Math.max(0, Math.min(100, score));
 }
 
-// ★ NEW: จำนวนพาเลทที่ต้องการ vs ที่รถรับได้ (จาก cargo dimensions)
+/** คืนค่าจำนวนพาเลทสูงสุดที่รถรับได้ — ใช้ loading_constraints.max_pallets ก่อน แล้วค่อยประเมินจากขนาด */
+function getVehicleMaxPallets(vehicle: VehicleRow): number | null {
+  const config =
+    vehicle.loading_constraints != null &&
+    typeof vehicle.loading_constraints === 'object' &&
+    typeof (vehicle.loading_constraints as any).max_pallets === 'number'
+      ? (vehicle.loading_constraints as any).max_pallets
+      : null;
+  if (config != null && config > 0) return config;
+  if (vehicle.cargo_length_cm && vehicle.cargo_width_cm) {
+    const lengthAligned = Math.floor(vehicle.cargo_length_cm / 120) * Math.floor(vehicle.cargo_width_cm / 100);
+    const widthAligned = Math.floor(vehicle.cargo_length_cm / 100) * Math.floor(vehicle.cargo_width_cm / 120);
+    return Math.max(lengthAligned, widthAligned) || null;
+  }
+  if (vehicle.cargo_volume_liter) return Math.floor(vehicle.cargo_volume_liter / 960) || null;
+  return null;
+}
+
+// ★ จำนวนพาเลทที่ต้องการ vs ที่รถรับได้ — ใช้ loading_constraints.max_pallets เป็นหลัก (ข้อมูลที่ลงไว้แล้ว)
 function scorePalletEfficiency(
   vehicle: VehicleRow,
   load: LoadEstimate
 ): number {
   if (load.estimatedPallets <= 0) return 80; // ไม่มีข้อมูลพาเลท
 
-  // คำนวณ max pallets จาก cargo dimensions (pallet footprint= 120×100cm)
-  let maxPallets = 0;
-  if (vehicle.cargo_length_cm && vehicle.cargo_width_cm) {
-    // จัดเรียง 2 แนว: ยาวตามรถ vs ขวางรถ เอาแบบที่ได้มากกว่า
-    const lengthAligned = Math.floor(vehicle.cargo_length_cm / 120) * Math.floor(vehicle.cargo_width_cm / 100);
-    const widthAligned = Math.floor(vehicle.cargo_length_cm / 100) * Math.floor(vehicle.cargo_width_cm / 120);
-    maxPallets = Math.max(lengthAligned, widthAligned);
-  }
+  const maxPallets = getVehicleMaxPallets(vehicle);
+  if (maxPallets == null || maxPallets <= 0) return 50; // ไม่สามารถประเมินได้
 
-  if (maxPallets <= 0) {
-    // ไม่มีข้อมูล dimensions → ประเมินจาก volume (pallet ~960L)
-    if (vehicle.cargo_volume_liter) {
-      maxPallets = Math.floor(vehicle.cargo_volume_liter / 960);
-    }
-    if (maxPallets <= 0) return 50; // ไม่สามารถประเมินได้
-  }
-
+  // รถใส่พาเลทไม่พอ → ตัดออกจากคำแนะนำ (คะแนน 0)
   if (load.estimatedPallets > maxPallets) {
-    // ไม่พอ → 0 ทันที (hard fail)
     return 0;
   }
 
-  // พอดีหรือเหลือ → ยิ่งพอดียิ่งดี
+  // พอดีหรือเหลือ → แนะนำรถที่ใส่ได้พอ หรือใกล้เคียง (ไม่เอาคันใหญ่เกินไปเป็นอันดับต้น)
   const ratio = load.estimatedPallets / maxPallets;
-  if (ratio >= 0.6) return 100; // ใช้ 60-100% → เหมาะสมมาก
-  if (ratio >= 0.3) return 80; // ใช้ 30-60% → โอเค
-  return 60; // ใช้น้อยมาก → รถใหญ่เกินไป
+  if (ratio >= 0.6 && ratio <= 1) return 100; // ใช้ 60–100% → เหมาะสมมาก
+  if (ratio >= 0.3) return 85; // ใช้ 30–60% → โอเค
+  if (ratio > 0) return 70; // ใช้น้อยมาก → รถใหญ่ไปแต่ยังใช้ได้
+  return 60;
 }
 
 function scoreAvailability(vehicleId: string, busyVehicleIds: Set<string>): number {

@@ -37,7 +37,7 @@ import type {
 } from '../services/deliveryTripService';
 import { tripMetricsService, type PostTripAnalysisEntry } from '../services/tripMetricsService';
 import { TripPostAnalysisPanel } from '../components/trip/TripPostAnalysisPanel';
-import { PackingLayoutEditor } from '../components/trip/PackingLayoutEditor';
+import { PackingSimulator } from '../components/trip/PackingSimulator';
 
 interface DeliveryTripDetailViewProps {
   tripId: string;
@@ -1120,13 +1120,11 @@ export const DeliveryTripDetailView: React.FC<DeliveryTripDetailViewProps> = ({
         </div>
         {showPackingLayout && (
           <div className="mt-4">
-            <PackingLayoutEditor
+            <PackingSimulator
               tripId={tripId}
-              tripStatus={trip.status || 'planned'}
               onClose={() => setShowPackingLayout(false)}
-              onSaved={() => {
-                refetch();
-              }}
+              onSaved={() => refetch()}
+              embedInDetailView
             />
           </div>
         )}

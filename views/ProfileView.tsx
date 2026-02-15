@@ -156,6 +156,7 @@ export const ProfileView: React.FC = () => {
     admin: 'ผู้ดูแลระบบ',
     sales: 'ฝ่ายขาย',
     driver: 'พนักงานขับรถ',
+    service_staff: 'พนักงานบริการ',
   };
 
   return (

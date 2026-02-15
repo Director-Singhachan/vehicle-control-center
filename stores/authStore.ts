@@ -21,6 +21,7 @@ interface AuthState {
   isExecutive: boolean;
   isDriver: boolean;
   isSales: boolean;
+  isServiceStaff: boolean;
   isReadOnly: boolean;
 
   // Actions
@@ -51,6 +52,7 @@ export const useAuthStore = create<AuthState>()(
       isExecutive: false,
       isDriver: false,
       isSales: false,
+      isServiceStaff: false,
       isReadOnly: false,
 
       setUser: (user) => set({ user }),
@@ -63,6 +65,7 @@ export const useAuthStore = create<AuthState>()(
           isExecutive: profile?.role === 'executive',
           isDriver: profile?.role === 'driver',
           isSales: profile?.role === 'sales',
+          isServiceStaff: profile?.role === 'service_staff',
           isReadOnly: profile?.role === 'user',
         });
       },
@@ -85,6 +88,7 @@ export const useAuthStore = create<AuthState>()(
             isExecutive: profile.role === 'executive',
             isDriver: profile.role === 'driver',
             isSales: profile.role === 'sales',
+            isServiceStaff: profile.role === 'service_staff',
             isReadOnly: profile.role === 'user',
           });
           console.log('[Auth] Using cached data, verifying session in background...');
@@ -113,14 +117,15 @@ export const useAuthStore = create<AuthState>()(
           if (user) {
             try {
               console.log('[Auth] Fetching profile for user:', user.id);
-              set({ loading: false });
-
+              // Keep loading true until profile is fetched so driver/sales don't see full menu flash
               getCurrentProfile().then(profile => {
                 console.log('[Auth] Profile fetched:', profile ? `role: ${profile.role}` : 'null');
                 get().setProfile(profile);
+                set({ loading: false });
               }).catch(err => {
                 console.warn('[Auth] Failed to fetch profile:', err);
                 get().setProfile(null);
+                set({ loading: false });
               });
             } catch (err) {
               console.warn('[Auth] Failed to fetch profile:', err);
@@ -214,6 +219,7 @@ export const useAuthStore = create<AuthState>()(
             isExecutive: false,
             isDriver: false,
             isSales: false,
+            isServiceStaff: false,
             isReadOnly: false
           });
         } finally {
@@ -248,6 +254,7 @@ export const useAuthStore = create<AuthState>()(
         isExecutive: state.isExecutive,
         isDriver: state.isDriver,
         isSales: state.isSales,
+        isServiceStaff: state.isServiceStaff,
         isReadOnly: state.isReadOnly,
       }),
     }
