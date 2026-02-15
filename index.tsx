@@ -70,6 +70,7 @@ const PendingOrdersView = lazy(() => import('./views/PendingOrdersView').then(m 
 const TrackOrdersView = lazy(() => import('./views/TrackOrdersView').then(m => ({ default: m.TrackOrdersView })));
 const SalesTripsView = lazy(() => import('./views/SalesTripsView').then(m => ({ default: m.SalesTripsView })));
 const CleanupTestOrdersView = lazy(() => import('./views/CleanupTestOrdersView').then(m => ({ default: m.CleanupTestOrdersView })));
+const PackingSimulationView = lazy(() => import('./views/PackingSimulationView').then(m => ({ default: m.PackingSimulationView })));
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { useAuth, usePendingTickets } from './hooks';
 import { usePendingBillingTrips } from './hooks/usePendingBillingTrips';
@@ -109,7 +110,7 @@ const SubSidebarItem = ({ label, active, onClick, isCollapsed, isFlyout }: any) 
 
 // Main App Content (wrapped in ProtectedRoute)
 const AppContent = () => {
-  const { user, profile, signOut, isAdmin, isManager, isInspector, isExecutive, isDriver, isSales, loading: authLoading, refreshProfile } = useAuth();
+  const { user, profile, signOut, isAdmin, isManager, isInspector, isExecutive, isDriver, isSales, isServiceStaff, loading: authLoading, refreshProfile } = useAuth();
 
   // Don't wait for profile - show UI immediately if user exists
   // Profile will load in background and update when ready
@@ -238,6 +239,7 @@ const AppContent = () => {
   const logisticsMenuRef = React.useRef<HTMLDivElement>(null);
   const logisticsTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
   const [logisticsFlyoutPosition, setLogisticsFlyoutPosition] = useState({ top: 0, left: 0 });
+  const [logisticsFlyoutMaxHeight, setLogisticsFlyoutMaxHeight] = useState<number>(400);
 
   const commissionTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
   const [flyoutPosition, setFlyoutPosition] = useState({ top: 0, left: 0 });
@@ -447,13 +449,15 @@ const AppContent = () => {
 
     const rect = e.currentTarget.getBoundingClientRect();
     const viewportHeight = window.innerHeight;
-    const flyoutEstimatedHeight = 480;
-
+    const margin = 16;
+    // บนมือถือใช้ความสูงไม่เกิน 85% ของจอ แล้ว clamp ตำแหน่งให้ flyout อยู่ภายใน viewport ทั้งหมด
+    const maxFlyoutHeight = Math.min(560, Math.floor(viewportHeight * 0.85) - margin);
     let top = rect.top;
-    if (top + flyoutEstimatedHeight > viewportHeight - 10) {
-      top = Math.max(10, viewportHeight - flyoutEstimatedHeight - 10);
+    if (top + maxFlyoutHeight > viewportHeight - margin) {
+      top = Math.max(margin, viewportHeight - maxFlyoutHeight - margin);
     }
-
+    const actualMaxHeight = viewportHeight - top - margin;
+    setLogisticsFlyoutMaxHeight(actualMaxHeight);
     setLogisticsFlyoutPosition({
       top,
       left: rect.right + 8,
@@ -572,11 +576,11 @@ const AppContent = () => {
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
   // Redirect drivers to trip log form page when they login (like maintenance form)
-  // Drivers can access: triplogs, fuellogs, maintenance, profile, settings
+  // Drivers can access: triplogs, fuellogs, maintenance, packing-simulation, profile, settings
   useEffect(() => {
     if (isDriver) {
       // If driver tries to access restricted areas, redirect to triplogs form
-      if (activeTab !== 'triplogs' && activeTab !== 'fuellogs' && activeTab !== 'maintenance' && activeTab !== 'profile' && activeTab !== 'settings') {
+      if (activeTab !== 'triplogs' && activeTab !== 'fuellogs' && activeTab !== 'maintenance' && activeTab !== 'packing-simulation' && activeTab !== 'profile' && activeTab !== 'settings') {
         setActiveTab('triplogs');
         setTripLogView('form');
         setTripLogMode('checkout');
@@ -593,6 +597,17 @@ const AppContent = () => {
       }
     }
   }, [isDriver, activeTab, fuelLogView]);
+
+  // Redirect service staff to packing-simulation when they access restricted areas
+  // พนักงานบริการเข้าถึงได้: packing-simulation, profile, settings
+  useEffect(() => {
+    if (isServiceStaff) {
+      const allowedTabs = ['packing-simulation', 'profile', 'settings'];
+      if (!allowedTabs.includes(activeTab)) {
+        setActiveTab('packing-simulation');
+      }
+    }
+  }, [isServiceStaff, activeTab]);
 
   // Redirect sales to create-order page when they access restricted areas
   // Sales can access: create-order, track-orders, sales-trips, products, product-pricing, customer-tiers, profile, settings
@@ -782,6 +797,18 @@ const AppContent = () => {
   const sidebarTransformClass = isMobile ? (isSidebarOpen ? 'translate-x-0' : '-translate-x-full') : 'translate-x-0';
   const contentMarginClass = isMobile ? 'ml-0' : (isSidebarOpen ? 'ml-64' : 'ml-20');
 
+  // ไม่แสดง sidebar/content จนกว่า profile จะโหลด — ป้องกันคนขับ/ฝ่ายขายเห็นเมนูอื่นแวบแล้วหาย
+  if (user && !profile) {
+    return (
+      <div className="min-h-screen bg-gray-50 dark:bg-charcoal-950 flex items-center justify-center font-sans">
+        <div className="flex flex-col items-center gap-4 text-slate-500 dark:text-slate-400">
+          <div className="w-12 h-12 border-2 border-enterprise-500 border-t-transparent rounded-full animate-spin" />
+          <p className="text-sm">กำลังโหลด...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-charcoal-950 flex font-sans selection:bg-enterprise-500 selection:text-white">
 
@@ -800,7 +827,7 @@ const AppContent = () => {
           )}
         </div>
 
-        <div className="flex-1 px-3 space-y-1 mt-4 overflow-y-auto overflow-x-clip scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-700 scrollbar-track-transparent hover:scrollbar-thumb-gray-400 dark:hover:scrollbar-thumb-gray-600 [&:has(.group\/menu:hover)]:overflow-x-visible">
+        <div className="flex-1 min-h-0 px-3 space-y-1 mt-4 overflow-y-auto overflow-x-clip scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-700 scrollbar-track-transparent hover:scrollbar-thumb-gray-400 dark:hover:scrollbar-thumb-gray-600 [&:has(.group\/menu:hover)]:overflow-x-visible">
           {/* 1. รายงาน (Reports) */}
           {!isDriver && !isSales && (
             <SidebarItem
@@ -1050,6 +1077,7 @@ const AppContent = () => {
                     activeTab === 'approvals' ||
                     activeTab === 'daily-summary' ||
                     activeTab === 'delivery-trips' ||
+                    activeTab === 'packing-simulation' ||
                     activeTab === 'service-staff' ||
                     activeTab === 'commission' ||
                     activeTab === 'commission-rates' ||
@@ -1080,7 +1108,10 @@ const AppContent = () => {
                   onMouseEnter={handleLogisticsFlyoutMouseEnter}
                   onMouseLeave={handleLogisticsFlyoutMouseLeave}
                 >
-                  <div className="bg-white dark:bg-charcoal-900 border border-slate-200 dark:border-slate-700 rounded-xl shadow-2xl min-w-[240px] py-2 ring-1 ring-black/5 dark:ring-white/10 animate-in fade-in slide-in-from-left-2 duration-150 max-h-[85vh] overflow-y-auto">
+                  <div
+                    className="bg-white dark:bg-charcoal-900 border border-slate-200 dark:border-slate-700 rounded-xl shadow-2xl min-w-[240px] py-2 ring-1 ring-black/5 dark:ring-white/10 animate-in fade-in slide-in-from-left-2 duration-150 overflow-y-auto"
+                    style={{ maxHeight: logisticsFlyoutMaxHeight }}
+                  >
                     <div className="px-4 pb-2 mb-2 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between">
                       <p className="text-[10px] font-black text-blue-500 uppercase tracking-widest">ฝ่ายขนส่ง (Logistics)</p>
                       <div className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"></div>
@@ -1198,7 +1229,7 @@ const AppContent = () => {
 
                       <div className="h-px bg-slate-100 dark:bg-slate-800 my-1 mx-2"></div>
 
-                      {/* Delivery Trips */}
+                      {/* Delivery Trips — เฉพาะไม่ใช่พนักงานขับ (รายการทริป/ออเดอร์) */}
                       {!isDriver && (
                         <>
                           <SubSidebarItem
@@ -1225,6 +1256,18 @@ const AppContent = () => {
                           />
                         </>
                       )}
+
+                      {/* จำลองจัดเรียง — ให้พนักงานขับและพนักงานบริการ (เมื่อมี role) เข้าถึงได้ */}
+                      <SubSidebarItem
+                        label="จำลองจัดเรียง"
+                        active={activeTab === 'packing-simulation'}
+                        onClick={() => {
+                          setActiveTab('packing-simulation');
+                          setIsLogisticsHovered(false);
+                        }}
+                        isCollapsed={false}
+                        isFlyout={true}
+                      />
 
                       {!isDriver && isAdmin && (
                         <>
@@ -1600,7 +1643,8 @@ const AppContent = () => {
                             profile.role === 'executive' ? 'ผู้บริหาร' :
                               profile.role === 'driver' ? 'พนักงานขับรถ' :
                                 profile.role === 'sales' ? 'ฝ่ายขาย' :
-                                  'ผู้ใช้';
+                                  profile.role === 'service_staff' ? 'พนักงานบริการ' :
+                                    'ผู้ใช้';
                     }
                     // If we have user but no profile AND not loading anymore, show default
                     if (user && !profile && !authLoading) {
@@ -1632,160 +1676,136 @@ const AppContent = () => {
               <span>กำลังโหลด...</span>
             </div>
           }>
-          {activeTab === 'dashboard' ? (
-            <DashboardView
-              onNavigateToVehicle={(vehicleId) => {
-                setActiveTab('vehicles');
-                setSelectedVehicleId(vehicleId);
-                setVehicleView('detail');
-              }}
-              isDark={isDark}
-              onNavigateToTickets={() => {
-                setActiveTab('maintenance');
-                setTicketView('list');
-              }}
-              onNavigateToTicketDetail={(ticketId) => {
-                setActiveTab('maintenance');
-                setSelectedTicketId(ticketId.toString());
-                setTicketView('detail');
-              }}
-              onNavigateToTripLogs={() => {
-                setActiveTab('triplogs');
-                setTripLogView('list');
-              }}
-              onCheckInTrip={(tripId) => {
-                setActiveTab('triplogs');
-                setTripLogMode('checkin');
-                setSelectedTripId(tripId);
-                setTripLogView('form');
-              }}
-            />
-          ) : activeTab === 'vehicles' ? (
-            (() => {
-              console.log('[AppContent] ✅✅✅ ENTERED vehicles branch!');
-              console.log('[AppContent] ✅ activeTab is vehicles, vehicleView:', vehicleView, 'selectedVehicleId:', selectedVehicleId);
+            {activeTab === 'dashboard' ? (
+              <DashboardView
+                onNavigateToVehicle={(vehicleId) => {
+                  setActiveTab('vehicles');
+                  setSelectedVehicleId(vehicleId);
+                  setVehicleView('detail');
+                }}
+                isDark={isDark}
+                onNavigateToTickets={() => {
+                  setActiveTab('maintenance');
+                  setTicketView('list');
+                }}
+                onNavigateToTicketDetail={(ticketId) => {
+                  setActiveTab('maintenance');
+                  setSelectedTicketId(ticketId.toString());
+                  setTicketView('detail');
+                }}
+                onNavigateToTripLogs={() => {
+                  setActiveTab('triplogs');
+                  setTripLogView('list');
+                }}
+                onCheckInTrip={(tripId) => {
+                  setActiveTab('triplogs');
+                  setTripLogMode('checkin');
+                  setSelectedTripId(tripId);
+                  setTripLogView('form');
+                }}
+              />
+            ) : activeTab === 'vehicles' ? (
+              (() => {
+                console.log('[AppContent] ✅✅✅ ENTERED vehicles branch!');
+                console.log('[AppContent] ✅ activeTab is vehicles, vehicleView:', vehicleView, 'selectedVehicleId:', selectedVehicleId);
 
-              // Fix: If vehicleView is 'detail' but no selectedVehicleId, show list instead
-              const effectiveView = (vehicleView === 'detail' && !selectedVehicleId) ? 'list' : vehicleView;
+                // Fix: If vehicleView is 'detail' but no selectedVehicleId, show list instead
+                const effectiveView = (vehicleView === 'detail' && !selectedVehicleId) ? 'list' : vehicleView;
 
-              if (effectiveView === 'list') {
-                console.log('[AppContent] ✅ Rendering VehiclesView (list)');
-                return (
-                  <VehiclesView
-                    onViewDetail={(id) => {
-                      console.log('[AppContent] onViewDetail called:', id);
-                      setSelectedVehicleId(id);
-                      setVehicleView('detail');
-                    }}
-                    onEdit={(id) => {
-                      console.log('[AppContent] onEdit called:', id);
-                      setSelectedVehicleId(id);
-                      setVehicleView('form');
-                    }}
-                    onCreate={() => {
-                      console.log('[AppContent] onCreate called');
-                      setSelectedVehicleId(undefined);
-                      setVehicleView('form');
-                    }}
-                  />
-                );
-              } else if (effectiveView === 'detail' && selectedVehicleId) {
-                console.log('[AppContent] ✅ Rendering VehicleDetailView');
-                return (
-                  <VehicleDetailView
-                    vehicleId={selectedVehicleId}
-                    onEdit={(id) => {
-                      setSelectedVehicleId(id);
-                      setVehicleView('form');
-                    }}
-                    onBack={() => {
-                      setVehicleView('list');
-                      setSelectedVehicleId(null);
-                    }}
-                    onViewTicket={(ticketId) => {
-                      // ไปหน้ารายละเอียดตั๋วซ่อมบำรุง
-                      setActiveTab('maintenance');
-                      setSelectedTicketId(ticketId.toString());
-                      setTicketView('detail');
-                    }}
-                    onViewDeliveryTrip={(deliveryTripId) => {
-                      setSelectedDeliveryTripId(deliveryTripId);
-                      setDeliveryTripView('detail');
-                      setDeliveryTripReturnContext('vehicles');
-                      setActiveTab('delivery-trips');
-                    }}
-                  />
-                );
-              } else if (effectiveView === 'form') {
-                console.log('[AppContent] ✅ Rendering VehicleFormView');
-                return (
-                  <VehicleFormView
-                    vehicleId={selectedVehicleId || undefined}
-                    onSave={() => {
-                      setVehicleView('list');
-                      setSelectedVehicleId(null);
-                    }}
-                    onCancel={() => {
-                      if (selectedVehicleId) {
+                if (effectiveView === 'list') {
+                  console.log('[AppContent] ✅ Rendering VehiclesView (list)');
+                  return (
+                    <VehiclesView
+                      onViewDetail={(id) => {
+                        console.log('[AppContent] onViewDetail called:', id);
+                        setSelectedVehicleId(id);
                         setVehicleView('detail');
-                      } else {
+                      }}
+                      onEdit={(id) => {
+                        console.log('[AppContent] onEdit called:', id);
+                        setSelectedVehicleId(id);
+                        setVehicleView('form');
+                      }}
+                      onCreate={() => {
+                        console.log('[AppContent] onCreate called');
+                        setSelectedVehicleId(undefined);
+                        setVehicleView('form');
+                      }}
+                    />
+                  );
+                } else if (effectiveView === 'detail' && selectedVehicleId) {
+                  console.log('[AppContent] ✅ Rendering VehicleDetailView');
+                  return (
+                    <VehicleDetailView
+                      vehicleId={selectedVehicleId}
+                      onEdit={(id) => {
+                        setSelectedVehicleId(id);
+                        setVehicleView('form');
+                      }}
+                      onBack={() => {
                         setVehicleView('list');
                         setSelectedVehicleId(null);
-                      }
-                    }}
-                  />
-                );
-              }
-              console.log('[AppContent] ⚠️ No matching view - returning null');
-              return null;
-            })()
-          ) : activeTab === 'maintenance' ? (
-            (() => {
-              console.log('[AppContent] Maintenance tab - rendering:', {
-                isDriver,
-                ticketView,
-                selectedTicketId,
-                willRenderTicketsView: !isDriver && ticketView === 'list'
-              });
+                      }}
+                      onViewTicket={(ticketId) => {
+                        // ไปหน้ารายละเอียดตั๋วซ่อมบำรุง
+                        setActiveTab('maintenance');
+                        setSelectedTicketId(ticketId.toString());
+                        setTicketView('detail');
+                      }}
+                      onViewDeliveryTrip={(deliveryTripId) => {
+                        setSelectedDeliveryTripId(deliveryTripId);
+                        setDeliveryTripView('detail');
+                        setDeliveryTripReturnContext('vehicles');
+                        setActiveTab('delivery-trips');
+                      }}
+                    />
+                  );
+                } else if (effectiveView === 'form') {
+                  console.log('[AppContent] ✅ Rendering VehicleFormView');
+                  return (
+                    <VehicleFormView
+                      vehicleId={selectedVehicleId || undefined}
+                      onSave={() => {
+                        setVehicleView('list');
+                        setSelectedVehicleId(null);
+                      }}
+                      onCancel={() => {
+                        if (selectedVehicleId) {
+                          setVehicleView('detail');
+                        } else {
+                          setVehicleView('list');
+                          setSelectedVehicleId(null);
+                        }
+                      }}
+                    />
+                  );
+                }
+                console.log('[AppContent] ⚠️ No matching view - returning null');
+                return null;
+              })()
+            ) : activeTab === 'maintenance' ? (
+              (() => {
+                console.log('[AppContent] Maintenance tab - rendering:', {
+                  isDriver,
+                  ticketView,
+                  selectedTicketId,
+                  willRenderTicketsView: !isDriver && ticketView === 'list'
+                });
 
-              // For drivers, show the form by default if they are in list view
-              if (isDriver && ticketView === 'list') {
-                return (
-                  <TicketFormView
-                    onSave={() => {
-                      window.location.reload();
-                    }}
-                    onCancel={() => {
-                      // Do nothing or reset form
-                    }}
-                  />
-                );
-              } else if (ticketView === 'list') {
-                console.log('[AppContent] Rendering TicketsView');
-                return (
-                  <TicketsView
-                    onViewDetail={(id) => {
-                      setSelectedTicketId(id);
-                      setTicketView('detail');
-                    }}
-                    onCreate={() => {
-                      setSelectedTicketId(null);
-                      setTicketView('form');
-                    }}
-                  />
-                );
-              } else if (ticketView === 'detail' && selectedTicketId) {
-                console.log('[AppContent] Rendering TicketDetailView with ticketId:', selectedTicketId);
-                // Convert string to number if needed
-                const ticketIdNum = typeof selectedTicketId === 'string' ? parseInt(selectedTicketId, 10) : selectedTicketId;
-                if (isNaN(ticketIdNum) || ticketIdNum <= 0) {
-                  console.error('[AppContent] Invalid ticketId, resetting to list');
-                  // Reset state immediately
-                  setTimeout(() => {
-                    setTicketView('list');
-                    setSelectedTicketId(null);
-                  }, 0);
-                  // Show TicketsView as fallback
+                // For drivers, show the form by default if they are in list view
+                if (isDriver && ticketView === 'list') {
+                  return (
+                    <TicketFormView
+                      onSave={() => {
+                        window.location.reload();
+                      }}
+                      onCancel={() => {
+                        // Do nothing or reset form
+                      }}
+                    />
+                  );
+                } else if (ticketView === 'list') {
+                  console.log('[AppContent] Rendering TicketsView');
                   return (
                     <TicketsView
                       onViewDetail={(id) => {
@@ -1798,393 +1818,419 @@ const AppContent = () => {
                       }}
                     />
                   );
-                }
-                return (
-                  <TicketDetailView
-                    ticketId={ticketIdNum}
-                    onBack={() => {
+                } else if (ticketView === 'detail' && selectedTicketId) {
+                  console.log('[AppContent] Rendering TicketDetailView with ticketId:', selectedTicketId);
+                  // Convert string to number if needed
+                  const ticketIdNum = typeof selectedTicketId === 'string' ? parseInt(selectedTicketId, 10) : selectedTicketId;
+                  if (isNaN(ticketIdNum) || ticketIdNum <= 0) {
+                    console.error('[AppContent] Invalid ticketId, resetting to list');
+                    // Reset state immediately
+                    setTimeout(() => {
                       setTicketView('list');
                       setSelectedTicketId(null);
-                    }}
-                    onEdit={(id) => {
+                    }, 0);
+                    // Show TicketsView as fallback
+                    return (
+                      <TicketsView
+                        onViewDetail={(id) => {
+                          setSelectedTicketId(id);
+                          setTicketView('detail');
+                        }}
+                        onCreate={() => {
+                          setSelectedTicketId(null);
+                          setTicketView('form');
+                        }}
+                      />
+                    );
+                  }
+                  return (
+                    <TicketDetailView
+                      ticketId={ticketIdNum}
+                      onBack={() => {
+                        setTicketView('list');
+                        setSelectedTicketId(null);
+                      }}
+                      onEdit={(id) => {
+                        setSelectedTicketId(id);
+                        setTicketView('form');
+                      }}
+                    />
+                  );
+                } else if (ticketView === 'form') {
+                  return (
+                    <TicketFormView
+                      ticketId={selectedTicketId || undefined}
+                      onSave={() => {
+                        setTicketView('list');
+                        setSelectedTicketId(null);
+                      }}
+                      onCancel={() => {
+                        if (selectedTicketId) {
+                          setTicketView('detail');
+                        } else {
+                          setTicketView('list');
+                          setSelectedTicketId(null);
+                        }
+                      }}
+                    />
+                  );
+                }
+
+                // Fallback: Show TicketsView if state is invalid
+                console.warn('[AppContent] Invalid state, resetting and showing TicketsView');
+                // Reset state immediately using setTimeout to avoid state update during render
+                setTimeout(() => {
+                  setTicketView('list');
+                  setSelectedTicketId(null);
+                }, 0);
+                return (
+                  <TicketsView
+                    onViewDetail={(id) => {
                       setSelectedTicketId(id);
+                      setTicketView('detail');
+                    }}
+                    onCreate={() => {
+                      setSelectedTicketId(null);
                       setTicketView('form');
                     }}
                   />
                 );
-              } else if (ticketView === 'form') {
-                return (
-                  <TicketFormView
-                    ticketId={selectedTicketId || undefined}
-                    onSave={() => {
-                      setTicketView('list');
-                      setSelectedTicketId(null);
-                    }}
-                    onCancel={() => {
-                      if (selectedTicketId) {
-                        setTicketView('detail');
-                      } else {
-                        setTicketView('list');
-                        setSelectedTicketId(null);
-                      }
-                    }}
-                  />
-                );
-              }
-
-              // Fallback: Show TicketsView if state is invalid
-              console.warn('[AppContent] Invalid state, resetting and showing TicketsView');
-              // Reset state immediately using setTimeout to avoid state update during render
-              setTimeout(() => {
-                setTicketView('list');
-                setSelectedTicketId(null);
-              }, 0);
-              return (
-                <TicketsView
-                  onViewDetail={(id) => {
-                    setSelectedTicketId(id);
-                    setTicketView('detail');
+              })()
+            ) : activeTab === 'triplogs' ? (
+              // For drivers, always show form, never list
+              isDriver ? (
+                <TripLogFormView
+                  vehicleId={selectedVehicleId || undefined}
+                  tripId={selectedTripId || undefined}
+                  mode={tripLogMode}
+                  onSave={() => {
+                    // For drivers, stay on form but reset
+                    setSelectedTripId(null);
+                    setSelectedVehicleId(null);
+                    setTripLogMode('checkout');
+                    // Optional: Reload to ensure fresh state if needed, but component state reset should be enough
                   }}
-                  onCreate={() => {
-                    setSelectedTicketId(null);
-                    setTicketView('form');
+                  onCancel={() => {
+                    // Drivers can't go back to list, so just reset
+                    setSelectedTripId(null);
+                    setSelectedVehicleId(null);
+                    setTripLogMode('checkout');
                   }}
                 />
-              );
-            })()
-          ) : activeTab === 'triplogs' ? (
-            // For drivers, always show form, never list
-            isDriver ? (
-              <TripLogFormView
-                vehicleId={selectedVehicleId || undefined}
-                tripId={selectedTripId || undefined}
-                mode={tripLogMode}
-                onSave={() => {
-                  // For drivers, stay on form but reset
-                  setSelectedTripId(null);
-                  setSelectedVehicleId(null);
-                  setTripLogMode('checkout');
-                  // Optional: Reload to ensure fresh state if needed, but component state reset should be enough
-                }}
-                onCancel={() => {
-                  // Drivers can't go back to list, so just reset
-                  setSelectedTripId(null);
-                  setSelectedVehicleId(null);
-                  setTripLogMode('checkout');
-                }}
-              />
-            ) : tripLogView === 'list' ? (
-              <TripLogListView
-                onCreateCheckout={() => {
-                  setTripLogMode('checkout');
-                  setTripLogView('form');
-                  setSelectedTripId(null);
-                }}
-                onCreateCheckin={(tripId) => {
-                  setTripLogMode('checkin');
-                  setSelectedTripId(tripId);
-                  setTripLogView('form');
-                }}
-                onViewDeliveryTrip={(deliveryTripId) => {
-                  setSelectedDeliveryTripId(deliveryTripId);
-                  setDeliveryTripView('detail');
-                  setDeliveryTripReturnContext('triplogs');
-                  setActiveTab('delivery-trips');
-                }}
-              />
-            ) : tripLogView === 'form' ? (
-              <TripLogFormView
-                vehicleId={selectedVehicleId || undefined}
-                tripId={selectedTripId || undefined}
-                mode={tripLogMode}
-                onSave={() => {
-                  setTripLogView('list');
-                  setSelectedTripId(null);
-                  setSelectedVehicleId(null);
-                }}
-                onCancel={() => {
-                  setTripLogView('list');
-                  setSelectedTripId(null);
-                  setSelectedVehicleId(null);
-                }}
-              />
-            ) : null
-          ) : activeTab === 'fuellogs' ? (
-            fuelLogView === 'list' ? (
-              // Don't show list view for drivers - redirect to form
-              isDriver ? (
-                <FuelLogFormView
+              ) : tripLogView === 'list' ? (
+                <TripLogListView
+                  onCreateCheckout={() => {
+                    setTripLogMode('checkout');
+                    setTripLogView('form');
+                    setSelectedTripId(null);
+                  }}
+                  onCreateCheckin={(tripId) => {
+                    setTripLogMode('checkin');
+                    setSelectedTripId(tripId);
+                    setTripLogView('form');
+                  }}
+                  onViewDeliveryTrip={(deliveryTripId) => {
+                    setSelectedDeliveryTripId(deliveryTripId);
+                    setDeliveryTripView('detail');
+                    setDeliveryTripReturnContext('triplogs');
+                    setActiveTab('delivery-trips');
+                  }}
+                />
+              ) : tripLogView === 'form' ? (
+                <TripLogFormView
                   vehicleId={selectedVehicleId || undefined}
+                  tripId={selectedTripId || undefined}
+                  mode={tripLogMode}
                   onSave={() => {
-                    // Stay on form for drivers, don't redirect to list
+                    setTripLogView('list');
+                    setSelectedTripId(null);
                     setSelectedVehicleId(null);
                   }}
                   onCancel={() => {
-                    // For drivers, cancel goes back to triplogs form
-                    setActiveTab('triplogs');
-                    setTripLogView('form');
+                    setTripLogView('list');
+                    setSelectedTripId(null);
                     setSelectedVehicleId(null);
                   }}
                 />
+              ) : null
+            ) : activeTab === 'fuellogs' ? (
+              fuelLogView === 'list' ? (
+                // Don't show list view for drivers - redirect to form
+                isDriver ? (
+                  <FuelLogFormView
+                    vehicleId={selectedVehicleId || undefined}
+                    onSave={() => {
+                      // Stay on form for drivers, don't redirect to list
+                      setSelectedVehicleId(null);
+                    }}
+                    onCancel={() => {
+                      // For drivers, cancel goes back to triplogs form
+                      setActiveTab('triplogs');
+                      setTripLogView('form');
+                      setSelectedVehicleId(null);
+                    }}
+                  />
+                ) : (
+                  <FuelLogListView
+                    onCreate={() => {
+                      setFuelLogView('form');
+                    }}
+                  />
+                )
+              ) : fuelLogView === 'form' ? (
+                <FuelLogFormView
+                  vehicleId={selectedVehicleId || undefined}
+                  onSave={() => {
+                    // For drivers, stay on form; for others, go to list
+                    if (isDriver) {
+                      setSelectedVehicleId(null);
+                    } else {
+                      setFuelLogView('list');
+                      setSelectedVehicleId(null);
+                    }
+                  }}
+                  onCancel={() => {
+                    // For drivers, cancel goes back to triplogs form; for others, go to list
+                    if (isDriver) {
+                      setActiveTab('triplogs');
+                      setTripLogView('form');
+                      setSelectedVehicleId(null);
+                    } else {
+                      setFuelLogView('list');
+                      setSelectedVehicleId(null);
+                    }
+                  }}
+                />
+              ) : null
+            ) : activeTab === 'approvals' ? (
+              // Check permissions - check role directly from profile for reliability
+              (() => {
+                // Show loading only if we truly don't have profile yet
+                if (!profile && authLoading) {
+                  return (
+                    <div className="flex flex-col items-center justify-center h-[60vh] text-slate-400">
+                      <CheckSquare size={48} className="mb-4 opacity-50 animate-pulse" />
+                      <p className="text-sm text-slate-500 dark:text-slate-400">กำลังตรวจสอบสิทธิ์...</p>
+                    </div>
+                  );
+                }
+
+                // Check role directly from profile (more reliable than isManager flags)
+                const userRole = profile?.role?.toLowerCase();
+                const hasPermission = userRole === 'admin' ||
+                  userRole === 'manager' ||
+                  userRole === 'inspector' ||
+                  userRole === 'executive' ||
+                  isAdmin || isInspector || isManager || isExecutive; // Fallback to flags
+
+                if (hasPermission) {
+                  return (
+                    <ApprovalBoardView
+                      onViewDetail={(ticketId) => {
+                        setActiveTab('maintenance');
+                        setSelectedTicketId(ticketId.toString());
+                        setTicketView('detail');
+                      }}
+                    />
+                  );
+                }
+
+                // No permission - show error message
+                return (
+                  <div className="flex flex-col items-center justify-center h-[60vh] text-slate-400">
+                    <CheckSquare size={48} className="mb-4 opacity-50" />
+                    <h3 className="text-xl font-medium text-slate-600 dark:text-slate-300">ไม่มีสิทธิ์เข้าถึง</h3>
+                    <p className="text-sm text-slate-500 dark:text-slate-400 mt-2">
+                      หน้านี้จำกัดสำหรับผู้ตรวจสอบ, ผู้จัดการ, ผู้บริหาร และผู้ดูแลระบบเท่านั้น
+                    </p>
+                    <div className="mt-4 p-4 bg-slate-100 dark:bg-slate-800 rounded-lg text-left">
+                      <p className="text-xs font-semibold text-slate-600 dark:text-slate-300 mb-2">ข้อมูล Debug:</p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">
+                        บทบาท: {profile?.role || 'ไม่พบข้อมูล'}
+                      </p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">
+                        isAdmin: {isAdmin ? 'true' : 'false'}
+                      </p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">
+                        isManager: {isManager ? 'true' : 'false'}
+                      </p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">
+                        isInspector: {isInspector ? 'true' : 'false'}
+                      </p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">
+                        isExecutive: {isExecutive ? 'true' : 'false'}
+                      </p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">
+                        Profile ID: {profile?.id || 'ไม่มี'}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })()
+            ) : activeTab === 'profile' ? (
+              <ProfileView />
+            ) : activeTab === 'rls-test' ? (
+              <RLSTestView />
+            ) : activeTab === 'daily-summary' ? (
+              <DailySummaryView
+                isDark={isDark}
+                onViewDeliveryTrip={(deliveryTripId) => {
+                  setSelectedDeliveryTripId(deliveryTripId);
+                  setDeliveryTripView('detail');
+                  setDeliveryTripReturnContext('daily-summary');
+                  setActiveTab('delivery-trips');
+                }}
+              />
+            ) : activeTab === 'reports' ? (
+              storeDetailView === 'detail' && selectedStoreId ? (
+                <StoreDeliveryDetailView
+                  storeId={selectedStoreId}
+                  onBack={() => {
+                    setStoreDetailView('list');
+                    setSelectedStoreId(null);
+                  }}
+                  isDark={isDark}
+                />
               ) : (
-                <FuelLogListView
-                  onCreate={() => {
-                    setFuelLogView('form');
+                <ReportsView
+                  isDark={isDark}
+                  onNavigateToStoreDetail={(storeId) => {
+                    setSelectedStoreId(storeId);
+                    setStoreDetailView('detail');
                   }}
                 />
               )
-            ) : fuelLogView === 'form' ? (
-              <FuelLogFormView
-                vehicleId={selectedVehicleId || undefined}
-                onSave={() => {
-                  // For drivers, stay on form; for others, go to list
-                  if (isDriver) {
-                    setSelectedVehicleId(null);
-                  } else {
-                    setFuelLogView('list');
-                    setSelectedVehicleId(null);
-                  }
-                }}
-                onCancel={() => {
-                  // For drivers, cancel goes back to triplogs form; for others, go to list
-                  if (isDriver) {
-                    setActiveTab('triplogs');
-                    setTripLogView('form');
-                    setSelectedVehicleId(null);
-                  } else {
-                    setFuelLogView('list');
-                    setSelectedVehicleId(null);
-                  }
-                }}
-              />
-            ) : null
-          ) : activeTab === 'approvals' ? (
-            // Check permissions - check role directly from profile for reliability
-            (() => {
-              // Show loading only if we truly don't have profile yet
-              if (!profile && authLoading) {
-                return (
-                  <div className="flex flex-col items-center justify-center h-[60vh] text-slate-400">
-                    <CheckSquare size={48} className="mb-4 opacity-50 animate-pulse" />
-                    <p className="text-sm text-slate-500 dark:text-slate-400">กำลังตรวจสอบสิทธิ์...</p>
-                  </div>
-                );
-              }
-
-              // Check role directly from profile (more reliable than isManager flags)
-              const userRole = profile?.role?.toLowerCase();
-              const hasPermission = userRole === 'admin' ||
-                userRole === 'manager' ||
-                userRole === 'inspector' ||
-                userRole === 'executive' ||
-                isAdmin || isInspector || isManager || isExecutive; // Fallback to flags
-
-              if (hasPermission) {
-                return (
-                  <ApprovalBoardView
-                    onViewDetail={(ticketId) => {
-                      setActiveTab('maintenance');
-                      setSelectedTicketId(ticketId.toString());
-                      setTicketView('detail');
-                    }}
-                  />
-                );
-              }
-
-              // No permission - show error message
-              return (
-                <div className="flex flex-col items-center justify-center h-[60vh] text-slate-400">
-                  <CheckSquare size={48} className="mb-4 opacity-50" />
-                  <h3 className="text-xl font-medium text-slate-600 dark:text-slate-300">ไม่มีสิทธิ์เข้าถึง</h3>
-                  <p className="text-sm text-slate-500 dark:text-slate-400 mt-2">
-                    หน้านี้จำกัดสำหรับผู้ตรวจสอบ, ผู้จัดการ, ผู้บริหาร และผู้ดูแลระบบเท่านั้น
-                  </p>
-                  <div className="mt-4 p-4 bg-slate-100 dark:bg-slate-800 rounded-lg text-left">
-                    <p className="text-xs font-semibold text-slate-600 dark:text-slate-300 mb-2">ข้อมูล Debug:</p>
-                    <p className="text-xs text-slate-500 dark:text-slate-400">
-                      บทบาท: {profile?.role || 'ไม่พบข้อมูล'}
-                    </p>
-                    <p className="text-xs text-slate-500 dark:text-slate-400">
-                      isAdmin: {isAdmin ? 'true' : 'false'}
-                    </p>
-                    <p className="text-xs text-slate-500 dark:text-slate-400">
-                      isManager: {isManager ? 'true' : 'false'}
-                    </p>
-                    <p className="text-xs text-slate-500 dark:text-slate-400">
-                      isInspector: {isInspector ? 'true' : 'false'}
-                    </p>
-                    <p className="text-xs text-slate-500 dark:text-slate-400">
-                      isExecutive: {isExecutive ? 'true' : 'false'}
-                    </p>
-                    <p className="text-xs text-slate-500 dark:text-slate-400">
-                      Profile ID: {profile?.id || 'ไม่มี'}
-                    </p>
-                  </div>
-                </div>
-              );
-            })()
-          ) : activeTab === 'profile' ? (
-            <ProfileView />
-          ) : activeTab === 'rls-test' ? (
-            <RLSTestView />
-          ) : activeTab === 'daily-summary' ? (
-            <DailySummaryView
-              isDark={isDark}
-              onViewDeliveryTrip={(deliveryTripId) => {
-                setSelectedDeliveryTripId(deliveryTripId);
-                setDeliveryTripView('detail');
-                setDeliveryTripReturnContext('daily-summary');
-                setActiveTab('delivery-trips');
-              }}
-            />
-          ) : activeTab === 'reports' ? (
-            storeDetailView === 'detail' && selectedStoreId ? (
-              <StoreDeliveryDetailView
-                storeId={selectedStoreId}
-                onBack={() => {
-                  setStoreDetailView('list');
-                  setSelectedStoreId(null);
-                }}
-                isDark={isDark}
-              />
-            ) : (
-              <ReportsView
-                isDark={isDark}
-                onNavigateToStoreDetail={(storeId) => {
-                  setSelectedStoreId(storeId);
-                  setStoreDetailView('detail');
-                }}
-              />
-            )
-          ) : activeTab === 'settings' ? (
-            <SettingsView />
-          ) : activeTab === 'delivery-trips' ? (
-            (() => {
-              if (deliveryTripView === 'metrics' && selectedDeliveryTripId) {
-                return (
-                  <TripMetricsView
-                    tripId={selectedDeliveryTripId}
-                    onSaved={() => setDeliveryTripView('detail')}
-                    onBack={() => setDeliveryTripView('detail')}
-                  />
-                );
-              }
-              if (deliveryTripView === 'detail' && selectedDeliveryTripId) {
-                return (
-                  <DeliveryTripDetailView
-                    tripId={selectedDeliveryTripId}
-                    onEdit={(tripId) => {
-                      setSelectedDeliveryTripId(tripId);
-                      setDeliveryTripView('form');
-                    }}
-                    onRecordMetrics={() => setDeliveryTripView('metrics')}
-                    onBack={() => {
-                      // กลับไปหน้าที่เข้ามาล่าสุด
-                      if (deliveryTripReturnContext === 'triplogs') {
-                        setActiveTab('triplogs');
-                      } else if (deliveryTripReturnContext === 'daily-summary') {
-                        setActiveTab('daily-summary');
-                      } else if (deliveryTripReturnContext === 'vehicles') {
-                        setActiveTab('vehicles');
-                        setVehicleView('detail');
-                      } else {
-                        // ค่าเริ่มต้น: กลับไปหน้ารายการทริปส่งสินค้า
-                        setActiveTab('delivery-trips');
-                        setDeliveryTripView('list');
-                      }
-                      setSelectedDeliveryTripId(null);
-                    }}
-                  />
-                );
-              } else if (deliveryTripView === 'form') {
-                return (
-                  <DeliveryTripFormView
-                    tripId={selectedDeliveryTripId || undefined}
-                    onSave={() => {
-                      setDeliveryTripView('list');
-                      setSelectedDeliveryTripId(null);
-                    }}
-                    onCancel={() => {
-                      if (selectedDeliveryTripId) {
-                        setDeliveryTripView('detail');
-                      } else {
+            ) : activeTab === 'settings' ? (
+              <SettingsView />
+            ) : activeTab === 'delivery-trips' ? (
+              (() => {
+                if (deliveryTripView === 'metrics' && selectedDeliveryTripId) {
+                  return (
+                    <TripMetricsView
+                      tripId={selectedDeliveryTripId}
+                      onSaved={() => setDeliveryTripView('detail')}
+                      onBack={() => setDeliveryTripView('detail')}
+                    />
+                  );
+                }
+                if (deliveryTripView === 'detail' && selectedDeliveryTripId) {
+                  return (
+                    <DeliveryTripDetailView
+                      tripId={selectedDeliveryTripId}
+                      onEdit={(tripId) => {
+                        setSelectedDeliveryTripId(tripId);
+                        setDeliveryTripView('form');
+                      }}
+                      onRecordMetrics={() => setDeliveryTripView('metrics')}
+                      onBack={() => {
+                        // กลับไปหน้าที่เข้ามาล่าสุด
+                        if (deliveryTripReturnContext === 'triplogs') {
+                          setActiveTab('triplogs');
+                        } else if (deliveryTripReturnContext === 'daily-summary') {
+                          setActiveTab('daily-summary');
+                        } else if (deliveryTripReturnContext === 'vehicles') {
+                          setActiveTab('vehicles');
+                          setVehicleView('detail');
+                        } else {
+                          // ค่าเริ่มต้น: กลับไปหน้ารายการทริปส่งสินค้า
+                          setActiveTab('delivery-trips');
+                          setDeliveryTripView('list');
+                        }
+                        setSelectedDeliveryTripId(null);
+                      }}
+                    />
+                  );
+                } else if (deliveryTripView === 'form') {
+                  return (
+                    <DeliveryTripFormView
+                      tripId={selectedDeliveryTripId || undefined}
+                      onSave={() => {
                         setDeliveryTripView('list');
                         setSelectedDeliveryTripId(null);
-                      }
-                    }}
-                  />
-                );
-              } else {
-                return (
-                  <DeliveryTripListView
-                    onViewDetail={(tripId) => {
-                      setSelectedDeliveryTripId(tripId);
-                      setDeliveryTripView('detail');
-                      setDeliveryTripReturnContext('delivery-list');
-                    }}
-                    onCreate={() => {
-                      setSelectedDeliveryTripId(null);
-                      setDeliveryTripView('form');
-                    }}
-                  />
-                );
-              }
-            })()
-          ) : activeTab === 'service-staff' ? (
-            serviceStaffView === 'usage' && selectedServiceStaffId ? (
-              <StaffVehicleUsageView
-                staffId={selectedServiceStaffId}
-                onBack={() => {
-                  setServiceStaffView('list');
-                  setSelectedServiceStaffId(null);
-                }}
-              />
+                      }}
+                      onCancel={() => {
+                        if (selectedDeliveryTripId) {
+                          setDeliveryTripView('detail');
+                        } else {
+                          setDeliveryTripView('list');
+                          setSelectedDeliveryTripId(null);
+                        }
+                      }}
+                    />
+                  );
+                } else {
+                  return (
+                    <DeliveryTripListView
+                      onViewDetail={(tripId) => {
+                        setSelectedDeliveryTripId(tripId);
+                        setDeliveryTripView('detail');
+                        setDeliveryTripReturnContext('delivery-list');
+                      }}
+                      onCreate={() => {
+                        setSelectedDeliveryTripId(null);
+                        setDeliveryTripView('form');
+                      }}
+                    />
+                  );
+                }
+              })()
+            ) : activeTab === 'service-staff' ? (
+              serviceStaffView === 'usage' && selectedServiceStaffId ? (
+                <StaffVehicleUsageView
+                  staffId={selectedServiceStaffId}
+                  onBack={() => {
+                    setServiceStaffView('list');
+                    setSelectedServiceStaffId(null);
+                  }}
+                />
+              ) : (
+                <ServiceStaffManagementView
+                  onViewUsage={(staffId: string) => {
+                    setSelectedServiceStaffId(staffId);
+                    setServiceStaffView('usage');
+                    setActiveTab('service-staff');
+                  }}
+                />
+              )
+            ) : activeTab === 'commission' ? (
+              <CommissionManagementView />
+            ) : activeTab === 'commission-rates' ? (
+              <CommissionRatesView />
+            ) : activeTab === 'stock-dashboard' ? (
+              <StockDashboardView />
+            ) : activeTab === 'products' ? (
+              <ProductsManagementView />
+            ) : activeTab === 'warehouses' ? (
+              <WarehouseManagementView />
+            ) : activeTab === 'inventory-receipts' ? (
+              <InventoryReceiptsView />
+            ) : activeTab === 'customer-tiers' ? (
+              <CustomerTiersManagementView />
+            ) : activeTab === 'product-pricing' ? (
+              <ProductTierPricingView />
+            ) : activeTab === 'customers' ? (
+              <CustomerManagementView />
+            ) : activeTab === 'create-order' ? (
+              <CreateOrderView />
+            ) : activeTab === 'track-orders' ? (
+              <TrackOrdersView />
+            ) : activeTab === 'pending-orders' ? (
+              <PendingOrdersView />
+            ) : activeTab === 'packing-simulation' ? (
+              <PackingSimulationView />
+            ) : activeTab === 'sales-trips' ? (
+              <SalesTripsView />
+            ) : activeTab === 'cleanup-test-orders' ? (
+              <CleanupTestOrdersView />
+            ) : activeTab === 'db-explorer' ? (
+              <DatabaseExplorerView />
             ) : (
-              <ServiceStaffManagementView
-                onViewUsage={(staffId: string) => {
-                  setSelectedServiceStaffId(staffId);
-                  setServiceStaffView('usage');
-                  setActiveTab('service-staff');
-                }}
-              />
-            )
-          ) : activeTab === 'commission' ? (
-            <CommissionManagementView />
-          ) : activeTab === 'commission-rates' ? (
-            <CommissionRatesView />
-          ) : activeTab === 'stock-dashboard' ? (
-            <StockDashboardView />
-          ) : activeTab === 'products' ? (
-            <ProductsManagementView />
-          ) : activeTab === 'warehouses' ? (
-            <WarehouseManagementView />
-          ) : activeTab === 'inventory-receipts' ? (
-            <InventoryReceiptsView />
-          ) : activeTab === 'customer-tiers' ? (
-            <CustomerTiersManagementView />
-          ) : activeTab === 'product-pricing' ? (
-            <ProductTierPricingView />
-          ) : activeTab === 'customers' ? (
-            <CustomerManagementView />
-          ) : activeTab === 'create-order' ? (
-            <CreateOrderView />
-          ) : activeTab === 'track-orders' ? (
-            <TrackOrdersView />
-          ) : activeTab === 'pending-orders' ? (
-            <PendingOrdersView />
-          ) : activeTab === 'sales-trips' ? (
-            <SalesTripsView />
-          ) : activeTab === 'cleanup-test-orders' ? (
-            <CleanupTestOrdersView />
-          ) : activeTab === 'db-explorer' ? (
-            <DatabaseExplorerView />
-          ) : (
-            <div className="flex flex-col items-center justify-center h-[60vh] text-slate-400">
-              <Wrench size={48} className="mb-4 opacity-50" />
-              <h3 className="text-xl font-medium text-slate-600 dark:text-slate-300">กำลังพัฒนา</h3>
-              <p>โมดูล {activeTab} กำลังอยู่ระหว่างการพัฒนา</p>
-            </div>
-          )}
+              <div className="flex flex-col items-center justify-center h-[60vh] text-slate-400">
+                <Wrench size={48} className="mb-4 opacity-50" />
+                <h3 className="text-xl font-medium text-slate-600 dark:text-slate-300">กำลังพัฒนา</h3>
+                <p>โมดูล {activeTab} กำลังอยู่ระหว่างการพัฒนา</p>
+              </div>
+            )}
           </Suspense>
         </div>
 

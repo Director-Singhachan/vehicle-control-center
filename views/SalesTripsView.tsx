@@ -1,8 +1,9 @@
 import React, { useState, useMemo, useCallback, memo, useEffect, useRef } from 'react';
-import { Truck, MapPin, Package, Calendar, User, Phone, CheckCircle, Clock, CheckSquare, Square, Eye, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Building2 } from 'lucide-react';
+import { Truck, MapPin, Package, Calendar, User, Phone, CheckCircle, Clock, CheckSquare, Square, Eye, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Building2, Layers } from 'lucide-react';
 import { useAuth, useToast } from '../hooks';
 import { useDeliveryTrips } from '../hooks/useDeliveryTrips';
 import { deliveryTripService } from '../services/deliveryTripService';
+import { tripMetricsService } from '../services/tripMetricsService';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
@@ -21,6 +22,7 @@ interface TripCardProps {
   onToggleInvoiceStatus: (tripId: string, storeId: string, currentStatus: string) => void;
   onFetchFullDetails?: (tripId: string) => Promise<void>;
   tripsWithFullDetails?: Set<string>;
+  hasPackingLayout?: boolean;
 }
 
 const TripCard = memo(({
@@ -32,6 +34,7 @@ const TripCard = memo(({
   onToggleInvoiceStatus,
   onFetchFullDetails,
   tripsWithFullDetails,
+  hasPackingLayout,
 }: TripCardProps) => {
   // Memoize formatted date
   const formattedDate = useMemo(() => {
@@ -79,6 +82,12 @@ const TripCard = memo(({
                     trip.status === 'cancelled' ? 'ยกเลิก' :
                       'รอดำเนินการ'}
               </Badge>
+              {hasPackingLayout && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-teal-100 text-teal-800 dark:bg-teal-900 dark:text-teal-200">
+                  <Layers size={11} />
+                  จัดเรียงแล้ว
+                </span>
+              )}
             </div>
             <div className="flex items-center gap-4 text-sm text-gray-600 dark:text-gray-400 flex-wrap">
               <div className="flex items-center gap-1">
@@ -381,6 +390,7 @@ const TripCard = memo(({
   if (prevProps.trip.status !== nextProps.trip.status) return false;
   if (prevProps.expandedStores !== nextProps.expandedStores) return false;
   if (prevProps.updatingStatus !== nextProps.updatingStatus) return false;
+  if (prevProps.hasPackingLayout !== nextProps.hasPackingLayout) return false;
   // Deep compare stores invoice_status
   const prevStores = prevProps.trip.stores || [];
   const nextStores = nextProps.trip.stores || [];
@@ -643,6 +653,14 @@ export function SalesTripsView() {
     autoFetch: true,
     autoRefresh: false, // Disable auto-refresh for better performance
   });
+
+  // Batch check which trips have packing layout
+  const [tripsWithLayout, setTripsWithLayout] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    if (!trips || trips.length === 0) return;
+    const ids = trips.map((t: any) => t.id);
+    tripMetricsService.getTripsWithPackingLayout(ids).then(setTripsWithLayout).catch(() => { });
+  }, [trips]);
 
   // Show all trips that are ready for invoicing
   // Sales can create invoices for any trip (not just assigned to them)
@@ -1200,6 +1218,7 @@ export function SalesTripsView() {
                     onToggleStoreExpand={handleToggleStoreExpand}
                     onViewStoreDetail={handleViewStoreDetail}
                     onToggleInvoiceStatus={handleToggleInvoiceStatus}
+                    hasPackingLayout={tripsWithLayout.has(trip.id)}
                   />
                 </div>
               ))}

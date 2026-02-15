@@ -1,7 +1,32 @@
 // AI Vehicle Recommendation Panel - Shows top-ranked vehicle suggestions
 import React, { useState, useMemo } from 'react';
-import { Sparkles, ChevronDown, ChevronUp, Truck, TrendingUp, Weight, Box, Shield, MapPin, CheckCircle, AlertTriangle, Info, RefreshCw } from 'lucide-react';
+import { Sparkles, ChevronDown, ChevronUp, Truck, TrendingUp, Weight, Box, Shield, MapPin, CheckCircle, AlertTriangle, Info, RefreshCw, Bot, Package } from 'lucide-react';
 import type { VehicleRecommendation } from '../../services/vehicleRecommendationService';
+
+export interface AIRecommendationResult {
+  suggested_vehicle_id: string | null;
+  reasoning: string | null;
+  packing_tips: string | null;
+  error?: string;
+}
+
+/** ปรับข้อความจาก AI ให้เหมาะกับการแสดงผล (ตัด markdown พื้นฐาน/ลบตัวอักษรพิเศษที่เกินจำเป็น) */
+function formatAiText(raw: string | null | undefined): string {
+  if (!raw) return '';
+
+  let text = raw;
+
+  // แปลง literal "\n" ให้เป็นขึ้นบรรทัดจริง (เผื่อบางครั้ง AI ส่งมาแบบ escape ซ้ำ)
+  text = text.replace(/\\n/g, '\n');
+
+  // ลบเครื่องหมายตัวหนาแบบ markdown **ข้อความ**
+  text = text.replace(/\*\*(.+?)\*\*/g, '$1');
+
+  // ลบ ** ที่หลงเหลือ (กันกรณีจับไม่ครบ)
+  text = text.replace(/\*\*/g, '');
+
+  return text.trim();
+}
 
 interface VehicleRecommendationPanelProps {
   recommendations: VehicleRecommendation[];
@@ -11,6 +36,12 @@ interface VehicleRecommendationPanelProps {
   onSelectVehicle: (vehicleId: string) => void;
   selectedVehicleId?: string;
   onRefresh?: () => void;
+  /** ใช้ AI (Edge Function) แนะนำรถ + คำแนะนำการจัดเรียง */
+  onRequestAI?: () => void;
+  aiLoading?: boolean;
+  aiResult?: AIRecommendationResult | null;
+  /** วินาทีที่เหลือก่อนกดใช้ AI ได้อีก (ลดการเกินโควต้า) */
+  aiCooldownRemaining?: number;
 }
 
 const CONFIDENCE_CONFIG = {
@@ -21,6 +52,9 @@ const CONFIDENCE_CONFIG = {
 
 const SCORE_LABELS: Record<string, { label: string; icon: React.ElementType }> = {
   capacity_fit: { label: 'ขนาดรถ', icon: Truck },
+  load_similarity: { label: 'น้ำหนักใกล้เคียง', icon: Weight },
+  product_compatibility: { label: 'รองรับสินค้า', icon: Shield },
+  pallet_efficiency: { label: 'พาเลท', icon: Package },
   historical_success: { label: 'ประวัติใช้งาน', icon: TrendingUp },
   availability: { label: 'ว่างใช้งาน', icon: CheckCircle },
   branch_match: { label: 'ตรงสาขา', icon: MapPin },
@@ -78,9 +112,9 @@ function RecommendationCard({
         {/* Rank badge */}
         <div className={`
           w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-bold
-          ${rec.rank === 1 ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-400' : 
+          ${rec.rank === 1 ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-400' :
             rec.rank === 2 ? 'bg-gray-100 text-gray-600 dark:bg-slate-700 dark:text-gray-300' :
-            'bg-gray-50 text-gray-500 dark:bg-slate-700 dark:text-gray-400'}
+              'bg-gray-50 text-gray-500 dark:bg-slate-700 dark:text-gray-400'}
         `}>
           #{rec.rank}
         </div>
@@ -108,8 +142,8 @@ function RecommendationCard({
             text-lg font-bold
             ${rec.overall_score >= 80 ? 'text-green-600 dark:text-green-400' :
               rec.overall_score >= 60 ? 'text-blue-600 dark:text-blue-400' :
-              rec.overall_score >= 40 ? 'text-amber-600 dark:text-amber-400' :
-              'text-red-500 dark:text-red-400'}
+                rec.overall_score >= 40 ? 'text-amber-600 dark:text-amber-400' :
+                  'text-red-500 dark:text-red-400'}
           `}>
             {rec.overall_score}
           </span>
@@ -199,6 +233,22 @@ function RecommendationCard({
                 </div>
               )}
             </div>
+            {(rec.capacity_info.estimated_pallets != null && rec.capacity_info.estimated_pallets > 0) && (
+              <div className="p-2 bg-gray-50 dark:bg-slate-900/40 rounded-lg">
+                <div className="flex items-center gap-1.5 mb-1">
+                  <Package className="w-3 h-3 text-gray-400" />
+                  <span className="text-[10px] text-gray-500 dark:text-gray-400">พาเลท</span>
+                </div>
+                <div className="text-xs font-medium text-gray-900 dark:text-white">
+                  ต้องการ {rec.capacity_info.estimated_pallets} พาเลท
+                  {rec.capacity_info.max_pallets != null && (
+                    <span className="text-gray-400 dark:text-gray-500 font-normal">
+                      {' '}/ รถรับได้ {rec.capacity_info.max_pallets} พาเลท
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Historical stats + Confidence */}
@@ -233,6 +283,10 @@ export function VehicleRecommendationPanel({
   onSelectVehicle,
   selectedVehicleId,
   onRefresh,
+  onRequestAI,
+  aiLoading = false,
+  aiResult = null,
+  aiCooldownRemaining = 0,
 }: VehicleRecommendationPanelProps) {
   const [isCollapsed, setIsCollapsed] = useState(false);
 
@@ -343,10 +397,74 @@ export function VehicleRecommendationPanel({
             />
           ))}
 
+          {/* ปุ่มใช้ AI แนะนำ (เรียก Edge Function) + cooldown เพื่อไม่เกินโควต้า */}
+          {onRequestAI && !loading && displayRecs.length > 0 && (
+            <div className="pt-2 border-t border-purple-200/60 dark:border-purple-700/40">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (aiCooldownRemaining > 0) return;
+                  onRequestAI();
+                }}
+                disabled={aiLoading || aiCooldownRemaining > 0}
+                className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-lg bg-purple-100 hover:bg-purple-200 dark:bg-purple-900/40 dark:hover:bg-purple-800/50 text-purple-800 dark:text-purple-200 text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {aiLoading ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    กำลังถาม AI...
+                  </>
+                ) : aiCooldownRemaining > 0 ? (
+                  <>
+                    <Bot className="w-4 h-4" />
+                    ลองใหม่ใน {aiCooldownRemaining} วินาที
+                  </>
+                ) : (
+                  <>
+                    <Bot className="w-4 h-4" />
+                    ใช้ AI แนะนำ
+                  </>
+                )}
+              </button>
+            </div>
+          )}
+
+          {/* ข้อความ error จาก AI (เมื่อ Edge Function คืน 200 แต่มี error ใน body) */}
+          {aiResult?.error && (
+            <div className="rounded-lg border border-amber-200 dark:border-amber-800/60 bg-amber-50/50 dark:bg-amber-950/20 p-3 text-xs text-amber-800 dark:text-amber-200">
+              <AlertTriangle className="w-3.5 h-3.5 inline mr-1" />
+              {aiResult.error}
+            </div>
+          )}
+
+          {/* ผลจาก AI (reasoning + packing_tips) แสดงเป็น insight แยกจากคะแนน rule-based */}
+          {aiResult && !aiResult.error && (aiResult.reasoning || aiResult.packing_tips) && (
+            <div className="rounded-lg border border-blue-200 dark:border-blue-800/60 bg-blue-50/50 dark:bg-blue-950/20 p-3 space-y-2">
+              {aiResult.reasoning && (
+                <p className="text-xs text-blue-900 dark:text-blue-100">
+                  <Sparkles className="w-3.5 h-3.5 inline mr-1 text-blue-500" />
+                  {formatAiText(aiResult.reasoning)}
+                </p>
+              )}
+              {aiResult.packing_tips && (
+                <div className="text-xs">
+                  <div className="flex items-center gap-1 text-blue-700 dark:text-blue-300 font-medium mb-1">
+                    <Package className="w-3.5 h-3.5" />
+                    คำแนะนำการจัดเรียง
+                  </div>
+                  <p className="text-blue-800 dark:text-blue-200 whitespace-pre-wrap">
+                    {formatAiText(aiResult.packing_tips)}
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Disclaimer */}
           {!loading && displayRecs.length > 0 && (
             <p className="text-[10px] text-gray-400 dark:text-gray-500 text-center pt-1">
-              AI แนะนำจากข้อมูลความจุรถ ประวัติทริป และความพร้อมใช้งาน (Phase 1: Rule-Based)
+              การเลือกคันรถหลักมาจากคะแนน rule-based ด้านบน ส่วนข้อความจาก AI เป็น insight เสริมเพื่อช่วยตัดสินใจ
             </p>
           )}
         </div>

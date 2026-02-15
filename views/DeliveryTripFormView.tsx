@@ -33,6 +33,7 @@ import { profileService } from '../services/profileService';
 import { serviceStaffService } from '../services/serviceStaffService';
 import type { DeliveryTripWithRelations } from '../services/deliveryTripService';
 import { calculateTripCapacity } from '../utils/tripCapacityValidation';
+import { calculatePalletAllocation, type PalletPackingResult } from '../utils/palletPacking';
 
 interface DeliveryTripFormViewProps {
   tripId?: string;
@@ -307,6 +308,9 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
     warnings: string[];
   } | null>(null);
 
+  // Bin-packing pallet result (จัดรวมหลายชนิดในพาเลทเดียวกัน — แม่นยำกว่า)
+  const [palletPackingResult, setPalletPackingResult] = useState<PalletPackingResult | null>(null);
+
   // Calculate capacity summary when vehicle or items change (with debounce)
   useEffect(() => {
     if (!formData.vehicle_id || selectedStores.length === 0) {
@@ -337,7 +341,7 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
 
     // Debounce: wait 500ms before calculating (to avoid too many requests)
     const timeoutId = setTimeout(() => {
-      // Calculate capacity
+      // คำนวณแบบเดิม (แยกแต่ละชนิดสินค้า) — ใช้สำหรับน้ำหนัก/ความสูง + fallback
       calculateTripCapacity(allItems, formData.vehicle_id)
         .then(result => {
           setCapacitySummary({
@@ -361,6 +365,13 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
             warnings: [],
           } as any));
         });
+
+      // คำนวณแบบ bin-packing (จัดรวมหลายชนิดบนพาเลทเดียวกัน — แม่นยำกว่า)
+      calculatePalletAllocation(allItems)
+        .then(packing => {
+          setPalletPackingResult(packing.errors.length > 0 ? null : packing);
+        })
+        .catch(() => setPalletPackingResult(null));
     }, 500);
 
     // Cleanup: cancel timeout if component unmounts or dependencies change
@@ -1163,23 +1174,37 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
             formData.vehicle_id
           );
 
+          // ถ้ามี palletPackingResult (bin-packing) ใช้ค่าจากนั้นแทน
           if (!capacityResult.valid) {
-            setError(
-              `ไม่สามารถสร้างทริปได้:\n${capacityResult.errors.join('\n')}`
-            );
-            // Show warnings as well
-            if (capacityResult.warnings.length > 0) {
-              console.warn('Capacity warnings:', capacityResult.warnings);
+            let errorsToCheck = capacityResult.errors;
+
+            // ถ้ามี bin-packing result → กรอง error พาเลทแบบเก่าออก แล้ว validate ใหม่
+            if (palletPackingResult && capacityResult.summary.vehicleMaxPallets !== null) {
+              errorsToCheck = errorsToCheck.filter(
+                err => !err.includes('จำนวนพาเลทเกินความจุ')
+              );
+              // เช็คใหม่ด้วย bin-packing count
+              if (palletPackingResult.totalPallets > capacityResult.summary.vehicleMaxPallets) {
+                errorsToCheck.push(
+                  `จำนวนพาเลทเกินความจุ: ${palletPackingResult.totalPallets} พาเลท (สูงสุด ${capacityResult.summary.vehicleMaxPallets} พาเลท)`
+                );
+              }
             }
-            return;
+
+            if (errorsToCheck.length > 0) {
+              setError(
+                `ไม่สามารถสร้างทริปได้:\n${errorsToCheck.join('\n')}`
+              );
+              if (capacityResult.warnings.length > 0) {
+                console.warn('Capacity warnings:', capacityResult.warnings);
+              }
+              return;
+            }
           }
 
           // Show warnings if any (but allow submission)
           if (capacityResult.warnings.length > 0) {
             console.warn('Capacity warnings:', capacityResult.warnings);
-            // Optionally show warnings to user (non-blocking)
-            // You can uncomment this to show warnings as alerts
-            // alert(`คำเตือน:\n${capacityResult.warnings.join('\n')}`);
           }
         }
       } catch (capacityErr: any) {
@@ -1581,9 +1606,8 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
                             setShowDriverStaffDropdown(false);
                             setDriverStaffDropdownPosition(null);
                           }}
-                          className={`w-full text-left px-4 py-2 hover:bg-slate-100 dark:hover:bg-slate-700 text-sm ${
-                            selectedDriverStaffId === staff.id ? 'bg-blue-50 dark:bg-blue-900/30' : ''
-                          }`}
+                          className={`w-full text-left px-4 py-2 hover:bg-slate-100 dark:hover:bg-slate-700 text-sm ${selectedDriverStaffId === staff.id ? 'bg-blue-50 dark:bg-blue-900/30' : ''
+                            }`}
                         >
                           <div className="font-medium text-slate-900 dark:text-slate-100">{staff.name}</div>
                           {staff.employee_code && (
@@ -1595,10 +1619,10 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
                       .filter(s => !selectedHelpers.includes(s.id))
                       .filter(s => s.name.toLowerCase().includes(driverStaffSearch.toLowerCase()) ||
                         (s.employee_code || '').toLowerCase().includes(driverStaffSearch.toLowerCase())).length === 0 && (
-                      <div className="px-4 py-2 text-sm text-slate-500 dark:text-slate-400 text-center">
-                        ไม่พบพนักงาน
-                      </div>
-                    )}
+                        <div className="px-4 py-2 text-sm text-slate-500 dark:text-slate-400 text-center">
+                          ไม่พบพนักงาน
+                        </div>
+                      )}
                   </div>,
                   document.body
                 )}
@@ -1717,10 +1741,10 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
                       .filter(s => !selectedHelpers.includes(s.id) && s.id !== selectedDriverStaffId)
                       .filter(s => s.name.toLowerCase().includes(helperSearch.toLowerCase()) ||
                         (s.employee_code || '').toLowerCase().includes(helperSearch.toLowerCase())).length === 0 && (
-                      <div className="px-4 py-2 text-sm text-slate-500 dark:text-slate-400 text-center">
-                        ไม่พบพนักงาน
-                      </div>
-                    )}
+                        <div className="px-4 py-2 text-sm text-slate-500 dark:text-slate-400 text-center">
+                          ไม่พบพนักงาน
+                        </div>
+                      )}
                   </div>,
                   document.body
                 )}
@@ -1809,41 +1833,58 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
                     <div className="p-3 bg-slate-50 dark:bg-slate-800 rounded-lg">
                       <div className="text-sm text-slate-600 dark:text-slate-400 mb-1">
                         จำนวนพาเลท
-                      </div>
-                      <div className="text-2xl font-bold text-slate-900 dark:text-slate-100">
-                        {capacitySummary.totalPallets}
-                        {capacitySummary.vehicleMaxPallets !== null && (
-                          <span className="text-lg font-normal text-slate-500 dark:text-slate-400">
-                            {' '}/ {capacitySummary.vehicleMaxPallets}
+                        {palletPackingResult ? (
+                          <span className="block text-xs text-green-600 dark:text-green-400 font-normal mt-0.5">
+                            (คำนวณแบบ bin-packing จัดรวมหลายชนิดบนพาเลทเดียวกัน)
+                          </span>
+                        ) : (
+                          <span className="block text-xs text-slate-500 dark:text-slate-500 font-normal mt-0.5">
+                            (ค่าประมาณแยกตามชนิดสินค้า การจัดเรียงจริงอาจใช้น้อยกว่าถ้ารวมพาเลทได้)
                           </span>
                         )}
                       </div>
-                      {capacitySummary.vehicleMaxPallets !== null && (
-                        <div className="mt-2">
-                          <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2">
-                            <div
-                              className={`h-2 rounded-full ${capacitySummary.totalPallets > capacitySummary.vehicleMaxPallets
-                                ? 'bg-red-500'
-                                : capacitySummary.totalPallets > capacitySummary.vehicleMaxPallets * 0.9
-                                  ? 'bg-amber-500'
-                                  : 'bg-green-500'
-                                }`}
-                              style={{
-                                width: `${Math.min(
-                                  100,
-                                  (capacitySummary.totalPallets / capacitySummary.vehicleMaxPallets) * 100
-                                )}%`,
-                              }}
-                            />
-                          </div>
-                          <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                            {Math.round(
-                              (capacitySummary.totalPallets / capacitySummary.vehicleMaxPallets) * 100
+                      {(() => {
+                        const displayPallets = palletPackingResult?.totalPallets ?? capacitySummary.totalPallets;
+                        const maxPallets = capacitySummary.vehicleMaxPallets;
+                        return (
+                          <>
+                            <div className="text-2xl font-bold text-slate-900 dark:text-slate-100">
+                              {displayPallets}
+                              {maxPallets !== null && (
+                                <span className="text-lg font-normal text-slate-500 dark:text-slate-400">
+                                  {' '}/ {maxPallets}
+                                </span>
+                              )}
+                            </div>
+                            {maxPallets !== null && (
+                              <div className="mt-2">
+                                <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2">
+                                  <div
+                                    className={`h-2 rounded-full ${displayPallets > maxPallets
+                                      ? 'bg-red-500'
+                                      : displayPallets > maxPallets * 0.9
+                                        ? 'bg-amber-500'
+                                        : 'bg-green-500'
+                                      }`}
+                                    style={{
+                                      width: `${Math.min(
+                                        100,
+                                        (displayPallets / maxPallets) * 100
+                                      )}%`,
+                                    }}
+                                  />
+                                </div>
+                                <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                                  {Math.round(
+                                    (displayPallets / maxPallets) * 100
+                                  )}
+                                  % ของความจุ
+                                </div>
+                              </div>
                             )}
-                            % ของความจุ
-                          </div>
-                        </div>
-                      )}
+                          </>
+                        );
+                      })()}
                     </div>
                     <div className="p-3 bg-slate-50 dark:bg-slate-800 rounded-lg">
                       <div className="text-sm text-slate-600 dark:text-slate-400 mb-1">
@@ -1992,7 +2033,7 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
                     </div>
                     <div className="p-3 bg-slate-50 dark:bg-slate-800 rounded-lg">
                       <div className="text-sm text-slate-600 dark:text-slate-400 mb-1">
-                        ความสูงรวม
+                        ความสูงกองสูงสุด
                       </div>
                       <div className="text-2xl font-bold text-slate-900 dark:text-slate-100">
                         {capacitySummary?.totalHeightCm?.toFixed(1) || '0.0'} ซม.

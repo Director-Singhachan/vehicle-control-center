@@ -14,11 +14,13 @@ import { useAuth } from '../hooks';
 import { useToast } from '../hooks/useToast';
 import { ToastContainer } from '../components/ui/Toast';
 import { calculateTripCapacity } from '../utils/tripCapacityValidation';
+import { calculatePalletAllocation, type PalletPackingResult } from '../utils/palletPacking';
 import { AlertCircle } from 'lucide-react';
 import { useVehicleRecommendation } from '../hooks/useVehicleRecommendation';
 import { VehicleRecommendationPanel } from '../components/trip/VehicleRecommendationPanel';
 import { vehicleRecommendationService, hashRecommendationInput } from '../services/vehicleRecommendationService';
 import type { RecommendationInput } from '../services/vehicleRecommendationService';
+import { tripMetricsService } from '../services/tripMetricsService';
 
 interface CreateTripFromOrdersViewProps {
   selectedOrders: any[];
@@ -90,6 +92,8 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
   // Capacity summary
   const [capacitySummary, setCapacitySummary] = useState<CapacitySummary | null>(null);
   const [capacitySummary2, setCapacitySummary2] = useState<CapacitySummary | null>(null);
+  /** ผล bin packing (จัดรวมหลายชนิดบนพาเลทเดียวกัน) — ใช้แสดงจำนวนพาเลทที่แม่นยำขึ้น */
+  const [palletPackingResult, setPalletPackingResult] = useState<PalletPackingResult | null>(null);
 
   // สร้างรายการร้านค้าจากออเดอร์ที่เลือก
   const [storeDeliveries, setStoreDeliveries] = useState<StoreDelivery[]>(() => {
@@ -247,6 +251,7 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
     if (!selectedVehicleId || storeDeliveries.length === 0) {
       setCapacitySummary(null);
       setCapacitySummary2(null);
+      setPalletPackingResult(null);
       return;
     }
 
@@ -264,6 +269,7 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
     if (items1.length === 0 && !splitIntoTwoTrips) {
       setCapacitySummary(null);
       setCapacitySummary2(null);
+      setPalletPackingResult(null);
       return;
     }
 
@@ -274,6 +280,14 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
       const run1 = items1.length > 0
         ? calculateTripCapacity(items1, selectedVehicleId)
         : Promise.resolve({ summary: { totalPallets: 0, totalWeightKg: 0, totalHeightCm: 0, vehicleMaxPallets: null, vehicleMaxWeightKg: null, vehicleMaxHeightCm: null }, errors: [] as string[], warnings: [] as string[] });
+
+      if (items1.length > 0) {
+        calculatePalletAllocation(items1).then((packing) => {
+          setPalletPackingResult(packing.errors.length > 0 ? null : packing);
+        }).catch(() => setPalletPackingResult(null));
+      } else {
+        setPalletPackingResult(null);
+      }
 
       run1.then(r => {
         setCapacitySummary({ totalPallets: r.summary.totalPallets, totalWeightKg: r.summary.totalWeightKg, totalHeightCm: r.summary.totalHeightCm, vehicleMaxPallets: r.summary.vehicleMaxPallets, vehicleMaxWeightKg: r.summary.vehicleMaxWeightKg, vehicleMaxHeightCm: r.summary.vehicleMaxHeightCm, loading: false, errors: r.errors, warnings: r.warnings });
@@ -387,10 +401,252 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
   // Track which recommendation was selected (for feedback recording)
   const [selectedRecommendationVehicleId, setSelectedRecommendationVehicleId] = useState<string | null>(null);
 
+  // AI แนะนำ (Edge Function): ผลจากปุ่ม "ใช้ AI แนะนำ"
+  const [aiExtraResult, setAiExtraResult] = useState<{
+    suggested_vehicle_id: string | null;
+    reasoning: string | null;
+    packing_tips: string | null;
+    error?: string;
+  } | null>(null);
+  const [aiExtraLoading, setAiExtraLoading] = useState(false);
+  /** Cooldown หลังกดใช้ AI (วินาทีที่เหลือ) เพื่อไม่ให้กดซ้ำเกินโควต้า */
+  const [aiCooldownRemaining, setAiCooldownRemaining] = useState(0);
+  const AI_COOLDOWN_SECONDS = 60;
+
   const handleAiSelectVehicle = useCallback((vehicleId: string) => {
     setSelectedVehicleId(vehicleId);
     setSelectedRecommendationVehicleId(vehicleId);
   }, []);
+
+  const handleRequestAI = useCallback(async () => {
+    const input = recommendationInput;
+    if (!input || input.items.length === 0 || aiRecommendations.length === 0 || aiCooldownRemaining > 0) return;
+    setAiExtraLoading(true);
+    setAiExtraResult(null);
+    try {
+      const first = aiRecommendations[0];
+      const tripItems = input.items.map(({ product_id, quantity }) => ({ product_id, quantity }));
+      let estimated_pallets: number | undefined;
+      let pallet_allocation: typeof undefined | Array<{ pallet_index: number; items: Array<{ product_id: string; product_name?: string | null; product_code?: string | null; quantity: number; weight_kg: number; volume_liter: number }>; total_weight_kg?: number; total_volume_liter?: number }> = undefined;
+      let historical_context: string | undefined;
+
+      // ใช้รถที่ user เลือกจริง (หรือ fallback เป็นรถที่ AI แนะนำอันดับ 1)
+      const targetVehicleId = selectedVehicleId || first.vehicle_id;
+
+      // ดึงทริปที่คล้ายกันจากประวัติ — กรองเฉพาะทะเบียนรถที่เลือก (ถ้ามี)
+      try {
+        const rawProductIds: string[] = input.items.map(
+          (i: any) => i.product_id as string
+        );
+        const productIds = Array.from(new Set<string>(rawProductIds));
+        const similarTrips = await tripMetricsService.getSimilarTripsForLoad({
+          totalWeightKg: first.capacity_info.estimated_weight_kg,
+          totalVolumeLiter: first.capacity_info.estimated_volume_liter,
+          storeIds: input.store_ids,
+          productIds,
+          vehicleId: targetVehicleId, // กรองเฉพาะรถคันนี้ก่อน ถ้าไม่มีจะ fallback อัตโนมัติ
+          limit: 10,
+        });
+        const ctx = await tripMetricsService.buildSimilarTripsContext(similarTrips);
+        if (ctx.trim().length > 0) {
+          historical_context = ctx;
+        }
+      } catch (err) {
+        console.warn('[CreateTripFromOrdersView] getSimilarTripsForLoad error:', err);
+      }
+
+      // ดึง packing pattern insights จาก analytics views
+      let packing_patterns: string | undefined;
+      try {
+        const patterns = await tripMetricsService.getPackingPatternInsights();
+        if (patterns.trim().length > 0) {
+          packing_patterns = patterns;
+        }
+      } catch (err) {
+        console.warn('[CreateTripFromOrdersView] getPackingPatternInsights error:', err);
+      }
+
+      // ดึงโปรไฟล์การจัดเรียงสินค้าแต่ละตัว จากประวัติรถคันที่ user เลือก (ไม่ใช่แค่อันดับ 1)
+      let product_packing_profiles: string | undefined;
+      try {
+        const rawProductIds: string[] = input.items.map(
+          (i: any) => i.product_id as string
+        );
+        const uniqueProductIds = Array.from(new Set<string>(rawProductIds));
+        const profiles = await tripMetricsService.getProductPackingProfiles(
+          uniqueProductIds,
+          targetVehicleId // ใช้รถที่ user เลือกจริง ไม่ใช่แค่อันดับ 1
+        );
+        if (profiles.trim().length > 0) {
+          product_packing_profiles = profiles;
+        }
+      } catch (err) {
+        console.warn('[CreateTripFromOrdersView] getProductPackingProfiles error:', err);
+      }
+
+      // ★ คำนวณ "ร่างแผนจัดเรียง" ด้วย rule-based (units_per_layer จากประวัติ)
+      let computed_packing_plan: string | undefined;
+      try {
+        // รวมสินค้าจาก pallet_allocation หรือ input.items
+        const planItems: Array<{ product_id: string; product_name: string; quantity: number; weight_kg: number }> = [];
+        if (pallet_allocation && pallet_allocation.length > 0) {
+          const merged = new Map<string, { product_id: string; product_name: string; quantity: number; weight_kg: number }>();
+          for (const p of pallet_allocation) {
+            for (const item of p.items) {
+              const existing = merged.get(item.product_id);
+              if (existing) {
+                existing.quantity += item.quantity;
+                existing.weight_kg += item.weight_kg;
+              } else {
+                merged.set(item.product_id, {
+                  product_id: item.product_id,
+                  product_name: item.product_name || item.product_code || item.product_id,
+                  quantity: item.quantity,
+                  weight_kg: item.weight_kg,
+                });
+              }
+            }
+          }
+          planItems.push(...merged.values());
+        }
+
+        if (planItems.length > 0) {
+          const plan = await tripMetricsService.computePackingPlan({
+            items: planItems,
+            vehicleMaxPallets: capacitySummary?.vehicleMaxPallets ?? null,
+          });
+          if (plan.trim().length > 0) {
+            computed_packing_plan = plan;
+          }
+        }
+      } catch (err) {
+        console.warn('[CreateTripFromOrdersView] computePackingPlan error:', err);
+      }
+      try {
+        const packing = await calculatePalletAllocation(tripItems);
+        if (packing.errors.length === 0) {
+          estimated_pallets = packing.totalPallets;
+          pallet_allocation = packing.palletAllocations.map((p) => ({
+            pallet_index: p.pallet_index,
+            items: p.items.map((i) => ({
+              product_id: i.product_id,
+              product_name: i.product_name,
+              product_code: i.product_code,
+              quantity: i.quantity,
+              weight_kg: i.weight_kg,
+              volume_liter: i.volume_liter,
+            })),
+            total_weight_kg: p.total_weight_kg,
+            total_volume_liter: p.total_volume_liter,
+          }));
+        }
+      } catch {
+        // Fallback: ใช้คำนวณแบบเดิม (แยกตามชนิดสินค้า)
+        try {
+          const cap = await calculateTripCapacity(tripItems, targetVehicleId);
+          estimated_pallets = cap.summary.totalPallets;
+        } catch {
+          /* ไม่ส่ง estimated_pallets */
+        }
+      }
+
+      // สร้าง items_summary ที่ละเอียดขึ้น (ชื่อสินค้า + จำนวน) แทนแค่ "X รายการสินค้า"
+      let items_summary = `${input.items.length} รายการสินค้า`;
+      if (pallet_allocation && pallet_allocation.length > 0) {
+        // ดึงชื่อสินค้าจาก pallet_allocation (มีชื่ออยู่แล้ว)
+        const productSummaries = new Map<string, { name: string; qty: number }>();
+        for (const p of pallet_allocation) {
+          for (const item of p.items) {
+            const key = item.product_id;
+            const existing = productSummaries.get(key);
+            if (existing) {
+              existing.qty += item.quantity;
+            } else {
+              productSummaries.set(key, {
+                name: item.product_name || item.product_code || item.product_id,
+                qty: item.quantity,
+              });
+            }
+          }
+        }
+        const summaryLines = Array.from(productSummaries.values())
+          .map(({ name, qty }) => `${name} (${qty} หน่วย)`)
+          .join(', ');
+        if (summaryLines) {
+          items_summary = summaryLines;
+        }
+      }
+
+      // หาทะเบียนรถที่ user เลือก
+      const selectedVehicleObj = vehicles.find(v => v.id === targetVehicleId);
+      const selectedPlate = selectedVehicleObj?.plate || 'ไม่ระบุ';
+
+      const trip = {
+        estimated_weight_kg: first.capacity_info.estimated_weight_kg,
+        estimated_volume_liter: first.capacity_info.estimated_volume_liter,
+        store_count: input.store_ids.length,
+        item_count: input.items.length,
+        items_summary,
+        planned_date: input.planned_date,
+        selected_vehicle_plate: selectedPlate, // บอก AI ว่ารถที่เลือกคือคันไหน
+        // บอก AI ว่ารถรับพาเลทได้กี่ใบ (จาก capacitySummary ที่คำนวณไว้)
+        vehicle_max_pallets: capacitySummary?.vehicleMaxPallets ?? null,
+        ...(estimated_pallets != null && { estimated_pallets }),
+        ...(pallet_allocation != null && pallet_allocation.length > 0 && { pallet_allocation }),
+      };
+      const vehiclesList = aiRecommendations.slice(0, 5).map((r) => ({
+        vehicle_id: r.vehicle_id,
+        plate: r.vehicle_plate,
+        max_weight_kg: r.capacity_info.max_weight_kg,
+        cargo_volume_liter: r.capacity_info.max_volume_liter,
+        branch: null as string | null,
+      }));
+      console.log('[AI Debug] === ข้อมูลที่ส่งให้ AI ===');
+      console.log('[AI Debug] targetVehicleId:', targetVehicleId);
+      console.log('[AI Debug] selectedPlate:', selectedPlate);
+      console.log('[AI Debug] items_summary:', items_summary);
+      console.log('[AI Debug] historical_context:', historical_context ? historical_context.substring(0, 500) : '(ไม่มี)');
+      console.log('[AI Debug] packing_patterns:', packing_patterns ? packing_patterns.substring(0, 300) : '(ไม่มี)');
+      console.log('[AI Debug] product_packing_profiles:', product_packing_profiles ? product_packing_profiles.substring(0, 300) : '(ไม่มี)');
+      console.log('[AI Debug] computed_packing_plan:', computed_packing_plan ? computed_packing_plan.substring(0, 500) : '(ไม่มี)');
+      console.log('[AI Debug] estimated_pallets:', estimated_pallets);
+      console.log('[AI Debug] pallet_allocation count:', pallet_allocation?.length ?? 0);
+      console.log('[AI Debug] vehicles:', vehiclesList.map(v => `${v.plate} (wt:${v.max_weight_kg}, vol:${v.cargo_volume_liter})`));
+      const result = await vehicleRecommendationService.getAIRecommendation({
+        trip,
+        vehicles: vehiclesList,
+        historical_context,
+        packing_patterns,
+        product_packing_profiles,
+        computed_packing_plan,
+      });
+      setAiExtraResult(result ?? null);
+      if (result?.suggested_vehicle_id) {
+        setSelectedVehicleId(result.suggested_vehicle_id);
+        setSelectedRecommendationVehicleId(result.suggested_vehicle_id);
+      }
+      setAiCooldownRemaining(AI_COOLDOWN_SECONDS);
+    } catch (err) {
+      console.warn('[CreateTripFromOrdersView] getAIRecommendation error:', err);
+      setAiCooldownRemaining(AI_COOLDOWN_SECONDS);
+    } finally {
+      setAiExtraLoading(false);
+    }
+  }, [recommendationInput, aiRecommendations, selectedVehicleId, vehicles]);
+
+  // นับถอยหลัง cooldown ทุก 1 วินาที
+  useEffect(() => {
+    if (aiCooldownRemaining <= 0) return;
+    const t = setInterval(() => {
+      setAiCooldownRemaining((prev) => Math.max(0, prev - 1));
+    }, 1000);
+    return () => clearInterval(t);
+  }, [aiCooldownRemaining]);
+
+  // ล้างผล AI เมื่อรายการแนะนำรถเปลี่ยน (ผู้ใช้เปลี่ยนร้าน/สินค้า แล้วระบบโหลดแนะนำใหม่)
+  useEffect(() => {
+    setAiExtraResult(null);
+  }, [aiRecommendations.length, aiRecommendations[0]?.vehicle_id]);
 
   // Drag & Drop handlers
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
@@ -472,17 +728,59 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
         return;
       }
       if (capacitySummary?.errors?.length) {
-        warning(`คัน 1: ${capacitySummary.errors.join(', ')}`);
-        return;
+        // กรณีแบ่ง 2 คัน: ใช้ palletPackingResult ถ้ามี เพื่อ override pallet error
+        const dp1 = palletPackingResult
+          ? palletPackingResult.totalPallets
+          : capacitySummary.totalPallets;
+        const nonPalletErrors1 = capacitySummary.errors.filter(
+          (msg) => !msg.startsWith('จำนวนพาเลท')
+        );
+        const recalc1 = [...nonPalletErrors1];
+        if (
+          capacitySummary.vehicleMaxPallets !== null &&
+          dp1 > capacitySummary.vehicleMaxPallets
+        ) {
+          recalc1.push(
+            `จำนวนพาเลทเกินความจุ: ${dp1} พาเลท (สูงสุด ${capacitySummary.vehicleMaxPallets} พาเลท)`
+          );
+        }
+        if (recalc1.length > 0) {
+          warning(`คัน 1: ${recalc1.join(', ')}`);
+          return;
+        }
       }
       if (capacitySummary2?.errors?.length) {
+        // คัน 2 ยังไม่มี bin packing result แยก จึงใช้ errors ตรง ๆ
         warning(`คัน 2: ${capacitySummary2.errors.join(', ')}`);
         return;
       }
     } else {
       if (capacitySummary && capacitySummary.errors.length > 0) {
-        warning(`ไม่สามารถสร้างทริปได้: ${capacitySummary.errors.join(', ')}`);
-        return;
+        // ใช้ค่าพาเลทจาก bin packing (palletPackingResult) ถ้ามี เพราะแม่นยำกว่า
+        // เหมือนกับที่ UI แสดงผลในส่วนสรุปความจุ
+        const displayPallets = palletPackingResult
+          ? palletPackingResult.totalPallets
+          : capacitySummary.totalPallets;
+
+        // กรอง error เดิมที่เกี่ยวกับพาเลทออก แล้วคำนวณใหม่ด้วย displayPallets
+        const nonPalletErrors = capacitySummary.errors.filter(
+          (msg) => !msg.startsWith('จำนวนพาเลท')
+        );
+
+        const recalculatedErrors = [...nonPalletErrors];
+        if (
+          capacitySummary.vehicleMaxPallets !== null &&
+          displayPallets > capacitySummary.vehicleMaxPallets
+        ) {
+          recalculatedErrors.push(
+            `จำนวนพาเลทเกินความจุ: ${displayPallets} พาเลท (สูงสุด ${capacitySummary.vehicleMaxPallets} พาเลท)`
+          );
+        }
+
+        if (recalculatedErrors.length > 0) {
+          warning(`ไม่สามารถสร้างทริปได้: ${recalculatedErrors.join(', ')}`);
+          return;
+        }
       }
     }
 
@@ -675,6 +973,10 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
                       onSelectVehicle={handleAiSelectVehicle}
                       selectedVehicleId={selectedVehicleId}
                       onRefresh={fetchRecommendations}
+                      onRequestAI={handleRequestAI}
+                      aiLoading={aiExtraLoading}
+                      aiResult={aiExtraResult}
+                      aiCooldownRemaining={aiCooldownRemaining}
                     />
                   )}
 
@@ -1268,117 +1570,153 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
                       <div className="text-center py-4 text-gray-500">
                         กำลังคำนวณ...
                       </div>
-                    ) : capacitySummary ? (
-                      <div className="space-y-3">
-                        {capacitySummary.errors.length > 0 && (
-                          <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
-                            <div className="flex items-center gap-2 text-red-800 mb-2">
-                              <AlertCircle size={16} />
-                              <span className="font-medium">ข้อผิดพลาด:</span>
-                            </div>
-                            <ul className="list-disc list-inside text-sm text-red-700 space-y-1">
-                              {capacitySummary.errors.map((error, idx) => (
-                                <li key={idx}>{error}</li>
-                              ))}
-                            </ul>
-                          </div>
-                        )}
-                        {capacitySummary.warnings.length > 0 && (
-                          <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
-                            <div className="flex items-center gap-2 text-amber-800 mb-2">
-                              <AlertCircle size={16} />
-                              <span className="font-medium">คำเตือน:</span>
-                            </div>
-                            <ul className="list-disc list-inside text-sm text-amber-700 space-y-1">
-                              {capacitySummary.warnings.map((warning, idx) => (
-                                <li key={idx}>{warning}</li>
-                              ))}
-                            </ul>
-                          </div>
-                        )}
-                        <div className="grid grid-cols-2 gap-4">
-                          <div className="p-3 bg-gray-50 rounded-lg">
-                            <div className="text-sm text-gray-600 mb-1">
-                              จำนวนพาเลท
-                            </div>
-                            <div className="text-2xl font-bold text-gray-900">
-                              {capacitySummary.totalPallets}
-                              {capacitySummary.vehicleMaxPallets !== null && (
-                                <span className="text-lg font-normal text-gray-500">
-                                  {' '}/ {capacitySummary.vehicleMaxPallets}
-                                </span>
-                              )}
-                            </div>
-                            {capacitySummary.vehicleMaxPallets !== null && (
-                              <div className="mt-2">
-                                <div className="w-full bg-gray-200 rounded-full h-2">
-                                  <div
-                                    className={`h-2 rounded-full ${capacitySummary.totalPallets > capacitySummary.vehicleMaxPallets
-                                        ? 'bg-red-500'
-                                        : capacitySummary.totalPallets > capacitySummary.vehicleMaxPallets * 0.9
-                                          ? 'bg-amber-500'
-                                          : 'bg-green-500'
-                                      }`}
-                                    style={{
-                                      width: `${Math.min(
-                                        100,
-                                        (capacitySummary.totalPallets / capacitySummary.vehicleMaxPallets) * 100
-                                      )}%`,
-                                    }}
-                                  />
-                                </div>
-                                <div className="text-xs text-gray-500 mt-1">
-                                  {Math.round(
-                                    (capacitySummary.totalPallets / capacitySummary.vehicleMaxPallets) * 100
-                                  )}
-                                  % ของความจุ
-                                </div>
+                    ) : capacitySummary ? (() => {
+                      // ใช้จำนวนพาเลทเดียวกับที่แสดง (bin packing) ในการให้ error/warning
+                      const displayPallets = palletPackingResult
+                        ? palletPackingResult.totalPallets
+                        : capacitySummary.totalPallets;
+
+                      const nonPalletErrors = capacitySummary.errors.filter(
+                        (msg) => !msg.startsWith('จำนวนพาเลท')
+                      );
+                      const nonPalletWarnings = capacitySummary.warnings.filter(
+                        (msg) => !msg.startsWith('จำนวนพาเลท')
+                      );
+
+                      const palletErrors: string[] = [];
+                      const palletWarnings: string[] = [];
+
+                      if (capacitySummary.vehicleMaxPallets !== null) {
+                        if (displayPallets > capacitySummary.vehicleMaxPallets) {
+                          palletErrors.push(
+                            `จำนวนพาเลทเกินความจุ: ${displayPallets} พาเลท (สูงสุด ${capacitySummary.vehicleMaxPallets} พาเลท)`
+                          );
+                        } else if (displayPallets > capacitySummary.vehicleMaxPallets * 0.9) {
+                          palletWarnings.push(
+                            `จำนวนพาเลทใกล้เต็มความจุ: ${displayPallets}/${capacitySummary.vehicleMaxPallets} พาเลท (${Math.round((displayPallets / capacitySummary.vehicleMaxPallets) * 100)}%)`
+                          );
+                        }
+                      }
+
+                      const errorsToShow = [...nonPalletErrors, ...palletErrors];
+                      const warningsToShow = [...nonPalletWarnings, ...palletWarnings];
+
+                      return (
+                        <div className="space-y-3">
+                          {errorsToShow.length > 0 && (
+                            <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+                              <div className="flex items-center gap-2 text-red-800 mb-2">
+                                <AlertCircle size={16} />
+                                <span className="font-medium">ข้อผิดพลาด:</span>
                               </div>
-                            )}
-                          </div>
-                          <div className="p-3 bg-gray-50 rounded-lg">
-                            <div className="text-sm text-gray-600 mb-1">
-                              น้ำหนักรวม
+                              <ul className="list-disc list-inside text-sm text-red-700 space-y-1">
+                                {errorsToShow.map((error, idx) => (
+                                  <li key={idx}>{error}</li>
+                                ))}
+                              </ul>
                             </div>
-                            <div className="text-2xl font-bold text-gray-900">
-                              {capacitySummary.totalWeightKg.toFixed(2)} กก.
-                              {capacitySummary.vehicleMaxWeightKg !== null && (
-                                <span className="text-lg font-normal text-gray-500">
-                                  {' '}/ {capacitySummary.vehicleMaxWeightKg} กก.
+                          )}
+                          {warningsToShow.length > 0 && (
+                            <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                              <div className="flex items-center gap-2 text-amber-800 mb-2">
+                                <AlertCircle size={16} />
+                                <span className="font-medium">คำเตือน:</span>
+                              </div>
+                              <ul className="list-disc list-inside text-sm text-amber-700 space-y-1">
+                                {warningsToShow.map((warning, idx) => (
+                                  <li key={idx}>{warning}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                          <div className="grid grid-cols-2 gap-4">
+                            <div className="p-3 bg-gray-50 rounded-lg">
+                              <div className="text-sm text-gray-600 mb-1">
+                                {palletPackingResult
+                                  ? 'จำนวนพาเลท (จัดรวม)'
+                                  : 'จำนวนพาเลท'}
+                                <span className="block text-xs text-gray-500 font-normal mt-0.5">
+                                  {palletPackingResult
+                                    ? 'หลายชนิดบนพาเลทเดียวกัน ตามน้ำหนัก/ปริมาตร'
+                                    : '(ค่าประมาณแยกตามชนิดสินค้า การจัดเรียงจริงอาจใช้น้อยกว่าถ้ารวมพาเลทได้)'}
                                 </span>
-                              )}
+                              </div>
+                              <div className="text-2xl font-bold text-gray-900">
+                                {displayPallets}
+                                {capacitySummary.vehicleMaxPallets !== null && (
+                                  <span className="text-lg font-normal text-gray-500">
+                                    {' '}/ {capacitySummary.vehicleMaxPallets}
+                                  </span>
+                                )}
+                              </div>
+                              {capacitySummary.vehicleMaxPallets !== null && (() => {
+                                const pct = (displayPallets / capacitySummary.vehicleMaxPallets) * 100;
+                                return (
+                                  <div className="mt-2">
+                                    <div className="w-full bg-gray-200 rounded-full h-2">
+                                      <div
+                                        className={`h-2 rounded-full ${displayPallets > capacitySummary.vehicleMaxPallets
+                                          ? 'bg-red-500'
+                                          : displayPallets > capacitySummary.vehicleMaxPallets * 0.9
+                                            ? 'bg-amber-500'
+                                            : 'bg-green-500'
+                                          }`}
+                                        style={{
+                                          width: `${Math.min(100, pct)}%`,
+                                        }}
+                                      />
+                                    </div>
+                                    <div className="text-xs text-gray-500 mt-1">
+                                      {Math.round(pct)}% ของความจุ
+                                    </div>
+                                  </div>
+                                );
+                              })()}
                             </div>
-                            {capacitySummary.vehicleMaxWeightKg !== null && (
-                              <div className="mt-2">
-                                <div className="w-full bg-gray-200 rounded-full h-2">
-                                  <div
-                                    className={`h-2 rounded-full ${capacitySummary.totalWeightKg > capacitySummary.vehicleMaxWeightKg
+                            <div className="p-3 bg-gray-50 rounded-lg">
+                              <div className="text-sm text-gray-600 mb-1">
+                                น้ำหนักรวม
+                              </div>
+                              <div className="text-2xl font-bold text-gray-900">
+                                {capacitySummary.totalWeightKg.toFixed(2)} กก.
+                                {capacitySummary.vehicleMaxWeightKg !== null && (
+                                  <span className="text-lg font-normal text-gray-500">
+                                    {' '}/ {capacitySummary.vehicleMaxWeightKg} กก.
+                                  </span>
+                                )}
+                              </div>
+                              {capacitySummary.vehicleMaxWeightKg !== null && (
+                                <div className="mt-2">
+                                  <div className="w-full bg-gray-200 rounded-full h-2">
+                                    <div
+                                      className={`h-2 rounded-full ${capacitySummary.totalWeightKg > capacitySummary.vehicleMaxWeightKg
                                         ? 'bg-red-500'
                                         : capacitySummary.totalWeightKg > capacitySummary.vehicleMaxWeightKg * 0.9
                                           ? 'bg-amber-500'
                                           : 'bg-green-500'
-                                      }`}
-                                    style={{
-                                      width: `${Math.min(
-                                        100,
-                                        (capacitySummary.totalWeightKg / capacitySummary.vehicleMaxWeightKg) * 100
-                                      )}%`,
-                                    }}
-                                  />
+                                        }`}
+                                      style={{
+                                        width: `${Math.min(
+                                          100,
+                                          (capacitySummary.totalWeightKg / capacitySummary.vehicleMaxWeightKg) * 100
+                                        )}%`,
+                                      }}
+                                    />
+                                  </div>
+                                  <div className="text-xs text-gray-500 mt-1">
+                                    {Math.round(
+                                      (capacitySummary.totalWeightKg / capacitySummary.vehicleMaxWeightKg) * 100
+                                    )}
+                                    % ของความจุ
+                                  </div>
                                 </div>
-                                <div className="text-xs text-gray-500 mt-1">
-                                  {Math.round(
-                                    (capacitySummary.totalWeightKg / capacitySummary.vehicleMaxWeightKg) * 100
-                                  )}
-                                  % ของความจุ
-                                </div>
-                              </div>
-                            )}
+                              )}
+                            </div>
+                            {/* ตัดการแสดงความสูงรวมออกจากหน้านี้ตามคำขอ (ยังคำนวณภายในแต่ไม่แสดง) */}
                           </div>
-                          {/* ตัดการแสดงความสูงรวมออกจากหน้านี้ตามคำขอ (ยังคำนวณภายในแต่ไม่แสดง) */}
                         </div>
-                      </div>
-                    ) : (
+                      );
+                    })() : (
                       <div className="text-sm text-gray-500">
                         กำลังคำนวณความจุ...
                       </div>

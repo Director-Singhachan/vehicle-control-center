@@ -22,6 +22,7 @@ import {
   History,
   XCircle,
   Trash2,
+  Layers,
 } from 'lucide-react';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
@@ -30,6 +31,7 @@ import { PageLayout } from '../components/layout/PageLayout';
 import { ImageModal } from '../components/ui/ImageModal';
 import { useDeliveryTrips, useVehicles, useAuth } from '../hooks';
 import { deliveryTripService, type DeliveryTripWithRelations } from '../services/deliveryTripService';
+import { tripMetricsService } from '../services/tripMetricsService';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 
 interface DeliveryTripListViewProps {
@@ -108,6 +110,7 @@ export const DeliveryTripListView: React.FC<DeliveryTripListViewProps> = ({
   const [isDeleting, setIsDeleting] = useState(false);
   const { isAdmin, isManager } = useAuth();
   const [selectedImage, setSelectedImage] = useState<{ url: string; alt: string } | null>(null);
+  const [tripsWithLayout, setTripsWithLayout] = useState<Set<string>>(new Set());
 
   const { trips, total, loading, error, refetch, prefetch } = useDeliveryTrips({
     status: statusFilter !== 'all' && Array.isArray(statusFilter) ? statusFilter : undefined,
@@ -128,6 +131,13 @@ export const DeliveryTripListView: React.FC<DeliveryTripListViewProps> = ({
 
   // Use trips directly - filtering is now done at database level
   const filteredTrips = trips;
+
+  // Batch check which trips have packing layout
+  useEffect(() => {
+    if (filteredTrips.length === 0) return;
+    const ids = filteredTrips.map((t) => t.id);
+    tripMetricsService.getTripsWithPackingLayout(ids).then(setTripsWithLayout).catch(() => { });
+  }, [filteredTrips]);
 
   // Pagination (server-side for total, client-side search mayลดจำนวนในหน้านั้น)
   const totalPages = Math.ceil((total || 0) / itemsPerPage) || 1;
@@ -397,6 +407,19 @@ export const DeliveryTripListView: React.FC<DeliveryTripListViewProps> = ({
                     <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
                       {formatDate(trip.planned_date)}
                     </p>
+                    <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                      {tripsWithLayout.has(trip.id) && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-teal-100 text-teal-800 dark:bg-teal-900 dark:text-teal-200">
+                          <Layers size={11} />
+                          จัดเรียงแล้ว
+                        </span>
+                      )}
+                      {(trip as any).actual_pallets_used != null && (
+                        <span className="text-xs text-slate-400 dark:text-slate-500">
+                          บันทึกเมตริกซ์แล้ว
+                        </span>
+                      )}
+                    </div>
                   </div>
                   {getStatusBadge(trip.status)}
                 </div>

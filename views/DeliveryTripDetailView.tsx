@@ -35,6 +35,9 @@ import type {
   DeliveryTripItemWithProduct,
   DeliveryTripItemChangeWithDetails,
 } from '../services/deliveryTripService';
+import { tripMetricsService, type PostTripAnalysisEntry } from '../services/tripMetricsService';
+import { TripPostAnalysisPanel } from '../components/trip/TripPostAnalysisPanel';
+import { PackingSimulator } from '../components/trip/PackingSimulator';
 
 interface DeliveryTripDetailViewProps {
   tripId: string;
@@ -55,6 +58,7 @@ export const DeliveryTripDetailView: React.FC<DeliveryTripDetailViewProps> = ({
   const [vehicleImageError, setVehicleImageError] = useState(false);
   const [driverImageError, setDriverImageError] = useState(false);
   const [selectedImage, setSelectedImage] = useState<{ url: string; alt: string } | null>(null);
+  const [showPackingLayout, setShowPackingLayout] = useState(false);
 
   // Get aggregated products
   const [aggregatedProducts, setAggregatedProducts] = useState<any[]>([]);
@@ -73,6 +77,11 @@ export const DeliveryTripDetailView: React.FC<DeliveryTripDetailViewProps> = ({
   const [staffDistribution, setStaffDistribution] = useState<any[]>([]);
   const [productDistribution, setProductDistribution] = useState<any[]>([]);
   const [distributionLoading, setDistributionLoading] = useState(false);
+
+  // Post-Trip Analysis (AI Insight หลังจบทริป)
+  const [postAnalyses, setPostAnalyses] = useState<PostTripAnalysisEntry[]>([]);
+  const [postAnalysisLoading, setPostAnalysisLoading] = useState(false);
+  const [postAnalysisError, setPostAnalysisError] = useState<string | null>(null);
 
   // เพิ่มร้านในทริป (ออเดอร์ที่ตกหล่น)
   const [addOrderModalOpen, setAddOrderModalOpen] = useState(false);
@@ -109,6 +118,23 @@ export const DeliveryTripDetailView: React.FC<DeliveryTripDetailViewProps> = ({
         })
         .finally(() => {
           setDistributionLoading(false);
+        });
+
+      // Load post-trip analysis (AI insight) ถ้ามี
+      setPostAnalysisLoading(true);
+      setPostAnalysisError(null);
+      tripMetricsService
+        .getPostTripAnalysisForTrip(trip.id)
+        .then((entries) => {
+          setPostAnalyses(entries);
+        })
+        .catch((err: any) => {
+          console.error('[DeliveryTripDetailView] Error loading post-trip analysis:', err);
+          setPostAnalyses([]);
+          setPostAnalysisError(err?.message || 'ไม่สามารถโหลดผลการวิเคราะห์ทริปได้');
+        })
+        .finally(() => {
+          setPostAnalysisLoading(false);
         });
     }
   }, [trip]);
@@ -352,9 +378,16 @@ export const DeliveryTripDetailView: React.FC<DeliveryTripDetailViewProps> = ({
             พิมพ์ A5 (โฟล์คลิฟท์)
           </Button>
           {onRecordMetrics && (
-            <Button variant="outline" onClick={onRecordMetrics}>
+            <Button
+              variant="outline"
+              onClick={onRecordMetrics}
+              className="relative"
+            >
               <BarChart3 size={18} className="mr-2" />
               บันทึกเมตริกซ์
+              {(trip as any).actual_pallets_used != null && (
+                <CheckCircle size={14} className="ml-1 text-green-600 dark:text-green-400" />
+              )}
             </Button>
           )}
           {(trip.status === 'planned' || trip.status === 'in_progress') && (
@@ -668,6 +701,9 @@ export const DeliveryTripDetailView: React.FC<DeliveryTripDetailViewProps> = ({
           </div>
         </Card>
       )}
+
+      {/* Post-Trip Analysis (AI Insight) */}
+      <TripPostAnalysisPanel tripId={trip.id} tripStatus={trip.status} />
 
       {/* Stores */}
       {trip.stores && trip.stores.length > 0 && (
@@ -1067,6 +1103,33 @@ export const DeliveryTripDetailView: React.FC<DeliveryTripDetailViewProps> = ({
         )}
       </Card>
 
+      {/* Packing Layout Section */}
+      <Card>
+        <div className="flex items-center justify-between">
+          <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+            <Package size={20} />
+            การจัดเรียงสินค้า
+          </h3>
+          <Button
+            variant={showPackingLayout ? 'outline' : 'primary'}
+            size="sm"
+            onClick={() => setShowPackingLayout(!showPackingLayout)}
+          >
+            {showPackingLayout ? 'ซ่อน' : 'ดูการจัดเรียง / บันทึก'}
+          </Button>
+        </div>
+        {showPackingLayout && (
+          <div className="mt-4">
+            <PackingSimulator
+              tripId={tripId}
+              onClose={() => setShowPackingLayout(false)}
+              onSaved={() => refetch()}
+              embedInDetailView
+            />
+          </div>
+        )}
+      </Card>
+
       {/* Back Button */}
       {onBack && (
         <div className="mt-6">
@@ -1136,11 +1199,10 @@ export const DeliveryTripDetailView: React.FC<DeliveryTripDetailViewProps> = ({
                   key={order.id}
                   type="button"
                   onClick={() => setSelectedOrderToAdd(selectedOrderToAdd?.id === order.id ? null : order)}
-                  className={`w-full p-4 text-left transition-colors ${
-                    selectedOrderToAdd?.id === order.id
-                      ? 'bg-enterprise-100 dark:bg-enterprise-900/30 border-l-4 border-enterprise-600'
-                      : 'hover:bg-slate-50 dark:hover:bg-slate-800/50'
-                  }`}
+                  className={`w-full p-4 text-left transition-colors ${selectedOrderToAdd?.id === order.id
+                    ? 'bg-enterprise-100 dark:bg-enterprise-900/30 border-l-4 border-enterprise-600'
+                    : 'hover:bg-slate-50 dark:hover:bg-slate-800/50'
+                    }`}
                 >
                   <div className="flex justify-between items-start">
                     <div>
