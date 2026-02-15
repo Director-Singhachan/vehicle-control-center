@@ -241,20 +241,20 @@ const ItemPicker: React.FC<{
                                         <div className="text-sm font-semibold text-enterprise-600 dark:text-enterprise-400">เหลือ {row.totalRemaining}</div>
                                         <div className="text-xs text-slate-400">จาก {row.totalQuantity}</div>
                                         {uniquePerLayer.length > 1 ? (
-                                            <div className="flex flex-wrap gap-1 justify-end mt-1">
+                                            <div className="flex flex-wrap gap-1.5 justify-end mt-1">
                                                 {uniquePerLayer.map((upl) => (
                                                     <button
                                                         key={upl}
                                                         type="button"
                                                         onClick={(e) => { e.stopPropagation(); addWithQty(Math.min(row.totalRemaining, upl)); }}
-                                                        className="text-[10px] px-2 py-0.5 rounded bg-enterprise-100 dark:bg-enterprise-900/40 text-enterprise-700 dark:text-enterprise-300 hover:bg-enterprise-200 dark:hover:bg-enterprise-800/60"
+                                                        className="text-xs font-semibold px-2.5 py-1 rounded-lg border-2 border-enterprise-300 dark:border-enterprise-600 bg-enterprise-100 dark:bg-enterprise-900/50 text-enterprise-700 dark:text-enterprise-300 cursor-pointer shadow-sm hover:bg-enterprise-200 dark:hover:bg-enterprise-800/60 hover:shadow hover:border-enterprise-400 dark:hover:border-enterprise-500 active:scale-[0.98] transition-all"
                                                     >
                                                         ชั้นละ {upl}
                                                     </button>
                                                 ))}
                                             </div>
                                         ) : (
-                                            <button type="button" onClick={() => addWithQty(stdQty)} className="text-xs px-2 py-1 rounded bg-enterprise-100 dark:bg-enterprise-900/40 text-enterprise-700 dark:text-enterprise-300 hover:bg-enterprise-200 dark:hover:bg-enterprise-800/60 mt-1">
+                                            <button type="button" onClick={() => addWithQty(stdQty)} className="text-xs font-semibold px-3 py-1.5 rounded-lg border-2 border-enterprise-300 dark:border-enterprise-600 bg-enterprise-100 dark:bg-enterprise-900/50 text-enterprise-700 dark:text-enterprise-300 cursor-pointer shadow-sm hover:bg-enterprise-200 dark:hover:bg-enterprise-800/60 hover:shadow hover:border-enterprise-400 dark:hover:border-enterprise-500 active:scale-[0.98] transition-all mt-1">
                                                 เพิ่ม
                                             </button>
                                         )}
@@ -294,20 +294,20 @@ const ItemPicker: React.FC<{
                                         <div className="text-sm font-semibold text-enterprise-600 dark:text-enterprise-400">เหลือ {row.remaining}</div>
                                         <div className="text-xs text-slate-400">จาก {row.quantity}</div>
                                         {uniquePerLayer.length > 1 ? (
-                                            <div className="flex flex-wrap gap-1 justify-end mt-1">
+                                            <div className="flex flex-wrap gap-1.5 justify-end mt-1">
                                                 {uniquePerLayer.map((upl) => (
                                                     <button
                                                         key={upl}
                                                         type="button"
                                                         onClick={(e) => { e.stopPropagation(); addWithQty(Math.min(row.remaining, upl)); }}
-                                                        className="text-[10px] px-2 py-0.5 rounded bg-enterprise-100 dark:bg-enterprise-900/40 text-enterprise-700 dark:text-enterprise-300 hover:bg-enterprise-200 dark:hover:bg-enterprise-800/60"
+                                                        className="text-xs font-semibold px-2.5 py-1 rounded-lg border-2 border-enterprise-300 dark:border-enterprise-600 bg-enterprise-100 dark:bg-enterprise-900/50 text-enterprise-700 dark:text-enterprise-300 cursor-pointer shadow-sm hover:bg-enterprise-200 dark:hover:bg-enterprise-800/60 hover:shadow hover:border-enterprise-400 dark:hover:border-enterprise-500 active:scale-[0.98] transition-all"
                                                     >
                                                         ชั้นละ {upl}
                                                     </button>
                                                 ))}
                                             </div>
                                         ) : (
-                                            <button type="button" onClick={() => addWithQty(stdQty)} className="text-xs px-2 py-1 rounded bg-enterprise-100 dark:bg-enterprise-900/40 text-enterprise-700 dark:text-enterprise-300 hover:bg-enterprise-200 dark:hover:bg-enterprise-800/60 mt-1">
+                                            <button type="button" onClick={() => addWithQty(stdQty)} className="text-xs font-semibold px-3 py-1.5 rounded-lg border-2 border-enterprise-300 dark:border-enterprise-600 bg-enterprise-100 dark:bg-enterprise-900/50 text-enterprise-700 dark:text-enterprise-300 cursor-pointer shadow-sm hover:bg-enterprise-200 dark:hover:bg-enterprise-800/60 hover:shadow hover:border-enterprise-400 dark:hover:border-enterprise-500 active:scale-[0.98] transition-all mt-1">
                                                 เพิ่ม
                                             </button>
                                         )}
@@ -1477,7 +1477,7 @@ export const PackingSimulator: React.FC<SimulatorProps> = ({ tripId, onClose }) 
                                                                     </span>
                                                                 )}
                                                             </div>
-                                                            <button type="button" onClick={() => setShowItemPicker({ posId: pos.id, layerIndex: li })} className="text-xs text-enterprise-600 dark:text-enterprise-400 hover:underline flex items-center gap-1">
+                                                            <button type="button" onClick={() => setShowItemPicker({ posId: pos.id, layerIndex: li })} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border-2 border-enterprise-300 dark:border-enterprise-600 bg-enterprise-50 dark:bg-enterprise-900/30 text-enterprise-700 dark:text-enterprise-300 text-xs font-semibold shadow-sm hover:bg-enterprise-100 dark:hover:bg-enterprise-800/50 hover:border-enterprise-400 dark:hover:border-enterprise-500 hover:shadow active:scale-[0.98] transition-all">
                                                                 <Plus size={12} /> เพิ่มสินค้า
                                                             </button>
                                                         </div>
@@ -1541,7 +1541,7 @@ export const PackingSimulator: React.FC<SimulatorProps> = ({ tripId, onClose }) 
                                                                                                 key={upl}
                                                                                                 type="button"
                                                                                                 onClick={() => setItemQuantity(pos.id, item.delivery_trip_item_id, Math.min(maxCanAdd, upl), li)}
-                                                                                                className="text-[10px] px-2 py-0.5 rounded bg-enterprise-100 dark:bg-enterprise-900/40 text-enterprise-700 dark:text-enterprise-300 hover:bg-enterprise-200 dark:hover:bg-enterprise-800/60"
+                                                                                                className="text-xs font-semibold px-2.5 py-1 rounded-lg border-2 border-enterprise-300 dark:border-enterprise-600 bg-enterprise-100 dark:bg-enterprise-900/50 text-enterprise-700 dark:text-enterprise-300 cursor-pointer shadow-sm hover:bg-enterprise-200 dark:hover:bg-enterprise-800/60 hover:shadow hover:border-enterprise-400 active:scale-[0.98] transition-all"
                                                                                             >
                                                                                                 ชั้นละ {upl}
                                                                                             </button>
@@ -1556,7 +1556,7 @@ export const PackingSimulator: React.FC<SimulatorProps> = ({ tripId, onClose }) 
                                                                                             type="button"
                                                                                             onClick={() => fillFullPalletForGroup(pos.id, item.product_id, item.delivery_trip_item_id, std)}
                                                                                             title={`เต็มพาเลท ${std.total_units} · ${std.layers} ชั้น · ชั้นละ ${std.units_per_layer}`}
-                                                                                            className="text-[10px] px-2 py-0.5 rounded bg-violet-100 dark:bg-violet-900/40 text-violet-700 dark:text-violet-300 hover:bg-violet-200 dark:hover:bg-violet-800/60"
+                                                                                            className="text-xs font-semibold px-2.5 py-1 rounded-lg border-2 border-violet-300 dark:border-violet-600 bg-violet-100 dark:bg-violet-900/50 text-violet-700 dark:text-violet-300 cursor-pointer shadow-sm hover:bg-violet-200 dark:hover:bg-violet-800/60 hover:shadow hover:border-violet-400 active:scale-[0.98] transition-all"
                                                                                         >
                                                                                             เต็มพาเลท {std.total_units}
                                                                                         </button>
@@ -1649,7 +1649,7 @@ export const PackingSimulator: React.FC<SimulatorProps> = ({ tripId, onClose }) 
                                                                             onClick={() => fillFullPalletForGroup(pos.id, group.product_id, group.delivery_trip_item_id, std)}
                                                                             disabled={maxCanAdd <= 0}
                                                                             title={`เต็มพาเลท ${std.total_units} ชิ้น · ${std.layers} ชั้น · ชั้นละ ${std.units_per_layer}`}
-                                                                            className="ml-1 px-2 py-1 rounded-lg text-[10px] font-medium bg-enterprise-100 dark:bg-enterprise-900/50 text-enterprise-700 dark:text-enterprise-300 hover:bg-enterprise-200 dark:hover:bg-enterprise-800/60 disabled:opacity-40"
+                                                                            className="ml-1 px-2.5 py-1 rounded-lg border-2 border-enterprise-300 dark:border-enterprise-600 text-xs font-semibold bg-enterprise-100 dark:bg-enterprise-900/50 text-enterprise-700 dark:text-enterprise-300 cursor-pointer shadow-sm hover:bg-enterprise-200 dark:hover:bg-enterprise-800/60 hover:shadow hover:border-enterprise-400 disabled:opacity-40 disabled:cursor-not-allowed active:scale-[0.98] transition-all"
                                                                         >
                                                                             เต็มพาเลท {std.total_units}
                                                                         </button>
@@ -1661,7 +1661,7 @@ export const PackingSimulator: React.FC<SimulatorProps> = ({ tripId, onClose }) 
                                                 </>
                                             )}
 
-                                            <button type="button" onClick={() => setShowItemPicker(pos.id)} className="w-full flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-dashed border-enterprise-200 dark:border-enterprise-800 text-enterprise-600 dark:text-enterprise-400 hover:bg-enterprise-50 dark:hover:bg-enterprise-950/20 hover:border-enterprise-400 dark:hover:border-enterprise-600 transition-all text-sm font-medium">
+                                            <button type="button" onClick={() => setShowItemPicker(pos.id)} className="w-full flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-enterprise-300 dark:border-enterprise-600 bg-enterprise-50 dark:bg-enterprise-900/30 text-enterprise-700 dark:text-enterprise-300 hover:bg-enterprise-100 dark:hover:bg-enterprise-800/50 hover:border-enterprise-400 dark:hover:border-enterprise-500 hover:shadow-md transition-all text-sm font-semibold shadow-sm cursor-pointer active:scale-[0.99]">
                                                 <Plus size={16} />
                                                 เพิ่มสินค้า
                                             </button>
