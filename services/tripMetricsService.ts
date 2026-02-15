@@ -733,8 +733,47 @@ export const tripMetricsService = {
   },
 
   /**
+   * ดึงมาตรฐานการจัดเรียงต่อสินค้า จาก product_pallet_configs (ชั้นละกี่ชิ้น, พาเลทละกี่ชิ้น)
+   * ใช้ config ที่ is_default หรือตัวแรกของแต่ละ product
+   */
+  getPackingStandards: async (productIds: string[]): Promise<Map<string, { units_per_layer: number; layers: number; total_units: number; config_name: string | null }>> => {
+    const map = new Map<string, { units_per_layer: number; layers: number; total_units: number; config_name: string | null }>();
+    if (!productIds || productIds.length === 0) return map;
+    try {
+      const { data: rows, error } = await supabase
+        .from('product_pallet_configs')
+        .select('id, product_id, config_name, layers, units_per_layer, total_units')
+        .in('product_id', productIds)
+        .eq('is_active', true)
+        .order('is_default', { ascending: false })
+        .order('created_at', { ascending: true });
+
+      if (error) {
+        console.warn('[tripMetricsService] getPackingStandards error:', error);
+        return map;
+      }
+      for (const row of rows ?? []) {
+        const pid = (row as any).product_id;
+        if (!pid || map.has(pid)) continue;
+        const layers = Number((row as any).layers) || 1;
+        const upl = Number((row as any).units_per_layer) || 0;
+        const total = Number((row as any).total_units) ?? layers * upl;
+        map.set(pid, {
+          units_per_layer: upl,
+          layers,
+          total_units: total > 0 ? total : layers * upl,
+          config_name: (row as any).config_name ?? null,
+        });
+      }
+    } catch (err) {
+      console.warn('[tripMetricsService] getPackingStandards unexpected error:', err);
+    }
+    return map;
+  },
+
+  /**
    * ★ คำนวณ "ร่างแผนจัดเรียง" จาก rule-based
-   * ดึง "จำนวนหน่วยต่อชั้น (units_per_layer)" จากประวัติ layout จริง
+   * ใช้มาตรฐานจาก product_pallet_configs เป็นหลัก → ถ้าไม่มีใช้ประวัติ layout → ถ้าไม่มีใช้ประมาณค่า
    * แล้วคำนวณว่าทริปปัจจุบันต้องใช้กี่ชั้น กี่พาเลท
    * ส่งให้ AI ใช้เป็นฐาน (ไม่ต้องคิดเอง)
    */
@@ -751,13 +790,21 @@ export const tripMetricsService = {
 
     const MAX_LAYERS_PER_PALLET = 4; // standard pallet = 4 ชั้น
     const lines: string[] = [];
-
-    // ===== 1) ดึง units_per_layer จากประวัติ layout จริง =====
     const productIds = [...new Set(params.items.map(i => i.product_id))];
-    const unitsPerLayerMap = new Map<string, number>(); // product_id → avg units per layer
 
+    // ===== 1) มาตรฐานจาก product_pallet_configs (หลัก) =====
+    const standardsMap = await tripMetricsService.getPackingStandards(productIds);
+    const unitsPerLayerMap = new Map<string, number>();
+    const dataSourceMap = new Map<string, 'มาตรฐาน' | 'ประวัติจริง' | 'ประมาณค่า'>();
+    for (const [pid, std] of standardsMap) {
+      if (std.units_per_layer > 0) {
+        unitsPerLayerMap.set(pid, std.units_per_layer);
+        dataSourceMap.set(pid, 'มาตรฐาน');
+      }
+    }
+
+    // ===== 2) ถ้ายังไม่มี ใช้ประวัติ layout จริง =====
     try {
-      // ดึง layout items ที่มี layer_index (ตำแหน่งชั้นจริง) สำหรับสินค้าเหล่านี้
       const { data: layoutItems, error } = await supabase
         .from('trip_packing_layout_items')
         .select(`
@@ -771,26 +818,24 @@ export const tripMetricsService = {
         .limit(500);
 
       if (!error && layoutItems && layoutItems.length > 0) {
-        // กรองเฉพาะ product ที่ตรงกัน + มี layer_index
         const relevant = layoutItems.filter((item: any) => {
           const pid = item.delivery_trip_items?.product_id;
           return productIds.includes(pid) && item.layer_index !== null;
         });
-
-        // คำนวณ avg units per layer ต่อ product
-        const productLayerData = new Map<string, number[]>(); // product_id → [qty per record]
+        const productLayerData = new Map<string, number[]>();
         for (const item of relevant) {
           const pid = (item as any).delivery_trip_items?.product_id;
           if (!pid) continue;
+          if (dataSourceMap.get(pid) === 'มาตรฐาน') continue; // มีมาตรฐานแล้ว ไม่ใช้ประวัติ
           const existing = productLayerData.get(pid) || [];
           existing.push(Number(item.quantity));
           productLayerData.set(pid, existing);
         }
-
         for (const [pid, quantities] of productLayerData) {
-          if (quantities.length > 0) {
+          if (quantities.length > 0 && !unitsPerLayerMap.has(pid)) {
             const avg = quantities.reduce((a, b) => a + b, 0) / quantities.length;
             unitsPerLayerMap.set(pid, Math.round(avg));
+            dataSourceMap.set(pid, 'ประวัติจริง');
           }
         }
       }
@@ -798,11 +843,9 @@ export const tripMetricsService = {
       console.warn('[tripMetricsService] computePackingPlan: layout query error', err);
     }
 
-    // ★ ถ้าไม่มีข้อมูล layout → ดึง avg จากข้อมูลอื่น
-    // (ไม่มี layout บันทึกมาก่อน → ใช้ approximate: ~10 ลัง/ชั้น สำหรับขวดเบียร์/โซดามาตรฐาน)
     const DEFAULT_UNITS_PER_LAYER = 10;
 
-    // ===== 2) คำนวณ layers ต่อ product =====
+    // ===== 3) คำนวณ layers ต่อ product =====
     interface ProductPlan {
       product_id: string;
       product_name: string;
@@ -810,20 +853,20 @@ export const tripMetricsService = {
       weight_kg: number;
       units_per_layer: number;
       layers_needed: number;
-      data_source: 'ประวัติจริง' | 'ประมาณค่า';
+      data_source: 'มาตรฐาน' | 'ประวัติจริง' | 'ประมาณค่า';
     }
 
     const productPlans: ProductPlan[] = params.items
       .filter(i => i.quantity > 0)
       .map(item => {
-        const histUPL = unitsPerLayerMap.get(item.product_id);
-        const upl = histUPL ?? DEFAULT_UNITS_PER_LAYER;
+        const upl = unitsPerLayerMap.get(item.product_id) ?? DEFAULT_UNITS_PER_LAYER;
+        const source = dataSourceMap.get(item.product_id) ?? 'ประมาณค่า';
         const layers = Math.ceil(item.quantity / upl);
         return {
           ...item,
           units_per_layer: upl,
           layers_needed: layers,
-          data_source: histUPL ? 'ประวัติจริง' as const : 'ประมาณค่า' as const,
+          data_source: source,
         };
       })
       // เรียงตามน้ำหนัก มาก → น้อย (ของหนักวางก่อน)
@@ -963,13 +1006,14 @@ export const tripMetricsService = {
     vehicleMaxPallets?: number | null;
   }): Promise<string> => {
     const sections: string[] = [];
+    const productIds = params.items.length > 0 ? [...new Set(params.items.map((i) => i.product_id))] : [];
 
     try {
-      const [patternInsights, productProfiles, packingPlan] = await Promise.all([
+      const [patternInsights, productProfiles, packingPlan, standardsMap] = await Promise.all([
         tripMetricsService.getPackingPatternInsights(),
         params.vehicleId && params.items.length > 0
           ? tripMetricsService.getProductPackingProfiles(
-              [...new Set(params.items.map((i) => i.product_id))],
+              productIds,
               params.vehicleId
             )
           : '',
@@ -984,8 +1028,17 @@ export const tripMetricsService = {
               vehicleMaxPallets: params.vehicleMaxPallets ?? null,
             })
           : '',
+        productIds.length > 0 ? tripMetricsService.getPackingStandards(productIds) : Promise.resolve(new Map()),
       ]);
 
+      if (standardsMap.size > 0) {
+        const nameById = new Map(params.items.map((i) => [i.product_id, i.product_name]));
+        const stdLines = Array.from(standardsMap.entries()).map(([pid, std]) => {
+          const name = nameById.get(pid) || 'สินค้า';
+          return `  • ${name}: ชั้นละ ${std.units_per_layer} ชิ้น, พาเลทละ ${std.total_units} ชิ้น${std.config_name ? ` (${std.config_name})` : ''}`;
+        });
+        sections.push('📐 มาตรฐานการจัดเรียง (จากระบบ):\n' + stdLines.join('\n'));
+      }
       if (patternInsights.trim()) {
         sections.push(patternInsights);
       }

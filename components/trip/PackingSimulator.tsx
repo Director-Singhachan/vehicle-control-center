@@ -108,24 +108,66 @@ const StatCard: React.FC<{ icon: React.ElementType; label: string; value: string
     </div>
 );
 
-// Item Picker Modal
+// แถวใน Picker: แยกร้าน — เลือกได้ว่าต้องการเพิ่มของร้านไหน
+interface PickerRow {
+    itemId: string;
+    product_id: string;
+    product_name: string;
+    product_code: string;
+    category: string;
+    unit: string;
+    quantity: number;
+    remaining: number;
+    store_name: string | undefined;
+}
+
+// แถวรวมตามสินค้า (หลายร้านรวมเป็นแถวเดียว — เหมาะเมื่อมี 4–5 ร้านขึ้นไป)
+interface AggregatedPickerRow {
+    product_id: string;
+    product_name: string;
+    product_code: string;
+    category: string;
+    unit: string;
+    totalQuantity: number;
+    totalRemaining: number;
+    storeCount: number;
+}
+
+// มาตรฐานการจัดเรียงต่อสินค้า (จาก product_pallet_configs)
+type PackingStandard = { units_per_layer: number; layers: number; total_units: number; config_name: string | null };
+
+// Item Picker Modal — สลับโหมด: "รวมตามสินค้า" (สั้น แจกอัตโนมัติ) | "แยกร้าน" (เลือกร้านเอง)
 const ItemPicker: React.FC<{
-    items: TripItem[];
-    allocated: Map<string, number>;
-    onAdd: (itemId: string, qty: number) => void;
+    itemsPerStore: PickerRow[];
+    itemsAggregated: AggregatedPickerRow[];
+    packingStandards: Map<string, PackingStandard>;
+    onAddByItem: (itemId: string, qty: number) => void;
+    onAddByProduct: (productId: string, qty: number) => void;
     onClose: () => void;
-}> = ({ items, allocated, onAdd, onClose }) => {
+}> = ({ itemsPerStore, itemsAggregated, packingStandards, onAddByItem, onAddByProduct, onClose }) => {
     const [search, setSearch] = useState('');
-    const filtered = useMemo(() => {
+    const [mode, setMode] = useState<'aggregated' | 'per-store'>('aggregated');
+
+    const filteredPerStore = useMemo(() => {
         const q = search.toLowerCase();
-        return items.filter(i =>
+        return itemsPerStore.filter(i =>
+            !q || i.product_name.toLowerCase().includes(q) || i.product_code.toLowerCase().includes(q) || (i.store_name && i.store_name.toLowerCase().includes(q))
+        );
+    }, [itemsPerStore, search]);
+
+    const filteredAggregated = useMemo(() => {
+        const q = search.toLowerCase();
+        return itemsAggregated.filter(i =>
             !q || i.product_name.toLowerCase().includes(q) || i.product_code.toLowerCase().includes(q)
         );
-    }, [items, search]);
+    }, [itemsAggregated, search]);
+
+    const isAggregated = mode === 'aggregated';
+    const list = isAggregated ? filteredAggregated : filteredPerStore;
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={onClose}>
-            <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 w-full max-w-lg max-h-[80vh] overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 w-full max-w-lg max-h-[85vh] overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
                 <div className="p-4 border-b border-slate-200 dark:border-slate-700">
                     <div className="flex items-center justify-between mb-3">
                         <h3 className="font-semibold text-slate-900 dark:text-slate-100">เพิ่มสินค้าลงตำแหน่ง</h3>
@@ -133,50 +175,100 @@ const ItemPicker: React.FC<{
                             <X size={18} className="text-slate-400" />
                         </button>
                     </div>
+                    {/* สลับโหมด: รวมตามสินค้า (เมื่อมีหลายร้าน) vs แยกร้าน */}
+                    <div className="flex rounded-lg bg-slate-100 dark:bg-slate-800 p-0.5 mb-3">
+                        <button
+                            type="button"
+                            onClick={() => setMode('aggregated')}
+                            className={`flex-1 py-2 px-3 rounded-md text-sm font-medium transition-colors ${isAggregated ? 'bg-white dark:bg-slate-700 shadow text-enterprise-600 dark:text-enterprise-400' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'}`}
+                        >
+                            รวมตามสินค้า ({itemsAggregated.length})
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setMode('per-store')}
+                            className={`flex-1 py-2 px-3 rounded-md text-sm font-medium transition-colors ${!isAggregated ? 'bg-white dark:bg-slate-700 shadow text-enterprise-600 dark:text-enterprise-400' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'}`}
+                        >
+                            แยกร้าน ({itemsPerStore.length})
+                        </button>
+                    </div>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mb-2">
+                        {isAggregated
+                            ? 'สินค้าปนกันได้ — ระบบแจกจำนวนอัตโนมัติให้แต่ละร้าน โดยจับกลุ่มร้านที่เหลือมากก่อน เศษค่อยแยก'
+                            : 'เลือกของร้านที่ต้องการวาง (ของแต่ละร้านปนกันไม่ได้)'}
+                    </p>
                     <input
                         type="text"
-                        placeholder="ค้นหาสินค้า..."
+                        placeholder={isAggregated ? 'ค้นหาสินค้า...' : 'ค้นหาสินค้า หรือร้าน...'}
                         value={search}
                         onChange={e => setSearch(e.target.value)}
                         className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-enterprise-500"
                         autoFocus
                     />
                 </div>
-                <div className="overflow-y-auto max-h-[60vh] p-2">
-                    {filtered.map(item => {
-                        const used = allocated.get(item.id) || 0;
-                        const remaining = item.quantity - used;
-                        const catColor = getCategoryColor(item.category);
-                        if (remaining <= 0) return null;
-
-                        return (
-                            <button
-                                key={item.id}
-                                onClick={() => { onAdd(item.id, Math.min(remaining, 1)); onClose(); }}
-                                className="w-full text-left flex items-center gap-3 p-3 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors group"
-                            >
-                                <div className={`w-10 h-10 rounded-lg bg-gradient-to-br ${catColor.gradient} flex items-center justify-center flex-shrink-0`}>
-                                    <Package className="text-white" size={16} />
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                    <div className="text-sm font-medium text-slate-900 dark:text-slate-100 truncate">
-                                        {item.product_name}
+                <div className="overflow-y-auto flex-1 min-h-0 p-2 max-h-[55vh]">
+                    {isAggregated
+                        ? filteredAggregated.map(row => {
+                            const catColor = getCategoryColor(row.category);
+                            if (row.totalRemaining <= 0) return null;
+                            return (
+                                <button
+                                    key={row.product_id}
+                                    onClick={() => { onAddByProduct(row.product_id, Math.min(row.totalRemaining, 1)); onClose(); }}
+                                    className="w-full text-left flex items-center gap-3 p-3 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors group"
+                                >
+                                    <div className={`w-10 h-10 rounded-lg bg-gradient-to-br ${catColor.gradient} flex items-center justify-center flex-shrink-0`}>
+                                        <Package className="text-white" size={16} />
                                     </div>
-                                    <div className="text-xs text-slate-500 dark:text-slate-400">
-                                        {item.product_code} · {item.category} · {item.unit}
+                                    <div className="flex-1 min-w-0">
+                                        <div className="text-sm font-medium text-slate-900 dark:text-slate-100 truncate">{row.product_name}</div>
+                                        <div className="text-xs text-slate-500 dark:text-slate-400">
+                                            {row.product_code} · {row.category} · {row.unit}
+                                            {row.storeCount > 1 && <span className="text-enterprise-600 dark:text-enterprise-400 ml-1">· {row.storeCount} ร้าน</span>}
+                                        </div>
+                                        {packingStandards.get(row.product_id) && (
+                                            <div className="text-xs text-enterprise-600 dark:text-enterprise-400 mt-0.5">
+                                                มาตรฐาน: ชั้นละ {packingStandards.get(row.product_id)!.units_per_layer} ชิ้น · พาเลทละ {packingStandards.get(row.product_id)!.total_units} ชิ้น
+                                            </div>
+                                        )}
                                     </div>
-                                </div>
-                                <div className="text-right flex-shrink-0">
-                                    <div className="text-sm font-semibold text-enterprise-600 dark:text-enterprise-400">
-                                        เหลือ {remaining}
+                                    <div className="text-right flex-shrink-0">
+                                        <div className="text-sm font-semibold text-enterprise-600 dark:text-enterprise-400">เหลือ {row.totalRemaining}</div>
+                                        <div className="text-xs text-slate-400">จาก {row.totalQuantity}</div>
                                     </div>
-                                    <div className="text-xs text-slate-400">
-                                        จาก {item.quantity}
+                                </button>
+                            );
+                        })
+                        : filteredPerStore.map(row => {
+                            const catColor = getCategoryColor(row.category);
+                            return (
+                                <button
+                                    key={row.itemId}
+                                    onClick={() => { onAddByItem(row.itemId, Math.min(row.remaining, 1)); onClose(); }}
+                                    className="w-full text-left flex items-center gap-3 p-3 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors group"
+                                >
+                                    <div className={`w-10 h-10 rounded-lg bg-gradient-to-br ${catColor.gradient} flex items-center justify-center flex-shrink-0`}>
+                                        <Package className="text-white" size={16} />
                                     </div>
-                                </div>
-                            </button>
-                        );
-                    })}
+                                    <div className="flex-1 min-w-0">
+                                        <div className="text-sm font-medium text-slate-900 dark:text-slate-100 truncate">
+                                            {row.product_name}
+                                            {row.store_name && <span className="text-enterprise-600 dark:text-enterprise-400 ml-1">· {row.store_name}</span>}
+                                        </div>
+                                        <div className="text-xs text-slate-500 dark:text-slate-400">{row.product_code} · {row.category} · {row.unit}</div>
+                                        {packingStandards.get(row.product_id) && (
+                                            <div className="text-xs text-enterprise-600 dark:text-enterprise-400 mt-0.5">
+                                                มาตรฐาน: ชั้นละ {packingStandards.get(row.product_id)!.units_per_layer} ชิ้น · พาเลทละ {packingStandards.get(row.product_id)!.total_units} ชิ้น
+                                            </div>
+                                        )}
+                                    </div>
+                                    <div className="text-right flex-shrink-0">
+                                        <div className="text-sm font-semibold text-enterprise-600 dark:text-enterprise-400">เหลือ {row.remaining}</div>
+                                        <div className="text-xs text-slate-400">จาก {row.quantity}</div>
+                                    </div>
+                                </button>
+                            );
+                        })}
                 </div>
             </div>
         </div>
@@ -196,6 +288,7 @@ export const PackingSimulator: React.FC<SimulatorProps> = ({ tripId, onClose }) 
     const [aiSuggestions, setAiSuggestions] = useState<string | null>(null);
     const [showAi, setShowAi] = useState(false);
     const [showSaveConfirm, setShowSaveConfirm] = useState(false);
+    const [packingStandards, setPackingStandards] = useState<Map<string, PackingStandard>>(new Map());
 
     // Undo/redo
     const [history, setHistory] = useState<LayoutState[]>([]);
@@ -304,6 +397,16 @@ export const PackingSimulator: React.FC<SimulatorProps> = ({ tripId, onClose }) 
         load();
     }, [tripId, draftKey]);
 
+    // โหลดมาตรฐานการจัดเรียง (product_pallet_configs) ต่อสินค้าในทริป
+    useEffect(() => {
+        if (tripItems.length === 0) {
+            setPackingStandards(new Map());
+            return;
+        }
+        const productIds = [...new Set(tripItems.map((i) => i.product_id))] as string[];
+        tripMetricsService.getPackingStandards(productIds).then(setPackingStandards);
+    }, [tripItems]);
+
     // Auto-save draft
     useEffect(() => {
         if (!loadingTrip && layout.positions.length > 0) {
@@ -321,6 +424,61 @@ export const PackingSimulator: React.FC<SimulatorProps> = ({ tripId, onClose }) 
         }
         return map;
     }, [layout]);
+
+    // รายการสำหรับ Picker: แยกร้าน (แต่ละแถว = สินค้า + ร้าน)
+    const pickerItemsPerStore = useMemo((): PickerRow[] => {
+        return tripItems
+            .map(item => ({
+                itemId: item.id,
+                product_id: item.product_id,
+                product_name: item.product_name,
+                product_code: item.product_code,
+                category: item.category,
+                unit: item.unit,
+                quantity: item.quantity,
+                remaining: item.quantity - (allocated.get(item.id) || 0),
+                store_name: item.store_name,
+            }))
+            .filter(row => row.remaining > 0)
+            .sort((a, b) => a.product_name.localeCompare(b.product_name) || (a.store_name || '').localeCompare(b.store_name || ''));
+    }, [tripItems, allocated]);
+
+    // รายการรวมตามสินค้า (หนึ่งแถวต่อสินค้า — เหมาะเมื่อมี 4–5 ร้านขึ้นไป ไม่ต้องเลื่อนยาว)
+    const pickerItemsAggregated = useMemo((): AggregatedPickerRow[] => {
+        const byProduct = new Map<string, { name: string; code: string; category: string; unit: string; totalQty: number; totalRemaining: number; count: number }>();
+        for (const item of tripItems) {
+            const remaining = item.quantity - (allocated.get(item.id) || 0);
+            const ex = byProduct.get(item.product_id);
+            if (!ex) {
+                byProduct.set(item.product_id, {
+                    name: item.product_name,
+                    code: item.product_code,
+                    category: item.category,
+                    unit: item.unit,
+                    totalQty: item.quantity,
+                    totalRemaining: remaining,
+                    count: 1,
+                });
+            } else {
+                ex.totalQty += item.quantity;
+                ex.totalRemaining += remaining;
+                ex.count += 1;
+            }
+        }
+        return Array.from(byProduct.entries())
+            .map(([product_id, v]) => ({
+                product_id,
+                product_name: v.name,
+                product_code: v.code,
+                category: v.category,
+                unit: v.unit,
+                totalQuantity: v.totalQty,
+                totalRemaining: v.totalRemaining,
+                storeCount: v.count,
+            }))
+            .filter(r => r.totalRemaining > 0)
+            .sort((a, b) => a.product_name.localeCompare(b.product_name));
+    }, [tripItems, allocated]);
 
     // Stats
     const stats = useMemo(() => {
@@ -380,7 +538,7 @@ export const PackingSimulator: React.FC<SimulatorProps> = ({ tripId, onClose }) 
         }));
     }, []);
 
-    // Add item to position
+    // Add item to position (ใช้เมื่อเลือกจาก picker แบบแยกรายการ)
     const addItemToPosition = useCallback((posId: string, itemId: string, qty: number) => {
         const tripItem = tripItems.find(i => i.id === itemId);
         if (!tripItem) return;
@@ -393,7 +551,6 @@ export const PackingSimulator: React.FC<SimulatorProps> = ({ tripId, onClose }) 
         push({
             positions: layout.positions.map(pos => {
                 if (pos.id !== posId) return pos;
-                // Check if this item already exists in this position
                 const existingIdx = pos.items.findIndex(i => i.delivery_trip_item_id === itemId);
                 if (existingIdx >= 0) {
                     const updated = [...pos.items];
@@ -414,6 +571,54 @@ export const PackingSimulator: React.FC<SimulatorProps> = ({ tripId, onClose }) 
                         layer_index: null,
                     }],
                 };
+            }),
+        });
+    }, [tripItems, layout, allocated, push]);
+
+    // เพิ่มสินค้าตาม product (รวมหลายร้าน): แจกอัตโนมัติ โดยจับกลุ่มร้าน — ใช้จากร้านที่เหลือมากก่อน เศษค่อยแยก
+    const addProductToPosition = useCallback((posId: string, productId: string, qty: number) => {
+        const itemsWithProduct = tripItems
+            .filter(i => i.product_id === productId)
+            .map(item => ({ item, remaining: item.quantity - (allocated.get(item.id) || 0) }))
+            .filter(x => x.remaining > 0)
+            .sort((a, b) => b.remaining - a.remaining); // ร้านที่เหลือมากก่อน → จับกลุ่มกัน
+        const toAdd: { itemId: string; addQty: number; tripItem: TripItem }[] = [];
+        let left = qty;
+        for (const { item, remaining } of itemsWithProduct) {
+            if (left <= 0) break;
+            const addQty = Math.min(left, remaining);
+            if (addQty > 0) {
+                toAdd.push({ itemId: item.id, addQty, tripItem: item });
+                left -= addQty;
+            }
+        }
+        if (toAdd.length === 0) return;
+
+        push({
+            positions: layout.positions.map(pos => {
+                if (pos.id !== posId) return pos;
+                let nextItems = [...pos.items];
+                for (const { itemId, addQty, tripItem } of toAdd) {
+                    const idx = nextItems.findIndex(i => i.delivery_trip_item_id === itemId && i.layer_index === null);
+                    if (idx >= 0) {
+                        nextItems = nextItems.map((it, i) =>
+                            i === idx ? { ...it, quantity: it.quantity + addQty } : it
+                        );
+                    } else {
+                        nextItems.push({
+                            delivery_trip_item_id: itemId,
+                            product_id: tripItem.product_id,
+                            product_name: tripItem.product_name,
+                            product_code: tripItem.product_code,
+                            category: tripItem.category,
+                            unit: tripItem.unit,
+                            weight_kg: tripItem.weight_kg,
+                            quantity: addQty,
+                            layer_index: null,
+                        });
+                    }
+                }
+                return { ...pos, items: nextItems };
             }),
         });
     }, [tripItems, layout, allocated, push]);
@@ -575,6 +780,54 @@ export const PackingSimulator: React.FC<SimulatorProps> = ({ tripId, onClose }) 
                         layer_index: layerIndex,
                     }],
                 };
+            }),
+        });
+    }, [tripItems, layout, allocated, push]);
+
+    // เพิ่มสินค้าตาม product ลงชั้นที่กำหนด (โหมดละเอียด): แจกอัตโนมัติ จับกลุ่มร้าน (ร้านที่เหลือมากก่อน)
+    const addProductToLayer = useCallback((posId: string, productId: string, qty: number, layerIndex: number) => {
+        const itemsWithProduct = tripItems
+            .filter(i => i.product_id === productId)
+            .map(item => ({ item, remaining: item.quantity - (allocated.get(item.id) || 0) }))
+            .filter(x => x.remaining > 0)
+            .sort((a, b) => b.remaining - a.remaining);
+        const toAdd: { itemId: string; addQty: number; tripItem: TripItem }[] = [];
+        let left = qty;
+        for (const { item, remaining } of itemsWithProduct) {
+            if (left <= 0) break;
+            const addQty = Math.min(left, remaining);
+            if (addQty > 0) {
+                toAdd.push({ itemId: item.id, addQty, tripItem: item });
+                left -= addQty;
+            }
+        }
+        if (toAdd.length === 0) return;
+
+        push({
+            positions: layout.positions.map(pos => {
+                if (pos.id !== posId) return pos;
+                let nextItems = [...pos.items];
+                for (const { itemId, addQty, tripItem } of toAdd) {
+                    const idx = nextItems.findIndex(i => i.delivery_trip_item_id === itemId && i.layer_index === layerIndex);
+                    if (idx >= 0) {
+                        nextItems = nextItems.map((it, i) =>
+                            i === idx ? { ...it, quantity: it.quantity + addQty } : it
+                        );
+                    } else {
+                        nextItems.push({
+                            delivery_trip_item_id: itemId,
+                            product_id: tripItem.product_id,
+                            product_name: tripItem.product_name,
+                            product_code: tripItem.product_code,
+                            category: tripItem.category,
+                            unit: tripItem.unit,
+                            weight_kg: tripItem.weight_kg,
+                            quantity: addQty,
+                            layer_index: layerIndex,
+                        });
+                    }
+                }
+                return { ...pos, items: nextItems };
             }),
         });
     }, [tripItems, layout, allocated, push]);
@@ -875,7 +1128,7 @@ export const PackingSimulator: React.FC<SimulatorProps> = ({ tripId, onClose }) 
                                                 )}
                                             </div>
                                             <div className="text-white/70 text-xs">
-                                                {posItemCount} รายการ · {posWeight.toFixed(0)} kg
+                                                ทั้งหมด {posItemCount} ชิ้น · {pos.items.length} รายการ · {posWeight.toFixed(0)} kg
                                             </div>
                                         </div>
                                     </div>
@@ -899,6 +1152,32 @@ export const PackingSimulator: React.FC<SimulatorProps> = ({ tripId, onClose }) 
                             {/* Position Content */}
                             {!pos.collapsed && (
                                 <div className="p-4 space-y-3">
+                                    {/* สรุป: สินค้าแยกร้าน (เบียร์: ร้าน A 75 ลัง, ร้าน B 25 ลัง) */}
+                                    {pos.items.length > 0 && (() => {
+                                        const byProduct = new Map<string, { name: string; unit: string; parts: { store: string; qty: number }[] }>();
+                                        for (const it of pos.items) {
+                                            const storeName = tripItems.find(t => t.id === it.delivery_trip_item_id)?.store_name || 'ไม่ระบุร้าน';
+                                            const ex = byProduct.get(it.product_id);
+                                            if (!ex) byProduct.set(it.product_id, { name: it.product_name, unit: it.unit, parts: [{ store: storeName, qty: it.quantity }] });
+                                            else {
+                                                const part = ex.parts.find(p => p.store === storeName);
+                                                if (part) part.qty += it.quantity;
+                                                else ex.parts.push({ store: storeName, qty: it.quantity });
+                                            }
+                                        }
+                                        return (
+                                            <div className="rounded-lg bg-slate-100/80 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 p-2.5">
+                                                <div className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-1.5">ในตำแหน่งนี้</div>
+                                                <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-700 dark:text-slate-300">
+                                                    {Array.from(byProduct.entries()).map(([, v]) => (
+                                                        <span key={v.name}>
+                                                            {v.name}: {v.parts.map(p => `${p.store} ${p.qty} ${v.unit}`).join(', ')}
+                                                        </span>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        );
+                                    })()}
                                     {/* Layers + Detailed mode (pallets only) */}
                                     {isPallet && (
                                         <div className="flex flex-wrap items-center gap-3 py-2 border-b border-slate-100 dark:border-slate-800">
@@ -957,7 +1236,10 @@ export const PackingSimulator: React.FC<SimulatorProps> = ({ tripId, onClose }) 
                                                                         <div key={`${item.delivery_trip_item_id}-${li}`} className={`flex items-center gap-2 p-2 rounded-lg ${catColor.bg} border ${catColor.border}`}>
                                                                             <Package className={`flex-shrink-0 ${catColor.text}`} size={14} />
                                                                             <div className="flex-1 min-w-0">
-                                                                                <div className="text-sm font-medium text-slate-900 dark:text-slate-100 truncate">{item.product_name}</div>
+                                                                                <div className="text-sm font-medium text-slate-900 dark:text-slate-100 truncate">
+                                                                                    {item.product_name}
+                                                                                    {tripItem?.store_name && <span className="text-enterprise-600 dark:text-enterprise-400 ml-1">· {tripItem.store_name}</span>}
+                                                                                </div>
                                                                                 <div className="text-xs text-slate-500 dark:text-slate-400">{item.product_code} · {(item.weight_kg || 0) * item.quantity} kg</div>
                                                                             </div>
                                                                             <div className="flex items-center gap-1 flex-shrink-0">
@@ -1022,7 +1304,10 @@ export const PackingSimulator: React.FC<SimulatorProps> = ({ tripId, onClose }) 
                                                                     <Package className="text-white" size={14} />
                                                                 </div>
                                                                 <div className="flex-1 min-w-0">
-                                                                    <div className="text-sm font-medium text-slate-900 dark:text-slate-100 truncate">{item.product_name}</div>
+                                                                    <div className="text-sm font-medium text-slate-900 dark:text-slate-100 truncate">
+                                                                        {item.product_name}
+                                                                        {tripItem?.store_name && <span className="text-enterprise-600 dark:text-enterprise-400 ml-1">· {tripItem.store_name}</span>}
+                                                                    </div>
                                                                     <div className="text-xs text-slate-500 dark:text-slate-400">{item.product_code} · {itemWeight > 0 ? `${itemWeight.toFixed(1)} kg` : item.unit}</div>
                                                                     {isPallet && pos.total_layers > 1 && !pos.detailedMode && (
                                                                         <div className="text-xs text-enterprise-600 dark:text-enterprise-400 mt-0.5 font-medium">
@@ -1102,13 +1387,22 @@ export const PackingSimulator: React.FC<SimulatorProps> = ({ tripId, onClose }) 
             {/* Item Picker Modal */}
             {showItemPicker && (
                 <ItemPicker
-                    items={tripItems}
-                    allocated={allocated}
-                    onAdd={(itemId, qty) => {
+                    itemsPerStore={pickerItemsPerStore}
+                    itemsAggregated={pickerItemsAggregated}
+                    packingStandards={packingStandards}
+                    onAddByItem={(itemId, qty) => {
                         if (typeof showItemPicker === 'string') {
                             addItemToPosition(showItemPicker, itemId, qty);
                         } else {
                             addItemToLayer(showItemPicker.posId, itemId, qty, showItemPicker.layerIndex);
+                        }
+                        setShowItemPicker(null);
+                    }}
+                    onAddByProduct={(productId, qty) => {
+                        if (typeof showItemPicker === 'string') {
+                            addProductToPosition(showItemPicker, productId, qty);
+                        } else {
+                            addProductToLayer(showItemPicker.posId, productId, qty, showItemPicker.layerIndex);
                         }
                         setShowItemPicker(null);
                     }}
