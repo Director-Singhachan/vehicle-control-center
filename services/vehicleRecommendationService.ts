@@ -88,17 +88,20 @@ interface HistoricalTripStats {
 
 // ============================================================
 // Scoring Weights (configurable)
+// Logic ใหม่: ให้ความสำคัญกับประวัติข้อมูลทริปที่เคยวิ่งมาแล้ว
 // ============================================================
 
 const WEIGHTS = {
-  capacity_fit: 0.25,
-  load_similarity: 0.15,
-  product_compatibility: 0.10,
-  pallet_efficiency: 0.10,
-  historical_success: 0.15,
-  availability: 0.15,
+  // ★ ประวัติทริป (รวม 60%) — เน้นรถที่เคยวิ่งทริปคล้ายกัน
+  load_similarity: 0.18,     // น้ำหนักทริปใกล้เคียงที่เคยส่ง
+  historical_success: 0.25,  // จำนวนทริปสำเร็จ, utilization, packing, น้อยปัญหา
+  store_familiarity: 0.17,   // เคยส่งร้านเหล่านี้
+  // ความจุ/ความเหมาะสม (ต้องบรรทุกได้)
+  capacity_fit: 0.18,
+  pallet_efficiency: 0.08,
+  product_compatibility: 0.06,
+  availability: 0.05,
   branch_match: 0.05,
-  store_familiarity: 0.05,
 };
 
 // ============================================================
@@ -197,11 +200,19 @@ export const vehicleRecommendationService = {
         } as VehicleRecommendation;
       });
 
-      // 6. Sort by score descending; กรองรถที่น้ำหนักไม่พอ หรือใส่พาเลทไม่พอ
+      // 6. กรองรถที่บรรทุกไม่ได้ (น้ำหนัก/พาเลทไม่พอ); เรียงตามประวัติทริปก่อน แล้วค่อยคะแนนรวม
+      const tripHistoryScore = (r: VehicleRecommendation) =>
+        (r.scores.load_similarity + r.scores.historical_success + r.scores.store_familiarity) / 3;
+
       const filtered = scored
         .filter((r) => r.scores.capacity_fit > 0) // น้ำหนัก/ปริมาตรเกินพิกัด → ตัดออก
-        .filter((r) => r.scores.pallet_efficiency > 0) // ใส่พาเลทไม่พอ (ต้องการมากกว่าที่รถรับได้) → ตัดออก
-        .sort((a, b) => b.overall_score - a.overall_score)
+        .filter((r) => r.scores.pallet_efficiency > 0) // ใส่พาเลทไม่พอ → ตัดออก
+        .sort((a, b) => {
+          const historyA = tripHistoryScore(a);
+          const historyB = tripHistoryScore(b);
+          if (Math.abs(historyB - historyA) >= 2) return historyB - historyA;
+          return b.overall_score - a.overall_score;
+        })
         .slice(0, limit);
 
       // Assign rank
@@ -845,66 +856,48 @@ function generateReasoning(
 ): string {
   const parts: string[] = [];
 
-  // Capacity — แสดง % utilization จริง
+  // ★ นำด้วยประวัติทริป (ความตั้งใจ: ให้ความสำคัญกับข้อมูลที่เคยวิ่งมาแล้ว)
+  if (scores.store_familiarity >= 80) {
+    parts.push('เคยส่งร้านเหล่านี้มาก่อน');
+  }
+  if (scores.load_similarity >= 85) {
+    parts.push('น้ำหนักใกล้เคียงทริปเก่าที่เคยส่งสำเร็จ');
+  } else if (scores.load_similarity <= 40) {
+    parts.push('น้ำหนักต่างจากที่เคยส่ง');
+  }
+  if (scores.historical_success >= 80) {
+    parts.push('มีประวัติทริปสำเร็จดี');
+  } else if (scores.historical_success <= 40) {
+    parts.push('ประวัติทริปน้อย');
+  }
+  if (scores.branch_match >= 80) {
+    parts.push('ตรงสาขา');
+  }
+
+  // ความจุ/พาเลท
   if (vehicle.max_weight_kg && load.totalWeightKg > 0) {
     const pct = Math.round((load.totalWeightKg / vehicle.max_weight_kg) * 100);
     if (pct > 100) {
       parts.push(`⚠️ น้ำหนักเกินพิกัด (${pct}%)`);
     } else if (pct >= 50) {
       parts.push(`ใช้ความจุน้ำหนัก ${pct}%`);
-    } else {
-      parts.push(`ใช้ความจุแค่ ${pct}% (รถอาจใหญ่เกินไป)`);
+    } else if (pct < 30) {
+      parts.push(`ใช้ความจุ ${pct}%`);
     }
   }
-
-  // Pallet efficiency
   if (scores.pallet_efficiency < 50 && load.estimatedPallets > 0) {
     parts.push(`⚠️ ต้องการ ${load.estimatedPallets} พาเลท อาจไม่พอ`);
   } else if (scores.pallet_efficiency >= 80 && load.estimatedPallets > 0) {
-    parts.push(`รับ ${load.estimatedPallets} พาเลทได้สบาย`);
+    parts.push(`รับ ${load.estimatedPallets} พาเลทได้`);
   }
 
-  // Load similarity
-  if (scores.load_similarity >= 85) {
-    parts.push('น้ำหนักใกล้เคียงทริปเก่าที่เคยส่งสำเร็จ');
-  } else if (scores.load_similarity <= 40) {
-    parts.push('น้ำหนักต่างจากที่เคยส่ง');
-  }
-
-  // Product compatibility warnings
+  // สินค้า/ความพร้อม
   if (scores.product_compatibility < 50) {
-    if (load.hasTemperatureReq) {
-      parts.push(`🌡️ สินค้าต้องคุมอุณหภูมิ (${load.tempRequirements.join(', ')}) แต่รถอาจไม่มีตู้เย็น`);
-    }
-    if (load.hasFragile) {
-      parts.push('⚠️ มีสินค้าเปราะบางแต่รถไม่มีชั้นวาง');
-    }
-  } else if (scores.product_compatibility >= 90) {
-    if (load.hasTemperatureReq) {
-      parts.push('✅ รถมีตู้เย็นรองรับสินค้าคุมอุณหภูมิ');
-    }
+    if (load.hasTemperatureReq) parts.push('🌡️ สินค้าต้องคุมอุณหภูมิ');
+    if (load.hasFragile) parts.push('⚠️ มีสินค้าเปราะบาง');
   }
-
-  // Availability
   if (scores.availability < 50) {
-    parts.push('⚠️ รถมีทริปอื่นในวันเดียวกัน');
-  }
-
-  // History
-  if (scores.historical_success >= 80) {
-    parts.push('มีประวัติใช้งานดี');
-  } else if (scores.historical_success <= 40) {
-    parts.push('ประวัติใช้งานน้อย');
-  }
-
-  // Branch
-  if (scores.branch_match >= 80) {
-    parts.push('ตรงสาขา');
-  }
-
-  // Store familiarity
-  if (scores.store_familiarity >= 80) {
-    parts.push('เคยส่งร้านเหล่านี้มาก่อน');
+    parts.push('⚠️ รถมีทริปอื่นในวันนี้');
   }
 
   if (parts.length === 0) {
