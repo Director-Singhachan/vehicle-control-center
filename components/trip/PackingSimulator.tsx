@@ -1570,6 +1570,18 @@ export const PackingSimulator: React.FC<SimulatorProps> = ({ tripId, onClose }) 
                                                     </div>
                                                 );
                                             })}
+                                            {/* ปุ่มจำนวนชั้นซ้ำด้านล่าง — เพิ่มชั้นได้โดยไม่ต้องเลื่อนขึ้น */}
+                                            <div className="sticky bottom-0 flex flex-wrap items-center gap-3 py-3 mt-2 border-t border-slate-200 dark:border-slate-700 rounded-lg bg-slate-100/80 dark:bg-slate-800/50">
+                                                <span className="text-xs text-slate-500 dark:text-slate-400">จำนวนชั้น</span>
+                                                <button type="button" onClick={() => setTotalLayers(pos.id, pos.total_layers - 1)} disabled={pos.total_layers <= 1} className="w-7 h-7 rounded-lg bg-slate-200 dark:bg-slate-600 hover:bg-slate-300 dark:hover:bg-slate-500 flex items-center justify-center disabled:opacity-40">
+                                                    <Minus size={12} />
+                                                </button>
+                                                <span className="min-w-[2rem] text-center font-semibold text-sm text-slate-900 dark:text-slate-100 tabular-nums">{pos.total_layers}</span>
+                                                <button type="button" onClick={() => setTotalLayers(pos.id, pos.total_layers + 1)} className="w-7 h-7 rounded-lg bg-slate-200 dark:bg-slate-600 hover:bg-slate-300 dark:hover:bg-slate-500 flex items-center justify-center">
+                                                    <Plus size={12} />
+                                                </button>
+                                                <span className="text-xs text-slate-400 dark:text-slate-500">เพิ่มชั้นได้ที่นี่</span>
+                                            </div>
                                         </>
                                     ) : (
                                         /* Simple list */
