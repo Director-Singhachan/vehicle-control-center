@@ -24,6 +24,7 @@ export const useAuth = () => {
     isExecutive: store.isExecutive,
     isDriver: store.isDriver,
     isSales: store.isSales,
+    isServiceStaff: store.isServiceStaff,
     isReadOnly: store.isReadOnly,
     signIn: store.signIn,
     signOut: store.signOut,

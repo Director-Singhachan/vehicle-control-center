@@ -110,7 +110,7 @@ const SubSidebarItem = ({ label, active, onClick, isCollapsed, isFlyout }: any) 
 
 // Main App Content (wrapped in ProtectedRoute)
 const AppContent = () => {
-  const { user, profile, signOut, isAdmin, isManager, isInspector, isExecutive, isDriver, isSales, loading: authLoading, refreshProfile } = useAuth();
+  const { user, profile, signOut, isAdmin, isManager, isInspector, isExecutive, isDriver, isSales, isServiceStaff, loading: authLoading, refreshProfile } = useAuth();
 
   // Don't wait for profile - show UI immediately if user exists
   // Profile will load in background and update when ready
@@ -573,11 +573,11 @@ const AppContent = () => {
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
   // Redirect drivers to trip log form page when they login (like maintenance form)
-  // Drivers can access: triplogs, fuellogs, maintenance, profile, settings
+  // Drivers can access: triplogs, fuellogs, maintenance, packing-simulation, profile, settings
   useEffect(() => {
     if (isDriver) {
       // If driver tries to access restricted areas, redirect to triplogs form
-      if (activeTab !== 'triplogs' && activeTab !== 'fuellogs' && activeTab !== 'maintenance' && activeTab !== 'profile' && activeTab !== 'settings') {
+      if (activeTab !== 'triplogs' && activeTab !== 'fuellogs' && activeTab !== 'maintenance' && activeTab !== 'packing-simulation' && activeTab !== 'profile' && activeTab !== 'settings') {
         setActiveTab('triplogs');
         setTripLogView('form');
         setTripLogMode('checkout');
@@ -594,6 +594,17 @@ const AppContent = () => {
       }
     }
   }, [isDriver, activeTab, fuelLogView]);
+
+  // Redirect service staff to packing-simulation when they access restricted areas
+  // พนักงานบริการเข้าถึงได้: packing-simulation, profile, settings
+  useEffect(() => {
+    if (isServiceStaff) {
+      const allowedTabs = ['packing-simulation', 'profile', 'settings'];
+      if (!allowedTabs.includes(activeTab)) {
+        setActiveTab('packing-simulation');
+      }
+    }
+  }, [isServiceStaff, activeTab]);
 
   // Redirect sales to create-order page when they access restricted areas
   // Sales can access: create-order, track-orders, sales-trips, products, product-pricing, customer-tiers, profile, settings
@@ -1200,7 +1211,7 @@ const AppContent = () => {
 
                       <div className="h-px bg-slate-100 dark:bg-slate-800 my-1 mx-2"></div>
 
-                      {/* Delivery Trips */}
+                      {/* Delivery Trips — เฉพาะไม่ใช่พนักงานขับ (รายการทริป/ออเดอร์) */}
                       {!isDriver && (
                         <>
                           <SubSidebarItem
@@ -1225,18 +1236,20 @@ const AppContent = () => {
                             isCollapsed={false}
                             isFlyout={true}
                           />
-                          <SubSidebarItem
-                            label="จำลองจัดเรียง"
-                            active={activeTab === 'packing-simulation'}
-                            onClick={() => {
-                              setActiveTab('packing-simulation');
-                              setIsLogisticsHovered(false);
-                            }}
-                            isCollapsed={false}
-                            isFlyout={true}
-                          />
                         </>
                       )}
+
+                      {/* จำลองจัดเรียง — ให้พนักงานขับและพนักงานบริการ (เมื่อมี role) เข้าถึงได้ */}
+                      <SubSidebarItem
+                        label="จำลองจัดเรียง"
+                        active={activeTab === 'packing-simulation'}
+                        onClick={() => {
+                          setActiveTab('packing-simulation');
+                          setIsLogisticsHovered(false);
+                        }}
+                        isCollapsed={false}
+                        isFlyout={true}
+                      />
 
                       {!isDriver && isAdmin && (
                         <>
@@ -1612,7 +1625,8 @@ const AppContent = () => {
                             profile.role === 'executive' ? 'ผู้บริหาร' :
                               profile.role === 'driver' ? 'พนักงานขับรถ' :
                                 profile.role === 'sales' ? 'ฝ่ายขาย' :
-                                  'ผู้ใช้';
+                                  profile.role === 'service_staff' ? 'พนักงานบริการ' :
+                                    'ผู้ใช้';
                     }
                     // If we have user but no profile AND not loading anymore, show default
                     if (user && !profile && !authLoading) {
