@@ -283,7 +283,7 @@ const ItemPicker: React.FC<{
                                         <Package className="text-white" size={16} />
                                     </div>
                                     <div className="flex-1 min-w-0">
-                                        <div className="text-sm font-medium text-slate-900 dark:text-slate-100 truncate">
+                                        <div className="text-sm font-medium text-slate-900 dark:text-slate-100 break-words" title={row.store_name ? `${row.product_name} · ${row.store_name}` : row.product_name}>
                                             {row.product_name}
                                             {row.store_name && <span className="text-enterprise-600 dark:text-enterprise-400 ml-1">· {row.store_name}</span>}
                                         </div>
@@ -1506,11 +1506,11 @@ export const PackingSimulator: React.FC<SimulatorProps> = ({ tripId, onClose, on
                                                                             <div className="flex items-center gap-2 min-w-0 flex-1">
                                                                                 <Package className={`flex-shrink-0 ${catColor.text}`} size={14} />
                                                                                 <div className="flex-1 min-w-0">
-                                                                                    <div className="text-sm font-medium text-slate-900 dark:text-slate-100 truncate">
+                                                                                    <div className="text-sm font-medium text-slate-900 dark:text-slate-100 break-words" title={tripItem?.store_name ? `${item.product_name} · ${tripItem.store_name}` : item.product_name}>
                                                                                         {item.product_name}
                                                                                         {tripItem?.store_name && <span className="text-enterprise-600 dark:text-enterprise-400 ml-1">· {tripItem.store_name}</span>}
                                                                                     </div>
-                                                                                    <div className="text-xs text-slate-500 dark:text-slate-400 truncate">{item.product_code} · {itemWeight} kg</div>
+                                                                                    <div className="text-xs text-slate-500 dark:text-slate-400 break-words">{item.product_code} · {itemWeight} kg</div>
                                                                                 </div>
                                                                                 <div className="flex items-center gap-1 flex-shrink-0">
                                                                                     <button type="button" onClick={() => adjustItemQty(pos.id, item.delivery_trip_item_id, -1, li)} disabled={item.quantity <= 1} className="w-6 h-6 rounded bg-white dark:bg-slate-800 border flex items-center justify-center disabled:opacity-40"><Minus size={10} /></button>
@@ -1619,11 +1619,11 @@ export const PackingSimulator: React.FC<SimulatorProps> = ({ tripId, onClose, on
                                                                         <Package className="text-white" size={14} />
                                                                     </div>
                                                                     <div className="flex-1 min-w-0">
-                                                                        <div className="text-sm font-medium text-slate-900 dark:text-slate-100 truncate">
+                                                                        <div className="text-sm font-medium text-slate-900 dark:text-slate-100 break-words" title={tripItem?.store_name ? `${group.product_name} · ${tripItem.store_name}` : group.product_name}>
                                                                             {group.product_name}
                                                                             {tripItem?.store_name && <span className="text-enterprise-600 dark:text-enterprise-400 ml-1">· {tripItem.store_name}</span>}
                                                                         </div>
-                                                                        <div className="text-xs text-slate-500 dark:text-slate-400 truncate">
+                                                                        <div className="text-xs text-slate-500 dark:text-slate-400 break-words">
                                                                             {group.product_code} · {groupWeight > 0 ? `${groupWeight.toFixed(1)} kg` : group.unit}
                                                                             {group.layerCount > 1 && <span className="text-enterprise-600 dark:text-enterprise-400 ml-1">· {group.layerCount} ชั้น</span>}
                                                                         </div>
