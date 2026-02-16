@@ -224,7 +224,6 @@ const ItemPicker: React.FC<{
                             const uniquePerLayer = [...new Set(configs.map(c => c.units_per_layer).filter((u): u is number => u > 0))];
                             const stdQty = uniquePerLayer[0] ?? packingStandards.get(row.product_id)?.units_per_layer ?? 1;
                             const addWithQty = (qty: number) => { onAddByProduct(row.product_id, Math.min(row.totalRemaining, qty)); onClose(); };
-                            const addAllWithUnitsPerLayer = (upl: number) => { onAddByProductWithUnitsPerLayer?.(row.product_id, upl); onClose(); };
                             return (
                                 <div
                                     key={row.product_id}
@@ -248,25 +247,9 @@ const ItemPicker: React.FC<{
                                     <div className="text-right flex-shrink-0 flex flex-col items-end gap-1">
                                         <div className="text-sm font-semibold text-enterprise-600 dark:text-enterprise-400">เหลือ {row.totalRemaining}</div>
                                         <div className="text-xs text-slate-400">จาก {row.totalQuantity}</div>
-                                        {uniquePerLayer.length > 1 ? (
-                                            <div className="flex flex-wrap gap-1.5 justify-end mt-1">
-                                                {uniquePerLayer.map((upl) => (
-                                                    <button
-                                                        key={upl}
-                                                        type="button"
-                                                        onClick={(e) => { e.stopPropagation(); onAddByProductWithUnitsPerLayer ? addAllWithUnitsPerLayer(upl) : addWithQty(Math.min(row.totalRemaining, upl)); }}
-                                                        title={onAddByProductWithUnitsPerLayer ? `เพิ่มทั้งหมด ${row.totalRemaining} แบ่งชั้นละ ${upl}` : undefined}
-                                                        className="text-xs font-semibold px-2.5 py-1 rounded-lg border-2 border-enterprise-300 dark:border-enterprise-600 bg-enterprise-100 dark:bg-enterprise-900/50 text-enterprise-700 dark:text-enterprise-300 cursor-pointer shadow-sm hover:bg-enterprise-200 dark:hover:bg-enterprise-800/60 hover:shadow hover:border-enterprise-400 dark:hover:border-enterprise-500 active:scale-[0.98] transition-all"
-                                                    >
-                                                        ชั้นละ {upl}
-                                                    </button>
-                                                ))}
-                                            </div>
-                                        ) : (
-                                            <button type="button" onClick={() => addWithQty(stdQty)} className="text-xs font-semibold px-3 py-1.5 rounded-lg border-2 border-enterprise-300 dark:border-enterprise-600 bg-enterprise-100 dark:bg-enterprise-900/50 text-enterprise-700 dark:text-enterprise-300 cursor-pointer shadow-sm hover:bg-enterprise-200 dark:hover:bg-enterprise-800/60 hover:shadow hover:border-enterprise-400 dark:hover:border-enterprise-500 active:scale-[0.98] transition-all mt-1">
-                                                เพิ่ม
-                                            </button>
-                                        )}
+                                        <button type="button" onClick={() => addWithQty(stdQty)} className="text-xs font-semibold px-3 py-1.5 rounded-lg border-2 border-enterprise-300 dark:border-enterprise-600 bg-enterprise-100 dark:bg-enterprise-900/50 text-enterprise-700 dark:text-enterprise-300 cursor-pointer shadow-sm hover:bg-enterprise-200 dark:hover:bg-enterprise-800/60 hover:shadow hover:border-enterprise-400 dark:hover:border-enterprise-500 active:scale-[0.98] transition-all mt-1">
+                                            เพิ่ม
+                                        </button>
                                     </div>
                                 </div>
                             );
@@ -279,7 +262,6 @@ const ItemPicker: React.FC<{
                             const uniquePerLayer = [...new Set(configs.map(c => c.units_per_layer).filter((u): u is number => u > 0))];
                             const stdQty = uniquePerLayer[0] ?? packingStandards.get(row.product_id)?.units_per_layer ?? 1;
                             const addWithQty = (qty: number) => { onAddByItem(row.itemId, Math.min(row.remaining, qty)); onClose(); };
-                            const addAllWithUnitsPerLayer = (upl: number) => { onAddByItemWithUnitsPerLayer?.(row.itemId, upl); onClose(); };
                             return (
                                 <div
                                     key={row.itemId}
@@ -303,25 +285,9 @@ const ItemPicker: React.FC<{
                                     <div className="text-right flex-shrink-0 flex flex-col items-end gap-1">
                                         <div className="text-sm font-semibold text-enterprise-600 dark:text-enterprise-400">เหลือ {row.remaining}</div>
                                         <div className="text-xs text-slate-400">จาก {row.quantity}</div>
-                                        {uniquePerLayer.length > 1 ? (
-                                            <div className="flex flex-wrap gap-1.5 justify-end mt-1">
-                                                {uniquePerLayer.map((upl) => (
-                                                    <button
-                                                        key={upl}
-                                                        type="button"
-                                                        onClick={(e) => { e.stopPropagation(); onAddByItemWithUnitsPerLayer ? addAllWithUnitsPerLayer(upl) : addWithQty(Math.min(row.remaining, upl)); }}
-                                                        title={onAddByItemWithUnitsPerLayer ? `เพิ่มทั้งหมด ${row.remaining} แบ่งชั้นละ ${upl}` : undefined}
-                                                        className="text-xs font-semibold px-2.5 py-1 rounded-lg border-2 border-enterprise-300 dark:border-enterprise-600 bg-enterprise-100 dark:bg-enterprise-900/50 text-enterprise-700 dark:text-enterprise-300 cursor-pointer shadow-sm hover:bg-enterprise-200 dark:hover:bg-enterprise-800/60 hover:shadow hover:border-enterprise-400 dark:hover:border-enterprise-500 active:scale-[0.98] transition-all"
-                                                    >
-                                                        ชั้นละ {upl}
-                                                    </button>
-                                                ))}
-                                            </div>
-                                        ) : (
-                                            <button type="button" onClick={() => addWithQty(stdQty)} className="text-xs font-semibold px-3 py-1.5 rounded-lg border-2 border-enterprise-300 dark:border-enterprise-600 bg-enterprise-100 dark:bg-enterprise-900/50 text-enterprise-700 dark:text-enterprise-300 cursor-pointer shadow-sm hover:bg-enterprise-200 dark:hover:bg-enterprise-800/60 hover:shadow hover:border-enterprise-400 dark:hover:border-enterprise-500 active:scale-[0.98] transition-all mt-1">
-                                                เพิ่ม
-                                            </button>
-                                        )}
+                                        <button type="button" onClick={() => addWithQty(stdQty)} className="text-xs font-semibold px-3 py-1.5 rounded-lg border-2 border-enterprise-300 dark:border-enterprise-600 bg-enterprise-100 dark:bg-enterprise-900/50 text-enterprise-700 dark:text-enterprise-300 cursor-pointer shadow-sm hover:bg-enterprise-200 dark:hover:bg-enterprise-800/60 hover:shadow hover:border-enterprise-400 dark:hover:border-enterprise-500 active:scale-[0.98] transition-all mt-1">
+                                            เพิ่ม
+                                        </button>
                                     </div>
                                 </div>
                             );
@@ -422,32 +388,70 @@ export const PackingSimulator: React.FC<SimulatorProps> = ({ tripId, onClose, on
                 }
                 setTripItems(Array.from(itemMap.values()));
 
-                // Try to load draft from localStorage
-                const draft = localStorage.getItem(draftKey);
-                if (draft) {
-                    try {
-                        const parsed = JSON.parse(draft) as LayoutState;
-                        setLayout(parsed);
-                        setHistory([parsed]);
-                        setHistoryIndex(0);
-                    } catch { /* ignore bad draft */ }
-                } else {
-                    // Initialize with 1 pallet
-                    const initial: LayoutState = {
-                        positions: [{
-                            id: uid(),
-                            position_type: 'pallet',
-                            position_index: 1,
-                            total_layers: 1,
-                            notes: '',
-                            collapsed: false,
-                            detailedMode: false,
-                            items: [],
-                        }],
-                    };
-                    setLayout(initial);
-                    setHistory([initial]);
+                // โหลด layout ที่บันทึกไว้จาก DB ก่อน (สำคัญ: ข้อมูลจัดเรียงที่บันทึกแล้วต้องแสดงเมื่อกลับเข้าใหม่)
+                let loadedLayout: LayoutState | null = null;
+                try {
+                    const saved = await tripMetricsService.getTripPackingLayout(tripId);
+                    if (saved?.positions?.length > 0) {
+                        loadedLayout = {
+                            positions: saved.positions.map(pos => ({
+                                id: pos.id,
+                                position_type: pos.position_type,
+                                position_index: pos.position_index,
+                                total_layers: pos.total_layers ?? 1,
+                                notes: pos.notes ?? '',
+                                collapsed: false,
+                                detailedMode: (pos.total_layers ?? 1) > 1 || pos.items.some(i => i.layer_index != null),
+                                items: pos.items.map(it => ({
+                                    delivery_trip_item_id: it.delivery_trip_item_id,
+                                    product_id: it.product_id,
+                                    product_name: it.product_name,
+                                    product_code: it.product_code,
+                                    category: it.category,
+                                    unit: it.unit,
+                                    weight_kg: it.weight_kg,
+                                    quantity: it.quantity,
+                                    layer_index: it.layer_index,
+                                })),
+                            })),
+                        };
+                    }
+                } catch (e) {
+                    console.warn('[PackingSimulator] Load saved layout failed, fallback to draft/empty:', e);
+                }
+
+                if (loadedLayout) {
+                    setLayout(loadedLayout);
+                    setHistory([loadedLayout]);
                     setHistoryIndex(0);
+                } else {
+                    // ไม่มีใน DB: ลอง draft จาก localStorage
+                    const draft = localStorage.getItem(draftKey);
+                    if (draft) {
+                        try {
+                            const parsed = JSON.parse(draft) as LayoutState;
+                            setLayout(parsed);
+                            setHistory([parsed]);
+                            setHistoryIndex(0);
+                        } catch { /* ignore bad draft */ }
+                    } else {
+                        // Initialize with 1 pallet
+                        const initial: LayoutState = {
+                            positions: [{
+                                id: uid(),
+                                position_type: 'pallet',
+                                position_index: 1,
+                                total_layers: 1,
+                                notes: '',
+                                collapsed: false,
+                                detailedMode: false,
+                                items: [],
+                            }],
+                        };
+                        setLayout(initial);
+                        setHistory([initial]);
+                        setHistoryIndex(0);
+                    }
                 }
             } catch (err) {
                 console.error('[PackingSimulator] Error loading trip:', err);
