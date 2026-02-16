@@ -148,8 +148,11 @@ const ItemPicker: React.FC<{
     packingConfigs: Map<string, PackingStandard[]>;
     onAddByItem: (itemId: string, qty: number) => void;
     onAddByProduct: (productId: string, qty: number) => void;
+    /** เมื่อมีค่า กด "ชั้นละ X" จะเพิ่มทั้งหมดที่เหลือแบ่งชั้น (20,20,10) แทนการเพิ่มแค่ X */
+    onAddByProductWithUnitsPerLayer?: (productId: string, unitsPerLayer: number) => void;
+    onAddByItemWithUnitsPerLayer?: (itemId: string, unitsPerLayer: number) => void;
     onClose: () => void;
-}> = ({ itemsPerStore, itemsAggregated, packingStandards, packingConfigs, onAddByItem, onAddByProduct, onClose }) => {
+}> = ({ itemsPerStore, itemsAggregated, packingStandards, packingConfigs, onAddByItem, onAddByProduct, onAddByProductWithUnitsPerLayer, onAddByItemWithUnitsPerLayer, onClose }) => {
     const [search, setSearch] = useState('');
     const [mode, setMode] = useState<'aggregated' | 'per-store'>('aggregated');
 
@@ -244,24 +247,9 @@ const ItemPicker: React.FC<{
                                     <div className="text-right flex-shrink-0 flex flex-col items-end gap-1">
                                         <div className="text-sm font-semibold text-enterprise-600 dark:text-enterprise-400">เหลือ {row.totalRemaining}</div>
                                         <div className="text-xs text-slate-400">จาก {row.totalQuantity}</div>
-                                        {uniquePerLayer.length > 1 ? (
-                                            <div className="flex flex-wrap gap-1.5 justify-end mt-1">
-                                                {uniquePerLayer.map((upl) => (
-                                                    <button
-                                                        key={upl}
-                                                        type="button"
-                                                        onClick={(e) => { e.stopPropagation(); addWithQty(Math.min(row.totalRemaining, upl)); }}
-                                                        className="text-xs font-semibold px-2.5 py-1 rounded-lg border-2 border-enterprise-300 dark:border-enterprise-600 bg-enterprise-100 dark:bg-enterprise-900/50 text-enterprise-700 dark:text-enterprise-300 cursor-pointer shadow-sm hover:bg-enterprise-200 dark:hover:bg-enterprise-800/60 hover:shadow hover:border-enterprise-400 dark:hover:border-enterprise-500 active:scale-[0.98] transition-all"
-                                                    >
-                                                        ชั้นละ {upl}
-                                                    </button>
-                                                ))}
-                                            </div>
-                                        ) : (
-                                            <button type="button" onClick={() => addWithQty(stdQty)} className="text-xs font-semibold px-3 py-1.5 rounded-lg border-2 border-enterprise-300 dark:border-enterprise-600 bg-enterprise-100 dark:bg-enterprise-900/50 text-enterprise-700 dark:text-enterprise-300 cursor-pointer shadow-sm hover:bg-enterprise-200 dark:hover:bg-enterprise-800/60 hover:shadow hover:border-enterprise-400 dark:hover:border-enterprise-500 active:scale-[0.98] transition-all mt-1">
-                                                เพิ่ม
-                                            </button>
-                                        )}
+                                        <button type="button" onClick={() => addWithQty(stdQty)} className="text-xs font-semibold px-3 py-1.5 rounded-lg border-2 border-enterprise-300 dark:border-enterprise-600 bg-enterprise-100 dark:bg-enterprise-900/50 text-enterprise-700 dark:text-enterprise-300 cursor-pointer shadow-sm hover:bg-enterprise-200 dark:hover:bg-enterprise-800/60 hover:shadow hover:border-enterprise-400 dark:hover:border-enterprise-500 active:scale-[0.98] transition-all mt-1">
+                                            เพิ่ม
+                                        </button>
                                     </div>
                                 </div>
                             );
@@ -297,24 +285,9 @@ const ItemPicker: React.FC<{
                                     <div className="text-right flex-shrink-0 flex flex-col items-end gap-1">
                                         <div className="text-sm font-semibold text-enterprise-600 dark:text-enterprise-400">เหลือ {row.remaining}</div>
                                         <div className="text-xs text-slate-400">จาก {row.quantity}</div>
-                                        {uniquePerLayer.length > 1 ? (
-                                            <div className="flex flex-wrap gap-1.5 justify-end mt-1">
-                                                {uniquePerLayer.map((upl) => (
-                                                    <button
-                                                        key={upl}
-                                                        type="button"
-                                                        onClick={(e) => { e.stopPropagation(); addWithQty(Math.min(row.remaining, upl)); }}
-                                                        className="text-xs font-semibold px-2.5 py-1 rounded-lg border-2 border-enterprise-300 dark:border-enterprise-600 bg-enterprise-100 dark:bg-enterprise-900/50 text-enterprise-700 dark:text-enterprise-300 cursor-pointer shadow-sm hover:bg-enterprise-200 dark:hover:bg-enterprise-800/60 hover:shadow hover:border-enterprise-400 dark:hover:border-enterprise-500 active:scale-[0.98] transition-all"
-                                                    >
-                                                        ชั้นละ {upl}
-                                                    </button>
-                                                ))}
-                                            </div>
-                                        ) : (
-                                            <button type="button" onClick={() => addWithQty(stdQty)} className="text-xs font-semibold px-3 py-1.5 rounded-lg border-2 border-enterprise-300 dark:border-enterprise-600 bg-enterprise-100 dark:bg-enterprise-900/50 text-enterprise-700 dark:text-enterprise-300 cursor-pointer shadow-sm hover:bg-enterprise-200 dark:hover:bg-enterprise-800/60 hover:shadow hover:border-enterprise-400 dark:hover:border-enterprise-500 active:scale-[0.98] transition-all mt-1">
-                                                เพิ่ม
-                                            </button>
-                                        )}
+                                        <button type="button" onClick={() => addWithQty(stdQty)} className="text-xs font-semibold px-3 py-1.5 rounded-lg border-2 border-enterprise-300 dark:border-enterprise-600 bg-enterprise-100 dark:bg-enterprise-900/50 text-enterprise-700 dark:text-enterprise-300 cursor-pointer shadow-sm hover:bg-enterprise-200 dark:hover:bg-enterprise-800/60 hover:shadow hover:border-enterprise-400 dark:hover:border-enterprise-500 active:scale-[0.98] transition-all mt-1">
+                                            เพิ่ม
+                                        </button>
                                     </div>
                                 </div>
                             );
@@ -415,32 +388,70 @@ export const PackingSimulator: React.FC<SimulatorProps> = ({ tripId, onClose, on
                 }
                 setTripItems(Array.from(itemMap.values()));
 
-                // Try to load draft from localStorage
-                const draft = localStorage.getItem(draftKey);
-                if (draft) {
-                    try {
-                        const parsed = JSON.parse(draft) as LayoutState;
-                        setLayout(parsed);
-                        setHistory([parsed]);
-                        setHistoryIndex(0);
-                    } catch { /* ignore bad draft */ }
-                } else {
-                    // Initialize with 1 pallet
-                    const initial: LayoutState = {
-                        positions: [{
-                            id: uid(),
-                            position_type: 'pallet',
-                            position_index: 1,
-                            total_layers: 1,
-                            notes: '',
-                            collapsed: false,
-                            detailedMode: false,
-                            items: [],
-                        }],
-                    };
-                    setLayout(initial);
-                    setHistory([initial]);
+                // โหลด layout ที่บันทึกไว้จาก DB ก่อน (สำคัญ: ข้อมูลจัดเรียงที่บันทึกแล้วต้องแสดงเมื่อกลับเข้าใหม่)
+                let loadedLayout: LayoutState | null = null;
+                try {
+                    const saved = await tripMetricsService.getTripPackingLayout(tripId);
+                    if (saved?.positions?.length > 0) {
+                        loadedLayout = {
+                            positions: saved.positions.map(pos => ({
+                                id: pos.id,
+                                position_type: pos.position_type,
+                                position_index: pos.position_index,
+                                total_layers: pos.total_layers ?? 1,
+                                notes: pos.notes ?? '',
+                                collapsed: false,
+                                detailedMode: (pos.total_layers ?? 1) > 1 || pos.items.some(i => i.layer_index != null),
+                                items: pos.items.map(it => ({
+                                    delivery_trip_item_id: it.delivery_trip_item_id,
+                                    product_id: it.product_id,
+                                    product_name: it.product_name,
+                                    product_code: it.product_code,
+                                    category: it.category,
+                                    unit: it.unit,
+                                    weight_kg: it.weight_kg,
+                                    quantity: it.quantity,
+                                    layer_index: it.layer_index,
+                                })),
+                            })),
+                        };
+                    }
+                } catch (e) {
+                    console.warn('[PackingSimulator] Load saved layout failed, fallback to draft/empty:', e);
+                }
+
+                if (loadedLayout) {
+                    setLayout(loadedLayout);
+                    setHistory([loadedLayout]);
                     setHistoryIndex(0);
+                } else {
+                    // ไม่มีใน DB: ลอง draft จาก localStorage
+                    const draft = localStorage.getItem(draftKey);
+                    if (draft) {
+                        try {
+                            const parsed = JSON.parse(draft) as LayoutState;
+                            setLayout(parsed);
+                            setHistory([parsed]);
+                            setHistoryIndex(0);
+                        } catch { /* ignore bad draft */ }
+                    } else {
+                        // Initialize with 1 pallet
+                        const initial: LayoutState = {
+                            positions: [{
+                                id: uid(),
+                                position_type: 'pallet',
+                                position_index: 1,
+                                total_layers: 1,
+                                notes: '',
+                                collapsed: false,
+                                detailedMode: false,
+                                items: [],
+                            }],
+                        };
+                        setLayout(initial);
+                        setHistory([initial]);
+                        setHistoryIndex(0);
+                    }
                 }
             } catch (err) {
                 console.error('[PackingSimulator] Error loading trip:', err);
@@ -736,14 +747,24 @@ export const PackingSimulator: React.FC<SimulatorProps> = ({ tripId, onClose, on
         setGroupQuantity(posId, productId, itemId, currentTotal + delta);
     }, [layout.positions, setGroupQuantity]);
 
-    /** เติมเต็มพาเลท: ใช้ total_units + layers จาก config แจกจำนวนลงแต่ละชั้น และตั้งจำนวนชั้นของ position (รองรับ 60/4 ชั้น, 75/5 ชั้น ฯลฯ) */
+    /** ความจุที่ใช้ไปแล้วแต่ละชั้น (สินค้าอื่น ไม่รวม productId) — ใช้ตรวจก่อนเติมว่าชั้นนั้นเหลือที่กี่หน่วย */
+    const getExistingQtyPerLayer = useCallback((pos: Position, excludeProductId: string): number[] => {
+        const out: number[] = [];
+        for (const it of pos.items) {
+            if (it.product_id === excludeProductId || it.layer_index == null) continue;
+            const li = it.layer_index;
+            while (out.length <= li) out.push(0);
+            out[li] += it.quantity;
+        }
+        return out;
+    }, []);
+
+    /** เติมเต็มพาเลท: ใช้มาตรฐาน (ชั้นละ units_per_layer) — ตรวจความจุแต่ละชั้นก่อน เติมชั้นล่างครบแล้วค่อยขึ้นชั้นใหม่ */
     const fillFullPalletForGroup = useCallback((posId: string, productId: string, itemId: string, config?: PackingStandard) => {
         const pos = layout.positions.find(p => p.id === posId);
         const tripItem = tripItems.find(i => i.id === itemId);
         const std = config ?? packingStandards.get(productId);
         if (!pos || !tripItem || !std?.total_units) return;
-        const totalLayers = Math.max(1, std.layers);
-        const newPositionLayers = Math.max(pos.total_layers, totalLayers);
         const groupItems = pos.items.filter(i => i.product_id === productId && i.delivery_trip_item_id === itemId);
         const currentTotal = groupItems.reduce((s, i) => s + i.quantity, 0);
         const allocatedTotal = allocated.get(itemId) || 0;
@@ -751,8 +772,8 @@ export const PackingSimulator: React.FC<SimulatorProps> = ({ tripId, onClose, on
         const toFill = Math.min(std.total_units, Math.max(0, Math.floor(maxAllowed)));
         if (toFill <= 0) return;
 
-        const perLayer = Math.floor(toFill / totalLayers);
-        const remainder = toFill % totalLayers;
+        const unitsPerLayer = Math.max(1, std.units_per_layer || Math.floor(toFill / Math.max(1, std.layers)));
+        const existingPerLayer = getExistingQtyPerLayer(pos, productId);
         const template = groupItems[0] || {
             delivery_trip_item_id: itemId,
             product_id: tripItem.product_id,
@@ -766,11 +787,23 @@ export const PackingSimulator: React.FC<SimulatorProps> = ({ tripId, onClose, on
         };
 
         const newLayerItems: PositionItem[] = [];
-        for (let li = 0; li < totalLayers; li++) {
-            const qty = perLayer + (li < remainder ? 1 : 0);
-            if (qty > 0)
-                newLayerItems.push({ ...template, layer_index: li, quantity: qty });
+        let layerIndex = 0;
+        let remainingToFill = toFill;
+        while (remainingToFill > 0) {
+            const usedOnLayer = existingPerLayer[layerIndex] ?? 0;
+            const capacity = Math.max(0, unitsPerLayer - usedOnLayer);
+            if (capacity <= 0) {
+                layerIndex++;
+                continue;
+            }
+            const qty = Math.min(capacity, remainingToFill);
+            newLayerItems.push({ ...template, layer_index: layerIndex, quantity: qty });
+            remainingToFill -= qty;
+            layerIndex++;
         }
+        const totalLayers = newLayerItems.length ? Math.max(...newLayerItems.map(i => i.layer_index)) + 1 : 0;
+        const requiredMinLayers = Math.ceil(toFill / unitsPerLayer);
+        const newPositionLayers = Math.max(pos.total_layers, totalLayers, requiredMinLayers);
 
         push({
             positions: layout.positions.map(p => {
@@ -787,7 +820,114 @@ export const PackingSimulator: React.FC<SimulatorProps> = ({ tripId, onClose, on
                 };
             }),
         });
-    }, [layout, tripItems, packingStandards, allocated, push]);
+    }, [layout, tripItems, packingStandards, allocated, push, getExistingQtyPerLayer]);
+
+    /** เติมเต็มพาเลทตามมาตรฐาน (ระดับสินค้า): ตรวจความจุแต่ละชั้นก่อน — เติมชั้นล่างให้ครบตามมาตรฐานก่อนแล้วค่อยขึ้นชั้นใหม่ */
+    const fillFullPalletByProduct = useCallback((posId: string, productId: string, config: PackingStandard) => {
+        const pos = layout.positions.find(p => p.id === posId);
+        if (!pos || !config?.total_units) return;
+        const currentOnThisPos = new Map<string, number>();
+        for (const it of pos.items) {
+            if (it.product_id !== productId) continue;
+            currentOnThisPos.set(it.delivery_trip_item_id, (currentOnThisPos.get(it.delivery_trip_item_id) || 0) + it.quantity);
+        }
+        const itemsWithProduct = tripItems
+            .filter(i => i.product_id === productId)
+            .map(item => ({
+                item,
+                remaining: item.quantity - (allocated.get(item.id) || 0) + (currentOnThisPos.get(item.id) || 0),
+            }))
+            .filter(x => x.remaining > 0)
+            .sort((a, b) => b.remaining - a.remaining);
+        const totalRemaining = itemsWithProduct.reduce((s, x) => s + x.remaining, 0);
+        const toFill = Math.min(config.total_units, totalRemaining);
+        if (toFill <= 0) return;
+
+        const unitsPerLayer = Math.max(1, config.units_per_layer || Math.floor(toFill / Math.max(1, config.layers)));
+        const existingPerLayer = getExistingQtyPerLayer(pos, productId);
+        const newLayerItems: PositionItem[] = [];
+
+        const singleStoreWithEnough = itemsWithProduct.find(x => x.remaining >= toFill);
+        if (singleStoreWithEnough) {
+            const oneStore = singleStoreWithEnough.item;
+            let layerIndex = 0;
+            let remainingToAssign = toFill;
+            while (remainingToAssign > 0) {
+                const usedOnLayer = existingPerLayer[layerIndex] ?? 0;
+                const capacity = Math.max(0, unitsPerLayer - usedOnLayer);
+                if (capacity <= 0) {
+                    layerIndex++;
+                    continue;
+                }
+                const addQty = Math.min(capacity, remainingToAssign);
+                if (addQty <= 0) break;
+                newLayerItems.push({
+                    delivery_trip_item_id: oneStore.id,
+                    product_id: oneStore.product_id,
+                    product_name: oneStore.product_name,
+                    product_code: oneStore.product_code,
+                    category: oneStore.category,
+                    unit: oneStore.unit,
+                    weight_kg: oneStore.weight_kg,
+                    quantity: addQty,
+                    layer_index: layerIndex,
+                });
+                remainingToAssign -= addQty;
+                layerIndex++;
+            }
+        } else {
+            const assigned = new Map<string, number>();
+            let layerIndex = 0;
+            let remainingToAssign = toFill;
+            while (remainingToAssign > 0) {
+                const usedOnLayer = existingPerLayer[layerIndex] ?? 0;
+                const capacity = Math.max(0, unitsPerLayer - usedOnLayer);
+                if (capacity <= 0) {
+                    layerIndex++;
+                    continue;
+                }
+                let leftOnThisLayer = capacity;
+                const sorted = [...itemsWithProduct].sort((a, b) => (b.remaining - (assigned.get(b.item.id) || 0)) - (a.remaining - (assigned.get(a.item.id) || 0)));
+                for (const { item, remaining } of sorted) {
+                    if (leftOnThisLayer <= 0 || remainingToAssign <= 0) break;
+                    const storeRemaining = remaining - (assigned.get(item.id) || 0);
+                    const addQty = Math.min(leftOnThisLayer, storeRemaining, remainingToAssign);
+                    if (addQty <= 0) continue;
+                    newLayerItems.push({
+                        delivery_trip_item_id: item.id,
+                        product_id: item.product_id,
+                        product_name: item.product_name,
+                        product_code: item.product_code,
+                        category: item.category,
+                        unit: item.unit,
+                        weight_kg: item.weight_kg,
+                        quantity: addQty,
+                        layer_index: layerIndex,
+                    });
+                    assigned.set(item.id, (assigned.get(item.id) || 0) + addQty);
+                    leftOnThisLayer -= addQty;
+                    remainingToAssign -= addQty;
+                }
+                layerIndex++;
+            }
+        }
+        const totalLayers = newLayerItems.length ? Math.max(...newLayerItems.map(i => i.layer_index)) + 1 : 0;
+        const requiredMinLayers = Math.ceil(toFill / unitsPerLayer);
+        const newPositionLayers = Math.max(pos.total_layers, totalLayers, requiredMinLayers);
+
+        push({
+            positions: layout.positions.map(p => {
+                if (p.id !== posId) return p;
+                const otherItems = p.items.filter(i => i.product_id !== productId);
+                return {
+                    ...p,
+                    total_layers: newPositionLayers,
+                    detailedMode: true,
+                    items: [...otherItems, ...newLayerItems],
+                };
+            }),
+        });
+    }, [tripItems, layout, allocated, push, getExistingQtyPerLayer]);
 
     // Adjust item quantity (+/-)
     const adjustItemQty = useCallback((posId: string, itemId: string, delta: number, layerIndex?: number | null) => {
@@ -988,6 +1128,123 @@ export const PackingSimulator: React.FC<SimulatorProps> = ({ tripId, onClose, on
             }),
         });
     }, [tripItems, layout, allocated, push]);
+
+    /** เพิ่มสินค้าทั้งหมดที่เหลือลงตำแหน่ง โดยแบ่งชั้นตาม unitsPerLayer — ตรวจความจุแต่ละชั้นก่อน เติมชั้นล่างครบแล้วค่อยขึ้นชั้นใหม่ หลายร้านอยู่ร่วมกันในชั้นเดียวกันได้ */
+    const addProductToPositionWithUnitsPerLayer = useCallback((posId: string, productId: string, unitsPerLayer: number) => {
+        const pos = layout.positions.find(p => p.id === posId);
+        if (!pos || unitsPerLayer < 1) return;
+        const itemsWithProduct = tripItems
+            .filter(i => i.product_id === productId)
+            .map(item => ({ item, remaining: item.quantity - (allocated.get(item.id) || 0) }))
+            .filter(x => x.remaining > 0)
+            .sort((a, b) => b.remaining - a.remaining);
+        const totalToAdd = itemsWithProduct.reduce((s, x) => s + x.remaining, 0);
+        if (totalToAdd <= 0) return;
+
+        const existingPerLayer = getExistingQtyPerLayer(pos, productId);
+        const assigned = new Map<string, number>();
+        const newLayerItems: PositionItem[] = [];
+        let layerIndex = 0;
+        let remainingToAssign = totalToAdd;
+        while (remainingToAssign > 0) {
+            const usedOnLayer = existingPerLayer[layerIndex] ?? 0;
+            const capacity = Math.max(0, unitsPerLayer - usedOnLayer);
+            if (capacity <= 0) {
+                layerIndex++;
+                continue;
+            }
+            let leftOnThisLayer = capacity;
+            const sorted = [...itemsWithProduct].sort((a, b) => (b.remaining - (assigned.get(b.item.id) || 0)) - (a.remaining - (assigned.get(a.item.id) || 0)));
+            for (const { item, remaining } of sorted) {
+                if (leftOnThisLayer <= 0 || remainingToAssign <= 0) break;
+                const storeRemaining = remaining - (assigned.get(item.id) || 0);
+                const addQty = Math.min(leftOnThisLayer, storeRemaining, remainingToAssign);
+                if (addQty <= 0) continue;
+                newLayerItems.push({
+                    delivery_trip_item_id: item.id,
+                    product_id: item.product_id,
+                    product_name: item.product_name,
+                    product_code: item.product_code,
+                    category: item.category,
+                    unit: item.unit,
+                    weight_kg: item.weight_kg,
+                    quantity: addQty,
+                    layer_index: layerIndex,
+                });
+                assigned.set(item.id, (assigned.get(item.id) || 0) + addQty);
+                leftOnThisLayer -= addQty;
+                remainingToAssign -= addQty;
+            }
+            layerIndex++;
+        }
+        const layerCount = newLayerItems.length ? Math.max(...newLayerItems.map(i => i.layer_index)) + 1 : 0;
+
+        push({
+            positions: layout.positions.map(p => {
+                if (p.id !== posId) return p;
+                const otherItems = p.items.filter(i => i.product_id !== productId);
+                const newPositionLayers = Math.max(p.total_layers, layerCount);
+                return {
+                    ...p,
+                    total_layers: newPositionLayers,
+                    detailedMode: true,
+                    items: [...otherItems, ...newLayerItems],
+                };
+            }),
+        });
+    }, [tripItems, layout, allocated, push, getExistingQtyPerLayer]);
+
+    /** เพิ่มสินค้า (รายการร้านเดียว) ทั้งหมดที่เหลือลงตำแหน่ง โดยแบ่งชั้นตาม unitsPerLayer — ตรวจความจุแต่ละชั้นก่อน เติมชั้นล่างครบแล้วค่อยขึ้นชั้นใหม่ */
+    const addItemToPositionWithUnitsPerLayer = useCallback((posId: string, itemId: string, unitsPerLayer: number) => {
+        const pos = layout.positions.find(p => p.id === posId);
+        const tripItem = tripItems.find(i => i.id === itemId);
+        if (!pos || !tripItem || unitsPerLayer < 1) return;
+        const used = allocated.get(itemId) || 0;
+        const totalToAdd = tripItem.quantity - used;
+        if (totalToAdd <= 0) return;
+
+        const existingPerLayer = getExistingQtyPerLayer(pos, tripItem.product_id);
+        const newLayerItems: PositionItem[] = [];
+        let layerIndex = 0;
+        let remainingToAdd = totalToAdd;
+        while (remainingToAdd > 0) {
+            const usedOnLayer = existingPerLayer[layerIndex] ?? 0;
+            const capacity = Math.max(0, unitsPerLayer - usedOnLayer);
+            if (capacity <= 0) {
+                layerIndex++;
+                continue;
+            }
+            const qty = Math.min(capacity, remainingToAdd);
+            newLayerItems.push({
+                delivery_trip_item_id: itemId,
+                product_id: tripItem.product_id,
+                product_name: tripItem.product_name,
+                product_code: tripItem.product_code,
+                category: tripItem.category,
+                unit: tripItem.unit,
+                weight_kg: tripItem.weight_kg,
+                quantity: qty,
+                layer_index: layerIndex,
+            });
+            remainingToAdd -= qty;
+            layerIndex++;
+        }
+        const layerCount = newLayerItems.length ? Math.max(...newLayerItems.map(i => i.layer_index)) + 1 : 0;
+
+        push({
+            positions: layout.positions.map(p => {
+                if (p.id !== posId) return p;
+                const otherItems = p.items.filter(i => i.delivery_trip_item_id !== itemId);
+                const newPositionLayers = Math.max(p.total_layers, layerCount);
+                return {
+                    ...p,
+                    total_layers: newPositionLayers,
+                    detailedMode: true,
+                    items: [...otherItems, ...newLayerItems],
+                };
+            }),
+        });
+    }, [tripItems, layout, allocated, push, getExistingQtyPerLayer]);
 
     // Remove item from a specific layer
     const removeItemFromLayer = useCallback((posId: string, itemId: string, layerIndex: number) => {
@@ -1555,17 +1812,19 @@ export const PackingSimulator: React.FC<SimulatorProps> = ({ tripId, onClose, on
                                                                                     {(packingConfigs.get(item.product_id)?.length
                                                                                         ? packingConfigs.get(item.product_id)!
                                                                                         : packingStandards.get(item.product_id) ? [packingStandards.get(item.product_id)!] : []
-                                                                                    ).map((std) => (
+                                                                                    ).map((std) => {
+                                                                                        const multiStore = tripItems.filter(t => t.product_id === item.product_id).length > 1;
+                                                                                        return (
                                                                                         <button
                                                                                             key={std.total_units}
                                                                                             type="button"
-                                                                                            onClick={() => fillFullPalletForGroup(pos.id, item.product_id, item.delivery_trip_item_id, std)}
-                                                                                            title={`เต็มพาเลท ${std.total_units} · ${std.layers} ชั้น · ชั้นละ ${std.units_per_layer}`}
+                                                                                            onClick={() => multiStore ? fillFullPalletByProduct(pos.id, item.product_id, std) : fillFullPalletForGroup(pos.id, item.product_id, item.delivery_trip_item_id, std)}
+                                                                                            title={multiStore ? `เต็มพาเลท ${std.total_units} (แบ่งทั้งร้าน) · ${std.layers} ชั้น · ชั้นละ ${std.units_per_layer}` : `เต็มพาเลท ${std.total_units} · ${std.layers} ชั้น · ชั้นละ ${std.units_per_layer}`}
                                                                                             className="text-xs font-semibold px-2.5 py-1 rounded-lg border-2 border-violet-300 dark:border-violet-600 bg-violet-100 dark:bg-violet-900/50 text-violet-700 dark:text-violet-300 cursor-pointer shadow-sm hover:bg-violet-200 dark:hover:bg-violet-800/60 hover:shadow hover:border-violet-400 active:scale-[0.98] transition-all"
                                                                                         >
                                                                                             เต็มพาเลท {std.total_units}
                                                                                         </button>
-                                                                                    ))}
+                                                                                    ); })}
                                                                                 </div>
                                                                         </div>
                                                                     );
@@ -1659,18 +1918,21 @@ export const PackingSimulator: React.FC<SimulatorProps> = ({ tripId, onClose, on
                                                                     {(packingConfigs.get(group.product_id)?.length
                                                                         ? packingConfigs.get(group.product_id)!
                                                                         : packingStandards.get(group.product_id) ? [packingStandards.get(group.product_id)!] : []
-                                                                    ).map((std) => (
+                                                                    ).map((std) => {
+                                                                        const multiStore = tripItems.filter(t => t.product_id === group.product_id).length > 1;
+                                                                        const totalRemainingProduct = tripItems.filter(t => t.product_id === group.product_id).reduce((s, t) => s + (t.quantity - (allocated.get(t.id) || 0)), 0);
+                                                                        return (
                                                                         <button
                                                                             key={std.total_units}
                                                                             type="button"
-                                                                            onClick={() => fillFullPalletForGroup(pos.id, group.product_id, group.delivery_trip_item_id, std)}
-                                                                            disabled={maxCanAdd <= 0}
-                                                                            title={`เต็มพาเลท ${std.total_units} ชิ้น · ${std.layers} ชั้น · ชั้นละ ${std.units_per_layer}`}
+                                                                            onClick={() => multiStore ? fillFullPalletByProduct(pos.id, group.product_id, std) : fillFullPalletForGroup(pos.id, group.product_id, group.delivery_trip_item_id, std)}
+                                                                            disabled={multiStore ? totalRemainingProduct <= 0 : maxCanAdd <= 0}
+                                                                            title={multiStore ? `เต็มพาเลท ${std.total_units} (แบ่งทั้งร้าน) · ${std.layers} ชั้น · ชั้นละ ${std.units_per_layer}` : `เต็มพาเลท ${std.total_units} ชิ้น · ${std.layers} ชั้น · ชั้นละ ${std.units_per_layer}`}
                                                                             className="ml-1 px-2.5 py-1 rounded-lg border-2 border-enterprise-300 dark:border-enterprise-600 text-xs font-semibold bg-enterprise-100 dark:bg-enterprise-900/50 text-enterprise-700 dark:text-enterprise-300 cursor-pointer shadow-sm hover:bg-enterprise-200 dark:hover:bg-enterprise-800/60 hover:shadow hover:border-enterprise-400 disabled:opacity-40 disabled:cursor-not-allowed active:scale-[0.98] transition-all"
                                                                         >
                                                                             เต็มพาเลท {std.total_units}
                                                                         </button>
-                                                                    ))}
+                                                                    ); })}
                                                                 </div>
                                                             </div>
                                                         );
@@ -1750,6 +2012,8 @@ export const PackingSimulator: React.FC<SimulatorProps> = ({ tripId, onClose, on
                         }
                         setShowItemPicker(null);
                     }}
+                    onAddByProductWithUnitsPerLayer={typeof showItemPicker === 'string' ? (productId, unitsPerLayer) => { addProductToPositionWithUnitsPerLayer(showItemPicker, productId, unitsPerLayer); setShowItemPicker(null); } : undefined}
+                    onAddByItemWithUnitsPerLayer={typeof showItemPicker === 'string' ? (itemId, unitsPerLayer) => { addItemToPositionWithUnitsPerLayer(showItemPicker, itemId, unitsPerLayer); setShowItemPicker(null); } : undefined}
                     onClose={() => setShowItemPicker(null)}
                 />
             )}
