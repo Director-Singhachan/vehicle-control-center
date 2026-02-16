@@ -276,7 +276,12 @@ export function PendingOrdersView() {
   const [searchQuery, setSearchQuery] = useState('');
   const [dateFilter, setDateFilter] = useState('');
   const [branchFilter, setBranchFilter] = useState<string>(() => {
-    // Default to user's branch, or 'ALL' if not set
+    // High-level roles or HQ users can see everything
+    const isHighLevel = profile?.role === 'admin' || profile?.role === 'manager' || profile?.role === 'inspector' || profile?.role === 'executive';
+    if (isHighLevel || profile?.branch === 'HQ') {
+      return 'ALL';
+    }
+    // SD regular users are restricted to SD
     return profile?.branch || 'ALL';
   });
   const [showCreateTrip, setShowCreateTrip] = useState(false);
@@ -622,10 +627,15 @@ export function PendingOrdersView() {
               <select
                 value={branchFilter}
                 onChange={(e) => setBranchFilter(e.target.value)}
-                className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={!(profile?.role === 'admin' || profile?.role === 'manager' || profile?.role === 'inspector' || profile?.role === 'executive' || profile?.branch === 'HQ')}
               >
-                <option value="ALL">ทุกสาขา</option>
-                <option value="HQ">สำนักงานใหญ่</option>
+                {(profile?.role === 'admin' || profile?.role === 'manager' || profile?.role === 'inspector' || profile?.role === 'executive' || profile?.branch === 'HQ') && (
+                  <>
+                    <option value="ALL">ทุกสาขา</option>
+                    <option value="HQ">สำนักงานใหญ่</option>
+                  </>
+                )}
                 <option value="SD">สาขาสอยดาว</option>
               </select>
             </div>

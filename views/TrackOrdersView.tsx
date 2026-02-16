@@ -30,6 +30,10 @@ export function TrackOrdersView() {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [branchFilter, setBranchFilter] = useState<string>(() => {
+    const isHighLevel = profile?.role === 'admin' || profile?.role === 'manager' || profile?.role === 'inspector' || profile?.role === 'executive';
+    if (isHighLevel || profile?.branch === 'HQ') {
+      return 'ALL';
+    }
     return profile?.branch || 'ALL';
   });
   const [detailOrder, setDetailOrder] = useState<any | null>(null);
@@ -105,10 +109,11 @@ export function TrackOrdersView() {
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'pending':
+      case 'confirmed':
         return <Badge variant="warning">รอจัดทริป</Badge>;
       case 'assigned':
         return <Badge variant="info">กำหนดทริปแล้ว</Badge>;
-      case 'in_transit':
+      case 'in_delivery':
         return <Badge variant="default">กำลังจัดส่ง</Badge>;
       case 'delivered':
         return <Badge variant="success">จัดส่งแล้ว</Badge>;
@@ -122,9 +127,9 @@ export function TrackOrdersView() {
   const stats = useMemo(() => {
     return {
       total: filteredOrders.length,
-      pending: filteredOrders.filter((o) => o.status === 'pending').length,
+      pending: filteredOrders.filter((o) => o.status === 'pending' || o.status === 'confirmed').length,
       assigned: filteredOrders.filter((o) => o.status === 'assigned').length,
-      in_transit: filteredOrders.filter((o) => o.status === 'in_transit').length,
+      in_delivery: filteredOrders.filter((o) => o.status === 'in_delivery').length,
       delivered: filteredOrders.filter((o) => o.status === 'delivered').length,
     };
   }, [filteredOrders]);
@@ -191,10 +196,15 @@ export function TrackOrdersView() {
                 <select
                   value={branchFilter}
                   onChange={(e) => setBranchFilter(e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
+                  className="w-full px-4 py-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={!(profile?.role === 'admin' || profile?.role === 'manager' || profile?.role === 'inspector' || profile?.role === 'executive' || profile?.branch === 'HQ')}
                 >
-                  <option value="ALL">ทุกสาขา</option>
-                  <option value="HQ">สำนักงานใหญ่</option>
+                  {(profile?.role === 'admin' || profile?.role === 'manager' || profile?.role === 'inspector' || profile?.role === 'executive' || profile?.branch === 'HQ') && (
+                    <>
+                      <option value="ALL">ทุกสาขา</option>
+                      <option value="HQ">สำนักงานใหญ่</option>
+                    </>
+                  )}
                   <option value="SD">สาขาสอยดาว</option>
                 </select>
               </div>
@@ -241,7 +251,7 @@ export function TrackOrdersView() {
         </Card>
         <Card>
           <div className="p-4 text-center">
-            <div className="text-2xl font-bold text-purple-600 dark:text-purple-400">{stats.in_transit}</div>
+            <div className="text-2xl font-bold text-purple-600 dark:text-purple-400">{stats.in_delivery}</div>
             <div className="text-sm text-gray-600 dark:text-gray-400">กำลังจัดส่ง</div>
           </div>
         </Card>
@@ -266,180 +276,179 @@ export function TrackOrdersView() {
           </div>
         ) : (
           <>
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800/50">
-                  <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700 dark:text-gray-300">เลขออเดอร์</th>
-                  <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700 dark:text-gray-300">ร้านค้า</th>
-                  <th className="text-right py-3 px-4 text-sm font-semibold text-gray-700 dark:text-gray-300">ยอดรวม</th>
-                  <th className="text-center py-3 px-4 text-sm font-semibold text-gray-700 dark:text-gray-300">สถานะ</th>
-                  <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700 dark:text-gray-300">วันที่นัดส่ง</th>
-                  <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700 dark:text-gray-300">วันที่สร้าง</th>
-                  <th className="text-center py-3 px-4 text-sm font-semibold text-gray-700 dark:text-gray-300">จัดการ</th>
-                </tr>
-              </thead>
-              <tbody>
-                {paginatedOrders.map((order) => (
-                  <tr key={order.id} className="border-b border-gray-100 dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-700/50">
-                    <td className="py-3 px-4 font-mono text-sm text-blue-600 dark:text-blue-400">{order.order_number}</td>
-                    <td className="py-3 px-4">
-                      <div className="font-medium text-gray-900 dark:text-white">{order.customer_name}</div>
-                      <div className="text-xs text-gray-500 dark:text-gray-400">{order.customer_code}</div>
-                    </td>
-                    <td className="py-3 px-4 text-right font-semibold text-gray-900 dark:text-white">
-                      ฿{order.total_amount.toLocaleString()}
-                    </td>
-                    <td className="py-3 px-4 text-center">{getStatusBadge(order.status)}</td>
-                    <td className="py-3 px-4 text-sm text-gray-600 dark:text-gray-400">
-                      {order.delivery_date
-                        ? new Date(order.delivery_date).toLocaleDateString('th-TH', {
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800/50">
+                    <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700 dark:text-gray-300">เลขออเดอร์</th>
+                    <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700 dark:text-gray-300">ร้านค้า</th>
+                    <th className="text-right py-3 px-4 text-sm font-semibold text-gray-700 dark:text-gray-300">ยอดรวม</th>
+                    <th className="text-center py-3 px-4 text-sm font-semibold text-gray-700 dark:text-gray-300">สถานะ</th>
+                    <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700 dark:text-gray-300">วันที่นัดส่ง</th>
+                    <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700 dark:text-gray-300">วันที่สร้าง</th>
+                    <th className="text-center py-3 px-4 text-sm font-semibold text-gray-700 dark:text-gray-300">จัดการ</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {paginatedOrders.map((order) => (
+                    <tr key={order.id} className="border-b border-gray-100 dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-700/50">
+                      <td className="py-3 px-4 font-mono text-sm text-blue-600 dark:text-blue-400">{order.order_number}</td>
+                      <td className="py-3 px-4">
+                        <div className="font-medium text-gray-900 dark:text-white">{order.customer_name}</div>
+                        <div className="text-xs text-gray-500 dark:text-gray-400">{order.customer_code}</div>
+                      </td>
+                      <td className="py-3 px-4 text-right font-semibold text-gray-900 dark:text-white">
+                        ฿{order.total_amount.toLocaleString()}
+                      </td>
+                      <td className="py-3 px-4 text-center">{getStatusBadge(order.status)}</td>
+                      <td className="py-3 px-4 text-sm text-gray-600 dark:text-gray-400">
+                        {order.delivery_date
+                          ? new Date(order.delivery_date).toLocaleDateString('th-TH', {
                             year: 'numeric',
                             month: 'short',
                             day: 'numeric',
                           })
-                        : '-'}
-                    </td>
-                    <td className="py-3 px-4 text-sm text-gray-600 dark:text-gray-400">
-                      {new Date(order.created_at).toLocaleDateString('th-TH', {
-                        year: 'numeric',
-                        month: 'short',
-                        day: 'numeric',
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      })}
-                    </td>
-                  <td className="py-3 px-4 text-center">
-                    <div className="flex items-center justify-center gap-2">
-                      <Button size="sm" variant="outline" onClick={() => openDetail(order)}>
-                        <Eye className="w-4 h-4 mr-1" />
-                        ดู
-                      </Button>
-                      {(order.status === 'pending' || order.status === 'confirmed' || order.status === 'assigned') && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => setEditingOrderId(order.id)}
-                          className="text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
-                        >
-                          <Edit className="w-4 h-4 mr-1" />
-                          แก้ไข
-                        </Button>
-                      )}
-                    </div>
-                  </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                          : '-'}
+                      </td>
+                      <td className="py-3 px-4 text-sm text-gray-600 dark:text-gray-400">
+                        {new Date(order.created_at).toLocaleDateString('th-TH', {
+                          year: 'numeric',
+                          month: 'short',
+                          day: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
+                      </td>
+                      <td className="py-3 px-4 text-center">
+                        <div className="flex items-center justify-center gap-2">
+                          <Button size="sm" variant="outline" onClick={() => openDetail(order)}>
+                            <Eye className="w-4 h-4 mr-1" />
+                            ดู
+                          </Button>
+                          {(order.status === 'pending' || order.status === 'confirmed' || order.status === 'assigned') && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => setEditingOrderId(order.id)}
+                              className="text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
+                            >
+                              <Edit className="w-4 h-4 mr-1" />
+                              แก้ไข
+                            </Button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
 
-          {/* Pagination - 100 รายการต่อหน้า ตามมาตรฐานหน้าอื่น */}
-          {totalPages > 1 && (
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-4 px-4 py-4 border-t border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800/30">
-              <div className="text-sm text-gray-600 dark:text-gray-400">
-                แสดง {startIndex + 1} - {endIndex} จาก {filteredOrders.length.toLocaleString('th-TH')} รายการ
-              </div>
-
-              <div className="flex items-center gap-2 flex-wrap justify-center">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
-                  disabled={currentPage === 1}
-                  className="flex items-center gap-1"
-                >
-                  <ChevronLeft size={16} />
-                  ก่อนหน้า
-                </Button>
-
-                <div className="flex items-center gap-1 flex-wrap">
-                  {(() => {
-                    const pages: (number | string)[] = [];
-                    if (totalPages <= 7) {
-                      for (let i = 1; i <= totalPages; i++) pages.push(i);
-                    } else {
-                      pages.push(1);
-                      const startPage = Math.max(2, currentPage - 2);
-                      const endPage = Math.min(totalPages - 1, currentPage + 2);
-                      if (startPage > 2) pages.push('ellipsis-start');
-                      for (let i = startPage; i <= endPage; i++) {
-                        if (i !== 1 && i !== totalPages) pages.push(i);
-                      }
-                      if (endPage < totalPages - 1) pages.push('ellipsis-end');
-                      pages.push(totalPages);
-                    }
-                    return pages.map((page) => {
-                      if (typeof page === 'string') {
-                        return <span key={page} className="px-2 text-gray-400 dark:text-slate-500">...</span>;
-                      }
-                      return (
-                        <button
-                          key={page}
-                          onClick={() => setCurrentPage(page)}
-                          className={`px-3 py-1 rounded-lg text-sm font-medium transition-colors ${
-                            currentPage === page
-                              ? 'bg-enterprise-600 text-white'
-                              : 'bg-gray-100 dark:bg-slate-800 text-gray-700 dark:text-slate-300 hover:bg-gray-200 dark:hover:bg-slate-700'
-                          }`}
-                        >
-                          {page.toLocaleString('th-TH')}
-                        </button>
-                      );
-                    });
-                  })()}
+            {/* Pagination - 100 รายการต่อหน้า ตามมาตรฐานหน้าอื่น */}
+            {totalPages > 1 && (
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-4 px-4 py-4 border-t border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800/30">
+                <div className="text-sm text-gray-600 dark:text-gray-400">
+                  แสดง {startIndex + 1} - {endIndex} จาก {filteredOrders.length.toLocaleString('th-TH')} รายการ
                 </div>
 
-                {totalPages > 10 && (
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm text-gray-600 dark:text-gray-400">ไปที่หน้า:</span>
-                    <input
-                      type="number"
-                      min={1}
-                      max={totalPages}
-                      value={pageInput}
-                      onChange={(e) => setPageInput(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
+                <div className="flex items-center gap-2 flex-wrap justify-center">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+                    disabled={currentPage === 1}
+                    className="flex items-center gap-1"
+                  >
+                    <ChevronLeft size={16} />
+                    ก่อนหน้า
+                  </Button>
+
+                  <div className="flex items-center gap-1 flex-wrap">
+                    {(() => {
+                      const pages: (number | string)[] = [];
+                      if (totalPages <= 7) {
+                        for (let i = 1; i <= totalPages; i++) pages.push(i);
+                      } else {
+                        pages.push(1);
+                        const startPage = Math.max(2, currentPage - 2);
+                        const endPage = Math.min(totalPages - 1, currentPage + 2);
+                        if (startPage > 2) pages.push('ellipsis-start');
+                        for (let i = startPage; i <= endPage; i++) {
+                          if (i !== 1 && i !== totalPages) pages.push(i);
+                        }
+                        if (endPage < totalPages - 1) pages.push('ellipsis-end');
+                        pages.push(totalPages);
+                      }
+                      return pages.map((page) => {
+                        if (typeof page === 'string') {
+                          return <span key={page} className="px-2 text-gray-400 dark:text-slate-500">...</span>;
+                        }
+                        return (
+                          <button
+                            key={page}
+                            onClick={() => setCurrentPage(page)}
+                            className={`px-3 py-1 rounded-lg text-sm font-medium transition-colors ${currentPage === page
+                              ? 'bg-enterprise-600 text-white'
+                              : 'bg-gray-100 dark:bg-slate-800 text-gray-700 dark:text-slate-300 hover:bg-gray-200 dark:hover:bg-slate-700'
+                              }`}
+                          >
+                            {page.toLocaleString('th-TH')}
+                          </button>
+                        );
+                      });
+                    })()}
+                  </div>
+
+                  {totalPages > 10 && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm text-gray-600 dark:text-gray-400">ไปที่หน้า:</span>
+                      <input
+                        type="number"
+                        min={1}
+                        max={totalPages}
+                        value={pageInput}
+                        onChange={(e) => setPageInput(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            const page = parseInt(pageInput, 10);
+                            if (page >= 1 && page <= totalPages) {
+                              setCurrentPage(page);
+                              setPageInput('');
+                            }
+                          }
+                        }}
+                        placeholder={`1-${totalPages}`}
+                        className="w-20 px-2 py-1 text-sm border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-transparent"
+                      />
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
                           const page = parseInt(pageInput, 10);
                           if (page >= 1 && page <= totalPages) {
                             setCurrentPage(page);
                             setPageInput('');
                           }
-                        }
-                      }}
-                      placeholder={`1-${totalPages}`}
-                      className="w-20 px-2 py-1 text-sm border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-transparent"
-                    />
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        const page = parseInt(pageInput, 10);
-                        if (page >= 1 && page <= totalPages) {
-                          setCurrentPage(page);
-                          setPageInput('');
-                        }
-                      }}
-                    >
-                      ไป
-                    </Button>
-                  </div>
-                )}
+                        }}
+                      >
+                        ไป
+                      </Button>
+                    </div>
+                  )}
 
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
-                  disabled={currentPage === totalPages}
-                  className="flex items-center gap-1"
-                >
-                  ถัดไป
-                  <ChevronRight size={16} />
-                </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
+                    disabled={currentPage === totalPages}
+                    className="flex items-center gap-1"
+                  >
+                    ถัดไป
+                    <ChevronRight size={16} />
+                  </Button>
+                </div>
               </div>
-            </div>
-          )}
+            )}
           </>
         )}
       </Card>

@@ -12,10 +12,16 @@ import { useNotification } from '../hooks/useNotification';
 import { useAuth } from '../hooks';
 
 export function CustomerManagementView() {
-  const { isSales, isAdmin } = useAuth();
+  const { isSales, isAdmin, isManager, isExecutive, isInspector, profile } = useAuth();
+  const isHighLevel = isAdmin || isManager || isExecutive || isInspector;
+  const userBranch = profile?.branch || 'HQ';
+
   const [searchTerm, setSearchTerm] = useState('');
   const [onlyActive, setOnlyActive] = useState(true);
-  const [branchFilter, setBranchFilter] = useState<'ALL' | 'HQ' | 'SD'>('ALL');
+  const [branchFilter, setBranchFilter] = useState<'ALL' | 'HQ' | 'SD'>(() => {
+    if (isHighLevel || userBranch === 'HQ') return 'ALL';
+    return userBranch as 'SD';
+  });
   const [currentPage, setCurrentPage] = useState(1);
   const [pageInput, setPageInput] = useState('');
   const [itemsPerPage, setItemsPerPage] = useState(100);
@@ -208,10 +214,11 @@ export function CustomerManagementView() {
           <select
             value={branchFilter}
             onChange={(e) => setBranchFilter(e.target.value as 'ALL' | 'HQ' | 'SD')}
-            className="px-2 py-1 text-xs border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-enterprise-500"
+            className="px-2 py-1 text-xs border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-enterprise-500 disabled:opacity-50"
+            disabled={!(isHighLevel || userBranch === 'HQ')}
           >
-            <option value="ALL">ทุกสาขา</option>
-            <option value="HQ">สำนักงานใหญ่ (HQ)</option>
+            {(isHighLevel || userBranch === 'HQ') && <option value="ALL">ทุกสาขา</option>}
+            {(isHighLevel || userBranch === 'HQ') && <option value="HQ">สำนักงานใหญ่ (HQ)</option>}
             <option value="SD">สาขาสอยดาว (SD)</option>
           </select>
           <select
@@ -467,11 +474,10 @@ export function CustomerManagementView() {
                         <button
                           key={page}
                           onClick={() => setCurrentPage(page)}
-                          className={`px-3 py-1 rounded-lg text-sm font-medium transition-colors ${
-                            currentPage === page
+                          className={`px-3 py-1 rounded-lg text-sm font-medium transition-colors ${currentPage === page
                               ? 'bg-enterprise-600 text-white'
                               : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
-                          }`}
+                            }`}
                         >
                           {page.toLocaleString('th-TH')}
                         </button>
@@ -556,11 +562,10 @@ export function CustomerManagementView() {
                   value={formData.customer_code || ''}
                   onChange={(e) => setFormData({ ...formData, customer_code: e.target.value })}
                   disabled={!!editingCustomer?.id}
-                  className={`w-full px-3 py-2 rounded-lg border text-sm ${
-                    editingCustomer?.id
+                  className={`w-full px-3 py-2 rounded-lg border text-sm ${editingCustomer?.id
                       ? 'border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 cursor-not-allowed'
                       : 'border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100'
-                  }`}
+                    }`}
                 />
               </div>
               <div>
@@ -585,9 +590,10 @@ export function CustomerManagementView() {
                 <select
                   value={formData.branch || 'HQ'}
                   onChange={(e) => setFormData({ ...formData, branch: e.target.value })}
-                  className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-enterprise-500"
+                  className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-enterprise-500 disabled:opacity-60"
+                  disabled={!(isHighLevel || userBranch === 'HQ')}
                 >
-                  <option value="HQ">สำนักงานใหญ่ (HQ)</option>
+                  {(isHighLevel || userBranch === 'HQ') && <option value="HQ">สำนักงานใหญ่ (HQ)</option>}
                   <option value="SD">สาขาสอยดาว (SD)</option>
                 </select>
                 <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
