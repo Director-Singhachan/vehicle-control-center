@@ -29,6 +29,7 @@ import {
   ClipboardList,
   Boxes,
   Database,
+  Upload,
 } from 'lucide-react';
 // Lazy load views เพื่อลด initial bundle และให้หน้าแรกโหลดเร็วขึ้น
 const DashboardView = lazy(() => import('./views/DashboardView').then(m => ({ default: m.DashboardView })));
@@ -71,6 +72,7 @@ const TrackOrdersView = lazy(() => import('./views/TrackOrdersView').then(m => (
 const SalesTripsView = lazy(() => import('./views/SalesTripsView').then(m => ({ default: m.SalesTripsView })));
 const CleanupTestOrdersView = lazy(() => import('./views/CleanupTestOrdersView').then(m => ({ default: m.CleanupTestOrdersView })));
 const PackingSimulationView = lazy(() => import('./views/PackingSimulationView').then(m => ({ default: m.PackingSimulationView })));
+const ExcelImportView = lazy(() => import('./views/ExcelImportView').then(m => ({ default: m.ExcelImportView })));
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { useAuth, usePendingTickets } from './hooks';
 import { usePendingBillingTrips } from './hooks/usePendingBillingTrips';
@@ -250,6 +252,95 @@ const AppContent = () => {
   const settingsMenuRef = React.useRef<HTMLDivElement>(null);
   const settingsTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
   const [settingsFlyoutPosition, setSettingsFlyoutPosition] = useState({ top: 0, left: 0 });
+
+  // Import menu handlers
+  const [isImportOpen, setIsImportOpen] = useState(false);
+  const [isImportHovered, setIsImportHovered] = useState(false);
+  const importMenuRef = React.useRef<HTMLDivElement>(null);
+  const importTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
+  const [importFlyoutPosition, setImportFlyoutPosition] = useState({ top: 0, left: 0 });
+
+  const handleImportMouseEnter = (e: React.MouseEvent) => {
+    if (importTimeoutRef.current) {
+      clearTimeout(importTimeoutRef.current);
+      importTimeoutRef.current = null;
+    }
+
+    const rect = e.currentTarget.getBoundingClientRect();
+    const viewportHeight = window.innerHeight;
+    const estimatedHeight = 220;
+    const margin = 12;
+
+    let top = rect.top;
+    const maxTop = viewportHeight - estimatedHeight - margin;
+    if (top > maxTop) {
+      top = Math.max(margin, maxTop);
+    }
+
+    setImportFlyoutPosition({
+      top,
+      left: rect.right + 8,
+    });
+
+    setIsImportHovered(true);
+  };
+
+  const handleImportMouseLeave = () => {
+    importTimeoutRef.current = setTimeout(() => {
+      setIsImportHovered(false);
+    }, 150);
+  };
+
+  const handleImportFlyoutMouseEnter = () => {
+    if (importTimeoutRef.current) {
+      clearTimeout(importTimeoutRef.current);
+      importTimeoutRef.current = null;
+    }
+    setIsImportHovered(true);
+  };
+
+  const handleImportFlyoutMouseLeave = () => {
+    importTimeoutRef.current = setTimeout(() => {
+      setIsImportHovered(false);
+      setHoveredImportDept(null);
+    }, 150);
+  };
+
+  // Level 2 Import Flyout handlers
+  const [hoveredImportDept, setHoveredImportDept] = useState<string | null>(null);
+  const [importDeptFlyoutPosition, setImportDeptFlyoutPosition] = useState({ top: 0, left: 0 });
+  const importDeptTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
+
+  const handleImportDeptMouseEnter = (e: React.MouseEvent, dept: string) => {
+    if (importDeptTimeoutRef.current) {
+      clearTimeout(importDeptTimeoutRef.current);
+      importDeptTimeoutRef.current = null;
+    }
+
+    const rect = e.currentTarget.getBoundingClientRect();
+    setImportDeptFlyoutPosition({
+      top: rect.top - 8,
+      left: rect.right + 4,
+    });
+    setHoveredImportDept(dept);
+  };
+
+  const handleImportDeptMouseLeave = () => {
+    importDeptTimeoutRef.current = setTimeout(() => {
+      setHoveredImportDept(null);
+    }, 150);
+  };
+
+  const handleImportDeptFlyoutMouseEnter = () => {
+    if (importDeptTimeoutRef.current) {
+      clearTimeout(importDeptTimeoutRef.current);
+      importDeptTimeoutRef.current = null;
+    }
+  };
+
+  const handleImportDeptFlyoutMouseLeave = () => {
+    setHoveredImportDept(null);
+  };
 
   // Calculate flyout position when hovering
   const handleCommissionMouseEnter = (e: React.MouseEvent) => {
@@ -535,6 +626,7 @@ const AppContent = () => {
     setIsStockOpen(false);
     setIsTripsOpen(false);
     setIsLogisticsOpen(false);
+    setIsImportOpen(false);
   }, [activeTab]);
 
   // Open settings menu if one of its sub-items is active
@@ -558,6 +650,9 @@ const AppContent = () => {
       }
       if (logisticsTimeoutRef.current) {
         clearTimeout(logisticsTimeoutRef.current);
+      }
+      if (importDeptTimeoutRef.current) {
+        clearTimeout(importDeptTimeoutRef.current);
       }
     };
   }, []);
@@ -859,6 +954,7 @@ const AppContent = () => {
                     activeTab === 'product-pricing' ||
                     activeTab === 'customer-tiers' ||
                     activeTab === 'customers' ||
+                    activeTab === 'excel-import' ||
                     activeTab === 'cleanup-test-orders'
                   }
                   onClick={() => {
@@ -1303,6 +1399,114 @@ const AppContent = () => {
         </div>
 
         <div className="p-3 border-t border-slate-200 dark:border-slate-800/50 space-y-1">
+          {/* Import Data - Admin Only */}
+          {isAdmin && (
+            <div
+              ref={importMenuRef}
+              className="relative group/menu"
+              onMouseEnter={handleImportMouseEnter}
+              onMouseLeave={handleImportMouseLeave}
+            >
+              <SidebarItem
+                icon={Upload}
+                label={isSidebarOpen ? "นำเข้าข้อมูล" : ""}
+                active={activeTab === 'excel-import'}
+                onClick={() => {
+                  setIsImportOpen(!isImportOpen);
+                }}
+                isCollapsed={!isSidebarOpen}
+                hasSubmenu={true}
+                isOpen={isImportOpen || isImportHovered}
+              />
+
+              {/* Accordion Style Submenu */}
+              {isImportOpen && isSidebarOpen && !isImportHovered && (
+                <div className="mt-1 space-y-1 ml-4 border-l-2 border-slate-100 dark:border-slate-800 animate-in fade-in slide-in-from-top-1 duration-200">
+                  <div className="px-4 py-2 mt-2 text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest flex items-center gap-2">
+                    <div className="w-1.5 h-1.5 rounded-full bg-blue-500/50"></div>
+                    ฝ่ายขาย
+                  </div>
+                  <SubSidebarItem
+                    label="Step Pricing"
+                    active={activeTab === 'excel-import'}
+                    onClick={() => setActiveTab('excel-import')}
+                    isCollapsed={false}
+                  />
+                  {/* Future categories can be added here */}
+                </div>
+              )}
+
+              {/* Flyout Style Submenu (Level 1: Departments) */}
+              {isImportHovered && (
+                <div
+                  className="fixed z-[100] w-64 bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 p-2 animate-in fade-in slide-in-from-left-2 duration-200"
+                  style={{
+                    top: importFlyoutPosition.top,
+                    left: importFlyoutPosition.left,
+                  }}
+                  onMouseEnter={handleImportFlyoutMouseEnter}
+                  onMouseLeave={handleImportFlyoutMouseLeave}
+                >
+                  <div className="flex flex-col gap-1">
+                    <button
+                      onMouseEnter={(e) => handleImportDeptMouseEnter(e, 'sales')}
+                      onMouseLeave={handleImportDeptMouseLeave}
+                      className={`w-full flex items-center justify-between px-4 py-3 rounded-xl transition-all duration-200 ${hoveredImportDept === 'sales'
+                          ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 font-bold translate-x-1'
+                          : 'text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/50'
+                        }`}
+                    >
+                      <span className="text-sm">ฝ่ายขาย</span>
+                      <ChevronRight size={14} className={hoveredImportDept === 'sales' ? 'translate-x-0.5' : 'opacity-40'} />
+                    </button>
+
+                    <button
+                      className="w-full flex items-center justify-between px-4 py-3 rounded-xl text-slate-400 dark:text-slate-600 cursor-not-allowed opacity-50"
+                    >
+                      <span className="text-sm">ฝ่ายคลังสินค้า</span>
+                      <ChevronRight size={14} className="opacity-20" />
+                    </button>
+
+                    <button
+                      className="w-full flex items-center justify-between px-4 py-3 rounded-xl text-slate-400 dark:text-slate-600 cursor-not-allowed opacity-50"
+                    >
+                      <span className="text-sm">ฝ่ายจัดซื้อ</span>
+                      <ChevronRight size={14} className="opacity-20" />
+                    </button>
+                  </div>
+
+                  {/* Flyout Level 2: Items for Department */}
+                  {hoveredImportDept === 'sales' && (
+                    <div
+                      className="fixed z-[110] w-64 bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 p-2 animate-in fade-in slide-in-from-left-2 duration-200"
+                      style={{
+                        top: importDeptFlyoutPosition.top,
+                        left: importDeptFlyoutPosition.left,
+                      }}
+                      onMouseEnter={handleImportDeptFlyoutMouseEnter}
+                      onMouseLeave={handleImportDeptFlyoutMouseLeave}
+                    >
+                      <div className="mb-2 px-3 py-1.5 text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest border-b border-slate-50 dark:border-slate-800">
+                        รายการนำเข้า (ฝ่ายขาย)
+                      </div>
+                      <SubSidebarItem
+                        label="Step Pricing"
+                        active={activeTab === 'excel-import'}
+                        onClick={() => {
+                          setActiveTab('excel-import');
+                          setIsImportHovered(false);
+                          setHoveredImportDept(null);
+                        }}
+                        isCollapsed={false}
+                        isFlyout={true}
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Database Explorer - Admin Only */}
           {isAdmin && (
             <SidebarItem
@@ -2208,6 +2412,8 @@ const AppContent = () => {
               <CustomerTiersManagementView />
             ) : activeTab === 'product-pricing' ? (
               <ProductTierPricingView />
+            ) : activeTab === 'excel-import' ? (
+              <ExcelImportView />
             ) : activeTab === 'customers' ? (
               <CustomerManagementView />
             ) : activeTab === 'create-order' ? (
