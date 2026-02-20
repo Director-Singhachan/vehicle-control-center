@@ -48,7 +48,7 @@ BEGIN
       -- 3. หา orders ที่ตรงกับร้านนี้ (status = confirmed หรือ partial)
       --    และมี order_item ที่ตรง product_id นี้
       FOR v_order IN
-        SELECT DISTINCT o.id AS order_id
+        SELECT DISTINCT o.id AS order_id, o.created_at
         FROM public.orders o
         JOIN public.order_items oi ON oi.order_id = o.id
         WHERE o.store_id = v_store.store_id

@@ -104,6 +104,28 @@ export const tripLogService = {
     }
 
     // ========================================
+    // Validation: Check for delivery_trip that is still in_progress
+    // (แม้ว่า trip_log จะ check-in แล้ว แต่ delivery_trip อาจยังไม่เป็น completed)
+    // ========================================
+    const checkoutDate = new Date(checkoutTime).toISOString().split('T')[0];
+    const { data: inProgressTrips } = await supabase
+      .from('delivery_trips')
+      .select('id, trip_number, status, planned_date')
+      .eq('vehicle_id', data.vehicle_id)
+      .eq('status', 'in_progress')
+      .eq('planned_date', checkoutDate)
+      .limit(5);
+
+    if (inProgressTrips && inProgressTrips.length > 0) {
+      const tripNumbers = inProgressTrips.map(t => t.trip_number || t.id.substring(0, 8)).join(', ');
+      throw new Error(
+        `รถคันนี้มีทริปที่ยังไม่เสร็จสิ้น (สถานะ: กำลังจัดส่ง): ${tripNumbers}\n` +
+        `กรุณาตรวจสอบและอัปเดตสถานะทริปให้เป็น "จัดส่งสำเร็จ" ก่อนสร้างทริปใหม่\n` +
+        `หรือใช้ฟังก์ชัน "ซิงค์สถานะทริป" เพื่อแก้ไขอัตโนมัติ`
+      );
+    }
+
+    // ========================================
     // Find delivery trip and validate
     // ========================================
     // Match by vehicle_id AND planned_date to ensure correct trip
@@ -426,10 +448,59 @@ export const tripLogService = {
           });
         }
       } else {
-        console.log('[tripLogService] Trip log has no delivery_trip_id (e.g. non-delivery usage). Not linking to any delivery trip on check-in.', {
+        // Fallback: ถ้าไม่มี delivery_trip_id ให้ลองหา delivery_trip จาก vehicle_id + planned_date
+        // (เฉพาะกรณีที่มีแค่ตัวเดียว เพื่อหลีกเลี่ยงการผูกผิด)
+        console.log('[tripLogService] Trip log has no delivery_trip_id. Attempting fallback lookup by vehicle+date...', {
           vehicle_id: trip.vehicle_id,
           trip_id: trip.id,
+          checkout_date: trip.checkout_time ? new Date(trip.checkout_time).toISOString().split('T')[0] : null,
         });
+
+        if (trip.checkout_time) {
+          const checkoutDate = new Date(trip.checkout_time).toISOString().split('T')[0];
+          const { data: matchingTrips, error: lookupError } = await supabase
+            .from('delivery_trips')
+            .select('id, status, odometer_start, odometer_end, trip_number, sequence_order, planned_date, driver_id')
+            .eq('vehicle_id', trip.vehicle_id)
+            .eq('planned_date', checkoutDate)
+            .in('status', ['planned', 'in_progress'])
+            .limit(2); // ตรวจสอบว่ามีแค่ตัวเดียว
+
+          if (!lookupError && matchingTrips && matchingTrips.length === 1) {
+            // มีแค่ตัวเดียว → ปลอดภัยที่จะผูก
+            const foundTrip = matchingTrips[0];
+            deliveryTrip = foundTrip as any;
+            console.log('[tripLogService] Found single matching delivery trip via fallback:', {
+              id: foundTrip.id,
+              trip_number: foundTrip.trip_number,
+              status: foundTrip.status,
+            });
+
+            // ผูก trip_log กับ delivery_trip
+            try {
+              const { error: linkError } = await supabase
+                .from('trip_logs')
+                .update({ delivery_trip_id: foundTrip.id })
+                .eq('id', trip.id);
+
+              if (linkError) {
+                console.error('[tripLogService] Error linking delivery trip in fallback:', linkError);
+              } else {
+                console.log('[tripLogService] Linked delivery trip to trip log via fallback:', foundTrip.id);
+              }
+            } catch (linkErr) {
+              console.error('[tripLogService] Error in fallback link:', linkErr);
+            }
+          } else if (matchingTrips && matchingTrips.length > 1) {
+            console.warn('[tripLogService] Multiple delivery trips found for vehicle+date. Skipping auto-link to avoid wrong assignment.', {
+              vehicle_id: trip.vehicle_id,
+              checkout_date: checkoutDate,
+              trip_count: matchingTrips.length,
+            });
+          } else {
+            console.log('[tripLogService] No matching delivery trip found. This may be non-delivery usage.');
+          }
+        }
       }
 
       if (!deliveryTrip) {
@@ -474,8 +545,37 @@ export const tripLogService = {
 
         if (updateError) {
           console.error('[tripLogService] Error updating delivery trip status:', updateError);
-          // Don't throw - continue with notification
-        } else {
+          
+          // Retry once after a short delay (อาจเป็น transient error)
+          console.log('[tripLogService] Retrying delivery trip update after error...');
+          await new Promise(resolve => setTimeout(resolve, 500));
+          
+          const { error: retryError } = await supabase
+            .from('delivery_trips')
+            .update(updateData)
+            .eq('id', deliveryTrip.id);
+
+          if (retryError) {
+            console.error('[tripLogService] Retry also failed. Delivery trip may need manual update:', {
+              trip_id: deliveryTrip.id,
+              trip_number: deliveryTrip.trip_number,
+              error: retryError,
+            });
+            // Don't throw - continue with notification, but log for admin to fix manually
+          } else {
+            console.log('[tripLogService] Retry succeeded. Delivery trip updated to completed.');
+            // Continue to update stores and commission
+          }
+        }
+
+        // Verify the update succeeded (check status after update)
+        const { data: verifyTrip } = await supabase
+          .from('delivery_trips')
+          .select('status')
+          .eq('id', deliveryTrip.id)
+          .maybeSingle();
+
+        if (verifyTrip && verifyTrip.status === 'completed') {
           console.log('[tripLogService] Successfully updated delivery trip to completed:', {
             id: deliveryTrip.id,
             trip_number: deliveryTrip.trip_number,
@@ -526,6 +626,15 @@ export const tripLogService = {
             );
             // ไม่ throw ต่อ เพื่อไม่ให้กระทบ UX การเช็คอิน
           }
+        } else {
+          // Verify failed - status is not completed
+          console.error('[tripLogService] Delivery trip status update verification failed. Status is still:', {
+            trip_id: deliveryTrip.id,
+            trip_number: deliveryTrip.trip_number,
+            expected_status: 'completed',
+            actual_status: verifyTrip?.status || 'unknown',
+          });
+          console.warn('[tripLogService] Delivery trip may need manual update via syncStatusWithTripLogs() or SQL script.');
         }
 
         // Update trip log with delivery_trip_id if not already set

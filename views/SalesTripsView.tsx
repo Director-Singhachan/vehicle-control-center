@@ -658,10 +658,12 @@ export function SalesTripsView() {
 
   // Fetch trips with full details for invoicing
   // Sales view needs items data to display and manage invoices
+  // ดึงเฉพาะทริปที่ยังใช้งาน (ไม่รวม cancelled) เพื่อไม่ให้ทริปที่ลบ/ยกเลิกแล้วค้างอยู่บนหน้าออกบิล
   const { trips, loading, error: tripsError, refetch } = useDeliveryTrips({
     planned_date_from: dateFilter,
     planned_date_to: dateFilter,
     branch: branchFilter === 'ALL' ? undefined : branchFilter,
+    status: ['planned', 'in_progress', 'completed'], // ไม่ดึง cancelled
     lite: false, // Use full mode to load items data (required for invoicing)
     sortAscending: true, // Oldest trips first (created earlier at top)
     autoFetch: true,
@@ -678,11 +680,12 @@ export function SalesTripsView() {
 
   // Show all trips that are ready for invoicing
   // Sales can create invoices for any trip (not just assigned to them)
+  // ไม่แสดงทริปที่ยกเลิกแล้ว — เพื่อไม่ให้ทริปที่ลบ/ยกเลิกแล้วค้างอยู่บนหน้าออกบิล
   const myTrips = useMemo(() => {
     if (!trips) return [];
 
-    // Show trips that have stores/orders (ready for invoicing)
     return trips.filter((trip: any) => {
+      if (trip.status === 'cancelled') return false;
       return trip.stores && trip.stores.length > 0;
     });
   }, [trips]);

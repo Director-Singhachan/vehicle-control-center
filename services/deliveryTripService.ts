@@ -1565,7 +1565,22 @@ export const deliveryTripService = {
         throw updateOrdersError;
       }
 
-      console.log(`[deliveryTripService] Reset ${orderIds.length} orders (cleared delivery_trip_id and order_number)`);
+      // 3. รีเซ็ต quantity_picked_up_at_store ใน order_items กลับเป็น 0 สำหรับออเดอร์ที่เกี่ยวข้อง
+      //    เพื่อให้สามารถสร้างทริปใหม่ได้โดยไม่มีข้อมูลเก่าค้างอยู่
+      const { error: resetOrderItemsError } = await supabase
+        .from('order_items')
+        .update({
+          quantity_picked_up_at_store: 0,
+          updated_at: new Date().toISOString(),
+        })
+        .in('order_id', orderIds);
+
+      if (resetOrderItemsError) {
+        console.error('[deliveryTripService] Error resetting quantity_picked_up_at_store in order_items:', resetOrderItemsError);
+        throw resetOrderItemsError;
+      }
+
+      console.log(`[deliveryTripService] Reset ${orderIds.length} orders (cleared delivery_trip_id, order_number, and quantity_picked_up_at_store)`);
     }
 
     // 3. ลบทริป (CASCADE จะลบข้อมูลที่เกี่ยวข้องอัตโนมัติ)
@@ -1694,7 +1709,22 @@ export const deliveryTripService = {
         console.error('[deliveryTripService] Error resetting orders:', updateOrdersError);
         // Don't throw - trip is already cancelled, just log the error
       } else {
-        console.log(`[deliveryTripService] Reset ${orderIds.length} orders (cleared delivery_trip_id and order_number)`);
+        // Reset quantity_picked_up_at_store in order_items back to 0
+        // เพื่อให้สามารถสร้างทริปใหม่ได้โดยไม่มีข้อมูลเก่าค้างอยู่
+        const { error: resetOrderItemsError } = await supabase
+          .from('order_items')
+          .update({
+            quantity_picked_up_at_store: 0,
+            updated_at: new Date().toISOString(),
+          })
+          .in('order_id', orderIds);
+
+        if (resetOrderItemsError) {
+          console.error('[deliveryTripService] Error resetting quantity_picked_up_at_store in order_items:', resetOrderItemsError);
+          // Don't throw - trip is already cancelled, just log the error
+        } else {
+          console.log(`[deliveryTripService] Reset ${orderIds.length} orders (cleared delivery_trip_id, order_number, and quantity_picked_up_at_store)`);
+        }
       }
     }
 

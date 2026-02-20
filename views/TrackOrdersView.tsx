@@ -21,6 +21,7 @@ interface Order {
   store_id: string;
   delivery_date?: string | null;
   branch?: string | null;
+  delivery_trip_id?: string | null;
 }
 
 export function TrackOrdersView() {
@@ -82,8 +83,22 @@ export function TrackOrdersView() {
       }
 
       // Status filter
-      if (statusFilter !== 'all' && order.status !== statusFilter) {
-        return false;
+      if (statusFilter !== 'all') {
+        if (statusFilter === 'assigned') {
+          // สำหรับ 'assigned' ต้องตรวจสอบทั้ง status และ delivery_trip_id
+          if (order.status !== 'assigned' || !order.delivery_trip_id) {
+            return false;
+          }
+        } else if (statusFilter === 'pending') {
+          // สำหรับ 'pending' รวมถึงออเดอร์ที่ status เป็น 'assigned' แต่ไม่มี delivery_trip_id (ลบทริปแล้ว)
+          if (order.status !== 'pending' && order.status !== 'confirmed' && !(order.status === 'assigned' && !order.delivery_trip_id)) {
+            return false;
+          }
+        } else {
+          if (order.status !== statusFilter) {
+            return false;
+          }
+        }
       }
 
       // Branch filter
@@ -106,7 +121,16 @@ export function TrackOrdersView() {
   const startIndex = offset;
   const endIndex = Math.min(offset + itemsPerPage, filteredOrders.length);
 
-  const getStatusBadge = (status: string) => {
+  const getStatusBadge = (order: Order) => {
+    const status = order.status;
+    const deliveryTripId = order.delivery_trip_id;
+    
+    // ถ้า delivery_trip_id เป็น null แล้ว ไม่ควรแสดง "กำหนดทริปแล้ว" แม้ว่า status จะเป็น 'assigned' ก็ตาม
+    // (กรณีที่ลบทริปแล้วแต่ status ยังไม่ถูกอัปเดต)
+    if (status === 'assigned' && !deliveryTripId) {
+      return <Badge variant="warning">รอจัดทริป</Badge>;
+    }
+    
     switch (status) {
       case 'pending':
       case 'confirmed':
@@ -133,9 +157,9 @@ export function TrackOrdersView() {
   const stats = useMemo(() => {
     return {
       total: filteredOrders.length,
-      pending: filteredOrders.filter((o) => o.status === 'pending' || o.status === 'confirmed').length,
+      pending: filteredOrders.filter((o) => o.status === 'pending' || o.status === 'confirmed' || (o.status === 'assigned' && !o.delivery_trip_id)).length,
       partial: filteredOrders.filter((o) => o.status === 'partial').length,
-      assigned: filteredOrders.filter((o) => o.status === 'assigned').length,
+      assigned: filteredOrders.filter((o) => o.status === 'assigned' && o.delivery_trip_id).length,
       in_delivery: filteredOrders.filter((o) => o.status === 'in_delivery').length,
       delivered: filteredOrders.filter((o) => o.status === 'delivered').length,
     };
@@ -324,7 +348,7 @@ export function TrackOrdersView() {
                       <td className="py-3 px-4 text-right font-semibold text-gray-900 dark:text-white">
                         ฿{order.total_amount.toLocaleString()}
                       </td>
-                      <td className="py-3 px-4 text-center">{getStatusBadge(order.status)}</td>
+                      <td className="py-3 px-4 text-center">{getStatusBadge(order)}</td>
                       <td className="py-3 px-4 text-sm text-gray-600 dark:text-gray-400">
                         {order.delivery_date
                           ? new Date(order.delivery_date).toLocaleDateString('th-TH', {
