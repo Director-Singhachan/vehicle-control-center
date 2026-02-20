@@ -165,23 +165,144 @@ export const ordersService = {
   },
 
   /**
+   * รหัสออเดอร์รูปแบบเก่า (เช่น SD-ORD-2601-0017) ที่ไม่ได้ใช้แล้ว — ไม่แสดงในหน้ารอจัดทริป
+   * รูปแบบใหม่: SD/HQ + YYMMDD + เลข 3 หลัก (ไม่มี -ORD-)
+   */
+  isOldOrderNumberFormat(orderNumber: string | null | undefined): boolean {
+    if (!orderNumber || typeof orderNumber !== 'string') return false;
+    return orderNumber.includes('-ORD-');
+  },
+
+  /**
    * ดึงออเดอร์ที่รอจัดทริป
+   * แสดง 2 กรณี:
+   * 1) ยังไม่เคยจัดทริป (delivery_trip_id IS NULL) และมียอดคงเหลือ > 0
+   * 2) ส่งบางส่วนแล้ว (ผูกทริปที่ completed) ยังมียอดคงเหลือ > 0 → ให้จัดทริปส่งที่เหลือได้
+   * ไม่แสดง: ผูกทริปอยู่และทริปยังไม่ completed (จัดไปแล้ว), ส่งครบแล้ว (delivered), หรือรหัสออเดอร์รูปแบบเก่า (-ORD-)
+   * ใช้ delivery_trip_id และสถานะทริปจากตาราง orders + delivery_trips โดยตรง (ไม่พึ่ง view)
    */
   async getPendingOrders(filters?: { branch?: string }) {
     let query = supabase
       .from('orders_with_details')
       .select('*')
-      // รับทั้ง 'confirmed' (ยังไม่ได้เริ่มส่ง) และ 'partial' (ส่งบางส่วนแล้ว รอส่งที่เหลือ)
-      .in('status', ['confirmed', 'partial'])
+      .in('status', ['confirmed', 'partial', 'assigned'])
       .order('created_at', { ascending: true });
 
     if (filters?.branch && filters.branch !== 'ALL') {
       query = query.eq('branch', filters.branch);
     }
 
-    const { data, error } = await query;
+    const { data: orders, error } = await query;
     if (error) throw error;
-    return data;
+    if (!orders?.length) return [];
+
+    const orderIds = orders.map((o: any) => o.id);
+    const orderMap = new Map<string, any>(orders.map((o: any) => [o.id, o]));
+
+    // ดึง delivery_trip_id + status จากตาราง orders โดยตรง (ไม่พึ่ง view) เพื่อให้กรองถูกต้อง
+    const { data: ordersRaw } = await supabase
+      .from('orders')
+      .select('id, delivery_trip_id, store_id, status')
+      .in('id', orderIds);
+    const orderIdToTripAndStore = new Map<string, { delivery_trip_id: string | null; store_id: string | null; status: string }>();
+    const orderIdToStatus = new Map<string, string>();
+    (ordersRaw ?? []).forEach((r: any) => {
+      const status = String(r.status ?? '').toLowerCase();
+      orderIdToTripAndStore.set(r.id, {
+        delivery_trip_id: r.delivery_trip_id ?? null,
+        store_id: r.store_id ?? null,
+        status,
+      });
+      orderIdToStatus.set(r.id, status);
+    });
+    // รวบรวม trip id จากทั้ง orders table และ view (เผื่อ RLS หรือ row หาย)
+    const tripIdsFromOrders = [...new Set([
+      ...(ordersRaw ?? []).map((r: any) => r.delivery_trip_id).filter(Boolean),
+      ...orders.map((o: any) => o.delivery_trip_id).filter(Boolean),
+    ])] as string[];
+    const tripIdToStatus = new Map<string, string>();
+    if (tripIdsFromOrders.length > 0) {
+      const { data: trips } = await supabase
+        .from('delivery_trips')
+        .select('id, status')
+        .in('id', tripIdsFromOrders);
+      (trips ?? []).forEach((t: any) =>
+        tripIdToStatus.set(t.id, String(t.status ?? '').toLowerCase())
+      );
+    }
+
+    const completedTripIds = new Set(
+      tripIdsFromOrders.filter((tid) => tripIdToStatus.get(tid) === 'completed')
+    );
+
+    const { data: items, error: itemsError } = await supabase
+      .from('order_items')
+      .select('order_id, product_id, quantity, quantity_picked_up_at_store, quantity_delivered')
+      .in('order_id', orderIds);
+
+    if (itemsError) {
+      console.error('[ordersService.getPendingOrders] order_items error:', itemsError);
+      return orders;
+    }
+
+    const tripDeliveredByStoreProduct = new Map<string, Map<string, number>>();
+    if (completedTripIds.size > 0) {
+      const completedIds = [...completedTripIds];
+      const { data: tripStores } = await supabase
+        .from('delivery_trip_stores')
+        .select('id, delivery_trip_id, store_id')
+        .in('delivery_trip_id', completedIds);
+      if (tripStores?.length) {
+        const tripStoreIds = tripStores.map((ts: any) => ts.id);
+        const { data: tripItems } = await supabase
+          .from('delivery_trip_items')
+          .select('delivery_trip_store_id, product_id, quantity')
+          .in('delivery_trip_store_id', tripStoreIds);
+        const tsById = new Map<string, { delivery_trip_id: string; store_id: string }>(
+          tripStores.map((ts: any) => [ts.id, { delivery_trip_id: ts.delivery_trip_id, store_id: ts.store_id }])
+        );
+        for (const ti of tripItems ?? []) {
+          const ts = tsById.get(ti.delivery_trip_store_id);
+          if (!ts) continue;
+          const key = `${ts.delivery_trip_id}_${ts.store_id}`;
+          if (!tripDeliveredByStoreProduct.has(key)) tripDeliveredByStoreProduct.set(key, new Map());
+          const byProduct = tripDeliveredByStoreProduct.get(key)!;
+          const q = Number(ti.quantity) || 0;
+          byProduct.set(ti.product_id, (byProduct.get(ti.product_id) ?? 0) + q);
+        }
+      }
+    }
+
+    const orderIdToRemaining = new Map<string, number>();
+    for (const row of items ?? []) {
+      const meta = orderIdToTripAndStore.get(row.order_id);
+      const pickedUp = Number(row.quantity_picked_up_at_store ?? 0);
+      let delivered = Number(row.quantity_delivered ?? 0);
+      if (meta?.delivery_trip_id && meta?.store_id && completedTripIds.has(meta.delivery_trip_id)) {
+        const key = `${meta.delivery_trip_id}_${meta.store_id}`;
+        const byProduct = tripDeliveredByStoreProduct.get(key);
+        const fromTrip = byProduct ? (byProduct.get(row.product_id) ?? 0) : 0;
+        if (delivered < fromTrip) delivered = fromTrip;
+      }
+      const rem = Math.max(0, Number(row.quantity) - pickedUp - delivered);
+      orderIdToRemaining.set(row.order_id, (orderIdToRemaining.get(row.order_id) ?? 0) + rem);
+    }
+
+    return orders.filter((o: any) => {
+      if (this.isOldOrderNumberFormat(o.order_number)) return false;
+
+      const orderStatus = (orderIdToStatus.get(o.id) ?? String(o.status ?? '')).toLowerCase();
+      if (orderStatus === 'delivered') return false;
+
+      const remaining = orderIdToRemaining.get(o.id) ?? 0;
+      if (remaining <= 0) return false;
+
+      const meta = orderIdToTripAndStore.get(o.id);
+      const tripId = meta?.delivery_trip_id ?? o.delivery_trip_id ?? null;
+      if (tripId == null || tripId === '') return true;
+      const tripStatus = (tripIdToStatus.get(tripId) ?? '').toLowerCase();
+      return tripStatus === 'completed';
+    });
   },
 
   /**

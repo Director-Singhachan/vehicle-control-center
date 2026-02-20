@@ -173,6 +173,9 @@ const TripCard = memo(({
                   {store.invoice_status === 'issued' && (
                     <CheckCircle className="w-3 h-3 text-green-600 dark:text-green-400" />
                   )}
+                  {(store.order_status === 'partial' || store.order_status === 'assigned') && (
+                    <span className="text-amber-600 dark:text-amber-400" title="ส่งบางส่วน มีของค้างส่ง">⏳</span>
+                  )}
                 </span>
               ))}
             </div>
@@ -213,6 +216,11 @@ const TripCard = memo(({
                         <Badge variant="success" className="text-xs">
                           <CheckCircle className="w-3 h-3 mr-1" />
                           ส่งแล้ว
+                        </Badge>
+                      )}
+                      {(store.order_status === 'partial' || store.order_status === 'assigned') && (
+                        <Badge variant="warning" className="text-xs" title="ออเดอร์นี้ส่งไม่ครบในทริปนี้ มีบางส่วนค้างส่งทริปอื่น">
+                          ⏳ ส่งบางส่วน มีของค้างส่ง
                         </Badge>
                       )}
                     </div>
@@ -455,6 +463,7 @@ interface StoreCardProps {
 const StoreCard = memo(({ entry, expandedStores, updatingStatus, onToggleExpand, onViewDetail, onToggleInvoiceStatus }: StoreCardProps) => {
   const isExpanded = expandedStores.has(entry.store_id);
   const isSplit = entry.trips.length > 1;
+  const hasPartialRemaining = entry.trips.some((t: any) => t.order_status === 'partial' || t.order_status === 'assigned');
 
   return (
     <Card>
@@ -471,6 +480,11 @@ const StoreCard = memo(({ entry, expandedStores, updatingStatus, onToggleExpand,
                 <Badge variant="warning" className="text-xs">
                   <Truck className="w-3 h-3 mr-1 inline" />
                   แบ่งส่ง {entry.trips.length} คัน
+                </Badge>
+              )}
+              {hasPartialRemaining && (
+                <Badge variant="warning" className="text-xs" title="ออเดอร์นี้ส่งไม่ครบในทริปนี้ มีบางส่วนค้างส่งทริปอื่น">
+                  ⏳ ส่งบางส่วน มีของค้างส่ง
                 </Badge>
               )}
             </div>
@@ -758,6 +772,7 @@ export function SalesTripsView() {
           sequence_order: store.sequence_order,
           delivery_status: store.delivery_status || 'pending',
           invoice_status: store.invoice_status || 'pending',
+          order_status: store.order_status,
           items: store.items || [],
         };
         entry.trips.push(tripInfo);
@@ -1302,6 +1317,17 @@ export function SalesTripsView() {
                     )}
                   </div>
                 </div>
+
+                {(selectedStoreDetail.store.order_status === 'partial' || selectedStoreDetail.store.order_status === 'assigned') && (
+                  <div className="p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
+                    <p className="text-sm font-medium text-amber-800 dark:text-amber-200">
+                      ⏳ ออเดอร์นี้ส่งไม่ครบในทริปนี้ — มีบางส่วนค้างส่งทริปอื่น
+                    </p>
+                    <p className="text-xs text-amber-700 dark:text-amber-300 mt-1">
+                      รายการด้านล่างเป็นเฉพาะส่วนที่จัดส่งในทริปนี้เท่านั้น
+                    </p>
+                  </div>
+                )}
 
                 {/* Items List with Checklist Helper */}
                 {selectedStoreDetail.store.items && selectedStoreDetail.store.items.length > 0 ? (

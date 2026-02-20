@@ -788,6 +788,8 @@ export const DeliveryTripDetailView: React.FC<DeliveryTripDetailViewProps> = ({
                             if (!product) return null;
 
                             const quantityValue = Number(item.quantity) || 0;
+                            // pickup_at_store comes from delivery_trip_items.quantity_picked_up_at_store
+                            const pickedUpAtStore = Number((item as any).quantity_picked_up_at_store ?? 0);
 
                             return (
                               <div
@@ -802,8 +804,15 @@ export const DeliveryTripDetailView: React.FC<DeliveryTripDetailViewProps> = ({
                                     </span>
                                   )}
                                 </div>
-                                <div className="text-right min-w-[120px]">
-                                  {quantityValue.toLocaleString()} {product.unit}
+                                <div className="flex items-center gap-2 text-right min-w-[200px] justify-end">
+                                  <span className="text-slate-700 dark:text-slate-300 font-medium">
+                                    {quantityValue.toLocaleString()} {product.unit}
+                                  </span>
+                                  {pickedUpAtStore > 0 && (
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-700" title="ลูกค้ารับที่ร้านแล้ว">
+                                      🏪 รับที่ร้าน {pickedUpAtStore.toLocaleString()}
+                                    </span>
+                                  )}
                                 </div>
                               </div>
                             );
@@ -818,430 +827,434 @@ export const DeliveryTripDetailView: React.FC<DeliveryTripDetailViewProps> = ({
         </Card>
       )}
 
-      {/* Aggregated Products */}
-      {aggregatedProducts.length > 0 && (
-        <Card className="mb-6">
-          <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-4 flex items-center gap-2">
-            <Package size={20} />
-            สรุปสินค้าทั้งหมดในเที่ยว
-          </h3>
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-slate-200 dark:border-slate-700">
-                  <th className="text-left py-2 px-3 text-sm font-medium text-slate-700 dark:text-slate-300">
-                    รหัสสินค้า
-                  </th>
-                  <th className="text-left py-2 px-3 text-sm font-medium text-slate-700 dark:text-slate-300">
-                    ชื่อสินค้า
-                  </th>
-                  <th className="text-left py-2 px-3 text-sm font-medium text-slate-700 dark:text-slate-300">
-                    หมวดหมู่
-                  </th>
-                  <th className="text-right py-2 px-3 text-sm font-medium text-slate-700 dark:text-slate-300">
-                    จำนวนรวม
-                  </th>
-                  <th className="text-left py-2 px-3 text-sm font-medium text-slate-700 dark:text-slate-300">
-                    ร้านค้า
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {aggregatedProducts.map((product) => (
-                  <tr
-                    key={product.product_id}
-                    className="border-b border-slate-100 dark:border-slate-800"
-                  >
-                    <td className="py-2 px-3 text-sm text-slate-900 dark:text-slate-100">
-                      {product.product_code}
-                    </td>
-                    <td className="py-2 px-3 text-sm text-slate-900 dark:text-slate-100">
-                      {product.product_name}
-                    </td>
-                    <td className="py-2 px-3 text-sm text-slate-500 dark:text-slate-400">
-                      {product.category}
-                    </td>
-                    <td className="py-2 px-3 text-sm text-right font-medium text-slate-900 dark:text-slate-100">
-                      {product.total_quantity.toLocaleString()} {product.unit}
-                    </td>
-                    <td className="py-2 px-3 text-sm text-slate-500 dark:text-slate-400">
-                      {product.stores.map(s => `${s.customer_name} (${s.quantity})`).join(', ')}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </Card>
-      )}
-
-      {/* Crew Assignment Section */}
-      <CrewAssignment
-        tripId={trip.id}
-        tripStatus={trip.status}
-        onUpdate={() => {
-          refetch();
-        }}
-      />
-
-      {/* Trip Edit History (Audit Log for Trip Data Changes) */}
-      <Card>
-        <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-4 flex items-center gap-2">
-          <FileText size={20} />
-          ประวัติการแก้ไขข้อมูลทริป
-        </h3>
-
-        {editHistoryLoading && (
-          <div className="text-center py-8 text-slate-500 dark:text-slate-400">
-            กำลังโหลดประวัติการแก้ไข...
-          </div>
-        )}
-
-        {editHistoryError && (
-          <div className="text-center py-8 text-red-600 dark:text-red-400">
-            {editHistoryError}
-          </div>
-        )}
-
-        {!editHistoryLoading && !editHistoryError && editHistory.length === 0 && (
-          <div className="text-center py-8 text-slate-500 dark:text-slate-400">
-            ยังไม่มีประวัติการแก้ไขข้อมูลทริป
-          </div>
-        )}
-
-        {!editHistoryLoading && !editHistoryError && editHistory.length > 0 && (
-          <div className="space-y-4">
-            {editHistory.map((edit, index) => (
-              <div
-                key={edit.id || index}
-                className="border border-slate-200 dark:border-slate-700 rounded-lg p-4 bg-slate-50 dark:bg-slate-800/50"
+{/* Aggregated Products */ }
+{
+  aggregatedProducts.length > 0 && (
+    <Card className="mb-6">
+      <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-4 flex items-center gap-2">
+        <Package size={20} />
+        สรุปสินค้าทั้งหมดในเที่ยว
+      </h3>
+      <div className="overflow-x-auto">
+        <table className="w-full">
+          <thead>
+            <tr className="border-b border-slate-200 dark:border-slate-700">
+              <th className="text-left py-2 px-3 text-sm font-medium text-slate-700 dark:text-slate-300">
+                รหัสสินค้า
+              </th>
+              <th className="text-left py-2 px-3 text-sm font-medium text-slate-700 dark:text-slate-300">
+                ชื่อสินค้า
+              </th>
+              <th className="text-left py-2 px-3 text-sm font-medium text-slate-700 dark:text-slate-300">
+                หมวดหมู่
+              </th>
+              <th className="text-right py-2 px-3 text-sm font-medium text-slate-700 dark:text-slate-300">
+                จำนวนรวม
+              </th>
+              <th className="text-left py-2 px-3 text-sm font-medium text-slate-700 dark:text-slate-300">
+                ร้านค้า
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {aggregatedProducts.map((product) => (
+              <tr
+                key={product.product_id}
+                className="border-b border-slate-100 dark:border-slate-800"
               >
-                <div className="flex items-start justify-between mb-3">
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full bg-blue-500"></div>
-                    <span className="font-medium text-slate-900 dark:text-slate-100">
-                      {edit.editor?.full_name || 'ไม่ทราบชื่อ'}
-                    </span>
-                    <span className="text-sm text-slate-500 dark:text-slate-400">
-                      ({edit.editor?.email || 'ไม่มีอีเมล'})
-                    </span>
-                  </div>
-                  <span className="text-sm text-slate-500 dark:text-slate-400">
-                    {new Date(edit.edited_at).toLocaleString('th-TH', {
-                      year: 'numeric',
-                      month: 'short',
-                      day: 'numeric',
-                      hour: '2-digit',
-                      minute: '2-digit',
-                    })}
-                  </span>
-                </div>
-
-                <div className="mb-3 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded">
-                  <div className="text-sm font-medium text-amber-800 dark:text-amber-200 mb-1">
-                    เหตุผล:
-                  </div>
-                  <div className="text-sm text-amber-900 dark:text-amber-100">
-                    {edit.edit_reason}
-                  </div>
-                </div>
-
-                {edit.changes && (() => {
-                  // Filter out UUID fields (vehicle_id, driver_id) and only show meaningful changes
-                  const fieldsToShow = Object.keys(edit.changes.new_values || {}).filter(
-                    field => !['vehicle_id', 'driver_id'].includes(field)
-                  );
-
-                  if (fieldsToShow.length === 0) {
-                    return null;
-                  }
-
-                  return (
-                    <div className="space-y-2">
-                      <div className="text-sm font-medium text-slate-700 dark:text-slate-300">
-                        การเปลี่ยนแปลง:
-                      </div>
-                      <div className="space-y-2">
-                        {fieldsToShow.map((field) => {
-                          const oldValue = edit.changes.old_values?.[field];
-                          const newValue = edit.changes.new_values?.[field];
-
-                          // Format field name
-                          const fieldNames: Record<string, string> = {
-                            'planned_date': 'วันที่วางแผน',
-                            'odometer_start': 'เลขไมล์เริ่มต้น',
-                            'odometer_end': 'เลขไมล์สิ้นสุด',
-                            'status': 'สถานะ',
-                            'notes': 'หมายเหตุ',
-                            'sequence_order': 'ลำดับ',
-                          };
-
-                          const fieldLabel = fieldNames[field] || field;
-
-                          // Format values
-                          const formatValue = (val: any) => {
-                            if (val === null || val === undefined || val === '') return '-';
-                            if (field === 'planned_date') {
-                              return new Date(val).toLocaleDateString('th-TH', {
-                                year: 'numeric',
-                                month: 'short',
-                                day: 'numeric',
-                              });
-                            }
-                            return String(val);
-                          };
-
-                          return (
-                            <div key={field} className="p-2 bg-white dark:bg-slate-900 rounded border border-slate-200 dark:border-slate-700">
-                              <div className="font-medium text-slate-600 dark:text-slate-400 text-xs mb-1">
-                                {fieldLabel}
-                              </div>
-                              <div className="flex items-center gap-2 text-sm">
-                                <span className="text-red-600 dark:text-red-400 line-through">
-                                  {formatValue(oldValue)}
-                                </span>
-                                <span className="text-slate-400">→</span>
-                                <span className="text-green-600 dark:text-green-400 font-medium">
-                                  {formatValue(newValue)}
-                                </span>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  );
-                })()}
-              </div>
+                <td className="py-2 px-3 text-sm text-slate-900 dark:text-slate-100">
+                  {product.product_code}
+                </td>
+                <td className="py-2 px-3 text-sm text-slate-900 dark:text-slate-100">
+                  {product.product_name}
+                </td>
+                <td className="py-2 px-3 text-sm text-slate-500 dark:text-slate-400">
+                  {product.category}
+                </td>
+                <td className="py-2 px-3 text-sm text-right font-medium text-slate-900 dark:text-slate-100">
+                  {product.total_quantity.toLocaleString()} {product.unit}
+                </td>
+                <td className="py-2 px-3 text-sm text-slate-500 dark:text-slate-400">
+                  {product.stores.map(s => `${s.customer_name} (${s.quantity})`).join(', ')}
+                </td>
+              </tr>
             ))}
+          </tbody>
+        </table>
+      </div>
+    </Card>
+  )
+}
+
+{/* Crew Assignment Section */ }
+<CrewAssignment
+  tripId={trip.id}
+  tripStatus={trip.status}
+  onUpdate={() => {
+    refetch();
+  }}
+/>
+
+{/* Trip Edit History (Audit Log for Trip Data Changes) */ }
+<Card>
+  <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-4 flex items-center gap-2">
+    <FileText size={20} />
+    ประวัติการแก้ไขข้อมูลทริป
+  </h3>
+
+  {editHistoryLoading && (
+    <div className="text-center py-8 text-slate-500 dark:text-slate-400">
+      กำลังโหลดประวัติการแก้ไข...
+    </div>
+  )}
+
+  {editHistoryError && (
+    <div className="text-center py-8 text-red-600 dark:text-red-400">
+      {editHistoryError}
+    </div>
+  )}
+
+  {!editHistoryLoading && !editHistoryError && editHistory.length === 0 && (
+    <div className="text-center py-8 text-slate-500 dark:text-slate-400">
+      ยังไม่มีประวัติการแก้ไขข้อมูลทริป
+    </div>
+  )}
+
+  {!editHistoryLoading && !editHistoryError && editHistory.length > 0 && (
+    <div className="space-y-4">
+      {editHistory.map((edit, index) => (
+        <div
+          key={edit.id || index}
+          className="border border-slate-200 dark:border-slate-700 rounded-lg p-4 bg-slate-50 dark:bg-slate-800/50"
+        >
+          <div className="flex items-start justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <div className="w-2 h-2 rounded-full bg-blue-500"></div>
+              <span className="font-medium text-slate-900 dark:text-slate-100">
+                {edit.editor?.full_name || 'ไม่ทราบชื่อ'}
+              </span>
+              <span className="text-sm text-slate-500 dark:text-slate-400">
+                ({edit.editor?.email || 'ไม่มีอีเมล'})
+              </span>
+            </div>
+            <span className="text-sm text-slate-500 dark:text-slate-400">
+              {new Date(edit.edited_at).toLocaleString('th-TH', {
+                year: 'numeric',
+                month: 'short',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+              })}
+            </span>
           </div>
-        )}
-      </Card>
 
-      {/* Item Change History (Audit Log) */}
-      <Card>
-        <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-4 flex items-center gap-2">
-          <FileText size={20} />
-          ประวัติการแก้ไขสินค้า
-        </h3>
+          <div className="mb-3 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded">
+            <div className="text-sm font-medium text-amber-800 dark:text-amber-200 mb-1">
+              เหตุผล:
+            </div>
+            <div className="text-sm text-amber-900 dark:text-amber-100">
+              {edit.edit_reason}
+            </div>
+          </div>
 
-        {itemChangesLoading && (
-          <p className="text-sm text-slate-500 dark:text-slate-400">กำลังโหลดประวัติการแก้ไข...</p>
-        )}
+          {edit.changes && (() => {
+            // Filter out UUID fields (vehicle_id, driver_id) and only show meaningful changes
+            const fieldsToShow = Object.keys(edit.changes.new_values || {}).filter(
+              field => !['vehicle_id', 'driver_id'].includes(field)
+            );
 
-        {itemChangesError && (
-          <p className="text-sm text-red-600 dark:text-red-400">{itemChangesError}</p>
-        )}
+            if (fieldsToShow.length === 0) {
+              return null;
+            }
 
-        {!itemChangesLoading && !itemChangesError && itemChanges.length === 0 && (
-          <p className="text-sm text-slate-500 dark:text-slate-400">
-            ยังไม่มีประวัติการแก้ไขสินค้าในทริปนี้
-          </p>
-        )}
-
-        {!itemChangesLoading && !itemChangesError && itemChanges.length > 0 && (
-          <div className="space-y-3">
-            {itemChanges.map((change) => {
-              const actionLabel =
-                change.action === 'add'
-                  ? 'เพิ่มรายการ'
-                  : change.action === 'remove'
-                    ? 'ลบรายการ'
-                    : 'แก้ไขจำนวน';
-
-              const storeLabel = change.store
-                ? `${change.store.customer_code} - ${change.store.customer_name}`
-                : 'ไม่ระบุร้านค้า';
-
-              const productLabel = change.product
-                ? `${change.product.product_code} - ${change.product.product_name}`
-                : 'ไม่ระบุสินค้า';
-
-              return (
-                <div
-                  key={change.id}
-                  className="border border-slate-200 dark:border-slate-700 rounded-lg p-3 text-sm"
-                >
-                  <div className="flex justify-between items-center mb-1">
-                    <div className="font-medium text-slate-900 dark:text-slate-100">
-                      {actionLabel}
-                    </div>
-                    <div className="text-xs text-slate-500 dark:text-slate-400">
-                      {formatDateTime(change.created_at)}
-                    </div>
-                  </div>
-                  <div className="text-slate-700 dark:text-slate-300">
-                    <div>ร้านค้า: {storeLabel}</div>
-                    <div>สินค้า: {productLabel}</div>
-                    <div className="mt-1">
-                      ปริมาณ:{' '}
-                      {change.old_quantity != null && change.new_quantity != null
-                        ? `${Number(change.old_quantity).toLocaleString()} → ${Number(
-                          change.new_quantity,
-                        ).toLocaleString()}`
-                        : change.old_quantity != null
-                          ? `${Number(change.old_quantity).toLocaleString()} → 0`
-                          : change.new_quantity != null
-                            ? `0 → ${Number(change.new_quantity).toLocaleString()}`
-                            : '-'}
-                    </div>
-                    {change.reason && (
-                      <div className="mt-1 text-slate-600 dark:text-slate-300">
-                        เหตุผล: {change.reason}
-                      </div>
-                    )}
-                    {change.user && (
-                      <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                        โดย: {change.user.full_name}
-                      </div>
-                    )}
-                  </div>
+            return (
+              <div className="space-y-2">
+                <div className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                  การเปลี่ยนแปลง:
                 </div>
-              );
-            })}
-          </div>
-        )}
-      </Card>
+                <div className="space-y-2">
+                  {fieldsToShow.map((field) => {
+                    const oldValue = edit.changes.old_values?.[field];
+                    const newValue = edit.changes.new_values?.[field];
 
-      {/* Packing Layout Section */}
-      <Card>
-        <div className="flex items-center justify-between">
-          <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-2">
-            <Package size={20} />
-            การจัดเรียงสินค้า
-          </h3>
-          <Button
-            variant={showPackingLayout ? 'outline' : 'primary'}
-            size="sm"
-            onClick={() => setShowPackingLayout(!showPackingLayout)}
+                    // Format field name
+                    const fieldNames: Record<string, string> = {
+                      'planned_date': 'วันที่วางแผน',
+                      'odometer_start': 'เลขไมล์เริ่มต้น',
+                      'odometer_end': 'เลขไมล์สิ้นสุด',
+                      'status': 'สถานะ',
+                      'notes': 'หมายเหตุ',
+                      'sequence_order': 'ลำดับ',
+                    };
+
+                    const fieldLabel = fieldNames[field] || field;
+
+                    // Format values
+                    const formatValue = (val: any) => {
+                      if (val === null || val === undefined || val === '') return '-';
+                      if (field === 'planned_date') {
+                        return new Date(val).toLocaleDateString('th-TH', {
+                          year: 'numeric',
+                          month: 'short',
+                          day: 'numeric',
+                        });
+                      }
+                      return String(val);
+                    };
+
+                    return (
+                      <div key={field} className="p-2 bg-white dark:bg-slate-900 rounded border border-slate-200 dark:border-slate-700">
+                        <div className="font-medium text-slate-600 dark:text-slate-400 text-xs mb-1">
+                          {fieldLabel}
+                        </div>
+                        <div className="flex items-center gap-2 text-sm">
+                          <span className="text-red-600 dark:text-red-400 line-through">
+                            {formatValue(oldValue)}
+                          </span>
+                          <span className="text-slate-400">→</span>
+                          <span className="text-green-600 dark:text-green-400 font-medium">
+                            {formatValue(newValue)}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })()}
+        </div>
+      ))}
+    </div>
+  )}
+</Card>
+
+{/* Item Change History (Audit Log) */ }
+<Card>
+  <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-4 flex items-center gap-2">
+    <FileText size={20} />
+    ประวัติการแก้ไขสินค้า
+  </h3>
+
+  {itemChangesLoading && (
+    <p className="text-sm text-slate-500 dark:text-slate-400">กำลังโหลดประวัติการแก้ไข...</p>
+  )}
+
+  {itemChangesError && (
+    <p className="text-sm text-red-600 dark:text-red-400">{itemChangesError}</p>
+  )}
+
+  {!itemChangesLoading && !itemChangesError && itemChanges.length === 0 && (
+    <p className="text-sm text-slate-500 dark:text-slate-400">
+      ยังไม่มีประวัติการแก้ไขสินค้าในทริปนี้
+    </p>
+  )}
+
+  {!itemChangesLoading && !itemChangesError && itemChanges.length > 0 && (
+    <div className="space-y-3">
+      {itemChanges.map((change) => {
+        const actionLabel =
+          change.action === 'add'
+            ? 'เพิ่มรายการ'
+            : change.action === 'remove'
+              ? 'ลบรายการ'
+              : 'แก้ไขจำนวน';
+
+        const storeLabel = change.store
+          ? `${change.store.customer_code} - ${change.store.customer_name}`
+          : 'ไม่ระบุร้านค้า';
+
+        const productLabel = change.product
+          ? `${change.product.product_code} - ${change.product.product_name}`
+          : 'ไม่ระบุสินค้า';
+
+        return (
+          <div
+            key={change.id}
+            className="border border-slate-200 dark:border-slate-700 rounded-lg p-3 text-sm"
           >
-            {showPackingLayout ? 'ซ่อน' : 'ดูการจัดเรียง / บันทึก'}
-          </Button>
-        </div>
-        {showPackingLayout && (
-          <div className="mt-4">
-            <PackingSimulator
-              tripId={tripId}
-              onClose={() => setShowPackingLayout(false)}
-              onSaved={() => refetch()}
-              embedInDetailView
-            />
-          </div>
-        )}
-      </Card>
-
-      {/* Back Button */}
-      {onBack && (
-        <div className="mt-6">
-          <Button variant="outline" onClick={onBack}>
-            <ArrowLeft size={18} className="mr-2" />
-            กลับ
-          </Button>
-        </div>
-      )}
-
-      {/* Modal: เพิ่มร้านในทริป (ออเดอร์ที่ตกหล่น) */}
-      <Modal
-        isOpen={addOrderModalOpen}
-        onClose={() => {
-          if (!addOrderSubmitting) setAddOrderModalOpen(false);
-        }}
-        title="เพิ่มร้านในทริป"
-        size="large"
-      >
-        <div className="space-y-4">
-          <p className="text-sm text-slate-600 dark:text-slate-400">
-            เลือกออเดอร์ที่รอจัดทริปเพื่อเพิ่มร้านเข้ากับทริปนี้ (ไม่ต้องลบทริปแล้วสร้างใหม่)
-          </p>
-
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-            <input
-              type="text"
-              placeholder="ค้นหาเลขออเดอร์, ร้านค้า..."
-              value={addOrderSearch}
-              onChange={(e) => setAddOrderSearch(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
-            />
-          </div>
-
-          {addOrderError && (
-            <div className="p-3 rounded-lg bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 text-sm">
-              {addOrderError}
+            <div className="flex justify-between items-center mb-1">
+              <div className="font-medium text-slate-900 dark:text-slate-100">
+                {actionLabel}
+              </div>
+              <div className="text-xs text-slate-500 dark:text-slate-400">
+                {formatDateTime(change.created_at)}
+              </div>
             </div>
-          )}
-
-          <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
-              เหตุผลในการเพิ่มร้าน <span className="text-red-500">*</span>
-            </label>
-            <input
-              type="text"
-              value={addOrderReason}
-              onChange={(e) => setAddOrderReason(e.target.value)}
-              placeholder="เช่น เพิ่มร้านที่ตกหล่น"
-              className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
-            />
-          </div>
-
-          {pendingOrdersLoading ? (
-            <div className="py-8 text-center text-slate-500 dark:text-slate-400">กำลังโหลดออเดอร์...</div>
-          ) : pendingOrdersToShow.length === 0 ? (
-            <div className="py-8 text-center text-slate-500 dark:text-slate-400">
-              {pendingOrders.length === 0
-                ? 'ไม่มีออเดอร์ที่รอจัดทริป'
-                : 'ออเดอร์ที่รอจัดทริปทั้งหมดอยู่ในทริปนี้แล้ว หรือไม่ตรงกับคำค้นหา'}
+            <div className="text-slate-700 dark:text-slate-300">
+              <div>ร้านค้า: {storeLabel}</div>
+              <div>สินค้า: {productLabel}</div>
+              <div className="mt-1">
+                ปริมาณ:{' '}
+                {change.old_quantity != null && change.new_quantity != null
+                  ? `${Number(change.old_quantity).toLocaleString()} → ${Number(
+                    change.new_quantity,
+                  ).toLocaleString()}`
+                  : change.old_quantity != null
+                    ? `${Number(change.old_quantity).toLocaleString()} → 0`
+                    : change.new_quantity != null
+                      ? `0 → ${Number(change.new_quantity).toLocaleString()}`
+                      : '-'}
+              </div>
+              {change.reason && (
+                <div className="mt-1 text-slate-600 dark:text-slate-300">
+                  เหตุผล: {change.reason}
+                </div>
+              )}
+              {change.user && (
+                <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                  โดย: {change.user.full_name}
+                </div>
+              )}
             </div>
-          ) : (
-            <div className="max-h-64 overflow-y-auto border border-slate-200 dark:border-slate-700 rounded-lg divide-y divide-slate-200 dark:divide-slate-700">
-              {pendingOrdersToShow.map((order: any) => (
-                <button
-                  key={order.id}
-                  type="button"
-                  onClick={() => setSelectedOrderToAdd(selectedOrderToAdd?.id === order.id ? null : order)}
-                  className={`w-full p-4 text-left transition-colors ${selectedOrderToAdd?.id === order.id
-                    ? 'bg-enterprise-100 dark:bg-enterprise-900/30 border-l-4 border-enterprise-600'
-                    : 'hover:bg-slate-50 dark:hover:bg-slate-800/50'
-                    }`}
-                >
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <span className="font-mono text-sm text-blue-600 dark:text-blue-400">{order.order_number}</span>
-                      <span className="ml-2 font-medium text-slate-900 dark:text-white">{order.customer_name}</span>
-                    </div>
-                    <span className="text-sm font-semibold text-slate-700 dark:text-slate-300">
-                      ฿{(order.total_amount || 0).toLocaleString()}
-                    </span>
-                  </div>
-                  <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">{order.customer_code}</div>
-                </button>
-              ))}
-            </div>
-          )}
-
-          <div className="flex justify-end gap-2 pt-2">
-            <Button variant="outline" onClick={() => setAddOrderModalOpen(false)} disabled={addOrderSubmitting}>
-              ยกเลิก
-            </Button>
-            <Button
-              onClick={handleAddOrderToTrip}
-              disabled={!selectedOrderToAdd || !addOrderReason.trim() || addOrderSubmitting}
-              isLoading={addOrderSubmitting}
-            >
-              เพิ่มร้านเข้ากับทริป
-            </Button>
           </div>
-        </div>
-      </Modal>
+        );
+      })}
+    </div>
+  )}
+</Card>
 
-      {/* Image Modal */}
-      <ImageModal
-        isOpen={!!selectedImage}
-        imageUrl={selectedImage?.url || ''}
-        alt={selectedImage?.alt || ''}
-        onClose={() => setSelectedImage(null)}
+{/* Packing Layout Section */ }
+<Card>
+  <div className="flex items-center justify-between">
+    <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+      <Package size={20} />
+      การจัดเรียงสินค้า
+    </h3>
+    <Button
+      variant={showPackingLayout ? 'outline' : 'primary'}
+      size="sm"
+      onClick={() => setShowPackingLayout(!showPackingLayout)}
+    >
+      {showPackingLayout ? 'ซ่อน' : 'ดูการจัดเรียง / บันทึก'}
+    </Button>
+  </div>
+  {showPackingLayout && (
+    <div className="mt-4">
+      <PackingSimulator
+        tripId={tripId}
+        onClose={() => setShowPackingLayout(false)}
+        onSaved={() => refetch()}
+        embedInDetailView
       />
-    </PageLayout>
+    </div>
+  )}
+</Card>
+
+{/* Back Button */ }
+{
+  onBack && (
+    <div className="mt-6">
+      <Button variant="outline" onClick={onBack}>
+        <ArrowLeft size={18} className="mr-2" />
+        กลับ
+      </Button>
+    </div>
+  )
+}
+
+{/* Modal: เพิ่มร้านในทริป (ออเดอร์ที่ตกหล่น) */ }
+<Modal
+  isOpen={addOrderModalOpen}
+  onClose={() => {
+    if (!addOrderSubmitting) setAddOrderModalOpen(false);
+  }}
+  title="เพิ่มร้านในทริป"
+  size="large"
+>
+  <div className="space-y-4">
+    <p className="text-sm text-slate-600 dark:text-slate-400">
+      เลือกออเดอร์ที่รอจัดทริปเพื่อเพิ่มร้านเข้ากับทริปนี้ (ไม่ต้องลบทริปแล้วสร้างใหม่)
+    </p>
+
+    <div className="relative">
+      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+      <input
+        type="text"
+        placeholder="ค้นหาเลขออเดอร์, ร้านค้า..."
+        value={addOrderSearch}
+        onChange={(e) => setAddOrderSearch(e.target.value)}
+        className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
+      />
+    </div>
+
+    {addOrderError && (
+      <div className="p-3 rounded-lg bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 text-sm">
+        {addOrderError}
+      </div>
+    )}
+
+    <div>
+      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+        เหตุผลในการเพิ่มร้าน <span className="text-red-500">*</span>
+      </label>
+      <input
+        type="text"
+        value={addOrderReason}
+        onChange={(e) => setAddOrderReason(e.target.value)}
+        placeholder="เช่น เพิ่มร้านที่ตกหล่น"
+        className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
+      />
+    </div>
+
+    {pendingOrdersLoading ? (
+      <div className="py-8 text-center text-slate-500 dark:text-slate-400">กำลังโหลดออเดอร์...</div>
+    ) : pendingOrdersToShow.length === 0 ? (
+      <div className="py-8 text-center text-slate-500 dark:text-slate-400">
+        {pendingOrders.length === 0
+          ? 'ไม่มีออเดอร์ที่รอจัดทริป'
+          : 'ออเดอร์ที่รอจัดทริปทั้งหมดอยู่ในทริปนี้แล้ว หรือไม่ตรงกับคำค้นหา'}
+      </div>
+    ) : (
+      <div className="max-h-64 overflow-y-auto border border-slate-200 dark:border-slate-700 rounded-lg divide-y divide-slate-200 dark:divide-slate-700">
+        {pendingOrdersToShow.map((order: any) => (
+          <button
+            key={order.id}
+            type="button"
+            onClick={() => setSelectedOrderToAdd(selectedOrderToAdd?.id === order.id ? null : order)}
+            className={`w-full p-4 text-left transition-colors ${selectedOrderToAdd?.id === order.id
+              ? 'bg-enterprise-100 dark:bg-enterprise-900/30 border-l-4 border-enterprise-600'
+              : 'hover:bg-slate-50 dark:hover:bg-slate-800/50'
+              }`}
+          >
+            <div className="flex justify-between items-start">
+              <div>
+                <span className="font-mono text-sm text-blue-600 dark:text-blue-400">{order.order_number}</span>
+                <span className="ml-2 font-medium text-slate-900 dark:text-white">{order.customer_name}</span>
+              </div>
+              <span className="text-sm font-semibold text-slate-700 dark:text-slate-300">
+                ฿{(order.total_amount || 0).toLocaleString()}
+              </span>
+            </div>
+            <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">{order.customer_code}</div>
+          </button>
+        ))}
+      </div>
+    )}
+
+    <div className="flex justify-end gap-2 pt-2">
+      <Button variant="outline" onClick={() => setAddOrderModalOpen(false)} disabled={addOrderSubmitting}>
+        ยกเลิก
+      </Button>
+      <Button
+        onClick={handleAddOrderToTrip}
+        disabled={!selectedOrderToAdd || !addOrderReason.trim() || addOrderSubmitting}
+        isLoading={addOrderSubmitting}
+      >
+        เพิ่มร้านเข้ากับทริป
+      </Button>
+    </div>
+  </div>
+</Modal>
+
+{/* Image Modal */ }
+<ImageModal
+  isOpen={!!selectedImage}
+  imageUrl={selectedImage?.url || ''}
+  alt={selectedImage?.alt || ''}
+  onClose={() => setSelectedImage(null)}
+/>
+    </PageLayout >
   );
 };
 

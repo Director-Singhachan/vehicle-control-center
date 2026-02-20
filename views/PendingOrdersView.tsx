@@ -67,6 +67,16 @@ const OrderCard = memo(({
     return orderItems.reduce((sum: number, item: any) => sum + (item.quantity * (item.unit_price || 0)), 0);
   }, [orderItems]);
 
+  // สรุปการรับที่ร้าน (แสดงเสมอถ้ามีข้อมูล)
+  const pickupSummary = useMemo(() => {
+    if (!orderItems || orderItems.length === 0) return null;
+    const totalPickedUp = orderItems.reduce((sum: number, item: any) => sum + Number(item.quantity_picked_up_at_store ?? 0), 0);
+    const totalDelivered = orderItems.reduce((sum: number, item: any) => sum + Number(item.quantity_delivered ?? 0), 0);
+    const totalQty = orderItems.reduce((sum: number, item: any) => sum + Number(item.quantity), 0);
+    if (totalPickedUp === 0 && totalDelivered === 0) return null;
+    return { totalPickedUp, totalDelivered, totalQty };
+  }, [orderItems]);
+
   return (
     <Card className={isSelected ? 'ring-2 ring-blue-500' : ''}>
       <div className="p-6">
@@ -89,11 +99,27 @@ const OrderCard = memo(({
                 <p className="text-sm text-gray-500 dark:text-gray-400">
                   {formattedOrderDate}
                 </p>
+                {/* ✅ แสดง pickup summary ถ้ามีการรับที่ร้าน/ส่งแล้วบางส่วน */}
+                {order.status === 'partial' && (
+                  <span className="inline-flex items-center gap-1 mt-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-300 border border-orange-200 dark:border-orange-700">
+                    ⏳ ส่งบางส่วนแล้ว
+                  </span>
+                )}
+                {pickupSummary && pickupSummary.totalPickedUp > 0 && (
+                  <span className="inline-flex items-center gap-1 mt-1 ml-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-700">
+                    🏪 รับที่ร้าน {pickupSummary.totalPickedUp.toLocaleString()} ชิ้น
+                  </span>
+                )}
               </div>
               <div className="text-right">
                 <p className="text-2xl font-bold text-blue-600">
                   {formattedAmount} ฿
                 </p>
+                {pickupSummary && (
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+                    คงเหลือ {Math.max(0, pickupSummary.totalQty - pickupSummary.totalPickedUp - pickupSummary.totalDelivered).toLocaleString()} / {pickupSummary.totalQty.toLocaleString()} ชิ้น
+                  </p>
+                )}
               </div>
             </div>
 

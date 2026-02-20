@@ -82,6 +82,8 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
   const [selectedDriverId2, setSelectedDriverId2] = useState('');
   // itemSplitMap: key = `${orderId}_${itemId}` → { vehicle1Qty, vehicle2Qty }
   const [itemSplitMap, setItemSplitMap] = useState<Record<string, ItemSplitQty>>({});
+  /** เลือกสินค้าว่าชนิดไหนนำไปส่งในทริปนี้ (ออเดอร์เดียวกันแยกส่งหลายทริปได้) key = `${orderId}_${itemId}` → จำนวน */
+  const [quantityInThisTripMap, setQuantityInThisTripMap] = useState<Record<string, number>>({});
   // UI: ร้านที่กางรายละเอียดสินค้า
   const [expandedStores, setExpandedStores] = useState<Set<string>>(new Set());
 
@@ -172,8 +174,15 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
     fetchOrderItems();
   }, [selectedOrders]);
 
-  // สร้าง key สำหรับ itemSplitMap
+  // สร้าง key สำหรับ itemSplitMap / quantityInThisTripMap
   const splitKey = (orderId: string, itemId: string) => `${orderId}_${itemId}`;
+
+  /** ยอดคงเหลือที่ต้องส่ง = สั่ง - รับที่ร้าน - ส่งแล้ว */
+  const getRemaining = useCallback((item: any) => Math.max(0,
+    Number(item.quantity)
+    - Number(item.quantity_picked_up_at_store ?? 0)
+    - Number(item.quantity_delivered ?? 0)
+  ), []);
 
   // เมื่อเปิดโหมดแบ่ง 2 คัน ให้ init ค่า default (ทั้งหมดอยู่คัน 1, คัน 2 = 0)
   useEffect(() => {
@@ -277,7 +286,10 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
       const all: Array<{ product_id: string; quantity: number }> = [];
       for (const d of storeDeliveries) {
         for (const item of (orderItemsMap.get(d.order_id) || [])) {
-          all.push({ product_id: item.product_id, quantity: item.quantity });
+          const remaining = getRemaining(item);
+          const qty = quantityInThisTripMap[splitKey(d.order_id, item.id)] ?? remaining;
+          const v = Math.max(0, Math.min(remaining, qty));
+          if (v > 0) all.push({ product_id: item.product_id, quantity: v });
         }
       }
       return all;
@@ -331,7 +343,7 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
     }, 500);
 
     return () => clearTimeout(timeoutId);
-  }, [selectedVehicleId, selectedVehicleId2, storeDeliveries, orderItemsMap, splitIntoTwoTrips, itemSplitMap, getItemsForVehicle]);
+  }, [selectedVehicleId, selectedVehicleId2, storeDeliveries, orderItemsMap, splitIntoTwoTrips, itemSplitMap, quantityInThisTripMap, getItemsForVehicle, getRemaining]);
 
   // Get unique branches from vehicles
   const branches = useMemo(() => {
@@ -804,30 +816,31 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
     setIsSubmitting(true);
 
     try {
-      // สร้าง stores payload ปกติ (ไม่แบ่ง) — ใช้ quantity_remaining (คงเหลือที่ต้องส่ง)
+      // สร้าง stores payload ปกติ (ไม่แบ่ง) — ใช้ "นำไปส่งในทริปนี้" ต่อรายการ (เลือกได้เฉพาะบางสินค้า)
       const buildStoresPayload = (deliveries: StoreDelivery[]) =>
         deliveries.map((delivery) => {
           const orderItems = orderItemsMap.get(delivery.order_id) || [];
+          const items = orderItems
+            .map((item: any) => {
+              const remaining = getRemaining(item);
+              const qtyInTrip = quantityInThisTripMap[splitKey(delivery.order_id, item.id)] ?? remaining;
+              const qty = Math.max(0, Math.min(remaining, qtyInTrip));
+              return { item, qty, remaining };
+            })
+            .filter(({ qty }) => qty > 0)
+            .map(({ item, qty }) => ({
+              product_id: item.product_id,
+              quantity: qty,
+              notes: item.notes || undefined,
+              is_bonus: item.is_bonus || false,
+            }));
           return {
             store_id: delivery.store_id,
             sequence_order: delivery.sequence,
-            items: orderItems
-              .map((item: any) => {
-                const remaining = Math.max(0,
-                  Number(item.quantity)
-                  - Number(item.quantity_picked_up_at_store ?? 0)
-                  - Number(item.quantity_delivered ?? 0)
-                );
-                return {
-                  product_id: item.product_id,
-                  quantity: remaining,
-                  notes: item.notes || undefined,
-                  is_bonus: item.is_bonus || false,
-                };
-              })
-              .filter((item: any) => item.quantity > 0), // ข้ามรายการที่ส่งเสร็จแล้ว
+            items,
           };
-        });
+        })
+        .filter((s) => s.items.length > 0); // เฉพาะร้านที่มีสินค้านำไปส่งในทริปนี้
 
       // สร้าง stores payload แบบแบ่ง (vehicleNum = 1 | 2)
       const buildSplitStoresPayload = (vehicleNum: 1 | 2) => {
@@ -925,6 +938,11 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
         success(`สร้างทริป 2 คันเรียบร้อย (ทริป 1: ${trip1.trip_number}, ทริป 2: ${trip2.trip_number})`);
       } else {
         const stores = buildStoresPayload(storeDeliveries);
+        if (stores.length === 0) {
+          error('กรุณาระบุสินค้าที่นำไปส่งในทริปนี้อย่างน้อย 1 รายการ (คอลัมน์ "นำไปส่งในทริปนี้")');
+          setIsSubmitting(false);
+          return;
+        }
         const trip = await deliveryTripService.create({
           vehicle_id: selectedVehicleId,
           driver_id: selectedDriverId,
@@ -932,8 +950,10 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
           notes: notes || undefined,
           stores,
         });
-        const orderIds = storeDeliveries.map(d => d.order_id);
-        await ordersService.assignToTrip(orderIds, trip.id, user?.id!);
+        const orderIds = [...new Set(stores.map((s) => storeDeliveries.find((d) => d.store_id === s.store_id)?.order_id).filter(Boolean) as string[])];
+        if (orderIds.length > 0) {
+          await ordersService.assignToTrip(orderIds, trip.id, user?.id!);
+        }
         success('สร้างทริปเรียบร้อย');
       }
 
@@ -1351,11 +1371,24 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
                           {/* Items list (expanded) */}
                           {isExpanded && orderItems.length > 0 && (
                             <div className="border-t border-gray-100 px-4 pb-4">
+                              {!splitIntoTwoTrips && (
+                                <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mt-3">
+                                  <strong>เลือกสินค้าที่นำไปส่งในทริปนี้:</strong> ตั้งคอลัมน์ &quot;นำไปส่งในทริปนี้&quot; = 0 สำหรับสินค้าที่จะจัดส่งทริปอื่น (วันอื่น/รถคันอื่น) ออเดอร์เดียวกันแยกส่งหลายทริปได้
+                                </p>
+                              )}
                               <table className="w-full text-sm mt-3">
                                 <thead>
                                   <tr className="text-left text-xs text-gray-500 uppercase">
                                     <th className="pb-2 font-medium">สินค้า</th>
                                     <th className="pb-2 font-medium text-center">สั่ง</th>
+                                    {!splitIntoTwoTrips && (
+                                      <>
+                                        <th className="pb-2 font-medium text-center">รับที่ร้าน</th>
+                                        <th className="pb-2 font-medium text-center">ส่งแล้ว</th>
+                                        <th className="pb-2 font-medium text-center">คงเหลือ</th>
+                                        <th className="pb-2 font-medium text-center">นำไปส่งในทริปนี้</th>
+                                      </>
+                                    )}
                                     {splitIntoTwoTrips && (
                                       <>
                                         <th className="pb-2 font-medium text-center">
@@ -1372,8 +1405,10 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
                                 <tbody>
                                   {orderItems.map((item: any) => {
                                     const key = splitKey(delivery.order_id, item.id);
-                                    const split = itemSplitMap[key] || { vehicle1Qty: item.quantity, vehicle2Qty: 0 };
-                                    const sumOk = Math.abs((split.vehicle1Qty + split.vehicle2Qty) - item.quantity) < 0.001;
+                                    const remaining = getRemaining(item);
+                                    const qtyInTrip = quantityInThisTripMap[key] ?? remaining;
+                                    const split = itemSplitMap[key] || { vehicle1Qty: remaining, vehicle2Qty: 0 };
+                                    const sumOk = Math.abs((split.vehicle1Qty + split.vehicle2Qty) - remaining) < 0.001;
                                     return (
                                       <tr key={item.id} className="border-t border-gray-50">
                                         <td className="py-2">
@@ -1384,17 +1419,46 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
                                         <td className="py-2 text-center font-semibold text-gray-700">
                                           {item.quantity}
                                         </td>
+                                        {!splitIntoTwoTrips && (
+                                          <>
+                                            <td className="py-2 text-center text-gray-600">
+                                              {Number(item.quantity_picked_up_at_store ?? 0)}
+                                            </td>
+                                            <td className="py-2 text-center text-gray-600">
+                                              {Number(item.quantity_delivered ?? 0)}
+                                            </td>
+                                            <td className="py-2 text-center font-medium text-slate-700">
+                                              {remaining}
+                                            </td>
+                                            <td className="py-2 text-center">
+                                              <input
+                                                type="number"
+                                                min={0}
+                                                max={remaining}
+                                                step="any"
+                                                value={qtyInTrip}
+                                                onFocus={(e) => e.target.select()}
+                                                onChange={(e) => {
+                                                  const v = parseFloat(e.target.value) || 0;
+                                                  setQuantityInThisTripMap((prev) => ({ ...prev, [key]: Math.max(0, Math.min(remaining, v)) }));
+                                                }}
+                                                className="w-20 px-2 py-1 text-center border border-amber-300 rounded-lg text-sm focus:ring-2 focus:ring-amber-500 bg-amber-50 font-medium"
+                                                title="ตั้ง 0 = ไม่นำไปทริปนี้ (จัดส่งทริปอื่นภายหลัง)"
+                                              />
+                                            </td>
+                                          </>
+                                        )}
                                         {splitIntoTwoTrips && (
                                           <>
                                             <td className="py-2 text-center">
                                               <input
                                                 type="number"
                                                 min={0}
-                                                max={item.quantity}
+                                                max={remaining}
                                                 step="any"
                                                 value={split.vehicle1Qty}
                                                 onFocus={(e) => e.target.select()}
-                                                onChange={(e) => handleSplitQtyChange(delivery.order_id, item.id, 1, parseFloat(e.target.value) || 0, item.quantity)}
+                                                onChange={(e) => handleSplitQtyChange(delivery.order_id, item.id, 1, parseFloat(e.target.value) || 0, remaining)}
                                                 className="w-20 px-2 py-1 text-center border border-blue-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 bg-blue-50"
                                               />
                                             </td>
@@ -1402,11 +1466,11 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
                                               <input
                                                 type="number"
                                                 min={0}
-                                                max={item.quantity}
+                                                max={remaining}
                                                 step="any"
                                                 value={split.vehicle2Qty}
                                                 onFocus={(e) => e.target.select()}
-                                                onChange={(e) => handleSplitQtyChange(delivery.order_id, item.id, 2, parseFloat(e.target.value) || 0, item.quantity)}
+                                                onChange={(e) => handleSplitQtyChange(delivery.order_id, item.id, 2, parseFloat(e.target.value) || 0, remaining)}
                                                 className="w-20 px-2 py-1 text-center border border-emerald-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 bg-emerald-50"
                                               />
                                             </td>
@@ -1414,7 +1478,7 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
                                               {sumOk ? (
                                                 <span className="text-green-600 font-bold text-base">&#10003;</span>
                                               ) : (
-                                                <span className="text-red-600 font-bold text-base" title={`รวม ${split.vehicle1Qty + split.vehicle2Qty} ≠ ${item.quantity}`}>&#10007;</span>
+                                                <span className="text-red-600 font-bold text-base" title={`รวม ${split.vehicle1Qty + split.vehicle2Qty} ≠ คงเหลือ ${remaining}`}>&#10007;</span>
                                               )}
                                             </td>
                                           </>
@@ -1424,14 +1488,44 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
                                   })}
                                 </tbody>
                               </table>
+                              {!splitIntoTwoTrips && (
+                                <div className="mt-2 flex gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      for (const item of orderItems) {
+                                        const rem = getRemaining(item);
+                                        if (rem <= 0) continue;
+                                        setQuantityInThisTripMap((prev) => ({ ...prev, [splitKey(delivery.order_id, item.id)]: rem }));
+                                      }
+                                    }}
+                                    className="text-xs px-3 py-1 rounded border border-amber-300 text-amber-700 hover:bg-amber-50"
+                                  >
+                                    ทั้งหมดนำไปทริปนี้
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      for (const item of orderItems) {
+                                        setQuantityInThisTripMap((prev) => ({ ...prev, [splitKey(delivery.order_id, item.id)]: 0 }));
+                                      }
+                                    }}
+                                    className="text-xs px-3 py-1 rounded border border-gray-300 text-gray-600 hover:bg-gray-50"
+                                  >
+                                    ไม่นำไปทริปนี้ (ส่งทริปอื่น)
+                                  </button>
+                                </div>
+                              )}
                               {splitIntoTwoTrips && (
                                 <div className="mt-2 flex gap-2">
                                   <button
                                     type="button"
                                     onClick={() => {
                                       for (const item of orderItems) {
+                                        const rem = getRemaining(item);
+                                        if (rem <= 0) continue;
                                         const key = splitKey(delivery.order_id, item.id);
-                                        setItemSplitMap(prev => ({ ...prev, [key]: { vehicle1Qty: item.quantity, vehicle2Qty: 0 } }));
+                                        setItemSplitMap(prev => ({ ...prev, [key]: { vehicle1Qty: rem, vehicle2Qty: 0 } }));
                                       }
                                     }}
                                     className="text-xs px-3 py-1 rounded border border-blue-300 text-blue-700 hover:bg-blue-50"
@@ -1442,8 +1536,10 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
                                     type="button"
                                     onClick={() => {
                                       for (const item of orderItems) {
+                                        const rem = getRemaining(item);
+                                        if (rem <= 0) continue;
                                         const key = splitKey(delivery.order_id, item.id);
-                                        setItemSplitMap(prev => ({ ...prev, [key]: { vehicle1Qty: 0, vehicle2Qty: item.quantity } }));
+                                        setItemSplitMap(prev => ({ ...prev, [key]: { vehicle1Qty: 0, vehicle2Qty: rem } }));
                                       }
                                     }}
                                     className="text-xs px-3 py-1 rounded border border-emerald-300 text-emerald-700 hover:bg-emerald-50"
@@ -1454,9 +1550,11 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
                                     type="button"
                                     onClick={() => {
                                       for (const item of orderItems) {
+                                        const rem = getRemaining(item);
+                                        if (rem <= 0) continue;
                                         const key = splitKey(delivery.order_id, item.id);
-                                        const half = Math.floor(item.quantity / 2);
-                                        setItemSplitMap(prev => ({ ...prev, [key]: { vehicle1Qty: half, vehicle2Qty: item.quantity - half } }));
+                                        const half = Math.floor(rem / 2);
+                                        setItemSplitMap(prev => ({ ...prev, [key]: { vehicle1Qty: half, vehicle2Qty: rem - half } }));
                                       }
                                     }}
                                     className="text-xs px-3 py-1 rounded border border-gray-300 text-gray-700 hover:bg-gray-50"

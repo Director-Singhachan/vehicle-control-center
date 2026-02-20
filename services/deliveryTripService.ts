@@ -31,6 +31,8 @@ export interface DeliveryTripStoreWithDetails extends DeliveryTripStore {
     phone?: string;
   };
   items?: DeliveryTripItemWithProduct[];
+  /** สถานะออเดอร์ที่ผูกกับทริปนี้ (partial/assigned = ส่งบางส่วน มีของค้างส่ง) — ใช้ในหน้าออกบิลฝ่ายขาย */
+  order_status?: string;
 }
 
 export interface DeliveryTripItemWithProduct extends DeliveryTripItem {
@@ -311,6 +313,8 @@ export const deliveryTripService = {
 
     let storeMap = new Map<string, any>();
     let itemsMap = new Map<string, DeliveryTripItemWithProduct[]>(); // Map: trip_store_id -> items[]
+    // order_status ต่อ (delivery_trip_id, store_id) — สำหรับหน้าออกบิลฝ่ายขาย แสดง "ส่งบางส่วน/มีของค้างส่ง"
+    const orderStatusByTripStore = new Map<string, string>();
 
     // In FULL mode only, fetch detailed store info and items
     if (!lite) {
@@ -321,6 +325,20 @@ export const deliveryTripService = {
         .in('id', storeIds) : { data: [] };
 
       storeMap = new Map((stores || []).map(s => [s.id, s]));
+
+      // ออเดอร์ที่ผูกกับทริปเหล่านี้ (เพื่อแสดง "ส่งบางส่วน มีของค้างส่ง" ในหน้าออกบิล)
+      const { data: ordersForTrips } = tripIds.length > 0 && storeIds.length > 0
+        ? await supabase
+          .from('orders')
+          .select('id, delivery_trip_id, store_id, status')
+          .in('delivery_trip_id', tripIds)
+          .in('store_id', storeIds)
+        : { data: [] as any[] };
+      (ordersForTrips || []).forEach((o: any) => {
+        if (o.delivery_trip_id && o.store_id) {
+          orderStatusByTripStore.set(`${o.delivery_trip_id}_${o.store_id}`, o.status || '');
+        }
+      });
 
       // Fetch items for all trip stores
       // Note: tripStores has 'id' field (which is delivery_trip_stores.id) and 'delivery_trip_store_id' alias
@@ -411,6 +429,7 @@ export const deliveryTripService = {
       const storesWithDetails: DeliveryTripStoreWithDetails[] = tripStoresForTrip.map(ts => {
         // ts.id is the delivery_trip_stores.id (primary key)
         const tripStoreId = ts.id || (ts as any).delivery_trip_store_id;
+        const orderStatus = !lite ? orderStatusByTripStore.get(`${trip.id}_${ts.store_id}`) : undefined;
         return {
           ...ts,
           // In lite mode, store detail will be undefined, which is fine for list view specific needs
@@ -418,6 +437,8 @@ export const deliveryTripService = {
           store: storeMap.get(ts.store_id),
           // Add items if in full mode - use tripStoreId to lookup items
           items: !lite ? (itemsMap.get(tripStoreId) || []) : undefined,
+          // สำหรับหน้าออกบิลฝ่ายขาย: แสดง "ส่งบางส่วน มีของค้างส่ง" เมื่อ order_status เป็น partial หรือ assigned
+          order_status: orderStatus,
         };
       });
 
