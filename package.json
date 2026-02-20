@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:edge": "vite --open",
     "build": "vite build",
     "preview": "vite preview",
     "check": "node check-dev.js",
