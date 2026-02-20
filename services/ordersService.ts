@@ -100,6 +100,10 @@ type OrderItem = {
   order_id: string;
   product_id: string;
   quantity: number;
+  quantity_picked_up_at_store: number; // ลูกค้ารับที่หน้าร้านแล้ว (sales บันทึก)
+  quantity_delivered: number;           // ส่งแล้ว (รวมทุก completed trips — auto)
+  // computed (from view or service):
+  quantity_remaining?: number;          // = quantity - picked_up - delivered
   unit_price: number | null;
   discount_percent: number | null;
   discount_amount: number | null;
@@ -167,8 +171,8 @@ export const ordersService = {
     let query = supabase
       .from('orders_with_details')
       .select('*')
-      .eq('status', 'confirmed')
-      .is('delivery_trip_id', null)
+      // รับทั้ง 'confirmed' (ยังไม่ได้เริ่มส่ง) และ 'partial' (ส่งบางส่วนแล้ว รอส่งที่เหลือ)
+      .in('status', ['confirmed', 'partial'])
       .order('created_at', { ascending: true });
 
     if (filters?.branch && filters.branch !== 'ALL') {
@@ -493,7 +497,37 @@ export const orderItemsService = {
       .order('created_at');
 
     if (error) throw error;
-    return data;
+
+    // Compute quantity_remaining client-side
+    return (data || []).map(item => ({
+      ...item,
+      quantity_picked_up_at_store: Number(item.quantity_picked_up_at_store ?? 0),
+      quantity_delivered: Number(item.quantity_delivered ?? 0),
+      quantity_remaining: Math.max(
+        0,
+        Number(item.quantity)
+        - Number(item.quantity_picked_up_at_store ?? 0)
+        - Number(item.quantity_delivered ?? 0)
+      ),
+    }));
+  },
+
+  /**
+   * อัปเดตจำนวนที่ลูกค้ารับที่หน้าร้าน (ฝ่ายขายเป็นผู้บันทึก)
+   */
+  async updatePickedUpAtStore(itemId: string, quantityPickedUp: number): Promise<void> {
+    const { error } = await supabase
+      .from('order_items')
+      .update({
+        quantity_picked_up_at_store: quantityPickedUp,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', itemId);
+
+    if (error) {
+      console.error('[orderItemsService] Error updating quantity_picked_up_at_store:', error);
+      throw error;
+    }
   },
 
   /**

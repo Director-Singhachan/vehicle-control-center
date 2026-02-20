@@ -42,6 +42,8 @@ export interface DeliveryTripItemWithProduct extends DeliveryTripItem {
     unit: string;
     weight_kg?: number | null;
   };
+  /** Effective quantity to deliver = quantity - quantity_picked_up_at_store */
+  quantity_to_deliver: number;
 }
 
 export interface DeliveryTripCrewWithDetails extends DeliveryTripCrew {
@@ -126,6 +128,7 @@ export interface UpdateDeliveryTripData {
     items: Array<{
       product_id: string;
       quantity: number;
+      quantity_picked_up_at_store?: number;
       notes?: string;
       is_bonus?: boolean;
       selected_pallet_config_id?: string; // Phase 0: User-selected pallet config
@@ -331,7 +334,7 @@ export const deliveryTripService = {
       if (tripStoreIds.length > 0) {
         const { data: tripItems, error: itemsError } = await supabase
           .from('delivery_trip_items')
-          .select('id, delivery_trip_store_id, product_id, quantity, notes, is_bonus')
+          .select('id, delivery_trip_store_id, product_id, quantity, quantity_picked_up_at_store, notes, is_bonus')
           .in('delivery_trip_store_id', tripStoreIds);
 
         if (itemsError) {
@@ -358,9 +361,11 @@ export const deliveryTripService = {
             if (!itemsMap.has(item.delivery_trip_store_id)) {
               itemsMap.set(item.delivery_trip_store_id, []);
             }
+            const pickedUp = Number((item as any).quantity_picked_up_at_store ?? 0);
             itemsMap.get(item.delivery_trip_store_id)!.push({
               ...item,
               product: productMap.get(item.product_id),
+              quantity_to_deliver: Number(item.quantity) - pickedUp,
             });
           });
         }
@@ -535,6 +540,7 @@ export const deliveryTripService = {
       items = (tripItems || []).map(item => ({
         ...item,
         product: productMap.get(item.product_id),
+        quantity_to_deliver: Number(item.quantity) - Number((item as any).quantity_picked_up_at_store ?? 0),
       })) as DeliveryTripItemWithProduct[];
     }
 
@@ -1309,6 +1315,7 @@ export const deliveryTripService = {
           delivery_trip_store_id: string;
           product_id: string;
           quantity: number;
+          quantity_picked_up_at_store?: number;
           notes?: string | null;
           is_bonus: boolean;
           selected_pallet_config_id?: string | null;
@@ -1322,11 +1329,12 @@ export const deliveryTripService = {
           existingItemsForStore.map(item => [`${item.product_id}-${item.is_bonus || false}`, item])
         );
 
-        const newItemsMap = new Map<string, { product_id: string; quantity: number; notes?: string; is_bonus: boolean }>();
+        const newItemsMap = new Map<string, { product_id: string; quantity: number; quantity_picked_up_at_store?: number; notes?: string; is_bonus: boolean }>();
         for (const item of storeData.items || []) {
           newItemsMap.set(`${item.product_id}-${item.is_bonus || false}`, {
             product_id: item.product_id,
             quantity: item.quantity,
+            quantity_picked_up_at_store: item.quantity_picked_up_at_store,
             notes: item.notes,
             is_bonus: item.is_bonus || false,
           });
@@ -1376,6 +1384,7 @@ export const deliveryTripService = {
                 delivery_trip_store_id: tripStoreId,
                 product_id: item.product_id,
                 quantity: item.quantity,
+                quantity_picked_up_at_store: item.quantity_picked_up_at_store ?? 0,
                 notes: item.notes,
                 is_bonus: item.is_bonus || false,
                 selected_pallet_config_id: item.selected_pallet_config_id || null,
@@ -1401,17 +1410,23 @@ export const deliveryTripService = {
             // Possibly update existing item
             const oldQty = Number(existingItem.quantity);
             const newQty = Number(item.quantity);
+            const oldPickedUp = Number(existingItem.quantity_picked_up_at_store ?? 0);
+            const newPickedUp = item.quantity_picked_up_at_store !== undefined
+              ? Number(item.quantity_picked_up_at_store)
+              : oldPickedUp;
 
-            const needsUpdate = oldQty !== newQty || 
+            const needsUpdate = oldQty !== newQty ||
+              oldPickedUp !== newPickedUp ||
               (item.notes !== undefined) ||
-              (item.selected_pallet_config_id !== undefined && 
-               item.selected_pallet_config_id !== (existingItem as any).selected_pallet_config_id);
+              (item.selected_pallet_config_id !== undefined &&
+                item.selected_pallet_config_id !== (existingItem as any).selected_pallet_config_id);
 
             if (needsUpdate) {
               const { error: updateItemError } = await supabase
                 .from('delivery_trip_items')
                 .update({
                   quantity: item.quantity,
+                  quantity_picked_up_at_store: newPickedUp,
                   notes: item.notes,
                   selected_pallet_config_id: item.selected_pallet_config_id || null,
                 })
@@ -1695,6 +1710,22 @@ export const deliveryTripService = {
       .eq('id', tripStore.id);
 
     if (error) throw error;
+  },
+
+  // Update quantity_picked_up_at_store for a single trip item
+  updatePickedUpQuantity: async (
+    itemId: string,
+    quantityPickedUp: number
+  ): Promise<void> => {
+    const { error } = await supabase
+      .from('delivery_trip_items')
+      .update({ quantity_picked_up_at_store: quantityPickedUp })
+      .eq('id', itemId);
+
+    if (error) {
+      console.error('[deliveryTripService] Error updating quantity_picked_up_at_store:', error);
+      throw error;
+    }
   },
 
   // Get aggregated products for a trip (all products across all stores)

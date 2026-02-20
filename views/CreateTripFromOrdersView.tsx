@@ -182,9 +182,15 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
     for (const delivery of storeDeliveries) {
       const items = orderItemsMap.get(delivery.order_id) || [];
       for (const item of items) {
+        const remaining = Math.max(0,
+          Number(item.quantity)
+          - Number(item.quantity_picked_up_at_store ?? 0)
+          - Number(item.quantity_delivered ?? 0)
+        );
+        if (remaining <= 0) continue; // ไม่ต้องขนส่งแล้ว
         const key = splitKey(delivery.order_id, item.id);
         if (!itemSplitMap[key]) {
-          newMap[key] = { vehicle1Qty: item.quantity, vehicle2Qty: 0 };
+          newMap[key] = { vehicle1Qty: remaining, vehicle2Qty: 0 };
         } else {
           newMap[key] = itemSplitMap[key];
         }
@@ -207,17 +213,22 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
     }));
   }, []);
 
-  // Collect items for capacity: ถ้าแบ่ง 2 คัน ใช้จำนวนจาก split map
+  // Collect items for capacity: ถ้าแบ่ง 2 คัน ใช้จำนวนจาก split map, ถ้าไม่แบ่ง ใช้ quantity_remaining
   const getItemsForVehicle = useCallback((vehicleNum: 1 | 2) => {
     const items: Array<{ product_id: string; quantity: number }> = [];
     for (const delivery of storeDeliveries) {
       const orderItems = orderItemsMap.get(delivery.order_id) || [];
       for (const item of orderItems) {
+        const remaining = Math.max(0,
+          Number(item.quantity)
+          - Number(item.quantity_picked_up_at_store ?? 0)
+          - Number(item.quantity_delivered ?? 0)
+        );
         const key = splitKey(delivery.order_id, item.id);
         const split = itemSplitMap[key];
         const qty = split
           ? (vehicleNum === 1 ? split.vehicle1Qty : split.vehicle2Qty)
-          : (vehicleNum === 1 ? item.quantity : 0);
+          : (vehicleNum === 1 ? remaining : 0);
         if (qty > 0) {
           items.push({ product_id: item.product_id, quantity: qty });
         }
@@ -233,12 +244,18 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
     for (const delivery of storeDeliveries) {
       const items = orderItemsMap.get(delivery.order_id) || [];
       for (const item of items) {
+        const remaining = Math.max(0,
+          Number(item.quantity)
+          - Number(item.quantity_picked_up_at_store ?? 0)
+          - Number(item.quantity_delivered ?? 0)
+        );
+        if (remaining <= 0) continue;
         const key = splitKey(delivery.order_id, item.id);
         const split = itemSplitMap[key];
         if (split) {
           const sum = split.vehicle1Qty + split.vehicle2Qty;
-          if (Math.abs(sum - item.quantity) > 0.001) {
-            errors.push(`${delivery.store_name} - ${item.product?.product_name || item.product_name || item.product?.product_code || item.product_code || item.product_id}: จำนวนรวม ${sum} ≠ สั่ง ${item.quantity}`);
+          if (Math.abs(sum - remaining) > 0.001) {
+            errors.push(`${delivery.store_name} - ${item.product?.product_name || item.product_name || item.product_id}: จำนวนรวม ${sum} ≠ คงเหลือ ${remaining}`);
           }
         }
       }
@@ -787,19 +804,28 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
     setIsSubmitting(true);
 
     try {
-      // สร้าง stores payload ปกติ (ไม่แบ่ง)
+      // สร้าง stores payload ปกติ (ไม่แบ่ง) — ใช้ quantity_remaining (คงเหลือที่ต้องส่ง)
       const buildStoresPayload = (deliveries: StoreDelivery[]) =>
         deliveries.map((delivery) => {
           const orderItems = orderItemsMap.get(delivery.order_id) || [];
           return {
             store_id: delivery.store_id,
             sequence_order: delivery.sequence,
-            items: orderItems.map((item: any) => ({
-              product_id: item.product_id,
-              quantity: item.quantity,
-              notes: item.notes || undefined,
-              is_bonus: item.is_bonus || false,
-            })),
+            items: orderItems
+              .map((item: any) => {
+                const remaining = Math.max(0,
+                  Number(item.quantity)
+                  - Number(item.quantity_picked_up_at_store ?? 0)
+                  - Number(item.quantity_delivered ?? 0)
+                );
+                return {
+                  product_id: item.product_id,
+                  quantity: remaining,
+                  notes: item.notes || undefined,
+                  is_bonus: item.is_bonus || false,
+                };
+              })
+              .filter((item: any) => item.quantity > 0), // ข้ามรายการที่ส่งเสร็จแล้ว
           };
         });
 
