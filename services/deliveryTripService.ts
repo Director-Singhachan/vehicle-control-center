@@ -1641,25 +1641,8 @@ export const deliveryTripService = {
         throw updateOrdersError;
       }
 
-      // 3. รีเซ็ต quantity_picked_up_at_store และคำนวณ quantity_delivered ใหม่
-      //    เพื่อให้สามารถสร้างทริปใหม่ได้โดยไม่มีข้อมูลเก่าค้างอยู่
-      //    และ quantity_delivered จะถูกคำนวณใหม่จากทริปที่ยังมีอยู่จริง (completed trips)
-      
-      // 3.1 รีเซ็ต quantity_picked_up_at_store
-      const { error: resetOrderItemsError } = await supabase
-        .from('order_items')
-        .update({
-          quantity_picked_up_at_store: 0,
-          updated_at: new Date().toISOString(),
-        })
-        .in('order_id', orderIds);
-
-      if (resetOrderItemsError) {
-        console.error('[deliveryTripService] Error resetting quantity_picked_up_at_store in order_items:', resetOrderItemsError);
-        throw resetOrderItemsError;
-      }
-
-      // 3.2 คำนวณ quantity_delivered ใหม่จากทริปที่ยังมีอยู่จริง (completed trips)
+      // 3. คำนวณ quantity_delivered ใหม่จากทริปที่ยังมีอยู่จริง (completed trips)
+      //    หมายเหตุ: ไม่รีเซ็ต quantity_picked_up_at_store — เป็นข้อมูลฝ่ายขายว่าลูกค้ารับที่ร้านแล้ว ไม่เกี่ยวกับทริป
       // ดึง order_items และ orders เพื่อหา store_id
       const { data: orderItems, error: itemsError } = await supabase
         .from('order_items')
@@ -1677,14 +1660,15 @@ export const deliveryTripService = {
       } else if (orderItems && orderItems.length > 0) {
         const storeIdByOrderId = new Map(ordersWithStore.map((o: any) => [o.id, o.store_id]));
 
-        // ดึงข้อมูล completed trips ที่ส่งให้ร้านเหล่านี้
+        // ดึงข้อมูล completed trips ที่ส่งให้ร้านเหล่านี้ (ไม่รวมทริปที่กำลังจะลบ)
         const storeIds = [...new Set(ordersWithStore.map((o: any) => o.store_id).filter(Boolean))];
         
-        // ดึง completed trip IDs ก่อน
+        // ดึง completed trip IDs — ไม่รวมทริปนี้ (id) เพราะกำลังจะลบ
         const { data: completedTrips } = await supabase
           .from('delivery_trips')
           .select('id')
-          .eq('status', 'completed');
+          .eq('status', 'completed')
+          .neq('id', id);
         
         const completedTripIds = completedTrips ? completedTrips.map((t: any) => t.id) : [];
         
@@ -1700,10 +1684,10 @@ export const deliveryTripService = {
         if (completedTripStores && completedTripStores.length > 0) {
           const tripStoreIds = completedTripStores.map((ts: any) => ts.id);
           
-          // ดึง delivery_trip_items ของ completed trips
+          // ดึง delivery_trip_items ของ completed trips (ใช้ quantity - quantity_picked_up_at_store = จำนวนที่จัดส่งจริง)
           const { data: tripItems } = await supabase
             .from('delivery_trip_items')
-            .select('delivery_trip_store_id, product_id, quantity')
+            .select('delivery_trip_store_id, product_id, quantity, quantity_picked_up_at_store')
             .in('delivery_trip_store_id', tripStoreIds);
 
           // คำนวณ quantity_delivered ต่อ (store_id, product_id)
@@ -1713,8 +1697,10 @@ export const deliveryTripService = {
               const tripStore = completedTripStores.find((ts: any) => ts.id === ti.delivery_trip_store_id);
               if (tripStore) {
                 const key = `${tripStore.store_id}_${ti.product_id}`;
+                const pickedUp = Number(ti.quantity_picked_up_at_store ?? 0);
+                const delivered = Math.max(0, Number(ti.quantity || 0) - pickedUp);
                 const current = deliveredByStoreProduct.get(key) || 0;
-                deliveredByStoreProduct.set(key, current + Number(ti.quantity || 0));
+                deliveredByStoreProduct.set(key, current + delivered);
               }
             });
           }
@@ -1748,10 +1734,10 @@ export const deliveryTripService = {
         }
       }
 
-      console.log(`[deliveryTripService] Reset ${orderIds.length} orders (cleared delivery_trip_id, order_number, quantity_picked_up_at_store, and recalculated quantity_delivered)`);
+      console.log(`[deliveryTripService] Reset ${orderIds.length} orders (cleared delivery_trip_id, order_number, recalculated quantity_delivered)`);
     }
 
-    // 3. ลบทริป (CASCADE จะลบข้อมูลที่เกี่ยวข้องอัตโนมัติ)
+    // 4. ลบทริป (CASCADE จะลบข้อมูลที่เกี่ยวข้องอัตโนมัติ)
     const { error } = await supabase
       .from('delivery_trips')
       .delete()
@@ -1877,41 +1863,28 @@ export const deliveryTripService = {
         console.error('[deliveryTripService] Error resetting orders:', updateOrdersError);
         // Don't throw - trip is already cancelled, just log the error
       } else {
-        // Reset quantity_picked_up_at_store และคำนวณ quantity_delivered ใหม่
-        // เพื่อให้สามารถสร้างทริปใหม่ได้โดยไม่มีข้อมูลเก่าค้างอยู่
-        const { error: resetOrderItemsError } = await supabase
+        // คำนวณ quantity_delivered ใหม่จากทริปที่ยังมีอยู่จริง (completed trips)
+        // ไม่รีเซ็ต quantity_picked_up_at_store — เป็นข้อมูลฝ่ายขายว่าลูกค้ารับที่ร้านแล้ว
+        const { data: orderItems } = await supabase
           .from('order_items')
-          .update({
-            quantity_picked_up_at_store: 0,
-            updated_at: new Date().toISOString(),
-          })
+          .select('id, order_id, product_id, quantity')
           .in('order_id', orderIds);
 
-        if (resetOrderItemsError) {
-          console.error('[deliveryTripService] Error resetting quantity_picked_up_at_store in order_items:', resetOrderItemsError);
-          // Don't throw - trip is already cancelled, just log the error
-        } else {
-          // คำนวณ quantity_delivered ใหม่จากทริปที่ยังมีอยู่จริง (completed trips)
-          // ใช้ logic เดียวกับ delete() function
-          const { data: orderItems } = await supabase
-            .from('order_items')
-            .select('id, order_id, product_id, quantity')
-            .in('order_id', orderIds);
+        const { data: ordersWithStore } = await supabase
+          .from('orders')
+          .select('id, store_id')
+          .in('id', orderIds);
 
-          const { data: ordersWithStore } = await supabase
-            .from('orders')
-            .select('id, store_id')
-            .in('id', orderIds);
-
-          if (orderItems && ordersWithStore && orderItems.length > 0) {
+        if (orderItems && ordersWithStore && orderItems.length > 0) {
             const storeIdByOrderId = new Map(ordersWithStore.map((o: any) => [o.id, o.store_id]));
             const storeIds = [...new Set(ordersWithStore.map((o: any) => o.store_id).filter(Boolean))];
             
-            // ดึง completed trip IDs
+            // ดึง completed trip IDs (ไม่รวมทริปนี้ที่ถูกยกเลิก)
             const { data: completedTrips } = await supabase
               .from('delivery_trips')
               .select('id')
-              .eq('status', 'completed');
+              .eq('status', 'completed')
+              .neq('id', id);
             
             const completedTripIds = completedTrips ? completedTrips.map((t: any) => t.id) : [];
             
@@ -1928,7 +1901,7 @@ export const deliveryTripService = {
               const tripStoreIds = completedTripStores.map((ts: any) => ts.id);
               const { data: tripItems } = await supabase
                 .from('delivery_trip_items')
-                .select('delivery_trip_store_id, product_id, quantity')
+                .select('delivery_trip_store_id, product_id, quantity, quantity_picked_up_at_store')
                 .in('delivery_trip_store_id', tripStoreIds);
 
               const deliveredByStoreProduct = new Map<string, number>();
@@ -1937,8 +1910,10 @@ export const deliveryTripService = {
                   const tripStore = completedTripStores.find((ts: any) => ts.id === ti.delivery_trip_store_id);
                   if (tripStore) {
                     const key = `${tripStore.store_id}_${ti.product_id}`;
+                    const pickedUp = Number(ti.quantity_picked_up_at_store ?? 0);
+                    const delivered = Math.max(0, Number(ti.quantity || 0) - pickedUp);
                     const current = deliveredByStoreProduct.get(key) || 0;
-                    deliveredByStoreProduct.set(key, current + Number(ti.quantity || 0));
+                    deliveredByStoreProduct.set(key, current + delivered);
                   }
                 });
               }
@@ -1968,8 +1943,7 @@ export const deliveryTripService = {
             }
           }
           
-          console.log(`[deliveryTripService] Reset ${orderIds.length} orders (cleared delivery_trip_id, order_number, quantity_picked_up_at_store, and recalculated quantity_delivered)`);
-        }
+        console.log(`[deliveryTripService] Reset ${orderIds.length} orders (cleared delivery_trip_id, order_number, recalculated quantity_delivered)`);
       }
     }
 

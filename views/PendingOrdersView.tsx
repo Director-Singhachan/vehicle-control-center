@@ -384,10 +384,19 @@ const OrderCard = memo(({
 
 OrderCard.displayName = 'OrderCard';
 
+const TRIP_DELETED_EVENT = 'trip-deleted';
+
 export function PendingOrdersView() {
   const { orders, loading, error, refetch } = usePendingOrders();
   const { toasts, warning, dismissToast } = useToast();
   const { profile } = useAuth(); // For default branch
+
+  // Refetch เมื่อมีการลบทริป (ออเดอร์จะกลับมาอยู่รอจัดทริปอีกครั้ง)
+  useEffect(() => {
+    const handleTripDeleted = () => refetch();
+    window.addEventListener(TRIP_DELETED_EVENT, handleTripDeleted);
+    return () => window.removeEventListener(TRIP_DELETED_EVENT, handleTripDeleted);
+  }, [refetch]);
 
   const [selectedOrders, setSelectedOrders] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState('');

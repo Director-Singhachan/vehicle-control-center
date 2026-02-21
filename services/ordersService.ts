@@ -301,6 +301,8 @@ export const ordersService = {
 
       const tripStatus = (tripIdToStatus.get(tripId) ?? '').toLowerCase();
       if (tripStatus === 'completed' || tripStatus === 'cancelled') return true;
+      // ทริปถูกลบ (hard delete) — ไม่พบใน delivery_trips — ให้แสดงออเดอร์เพื่อให้สามารถจัดทริปใหม่ได้
+      if (tripStatus === '') return true;
       return false;
     });
   },
