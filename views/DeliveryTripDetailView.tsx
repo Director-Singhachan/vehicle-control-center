@@ -19,6 +19,7 @@ import {
   BarChart3,
   Plus,
   Search,
+  Store,
 } from 'lucide-react';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
@@ -841,6 +842,22 @@ export const DeliveryTripDetailView: React.FC<DeliveryTripDetailViewProps> = ({
         <Package size={20} />
         สรุปสินค้าทั้งหมดในเที่ยว
       </h3>
+
+      {/* แจ้งเตือนเมื่อมีลูกค้ามารับที่ร้านแล้ว */}
+      {aggregatedProducts.some((p) => (p.total_picked_up_at_store ?? 0) > 0) && (
+        <div className="mb-4 flex items-start gap-3 p-4 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
+          <Store className="flex-shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" size={20} />
+          <div>
+            <p className="font-medium text-amber-800 dark:text-amber-200">
+              มีลูกค้ามารับสินค้าที่หน้าร้านแล้ว
+            </p>
+            <p className="text-sm text-amber-700 dark:text-amber-300 mt-1">
+              จำนวนด้านล่างคือ <strong>จำนวนที่ต้องจัดส่งจริง</strong> (ยอดสั่งลบส่วนที่รับที่ร้านแล้ว)
+            </p>
+          </div>
+        </div>
+      )}
+
       <div className="overflow-x-auto">
         <table className="w-full">
           <thead>
@@ -855,8 +872,13 @@ export const DeliveryTripDetailView: React.FC<DeliveryTripDetailViewProps> = ({
                 หมวดหมู่
               </th>
               <th className="text-right py-2 px-3 text-sm font-medium text-slate-700 dark:text-slate-300">
-                จำนวนรวม
+                จำนวนที่ต้องจัดส่ง
               </th>
+              {aggregatedProducts.some((p) => (p.total_picked_up_at_store ?? 0) > 0) && (
+                <th className="text-right py-2 px-3 text-sm font-medium text-slate-700 dark:text-slate-300">
+                  รับที่ร้านแล้ว
+                </th>
+              )}
               <th className="text-left py-2 px-3 text-sm font-medium text-slate-700 dark:text-slate-300">
                 ร้านค้า
               </th>
@@ -880,8 +902,20 @@ export const DeliveryTripDetailView: React.FC<DeliveryTripDetailViewProps> = ({
                 <td className="py-2 px-3 text-sm text-right font-medium text-slate-900 dark:text-slate-100">
                   {product.total_quantity.toLocaleString()} {product.unit}
                 </td>
+                {aggregatedProducts.some((p) => (p.total_picked_up_at_store ?? 0) > 0) && (
+                  <td className="py-2 px-3 text-sm text-right text-amber-600 dark:text-amber-400">
+                    {(product.total_picked_up_at_store ?? 0) > 0
+                      ? `${(product.total_picked_up_at_store ?? 0).toLocaleString()} ${product.unit}`
+                      : '-'}
+                  </td>
+                )}
                 <td className="py-2 px-3 text-sm text-slate-500 dark:text-slate-400">
-                  {product.stores.map(s => `${s.customer_name} (${s.quantity})`).join(', ')}
+                  {product.stores.map((s) => {
+                    const picked = s.quantity_picked_up_at_store ?? 0;
+                    return picked > 0
+                      ? `${s.customer_name} (ส่ง ${s.quantity.toLocaleString()}, รับที่ร้าน ${picked.toLocaleString()})`
+                      : `${s.customer_name} (${s.quantity.toLocaleString()})`;
+                  }).join(', ')}
                 </td>
               </tr>
             ))}

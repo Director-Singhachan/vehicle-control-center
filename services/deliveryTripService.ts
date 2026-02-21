@@ -107,6 +107,7 @@ export interface CreateDeliveryTripData {
     items: Array<{
       product_id: string;
       quantity: number;
+      quantity_picked_up_at_store?: number;
       notes?: string;
       is_bonus?: boolean;
       selected_pallet_config_id?: string; // Phase 0: User-selected pallet config
@@ -2024,6 +2025,7 @@ export const deliveryTripService = {
   },
 
   // Get aggregated products for a trip (all products across all stores)
+  // total_quantity = effective quantity to deliver (quantity - quantity_picked_up_at_store)
   getAggregatedProducts: async (tripId: string): Promise<Array<{
     product_id: string;
     product_code: string;
@@ -2031,11 +2033,13 @@ export const deliveryTripService = {
     category: string;
     unit: string;
     total_quantity: number;
+    total_picked_up_at_store: number;
     stores: Array<{
       store_id: string;
       customer_code: string;
       customer_name: string;
       quantity: number;
+      quantity_picked_up_at_store: number;
     }>;
   }>> => {
     const trip = await deliveryTripService.getById(tripId);
@@ -2043,7 +2047,7 @@ export const deliveryTripService = {
       return [];
     }
 
-    // Aggregate products across all stores
+    // Aggregate products across all stores (use quantity_to_deliver for effective load)
     const productMap = new Map<string, {
       product_id: string;
       product_code: string;
@@ -2051,11 +2055,13 @@ export const deliveryTripService = {
       category: string;
       unit: string;
       total_quantity: number;
+      total_picked_up_at_store: number;
       stores: Array<{
         store_id: string;
         customer_code: string;
         customer_name: string;
         quantity: number;
+        quantity_picked_up_at_store: number;
       }>;
     }>();
 
@@ -2066,15 +2072,20 @@ export const deliveryTripService = {
         if (!item.product) continue;
 
         const productId = item.product.id;
+        const pickedUp = Number((item as any).quantity_picked_up_at_store ?? 0);
+        const toDeliver = Number((item as any).quantity_to_deliver ?? (Number(item.quantity) - pickedUp));
+
         const existing = productMap.get(productId);
 
         if (existing) {
-          existing.total_quantity += Number(item.quantity);
+          existing.total_quantity += toDeliver;
+          existing.total_picked_up_at_store += pickedUp;
           existing.stores.push({
             store_id: store.store_id,
             customer_code: store.store?.customer_code || '',
             customer_name: store.store?.customer_name || '',
-            quantity: Number(item.quantity),
+            quantity: toDeliver,
+            quantity_picked_up_at_store: pickedUp,
           });
         } else {
           productMap.set(productId, {
@@ -2083,12 +2094,14 @@ export const deliveryTripService = {
             product_name: item.product.product_name,
             category: item.product.category,
             unit: item.product.unit,
-            total_quantity: Number(item.quantity),
+            total_quantity: toDeliver,
+            total_picked_up_at_store: pickedUp,
             stores: [{
               store_id: store.store_id,
               customer_code: store.store?.customer_code || '',
               customer_name: store.store?.customer_name || '',
-              quantity: Number(item.quantity),
+              quantity: toDeliver,
+              quantity_picked_up_at_store: pickedUp,
             }],
           });
         }
