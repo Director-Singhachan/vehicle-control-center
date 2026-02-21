@@ -1641,9 +1641,22 @@ export const deliveryTripService = {
         throw updateOrdersError;
       }
 
-      // 3. คำนวณ quantity_delivered ใหม่จากทริปที่ยังมีอยู่จริง (completed trips)
-      //    หมายเหตุ: ไม่รีเซ็ต quantity_picked_up_at_store — เป็นข้อมูลฝ่ายขายว่าลูกค้ารับที่ร้านแล้ว ไม่เกี่ยวกับทริป
-      // ดึง order_items และ orders เพื่อหา store_id
+      // 3. รีเซ็ต quantity_delivered เป็น 0 ก่อน (ออเดอร์ที่ลบทริป = ยังไม่มีส่วนใดถูกจัดส่ง)
+      const { error: resetDeliveredError } = await supabase
+        .from('order_items')
+        .update({
+          quantity_delivered: 0,
+          updated_at: new Date().toISOString(),
+        })
+        .in('order_id', orderIds);
+
+      if (resetDeliveredError) {
+        console.error('[deliveryTripService] Error resetting quantity_delivered:', resetDeliveredError);
+        throw resetDeliveredError;
+      }
+
+      // 4. คำนวณ quantity_delivered ใหม่จากทริป completed อื่น (ถ้ามี) ที่ส่งให้ร้านเหล่านี้
+      //    หมายเหตุ: ไม่รีเซ็ต quantity_picked_up_at_store — เป็นข้อมูลฝ่ายขายว่าลูกค้ารับที่ร้านแล้ว
       const { data: orderItems, error: itemsError } = await supabase
         .from('order_items')
         .select('id, order_id, product_id, quantity')
@@ -1656,7 +1669,7 @@ export const deliveryTripService = {
 
       if (itemsError || !ordersWithStore) {
         console.error('[deliveryTripService] Error fetching data for recalculating quantity_delivered:', itemsError);
-        // Don't throw - continue with deletion
+        // Don't throw - เรารีเซ็ตเป็น 0 แล้ว ต่อให้ recalc ไม่สำเร็จก็ใช้ 0 ได้
       } else if (orderItems && orderItems.length > 0) {
         const storeIdByOrderId = new Map(ordersWithStore.map((o: any) => [o.id, o.store_id]));
 
@@ -1737,7 +1750,7 @@ export const deliveryTripService = {
       console.log(`[deliveryTripService] Reset ${orderIds.length} orders (cleared delivery_trip_id, order_number, recalculated quantity_delivered)`);
     }
 
-    // 4. ลบทริป (CASCADE จะลบข้อมูลที่เกี่ยวข้องอัตโนมัติ)
+    // 5. ลบทริป (CASCADE จะลบข้อมูลที่เกี่ยวข้องอัตโนมัติ)
     const { error } = await supabase
       .from('delivery_trips')
       .delete()
@@ -1863,6 +1876,15 @@ export const deliveryTripService = {
         console.error('[deliveryTripService] Error resetting orders:', updateOrdersError);
         // Don't throw - trip is already cancelled, just log the error
       } else {
+        // รีเซ็ต quantity_delivered เป็น 0 ก่อน (ออเดอร์ที่ยกเลิกทริป = ยังไม่มีส่วนใดถูกจัดส่งจากทริปนี้)
+        await supabase
+          .from('order_items')
+          .update({
+            quantity_delivered: 0,
+            updated_at: new Date().toISOString(),
+          })
+          .in('order_id', orderIds);
+
         // คำนวณ quantity_delivered ใหม่จากทริปที่ยังมีอยู่จริง (completed trips)
         // ไม่รีเซ็ต quantity_picked_up_at_store — เป็นข้อมูลฝ่ายขายว่าลูกค้ารับที่ร้านแล้ว
         const { data: orderItems } = await supabase
