@@ -307,8 +307,13 @@ const TripCard = memo(({
                                 </div>
                                 <div className="text-right ml-4 flex-shrink-0">
                                   <span className="text-gray-700 dark:text-gray-300 font-semibold text-sm">
-                                    {new Intl.NumberFormat('th-TH').format(item.quantity)} {item.product?.unit || 'ชิ้น'}
+                                    {Math.floor(Number(item.quantity) || 0).toLocaleString('th-TH', { maximumFractionDigits: 0 })} {item.product?.unit || 'ชิ้น'}
                                   </span>
+                                  {(Number(item.quantity_picked_up_at_store) || 0) > 0 && (
+                                    <p className="text-xs text-amber-600 dark:text-amber-400 mt-0.5">
+                                      รับที่ร้านแล้ว {Math.floor(Number(item.quantity_picked_up_at_store)).toLocaleString('th-TH', { maximumFractionDigits: 0 })} {item.product?.unit || 'ชิ้น'}
+                                    </p>
+                                  )}
                                   {item.product?.base_price && (
                                     <p className="text-xs text-gray-500 dark:text-gray-400">
                                       {new Intl.NumberFormat('th-TH', { style: 'currency', currency: 'THB' }).format(item.product.base_price)}
@@ -419,6 +424,7 @@ interface SummaryItem {
   product_id: string;
   product: any;
   totalQuantity: number;
+  totalPickedUp: number; // รับที่ร้านแล้ว (จำนวนเต็ม)
   is_bonus: boolean;
   // breakdown ต่อรถ (เมื่อแบ่งหลายคัน)
   breakdown: Array<{
@@ -426,6 +432,7 @@ interface SummaryItem {
     trip_number: string;
     vehicle_plate: string;
     quantity: number;
+    pickedUp?: number;
   }>;
 }
 
@@ -598,8 +605,13 @@ const StoreCard = memo(({ entry, expandedStores, updatingStatus, onToggleExpand,
                     </div>
                     <div className="text-right ml-4 flex-shrink-0">
                       <span className="text-gray-900 dark:text-white font-bold text-sm">
-                        {new Intl.NumberFormat('th-TH').format(si.totalQuantity)} {si.product?.unit || 'ชิ้น'}
+                        {Math.floor(si.totalQuantity).toLocaleString('th-TH', { maximumFractionDigits: 0 })} {si.product?.unit || 'ชิ้น'}
                       </span>
+                      {si.totalPickedUp > 0 && (
+                        <p className="text-xs text-amber-600 dark:text-amber-400 mt-0.5">
+                          รับที่ร้านแล้ว {si.totalPickedUp.toLocaleString('th-TH', { maximumFractionDigits: 0 })} {si.product?.unit || 'ชิ้น'}
+                        </p>
+                      )}
                     </div>
                   </div>
                   {/* breakdown เมื่อแบ่งหลายคัน */}
@@ -608,7 +620,10 @@ const StoreCard = memo(({ entry, expandedStores, updatingStatus, onToggleExpand,
                       {si.breakdown.map((b, bi) => (
                         <span key={bi} className="inline-flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-slate-800 px-2 py-0.5 rounded">
                           <Truck className="w-3 h-3" />
-                          {b.vehicle_plate}: {new Intl.NumberFormat('th-TH').format(b.quantity)}
+                          {b.vehicle_plate}: {Math.floor(b.quantity || 0).toLocaleString('th-TH', { maximumFractionDigits: 0 })}
+                          {b.pickedUp != null && b.pickedUp > 0 && (
+                            <span className="text-amber-600 dark:text-amber-400"> (รับที่ร้าน {b.pickedUp})</span>
+                          )}
                         </span>
                       ))}
                     </div>
@@ -805,17 +820,22 @@ export function SalesTripsView() {
             product_id: item.product_id,
             product: item.product,
             totalQuantity: 0,
+            totalPickedUp: 0,
             is_bonus: !!item.is_bonus,
             breakdown: [],
           });
         }
         const summary = productMap.get(key)!;
-        summary.totalQuantity += item.quantity || 0;
+        const qty = Number(item.quantity) || 0;
+        const pickedUp = Math.floor(Number(item.quantity_picked_up_at_store) || 0);
+        summary.totalQuantity += qty;
+        summary.totalPickedUp += pickedUp;
         summary.breakdown.push({
           trip_id: item._tripId,
           trip_number: item._tripNumber,
           vehicle_plate: item._vehiclePlate,
-          quantity: item.quantity || 0,
+          quantity: qty,
+          pickedUp,
         });
       }
       entry.summaryItems = Array.from(productMap.values());
@@ -1405,7 +1425,8 @@ export function SalesTripsView() {
                             <th className="text-left py-3 px-3 text-sm font-semibold text-gray-700 dark:text-gray-300">รหัสสินค้า</th>
                             <th className="text-left py-3 px-3 text-sm font-semibold text-gray-700 dark:text-gray-300">ชื่อสินค้า</th>
                             <th className="text-left py-3 px-3 text-sm font-semibold text-gray-700 dark:text-gray-300">หมวดหมู่</th>
-                            <th className="text-right py-3 px-3 text-sm font-semibold text-gray-700 dark:text-gray-300">จำนวน</th>
+                            <th className="text-right py-3 px-3 text-sm font-semibold text-gray-700 dark:text-gray-300">จำนวนสั่ง</th>
+                            <th className="text-right py-3 px-3 text-sm font-semibold text-amber-600 dark:text-amber-400">รับที่ร้านแล้ว</th>
                             <th className="text-right py-3 px-3 text-sm font-semibold text-gray-700 dark:text-gray-300">หน่วย</th>
                             {selectedStoreDetail.store.items[0]?.product?.base_price ? (
                               <th className="text-right py-3 px-3 text-sm font-semibold text-gray-700 dark:text-gray-300">ราคาต่อหน่วย</th>
@@ -1472,7 +1493,21 @@ export function SalesTripsView() {
                                   {item.product?.category || '-'}
                                 </td>
                                 <td className="py-3 px-3 text-sm text-right font-semibold text-gray-900 dark:text-white">
-                                  {new Intl.NumberFormat('th-TH').format(item.quantity || 0)}
+                                  {Math.floor(Number(item.quantity) || 0).toLocaleString('th-TH', { maximumFractionDigits: 0 })}
+                                </td>
+                                <td className="py-3 px-3 text-sm text-right">
+                                  {(() => {
+                                    const pickedUp = Math.floor(Number(item.quantity_picked_up_at_store) || 0);
+                                    const unit = item.product?.unit || 'ชิ้น';
+                                    if (pickedUp > 0) {
+                                      return (
+                                        <span className="text-amber-600 dark:text-amber-400 font-medium" title="ลูกค้ามารับไปที่หน้าร้านแล้ว">
+                                          {pickedUp.toLocaleString('th-TH', { maximumFractionDigits: 0 })} {unit}
+                                        </span>
+                                      );
+                                    }
+                                    return <span className="text-gray-400 dark:text-gray-500">—</span>;
+                                  })()}
                                 </td>
                                 <td className="py-3 px-3 text-sm text-right text-gray-600 dark:text-gray-400">
                                   {item.product?.unit || 'ชิ้น'}
@@ -1492,7 +1527,7 @@ export function SalesTripsView() {
                     {/* Helper Text */}
                     <div className="mt-4 p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
                       <p className="text-xs text-yellow-800 dark:text-yellow-300">
-                        <strong>💡 คำแนะนำ:</strong> ใช้รายการนี้เป็นคู่มือในการคีย์บิลในระบบอื่น ตรวจสอบให้ครบทุกรายการก่อนกด "ยืนยันการออกบิล"
+                        <strong>💡 คำแนะนำ:</strong> ใช้รายการนี้เป็นคู่มือในการคีย์บิลในระบบอื่น จำนวนเป็น<strong>จำนวนเต็ม</strong>เท่านั้น คอลัมน์ &quot;รับที่ร้านแล้ว&quot; ระบุจำนวนที่ลูกค้ามารับไปที่หน้าร้านแล้ว — ตรวจสอบให้ครบทุกรายการก่อนกด &quot;ยืนยันการออกบิล&quot;
                       </p>
                     </div>
 
@@ -1712,7 +1747,8 @@ export function SalesTripsView() {
                             <th className="text-center py-3 px-3 text-sm font-semibold text-gray-700 dark:text-gray-300 w-16">ลำดับ</th>
                             <th className="text-left py-3 px-3 text-sm font-semibold text-gray-700 dark:text-gray-300">รหัสสินค้า</th>
                             <th className="text-left py-3 px-3 text-sm font-semibold text-gray-700 dark:text-gray-300">ชื่อสินค้า</th>
-                            <th className="text-right py-3 px-3 text-sm font-semibold text-gray-700 dark:text-gray-300">จำนวนรวม</th>
+                            <th className="text-right py-3 px-3 text-sm font-semibold text-gray-700 dark:text-gray-300">จำนวนสั่ง</th>
+                            <th className="text-right py-3 px-3 text-sm font-semibold text-amber-600 dark:text-amber-400">รับที่ร้านแล้ว</th>
                             <th className="text-right py-3 px-3 text-sm font-semibold text-gray-700 dark:text-gray-300">หน่วย</th>
                             {selectedMergedStore.trips.length > 1 && (
                               <th className="text-left py-3 px-3 text-sm font-semibold text-gray-700 dark:text-gray-300">แบ่งตามรถ</th>
@@ -1733,7 +1769,16 @@ export function SalesTripsView() {
                                 {si.product?.product_name || 'ไม่ระบุชื่อ'}
                               </td>
                               <td className="py-3 px-3 text-sm text-right font-bold text-gray-900 dark:text-white">
-                                {new Intl.NumberFormat('th-TH').format(si.totalQuantity)}
+                                {Math.floor(si.totalQuantity).toLocaleString('th-TH', { maximumFractionDigits: 0 })}
+                              </td>
+                              <td className="py-3 px-3 text-sm text-right">
+                                {si.totalPickedUp > 0 ? (
+                                  <span className="text-amber-600 dark:text-amber-400 font-medium">
+                                    {si.totalPickedUp.toLocaleString('th-TH', { maximumFractionDigits: 0 })} {si.product?.unit || 'ชิ้น'}
+                                  </span>
+                                ) : (
+                                  <span className="text-gray-400 dark:text-gray-500">—</span>
+                                )}
                               </td>
                               <td className="py-3 px-3 text-sm text-right text-gray-600 dark:text-gray-400">
                                 {si.product?.unit || 'ชิ้น'}
@@ -1743,7 +1788,10 @@ export function SalesTripsView() {
                                   <div className="flex flex-wrap gap-1.5">
                                     {si.breakdown.map((b, bi) => (
                                       <span key={bi} className="inline-flex items-center gap-1 text-xs bg-gray-100 dark:bg-slate-800 text-gray-600 dark:text-gray-400 px-2 py-0.5 rounded">
-                                        <Truck className="w-3 h-3" />{b.vehicle_plate}: {new Intl.NumberFormat('th-TH').format(b.quantity)}
+                                        <Truck className="w-3 h-3" />{b.vehicle_plate}: {Math.floor(b.quantity || 0).toLocaleString('th-TH', { maximumFractionDigits: 0 })}
+                                        {b.pickedUp != null && b.pickedUp > 0 && (
+                                          <span className="text-amber-600 dark:text-amber-400"> (รับที่ร้าน {b.pickedUp})</span>
+                                        )}
                                       </span>
                                     ))}
                                   </div>
@@ -1755,13 +1803,14 @@ export function SalesTripsView() {
                       </table>
                     </div>
 
-                    {selectedMergedStore.trips.length > 1 && (
-                      <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
-                        <p className="text-xs text-blue-800 dark:text-blue-300">
-                          <strong>ข้อมูลสำคัญ:</strong> จำนวนที่แสดงคือ <strong>ยอดรวมทั้งหมด</strong> ของร้านนี้ ควรออกเป็น <strong>บิลเดียว</strong> คอลัมน์ "แบ่งตามรถ" แสดงว่าสินค้าถูกส่งไปกับรถทะเบียนใดจำนวนเท่าไร
-                        </p>
-                      </div>
-                    )}
+                    <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+                      <p className="text-xs text-blue-800 dark:text-blue-300">
+                        <strong>ข้อมูลสำคัญ:</strong> จำนวนเป็น<strong>จำนวนเต็ม</strong>เท่านั้น คอลัมน์ &quot;รับที่ร้านแล้ว&quot; ระบุจำนวนที่ลูกค้ามารับไปที่หน้าร้านแล้ว
+                        {selectedMergedStore.trips.length > 1 && (
+                          <> ควรออกเป็น <strong>บิลเดียว</strong> คอลัมน์ &quot;แบ่งตามรถ&quot; แสดงว่าสินค้าถูกส่งไปกับรถทะเบียนใดจำนวนเท่าไร</>
+                        )}
+                      </p>
+                    </div>
                   </div>
                 ) : (
                   <div className="text-center py-8 text-gray-500 dark:text-gray-400">

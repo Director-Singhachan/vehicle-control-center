@@ -175,11 +175,9 @@ export const ordersService = {
 
   /**
    * ดึงออเดอร์ที่รอจัดทริป
-   * แสดง 2 กรณี:
-   * 1) ยังไม่เคยจัดทริป (delivery_trip_id IS NULL) และมียอดคงเหลือ > 0
-   * 2) ส่งบางส่วนแล้ว (ผูกทริปที่ completed) ยังมียอดคงเหลือ > 0 → ให้จัดทริปส่งที่เหลือได้
-   * ไม่แสดง: ผูกทริปอยู่และทริปยังไม่ completed (จัดไปแล้ว), ส่งครบแล้ว (delivered), หรือรหัสออเดอร์รูปแบบเก่า (-ORD-)
-   * ใช้ delivery_trip_id และสถานะทริปจากตาราง orders + delivery_trips โดยตรง (ไม่พึ่ง view)
+   * แสดงเมื่อ: มียอดคงเหลือ > 0 และ (ยังไม่จัดทริป หรือ ทริป completed/cancelled)
+   * ไม่แสดงเมื่อ: ส่งครบแล้ว (remaining<=0 หรือ status=delivered), กำลังจัดทริป (planned/in_progress), รหัสเก่า (-ORD-)
+   * ยอดคงเหลือ = สั่ง - รับที่ร้าน - ส่งแล้ว (ส่งแล้วใช้ max ของ order_items.quantity_delivered กับยอดจากทริปที่ completed)
    */
   async getPendingOrders(filters?: { branch?: string }) {
     let query = supabase
@@ -242,7 +240,7 @@ export const ordersService = {
 
     if (itemsError) {
       console.error('[ordersService.getPendingOrders] order_items error:', itemsError);
-      return orders;
+      return [];
     }
 
     const tripDeliveredByStoreProduct = new Map<string, Map<string, number>>();
@@ -300,8 +298,10 @@ export const ordersService = {
       const meta = orderIdToTripAndStore.get(o.id);
       const tripId = meta?.delivery_trip_id ?? o.delivery_trip_id ?? null;
       if (tripId == null || tripId === '') return true;
+
       const tripStatus = (tripIdToStatus.get(tripId) ?? '').toLowerCase();
-      return tripStatus === 'completed';
+      if (tripStatus === 'completed' || tripStatus === 'cancelled') return true;
+      return false;
     });
   },
 
@@ -635,12 +635,14 @@ export const orderItemsService = {
 
   /**
    * อัปเดตจำนวนที่ลูกค้ารับที่หน้าร้าน (ฝ่ายขายเป็นผู้บันทึก)
+   * ต้องเป็นจำนวนเต็มเท่านั้น — จำนวนที่ต้องส่ง = quantity - quantity_picked_up_at_store - quantity_delivered
    */
   async updatePickedUpAtStore(itemId: string, quantityPickedUp: number): Promise<void> {
+    const qty = Math.max(0, Math.floor(Number(quantityPickedUp) || 0));
     const { error } = await supabase
       .from('order_items')
       .update({
-        quantity_picked_up_at_store: quantityPickedUp,
+        quantity_picked_up_at_store: qty,
         updated_at: new Date().toISOString(),
       })
       .eq('id', itemId);

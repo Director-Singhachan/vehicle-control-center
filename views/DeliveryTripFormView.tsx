@@ -2329,17 +2329,17 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
                                       type="number"
                                       value={item.quantity_picked_up_at_store ?? 0}
                                       onChange={(e) => {
-                                        const val = parseFloat(e.target.value) || 0;
-                                        const capped = Math.min(val, item.quantity);
+                                        const raw = parseFloat(e.target.value) || 0;
+                                        const val = Math.min(item.quantity, Math.max(0, Math.floor(raw)));
                                         const updatedStores = [...selectedStores];
-                                        updatedStores[storeIndex].items[itemIndex].quantity_picked_up_at_store = capped;
+                                        updatedStores[storeIndex].items[itemIndex].quantity_picked_up_at_store = val;
                                         setSelectedStores(updatedStores);
                                       }}
                                       className="w-full text-right border-amber-300 dark:border-amber-700"
                                       min="0"
                                       max={item.quantity}
-                                      step="0.01"
-                                      title="จำนวนที่ลูกค้ารับที่ร้านแล้ว (ไม่ต้องขนส่ง)"
+                                      step="1"
+                                      title="จำนวนเต็มที่ลูกค้ารับที่ร้านแล้ว (ไม่ต้องขนส่ง)"
                                     />
                                     {(item.quantity_picked_up_at_store ?? 0) > 0 && (
                                       <div className="text-[10px] text-green-600 dark:text-green-400 text-right">

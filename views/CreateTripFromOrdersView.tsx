@@ -817,6 +817,8 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
 
     try {
       // สร้าง stores payload ปกติ (ไม่แบ่ง) — ใช้ "นำไปส่งในทริปนี้" ต่อรายการ (เลือกได้เฉพาะบางสินค้า)
+      // สำหรับใบแจ้งหนี้: ต้องเก็บ quantity (สั่งเต็ม) + quantity_picked_up_at_store จากออเดอร์
+      // จำนวนที่โหลดรถ = quantity - quantity_picked_up_at_store (หรือ qty ที่ user เลือกถ้าแยกส่งหลายทริป)
       const buildStoresPayload = (deliveries: StoreDelivery[]) =>
         deliveries.map((delivery) => {
           const orderItems = orderItemsMap.get(delivery.order_id) || [];
@@ -830,7 +832,8 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
             .filter(({ qty }) => qty > 0)
             .map(({ item, qty }) => ({
               product_id: item.product_id,
-              quantity: qty,
+              quantity: Number(item.quantity),
+              quantity_picked_up_at_store: Number(item.quantity_picked_up_at_store ?? 0),
               notes: item.notes || undefined,
               is_bonus: item.is_bonus || false,
             }));
@@ -860,9 +863,11 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
                   items: [],
                 };
               }
+              // กรณีแบ่ง 2 คัน: quantity = จำนวนในคันนี้ (โหลดรถถูก) ใบแจ้งหนี้กรณี split ต้องดึงจากออเดอร์
               storesMap[delivery.id].items.push({
                 product_id: item.product_id,
                 quantity: qty,
+                quantity_picked_up_at_store: 0,
                 notes: item.notes ? `${item.notes} [แบ่งจากออเดอร์ ${delivery.order_number}: ${qty}/${item.quantity}]` : `[แบ่งจากออเดอร์ ${delivery.order_number}: ${qty}/${item.quantity}]`,
                 is_bonus: item.is_bonus || false,
               });

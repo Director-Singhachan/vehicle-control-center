@@ -45,14 +45,14 @@ BEGIN
       WHERE dti.delivery_trip_store_id = v_store.trip_store_id
     LOOP
 
-      -- 3. หา orders ที่ตรงกับร้านนี้ (status = confirmed หรือ partial)
+      -- 3. หา orders ที่ตรงกับร้านนี้ (status = confirmed, partial, หรือ assigned)
       --    และมี order_item ที่ตรง product_id นี้
       FOR v_order IN
         SELECT DISTINCT o.id AS order_id, o.created_at
         FROM public.orders o
         JOIN public.order_items oi ON oi.order_id = o.id
         WHERE o.store_id = v_store.store_id
-          AND o.status IN ('confirmed', 'partial')
+          AND o.status IN ('confirmed', 'partial', 'assigned')
           AND oi.product_id = v_trip_item.product_id
           AND o.created_at <= NEW.created_at  -- ออเดอร์ที่สร้างก่อนทริปนี้
         ORDER BY o.created_at ASC

@@ -276,16 +276,19 @@ const OrderCard = memo(({
                                     type="number"
                                     min={0}
                                     max={Number(item.quantity)}
+                                    step={1}
                                     value={pendingPickupValues[item.id] !== undefined ? pendingPickupValues[item.id] : pickedUp}
                                     disabled={savingPickupItemId === item.id}
                                     onChange={(e) => {
+                                      const raw = Number(e.target.value);
                                       const val = Math.min(
                                         Number(item.quantity),
-                                        Math.max(0, Number(e.target.value))
+                                        Math.max(0, Number.isFinite(raw) ? Math.floor(raw) : 0)
                                       );
                                       onUpdatePickup(item.id, val);
                                     }}
                                     className="w-16 text-right border border-orange-300 dark:border-orange-600 rounded px-1 py-0.5 text-sm focus:ring-1 focus:ring-orange-400 bg-orange-50 dark:bg-orange-900/20 text-orange-800 dark:text-orange-200 disabled:opacity-50"
+                                    title="จำนวนเต็มที่ลูกค้ารับไปที่หน้าร้าน — คงเหลือส่งอัตโนมัติ"
                                   />
                                   {savingPickupItemId === item.id && (
                                     <Clock className="w-3 h-3 text-orange-500 animate-spin" />
@@ -339,7 +342,7 @@ const OrderCard = memo(({
                       </tfoot>
                     </table>
                     <p className="mt-2 text-xs text-gray-400 dark:text-gray-500">
-                      💡 กรอก <span className="text-orange-500 font-medium">"รับที่ร้าน"</span> เมื่อลูกค้ามารับสินค้าที่หน้าร้าน — ระบบจะหักยอดคงเหลืออัตโนมัติ
+                      💡 กรอก <span className="text-orange-500 font-medium">"รับที่ร้าน"</span> เป็นจำนวนเต็มเมื่อลูกค้ามารับสินค้าที่หน้าร้าน — คงเหลือส่ง = สั่ง − รับที่ร้าน − ส่งแล้ว
                     </p>
                   </div>
                 ) : (
@@ -1021,13 +1024,16 @@ export function PendingOrdersView() {
                                                 type="number"
                                                 min={0}
                                                 max={Number(item.quantity)}
+                                                step={1}
                                                 value={pendingPickupValues[item.id] !== undefined ? pendingPickupValues[item.id] : pickedUp}
                                                 disabled={savingPickupItemId === item.id}
                                                 onChange={(e) => {
-                                                  const val = Math.min(Number(item.quantity), Math.max(0, Number(e.target.value)));
+                                                  const raw = Number(e.target.value);
+                                                  const val = Math.min(Number(item.quantity), Math.max(0, Number.isFinite(raw) ? Math.floor(raw) : 0));
                                                   handleUpdatePickup(item.id, val);
                                                 }}
                                                 className="w-16 text-right border border-orange-300 rounded px-1 py-0.5 text-sm focus:ring-1 focus:ring-orange-400 bg-orange-50 text-orange-800 disabled:opacity-50"
+                                                title="จำนวนเต็มที่ลูกค้ารับไปที่หน้าร้าน — คงเหลือส่งอัตโนมัติ"
                                               />
                                               {savingPickupItemId === item.id && <Clock className="w-3 h-3 text-orange-500 animate-spin" />}
                                             </div>

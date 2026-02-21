@@ -1,6 +1,7 @@
 // Trip Log Service - CRUD operations for trip logs (check-out/check-in)
 import { supabase } from '../lib/supabase';
 import { notificationService } from './notificationService';
+import { deliveryTripService } from './deliveryTripService';
 import type { Database } from '../types/database';
 
 type TripLog = Database['public']['Tables']['trip_logs']['Row'];
@@ -604,6 +605,13 @@ export const tripLogService = {
           } catch (storesError) {
             console.error('[tripLogService] Error updating stores:', storesError);
             // Don't throw - continue with notification
+          }
+
+          // ซิงค์ quantity_delivered ใน order_items (ส่งแล้ว/คงเหลือ) — แก้ระยะยาว ไม่ต้องพึ่งแค่ DB trigger
+          try {
+            await deliveryTripService.syncQuantityDeliveredForCompletedTrip(deliveryTrip.id);
+          } catch (syncErr) {
+            console.warn('[tripLogService] Sync quantity_delivered failed (non-blocking):', syncErr);
           }
 
           // Trigger auto commission calculation for this delivery trip (fire-and-forget)

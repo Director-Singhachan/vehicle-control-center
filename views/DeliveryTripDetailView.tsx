@@ -219,13 +219,19 @@ export const DeliveryTripDetailView: React.FC<DeliveryTripDetailViewProps> = ({
       const newStore = {
         store_id: selectedOrderToAdd.store_id,
         sequence_order: (trip.stores?.length || 0) + 1,
-        items: (orderItems || []).map((item: any) => ({
-          product_id: item.product_id,
-          quantity: Number(item.quantity) || 0,
-          notes: item.notes || undefined,
-          is_bonus: !!item.is_bonus,
-          selected_pallet_config_id: item.selected_pallet_config_id || undefined,
-        })),
+        items: (orderItems || [])
+          .filter((item: any) => {
+            const remaining = Math.max(0, Number(item.quantity) - Number(item.quantity_picked_up_at_store ?? 0) - Number(item.quantity_delivered ?? 0));
+            return remaining > 0;
+          })
+          .map((item: any) => ({
+            product_id: item.product_id,
+            quantity: Number(item.quantity),
+            quantity_picked_up_at_store: Number(item.quantity_picked_up_at_store ?? 0),
+            notes: item.notes || undefined,
+            is_bonus: !!item.is_bonus,
+            selected_pallet_config_id: item.selected_pallet_config_id || undefined,
+          })),
       };
       const existingStores = (trip.stores || []).map((s: any) => ({
         store_id: s.store_id,
