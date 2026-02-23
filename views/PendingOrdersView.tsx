@@ -1085,10 +1085,6 @@ export function PendingOrdersView() {
                     }`}>
                     {d.count}
                   </span>
-                  <span className={`text-xs ${districtFilter === d.key ? 'text-indigo-200' : 'text-gray-400 dark:text-gray-500'
-                    }`}>
-                    ฿{d.total >= 1000 ? `${(d.total / 1000).toFixed(0)}k` : d.total.toLocaleString()}
-                  </span>
                 </button>
               ))}
             </div>
