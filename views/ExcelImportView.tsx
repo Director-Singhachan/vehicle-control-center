@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Upload, FileText, CheckCircle, AlertCircle, Clock, Search, ArrowRight, Save, History, Package, DollarSign } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { supabase } from '../lib/supabase';
@@ -41,6 +41,9 @@ export function ExcelImportView() {
     const [previewData, setPreviewData] = useState<any[]>([]);
     const [isProcessing, setIsProcessing] = useState(false);
     const [importStats, setImportStats] = useState({ total: 0, created: 0, updated: 0, failed: 0 });
+    const [showTemplateExample, setShowTemplateExample] = useState(false);
+
+    const fileInputRef = useRef<HTMLInputElement>(null);
 
     // History states
     const [logs, setLogs] = useState<ImportLogRow[]>([]);
@@ -139,6 +142,13 @@ export function ExcelImportView() {
         // We'll use the current date for the import
         const importDate = new Date().toISOString().split('T')[0];
 
+        // 0. Get Tier Mapping (tier_code -> id)
+        const { data: tierList } = await supabase.from('customer_tiers').select('id, tier_code');
+        const tierMap: Record<string, string> = {};
+        tierList?.forEach(t => {
+            tierMap[t.tier_code] = t.id;
+        });
+
         for (const item of previewData) {
             try {
                 // 1. Check if product exists
@@ -159,9 +169,12 @@ export function ExcelImportView() {
                         .insert({
                             product_code: item.code,
                             product_name: item.name,
+                            category: 'นำเข้าจาก Excel', // Default category for new items
                             unit: item.unit,
                             base_price: item.prices[0]?.price || 0,
-                            is_active: true
+                            is_active: true,
+                            created_by: profile?.id,
+                            updated_by: profile?.id
                         })
                         .select()
                         .single();
@@ -178,7 +191,10 @@ export function ExcelImportView() {
                     if (existingProduct.base_price !== item.prices[0]?.price) pChanges.base_price = item.prices[0]?.price;
 
                     if (Object.keys(pChanges).length > 0) {
-                        await supabase.from('products').update(pChanges).eq('id', productId);
+                        await supabase.from('products').update({
+                            ...pChanges,
+                            updated_by: profile?.id
+                        }).eq('id', productId);
                         changes = { ...pChanges };
                     }
                     updated++;
@@ -187,15 +203,20 @@ export function ExcelImportView() {
                 // 2. Upsert Tier Prices
                 for (const pInfo of item.prices) {
                     if (pInfo.price === 0) continue;
+                    const tierId = tierMap[pInfo.level];
+                    if (!tierId) continue;
 
                     await supabase
                         .from('product_tier_prices')
                         .upsert({
                             product_id: productId,
-                            tier_code: pInfo.level,
-                            price_per_unit: pInfo.price,
-                            effective_from: importDate
-                        }, { onConflict: 'product_id, tier_code' });
+                            tier_id: tierId,
+                            price: pInfo.price,
+                            min_quantity: 1,
+                            effective_from: importDate,
+                            created_by: profile?.id,
+                            is_active: true
+                        }, { onConflict: 'product_id, tier_id, min_quantity' });
                 }
 
                 // 3. Log the action
@@ -263,25 +284,109 @@ export function ExcelImportView() {
                             เลือกไฟล์ Excel (.xlsx) ที่ส่งออกจากระบบ SinghaChan เพื่ออัปเดตราคาทุกระดับโดยอัตโนมัติ
                         </p>
 
-                        <label className="relative">
+                        <div className="relative">
                             <input
                                 type="file"
+                                ref={fileInputRef}
                                 accept=".xlsx"
                                 onChange={handleFileChange}
                                 className="hidden"
                                 disabled={isProcessing}
                             />
-                            <Button disabled={isProcessing} className="px-8 cursor-pointer">
+                            <Button
+                                disabled={isProcessing}
+                                className="px-8 cursor-pointer"
+                                onClick={() => fileInputRef.current?.click()}
+                            >
                                 {isProcessing ? <LoadingSpinner size={16} className="mr-2" /> : null}
                                 {file ? file.name : 'เลือกไฟล์ Excel'}
                             </Button>
-                        </label>
+                        </div>
 
                         <div className="mt-4 flex gap-4 text-xs text-slate-400">
                             <span>• รองรับหน่วย BT, CN, TR, CV, PA, CA</span>
                             <span>• เริ่มอ่านข้อมูลตั้งแต่แถวที่ 8</span>
                         </div>
                     </Card>
+
+                    <div className="mt-8 w-full max-w-2xl mx-auto">
+                        <button
+                            onClick={() => setShowTemplateExample(!showTemplateExample)}
+                            className="flex items-center gap-2 text-blue-600 dark:text-blue-400 hover:text-blue-700 font-medium text-sm mb-4 mx-auto"
+                        >
+                            <FileText size={16} />
+                            {showTemplateExample ? 'ซ่อนตัวอย่างโครงสร้างไฟล์' : 'ดูตัวอย่างโครงสร้างไฟล์ที่ถูกต้อง'}
+                        </button>
+
+                        {showTemplateExample && (
+                            <Card className="overflow-hidden border-blue-100 dark:border-blue-900/30 bg-blue-50/10 dark:bg-blue-900/10 animate-in fade-in slide-in-from-top-2 duration-300">
+                                <div className="p-4 border-b border-blue-100 dark:border-blue-900/30 bg-blue-50/20 dark:bg-blue-900/20">
+                                    <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                                        <Package size={16} />
+                                        โครงสร้างไฟล์ Excel ที่รองรับ (ตัวอย่าง)
+                                    </h3>
+                                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                                        ข้อมูลควรเริ่มจากแถวที่ 8 เป็นต้นไป โดยมีหัวตารางดังนี้:
+                                    </p>
+                                </div>
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-[11px] text-left">
+                                        <thead className="bg-white/50 dark:bg-slate-800/50 text-slate-500 border-b border-blue-50 dark:border-blue-900/30">
+                                            <tr>
+                                                <th className="px-3 py-2">รหัสสินค้า</th>
+                                                <th className="px-3 py-2">ชื่อสินค้า</th>
+                                                <th className="px-3 py-2">หน่วย</th>
+                                                <th className="px-3 py-2">ราคา 1</th>
+                                                <th className="px-3 py-2">ราคา 2</th>
+                                                <th className="px-3 py-2">...</th>
+                                                <th className="px-3 py-2">ราคา 9</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-blue-50 dark:divide-blue-900/20 text-slate-700 dark:text-slate-300">
+                                            <tr className="bg-white/20">
+                                                <td className="px-3 py-2 font-mono">SKU001</td>
+                                                <td className="px-3 py-2">เบียร์สิงห์ 620ml</td>
+                                                <td className="px-3 py-2 font-bold text-blue-600 dark:text-blue-400">BT</td>
+                                                <td className="px-3 py-2">550.00</td>
+                                                <td className="px-3 py-2">545.00</td>
+                                                <td className="px-3 py-2 text-slate-400">...</td>
+                                                <td className="px-3 py-2">530.00</td>
+                                            </tr>
+                                            <tr className="bg-white/20">
+                                                <td className="px-3 py-2 font-mono">SKU002</td>
+                                                <td className="px-3 py-2">น้ำดื่มสิงห์ 1.5L</td>
+                                                <td className="px-3 py-2 font-bold text-blue-600 dark:text-blue-400">CV</td>
+                                                <td className="px-3 py-2">120.00</td>
+                                                <td className="px-3 py-2">118.00</td>
+                                                <td className="px-3 py-2 text-slate-400">...</td>
+                                                <td className="px-3 py-2">110.00</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                                <div className="p-3 bg-white/40 dark:bg-slate-800/40 border-t border-blue-50 dark:border-blue-900/30 grid grid-cols-2 gap-4">
+                                    <div>
+                                        <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">รหัสหน่วยที่รองรับ</p>
+                                        <div className="flex flex-wrap gap-2">
+                                            {Object.entries(UNIT_MAP).map(([code, Thai]) => (
+                                                <Badge key={code} variant="info" className="text-[9px] py-0 px-1 border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300 bg-white dark:bg-slate-900">
+                                                    {code}: {Thai}
+                                                </Badge>
+                                            ))}
+                                        </div>
+                                    </div>
+                                    <div className="text-[10px] text-slate-500 dark:text-slate-400">
+                                        <p className="font-bold mb-1">หมายเหตุ:</p>
+                                        <ul className="list-disc ml-4 space-y-0.5">
+                                            <li>ชื่อคอลัมน์ราคาต้องเป็น [ราคา 1] ถึง [ราคา 9]</li>
+                                            <li>ราคาสามารถมีทศนิยมได้</li>
+                                            <li>รหัสสินค้าจะเป็นเงื่อนไขในการ Update ข้อมูล</li>
+                                        </ul>
+                                    </div>
+                                </div>
+                            </Card>
+                        )}
+                    </div>
 
                     {previewData.length > 0 && (
                         <div className="animate-in fade-in slide-in-from-bottom-4 duration-300">

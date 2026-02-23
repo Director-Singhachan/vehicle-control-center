@@ -99,6 +99,7 @@ async function importExcel() {
                     .insert({
                         product_code: productCode,
                         product_name: productName,
+                        category: 'นำเข้าจาก Excel',
                         unit: unit,
                         base_price: basePrice,
                         is_active: true
@@ -128,30 +129,45 @@ async function importExcel() {
             }
 
             // 2. Upsert Tier Prices
+            // 0. Cache Tier IDs (Better to do this once outside the loop)
+            if (!global.tierMap) {
+                const { data: tierList } = await supabase.from('customer_tiers').select('id, tier_code');
+                global.tierMap = {};
+                tierList?.forEach(t => {
+                    global.tierMap[t.tier_code] = t.id;
+                });
+            }
+
             const tierChanges = {};
             for (const pInfo of colIndices.prices) {
                 const price = parseFloat(row[pInfo.index] || 0);
                 if (isNaN(price) || price === 0) continue;
 
+                const tierId = global.tierMap[pInfo.level];
+                if (!tierId) continue;
+
                 // Get current tier price
                 const { data: currentTP } = await supabase
                     .from('product_tier_prices')
-                    .select('price_per_unit')
+                    .select('price')
                     .eq('product_id', product.id)
-                    .eq('tier_code', pInfo.level)
+                    .eq('tier_id', tierId)
+                    .eq('min_quantity', 1)
                     .maybeSingle();
 
-                if (!currentTP || currentTP.price_per_unit !== price) {
-                    tierChanges[`ราคา ${pInfo.level}`] = { old: currentTP?.price_per_unit || null, new: price };
+                if (!currentTP || currentTP.price !== price) {
+                    tierChanges[`ราคา ${pInfo.level}`] = { old: currentTP?.price || null, new: price };
 
                     await supabase
                         .from('product_tier_prices')
                         .upsert({
                             product_id: product.id,
-                            tier_code: pInfo.level,
-                            price_per_unit: price,
-                            effective_from: printedDate
-                        }, { onConflict: 'product_id, tier_code' });
+                            tier_id: tierId,
+                            price: price,
+                            min_quantity: 1,
+                            effective_from: printedDate,
+                            is_active: true
+                        }, { onConflict: 'product_id, tier_id, min_quantity' });
                 }
             }
 

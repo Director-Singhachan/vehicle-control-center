@@ -336,10 +336,23 @@ const AppContent = () => {
       clearTimeout(importDeptTimeoutRef.current);
       importDeptTimeoutRef.current = null;
     }
+    // Prevent Level 1 from closing while in Level 2
+    if (importTimeoutRef.current) {
+      clearTimeout(importTimeoutRef.current);
+      importTimeoutRef.current = null;
+    }
+    setIsImportHovered(true);
   };
 
   const handleImportDeptFlyoutMouseLeave = () => {
-    setHoveredImportDept(null);
+    // Both levels should close if we leave Level 2 and don't enter Level 1
+    importDeptTimeoutRef.current = setTimeout(() => {
+      setHoveredImportDept(null);
+    }, 150);
+
+    importTimeoutRef.current = setTimeout(() => {
+      setIsImportHovered(false);
+    }, 150);
   };
 
   // Calculate flyout position when hovering
@@ -1452,8 +1465,8 @@ const AppContent = () => {
                       onMouseEnter={(e) => handleImportDeptMouseEnter(e, 'sales')}
                       onMouseLeave={handleImportDeptMouseLeave}
                       className={`w-full flex items-center justify-between px-4 py-3 rounded-xl transition-all duration-200 ${hoveredImportDept === 'sales'
-                          ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 font-bold translate-x-1'
-                          : 'text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/50'
+                        ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 font-bold translate-x-1'
+                        : 'text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/50'
                         }`}
                     >
                       <span className="text-sm">ฝ่ายขาย</span>
