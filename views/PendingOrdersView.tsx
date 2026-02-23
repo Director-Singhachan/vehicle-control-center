@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback, memo, useRef } from 'react';
-import { Package, Calendar, MapPin, DollarSign, User, Phone, Filter, X, Zap, ChevronDown, ChevronRight, Eye, Box, Edit, CheckCircle2, Clock, Layers, List, Navigation } from 'lucide-react';
+import { Package, Calendar, MapPin, DollarSign, User, Phone, Filter, X, Zap, ChevronDown, ChevronRight, Eye, Edit, Layers, List, Navigation } from 'lucide-react';
 import { usePendingOrders } from '../hooks/useOrders';
 import { orderItemsService } from '../services/ordersService';
 import { CreateTripFromOrdersView } from './CreateTripFromOrdersView';
@@ -15,6 +15,9 @@ import { ToastContainer } from '../components/ui/Toast';
 import { useAuth } from '../hooks/useAuth';
 import { Building2 } from 'lucide-react';
 import { getAreaGroupKey, getDistrictKey } from '../utils/parseThaiAddress';
+import { OrderItemsTable } from '../components/order/OrderItemsTable';
+import { ProductsSummaryModal } from '../components/order/ProductsSummaryModal';
+import { SelectedOrdersSummaryBar } from '../components/order/SelectedOrdersSummaryBar';
 
 // Memoized OrderCard component to prevent unnecessary re-renders
 interface OrderCardProps {
@@ -217,141 +220,15 @@ const OrderCard = memo(({
                   <Package className="w-4 h-4 text-blue-600" />
                   รายการสินค้า
                 </h4>
-                {orderItems && orderItems.length > 0 ? (
-                  <div className="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-3 overflow-x-auto">
-                    <table className="w-full text-sm min-w-[600px]">
-                      <thead>
-                        <tr className="border-b border-gray-300 dark:border-gray-600">
-                          <th className="text-left py-2 px-2 font-semibold text-gray-700 dark:text-gray-300">รหัส</th>
-                          <th className="text-left py-2 px-2 font-semibold text-gray-700 dark:text-gray-300">ชื่อสินค้า</th>
-                          <th className="text-right py-2 px-2 font-semibold text-gray-700 dark:text-gray-300">สั่ง</th>
-                          <th className="text-right py-2 px-2 font-semibold text-orange-600 dark:text-orange-400" title="จำนวนที่ลูกค้ามารับที่ร้านแล้ว">
-                            รับที่ร้าน 🏪
-                          </th>
-                          <th className="text-right py-2 px-2 font-semibold text-green-600 dark:text-green-400" title="จำนวนที่ส่งให้ลูกค้าแล้ว">
-                            ส่งแล้ว ✅
-                          </th>
-                          <th className="text-right py-2 px-2 font-semibold text-blue-600 dark:text-blue-400">คงเหลือ</th>
-                          <th className="text-left py-2 px-2 font-semibold text-gray-700 dark:text-gray-300">หน่วย</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {orderItems.map((item: any, idx: number) => {
-                          const pickedUp = Number(item.quantity_picked_up_at_store ?? 0);
-                          const delivered = Number(item.quantity_delivered ?? 0);
-                          const remaining = Math.max(0, Number(item.quantity) - pickedUp - delivered);
-                          const isFulfilled = remaining === 0;
-                          return (
-                            <tr
-                              key={idx}
-                              className={`border-b border-gray-200 dark:border-gray-700 last:border-0 ${isFulfilled ? 'opacity-50' : ''
-                                }`}
-                            >
-                              <td className="py-2 px-2 text-gray-500 dark:text-gray-400">
-                                {item.product?.product_code || '-'}
-                              </td>
-                              <td className="py-2 px-2">
-                                <div className="flex items-center gap-2 flex-wrap">
-                                  <span className={`font-medium ${isFulfilled ? 'line-through text-gray-400' : 'text-gray-900 dark:text-gray-100'
-                                    }`}>
-                                    {item.product?.product_name || 'ไม่ระบุ'}
-                                  </span>
-                                  {item.is_bonus && (
-                                    <Badge variant="success" className="text-xs">ของแถม</Badge>
-                                  )}
-                                  {isFulfilled && (
-                                    <span className="inline-flex items-center gap-1 text-xs text-green-600 dark:text-green-400 font-medium">
-                                      <CheckCircle2 className="w-3 h-3" /> ครบแล้ว
-                                    </span>
-                                  )}
-                                </div>
-                              </td>
-                              {/* สั่ง */}
-                              <td className="py-2 px-2 text-right font-semibold text-gray-700 dark:text-gray-300">
-                                {Number(item.quantity).toLocaleString()}
-                              </td>
-                              {/* รับที่ร้าน — editable */}
-                              <td className="py-2 px-2 text-right">
-                                <div className="flex items-center justify-end gap-1">
-                                  <input
-                                    type="number"
-                                    min={0}
-                                    max={Number(item.quantity)}
-                                    step={1}
-                                    value={pendingPickupValues[item.id] !== undefined ? pendingPickupValues[item.id] : pickedUp}
-                                    disabled={savingPickupItemId === item.id}
-                                    onChange={(e) => {
-                                      const raw = Number(e.target.value);
-                                      const val = Math.min(
-                                        Number(item.quantity),
-                                        Math.max(0, Number.isFinite(raw) ? Math.floor(raw) : 0)
-                                      );
-                                      onUpdatePickup(item.id, val);
-                                    }}
-                                    className="w-16 text-right border border-orange-300 dark:border-orange-600 rounded px-1 py-0.5 text-sm focus:ring-1 focus:ring-orange-400 bg-orange-50 dark:bg-orange-900/20 text-orange-800 dark:text-orange-200 disabled:opacity-50"
-                                    title="จำนวนเต็มที่ลูกค้ารับไปที่หน้าร้าน — คงเหลือส่งอัตโนมัติ"
-                                  />
-                                  {savingPickupItemId === item.id && (
-                                    <Clock className="w-3 h-3 text-orange-500 animate-spin" />
-                                  )}
-                                </div>
-                              </td>
-                              {/* ส่งแล้ว — readonly */}
-                              <td className="py-2 px-2 text-right text-green-600 dark:text-green-400 font-semibold">
-                                {delivered > 0 ? delivered.toLocaleString() : <span className="text-gray-300">—</span>}
-                              </td>
-                              {/* คงเหลือ */}
-                              <td className="py-2 px-2 text-right">
-                                <span className={`font-bold ${isFulfilled
-                                  ? 'text-gray-400'
-                                  : remaining < Number(item.quantity)
-                                    ? 'text-orange-600 dark:text-orange-400'
-                                    : 'text-blue-600 dark:text-blue-400'
-                                  }`}>
-                                  {remaining.toLocaleString()}
-                                </span>
-                              </td>
-                              <td className="py-2 px-2 text-gray-500 dark:text-gray-400">
-                                {item.product?.unit || '-'}
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                      <tfoot>
-                        <tr className="border-t-2 border-gray-400 dark:border-gray-500">
-                          <td colSpan={2} className="py-2 px-2 text-right text-xs text-gray-500 font-medium">
-                            รวม:
-                          </td>
-                          <td className="py-2 px-2 text-right font-bold text-gray-700 dark:text-gray-300">
-                            {orderItems.reduce((s: number, i: any) => s + Number(i.quantity), 0).toLocaleString()}
-                          </td>
-                          <td className="py-2 px-2 text-right font-bold text-orange-600 dark:text-orange-400">
-                            {orderItems.reduce((s: number, i: any) => s + Number(i.quantity_picked_up_at_store ?? 0), 0).toLocaleString()}
-                          </td>
-                          <td className="py-2 px-2 text-right font-bold text-green-600 dark:text-green-400">
-                            {orderItems.reduce((s: number, i: any) => s + Number(i.quantity_delivered ?? 0), 0).toLocaleString()}
-                          </td>
-                          <td className="py-2 px-2 text-right font-bold text-blue-600 dark:text-blue-400">
-                            {orderItems.reduce((s: number, i: any) => {
-                              const rem = Math.max(0, Number(i.quantity) - Number(i.quantity_picked_up_at_store ?? 0) - Number(i.quantity_delivered ?? 0));
-                              return s + rem;
-                            }, 0).toLocaleString()}
-                          </td>
-                          <td />
-                        </tr>
-                      </tfoot>
-                    </table>
-                    <p className="mt-2 text-xs text-gray-400 dark:text-gray-500">
-                      💡 กรอก <span className="text-orange-500 font-medium">"รับที่ร้าน"</span> เป็นจำนวนเต็มเมื่อลูกค้ามารับสินค้าที่หน้าร้าน — คงเหลือส่ง = สั่ง − รับที่ร้าน − ส่งแล้ว
-                    </p>
-                  </div>
-                ) : (
-                  <div className="flex items-center justify-center py-4">
-                    <LoadingSpinner size={20} />
-                    <span className="ml-2 text-sm text-gray-500 dark:text-gray-400">กำลังโหลดรายการสินค้า...</span>
-                  </div>
-                )}
+                <OrderItemsTable
+                  items={orderItems || []}
+                  onUpdatePickup={onUpdatePickup}
+                  savingPickupItemId={savingPickupItemId}
+                  pendingPickupValues={pendingPickupValues}
+                  showHint={true}
+                  containerClassName="bg-gray-50 dark:bg-gray-800/50"
+                  isLoading={!orderItems || orderItems.length === 0}
+                />
               </div>
             )}
           </div>
@@ -842,66 +719,19 @@ export function PendingOrdersView() {
   return (
     <>
       <ToastContainer toasts={toasts} onDismiss={dismissToast} />
+      {/* Sticky Summary Bar — ต้องอยู่นอก PageLayout!
+          เพราะ PageLayout ห่อด้วย div.space-y-6 ซึ่งเป็น intermediate container
+          ทำให้ CSS sticky ไม่ทำงานกับ scroll container ใน index.tsx
+          เมื่อย้ายมาอยู่นอก PageLayout → เป็น direct child ของ scroll container → sticky ทำงานถูกต้อง */}
+      <SelectedOrdersSummaryBar
+        selectedCount={selectedOrders.size}
+        productsTotal={aggregatedProductsTotal}
+        selectedTotal={selectedTotal}
+        onShowSummary={() => setShowProductsSummaryModal(true)}
+        onClearSelection={clearSelection}
+        onCreateTrip={handleCreateTrip}
+      />
       <PageLayout title="ออเดอร์ที่รอจัดทริป">
-        {/* Sticky Summary Bar */}
-        {selectedOrders.size > 0 && (
-          <div className="sticky top-0 z-20 bg-gradient-to-r from-blue-600 to-blue-700 text-white shadow-lg mb-4 rounded-lg">
-            <div className="px-6 py-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-6">
-                  <div className="flex items-center gap-2">
-                    <div className="bg-white/20 rounded-full p-2">
-                      <Package className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <div className="text-xs text-blue-100">เลือกแล้ว</div>
-                      <div className="text-2xl font-bold">{selectedOrders.size}</div>
-                    </div>
-                  </div>
-                  <div className="h-10 w-px bg-white/30"></div>
-                  <div>
-                    <div className="text-xs text-blue-100">สินค้ารวม</div>
-                    <div className="text-lg font-semibold">
-                      {aggregatedProductsTotal} ชิ้น
-                    </div>
-                  </div>
-                  <div className="h-10 w-px bg-white/30"></div>
-                  <div>
-                    <div className="text-xs text-blue-100">มูลค่ารวม</div>
-                    <div className="text-lg font-semibold">
-                      ฿{selectedTotal.toLocaleString()}
-                    </div>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Button
-                    size="sm"
-                    onClick={() => setShowProductsSummaryModal(true)}
-                    className="bg-white/20 hover:bg-white/30 text-white border-white/40"
-                  >
-                    <Box className="w-4 h-4 mr-1" />
-                    สรุปสินค้า
-                  </Button>
-                  <Button
-                    size="sm"
-                    onClick={clearSelection}
-                    variant="outline"
-                    className="bg-white/10 hover:bg-white/20 text-white border-white/40"
-                  >
-                    ยกเลิกทั้งหมด
-                  </Button>
-                  <Button
-                    size="sm"
-                    onClick={handleCreateTrip}
-                    className="bg-white/20 hover:bg-white/30 text-white border-white/40 font-semibold"
-                  >
-                    สร้างทริป
-                  </Button>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
 
         {/* Info Banner */}
         <div className="mb-4 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
@@ -1052,14 +882,14 @@ export function PendingOrdersView() {
               <button
                 onClick={() => { setDistrictFilter('ALL'); setSubDistrictFilter('ALL'); }}
                 className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium border transition-all ${districtFilter === 'ALL'
-                    ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
-                    : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:border-indigo-400 hover:text-indigo-600 dark:hover:text-indigo-400'
+                  ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
+                  : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:border-indigo-400 hover:text-indigo-600 dark:hover:text-indigo-400'
                   }`}
               >
                 ทั้งหมด
                 <span className={`text-xs px-1.5 py-0.5 rounded-full ${districtFilter === 'ALL'
-                    ? 'bg-white/20 text-white'
-                    : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400'
+                  ? 'bg-white/20 text-white'
+                  : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400'
                   }`}>
                   {filteredOrders.length}
                 </span>
@@ -1074,14 +904,14 @@ export function PendingOrdersView() {
                     setSubDistrictFilter('ALL');
                   }}
                   className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium border transition-all ${districtFilter === d.key
-                      ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
-                      : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:border-indigo-400 hover:text-indigo-600 dark:hover:text-indigo-400'
+                    ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
+                    : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:border-indigo-400 hover:text-indigo-600 dark:hover:text-indigo-400'
                     }`}
                 >
                   📍 {d.key}
                   <span className={`text-xs px-1.5 py-0.5 rounded-full ${districtFilter === d.key
-                      ? 'bg-white/20 text-white'
-                      : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400'
+                    ? 'bg-white/20 text-white'
+                    : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400'
                     }`}>
                     {d.count}
                   </span>
@@ -1101,14 +931,14 @@ export function PendingOrdersView() {
                   <button
                     onClick={() => setSubDistrictFilter('ALL')}
                     className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium border transition-all ${subDistrictFilter === 'ALL'
-                        ? 'bg-teal-600 text-white border-teal-600 shadow-sm'
-                        : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-600 hover:border-teal-400 hover:text-teal-600 dark:hover:text-teal-400'
+                      ? 'bg-teal-600 text-white border-teal-600 shadow-sm'
+                      : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-600 hover:border-teal-400 hover:text-teal-600 dark:hover:text-teal-400'
                       }`}
                   >
                     ทุกตำบล
                     <span className={`text-xs px-1 py-0 rounded-full ${subDistrictFilter === 'ALL'
-                        ? 'bg-white/20 text-white'
-                        : 'bg-gray-100 dark:bg-gray-700 text-gray-400'
+                      ? 'bg-white/20 text-white'
+                      : 'bg-gray-100 dark:bg-gray-700 text-gray-400'
                       }`}>
                       {availableSubDistricts.reduce((s, d) => s + d.count, 0)}
                     </span>
@@ -1122,14 +952,14 @@ export function PendingOrdersView() {
                         key={sd.key}
                         onClick={() => setSubDistrictFilter(prev => prev === sd.key ? 'ALL' : sd.key)}
                         className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium border transition-all ${subDistrictFilter === sd.key
-                            ? 'bg-teal-600 text-white border-teal-600 shadow-sm'
-                            : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-600 hover:border-teal-400 hover:text-teal-600 dark:hover:text-teal-400'
+                          ? 'bg-teal-600 text-white border-teal-600 shadow-sm'
+                          : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-600 hover:border-teal-400 hover:text-teal-600 dark:hover:text-teal-400'
                           }`}
                       >
                         {label}
                         <span className={`text-xs px-1 py-0 rounded-full ${subDistrictFilter === sd.key
-                            ? 'bg-white/20 text-white'
-                            : 'bg-gray-100 dark:bg-gray-700 text-gray-400'
+                          ? 'bg-white/20 text-white'
+                          : 'bg-gray-100 dark:bg-gray-700 text-gray-400'
                           }`}>
                           {sd.count}
                         </span>
@@ -1235,107 +1065,15 @@ export function PendingOrdersView() {
                               <Package className="w-4 h-4 text-blue-600" />
                               รายการสินค้า
                             </h4>
-                            {orderItems.get(order.id) ? (
-                              <div className="bg-white rounded-lg p-3 overflow-x-auto">
-                                <table className="w-full text-sm min-w-[580px]">
-                                  <thead>
-                                    <tr className="border-b border-gray-300">
-                                      <th className="text-left py-2 px-2 font-semibold text-gray-700">รหัส</th>
-                                      <th className="text-left py-2 px-2 font-semibold text-gray-700">ชื่อสินค้า</th>
-                                      <th className="text-right py-2 px-2 font-semibold text-gray-700">สั่ง</th>
-                                      <th className="text-right py-2 px-2 font-semibold text-orange-600" title="จำนวนที่ลูกค้ามารับที่ร้านแล้ว">รับที่ร้าน 🏪</th>
-                                      <th className="text-right py-2 px-2 font-semibold text-green-600" title="จำนวนที่ส่งให้ลูกค้าแล้ว">ส่งแล้ว ✅</th>
-                                      <th className="text-right py-2 px-2 font-semibold text-blue-600">คงเหลือ</th>
-                                      <th className="text-left py-2 px-2 font-semibold text-gray-700">หน่วย</th>
-                                    </tr>
-                                  </thead>
-                                  <tbody>
-                                    {orderItems.get(order.id)!.map((item: any, idx: number) => {
-                                      const pickedUp = Number(item.quantity_picked_up_at_store ?? 0);
-                                      const delivered = Number(item.quantity_delivered ?? 0);
-                                      const remaining = Math.max(0, Number(item.quantity) - pickedUp - delivered);
-                                      const isFulfilled = remaining === 0;
-                                      return (
-                                        <tr key={idx} className={`border-b border-gray-200 last:border-0 ${isFulfilled ? 'opacity-50' : ''}`}>
-                                          <td className="py-2 px-2 text-gray-500">{item.product?.product_code || '-'}</td>
-                                          <td className="py-2 px-2">
-                                            <div className="flex items-center gap-2 flex-wrap">
-                                              <span className={`font-medium ${isFulfilled ? 'line-through text-gray-400' : 'text-gray-900'}`}>
-                                                {item.product?.product_name || 'ไม่ระบุ'}
-                                              </span>
-                                              {item.is_bonus && <Badge variant="success" className="text-xs">ของแถม</Badge>}
-                                              {isFulfilled && (
-                                                <span className="inline-flex items-center gap-1 text-xs text-green-600 font-medium">
-                                                  <CheckCircle2 className="w-3 h-3" /> ครบแล้ว
-                                                </span>
-                                              )}
-                                            </div>
-                                          </td>
-                                          <td className="py-2 px-2 text-right font-semibold text-gray-700">{Number(item.quantity).toLocaleString()}</td>
-                                          <td className="py-2 px-2 text-right">
-                                            <div className="flex items-center justify-end gap-1">
-                                              <input
-                                                type="number"
-                                                min={0}
-                                                max={Number(item.quantity)}
-                                                step={1}
-                                                value={pendingPickupValues[item.id] !== undefined ? pendingPickupValues[item.id] : pickedUp}
-                                                disabled={savingPickupItemId === item.id}
-                                                onChange={(e) => {
-                                                  const raw = Number(e.target.value);
-                                                  const val = Math.min(Number(item.quantity), Math.max(0, Number.isFinite(raw) ? Math.floor(raw) : 0));
-                                                  handleUpdatePickup(item.id, val);
-                                                }}
-                                                className="w-16 text-right border border-orange-300 rounded px-1 py-0.5 text-sm focus:ring-1 focus:ring-orange-400 bg-orange-50 text-orange-800 disabled:opacity-50"
-                                                title="จำนวนเต็มที่ลูกค้ารับไปที่หน้าร้าน — คงเหลือส่งอัตโนมัติ"
-                                              />
-                                              {savingPickupItemId === item.id && <Clock className="w-3 h-3 text-orange-500 animate-spin" />}
-                                            </div>
-                                          </td>
-                                          <td className="py-2 px-2 text-right text-green-600 font-semibold">
-                                            {delivered > 0 ? delivered.toLocaleString() : <span className="text-gray-300">—</span>}
-                                          </td>
-                                          <td className="py-2 px-2 text-right">
-                                            <span className={`font-bold ${isFulfilled ? 'text-gray-400' : remaining < Number(item.quantity) ? 'text-orange-600' : 'text-blue-600'}`}>
-                                              {remaining.toLocaleString()}
-                                            </span>
-                                          </td>
-                                          <td className="py-2 px-2 text-gray-500">{item.product?.unit || '-'}</td>
-                                        </tr>
-                                      );
-                                    })}
-                                  </tbody>
-                                  <tfoot>
-                                    <tr className="border-t-2 border-gray-400">
-                                      <td colSpan={2} className="py-2 px-2 text-right text-xs text-gray-500 font-medium">รวม:</td>
-                                      <td className="py-2 px-2 text-right font-bold text-gray-700">
-                                        {orderItems.get(order.id)!.reduce((s: number, i: any) => s + Number(i.quantity), 0).toLocaleString()}
-                                      </td>
-                                      <td className="py-2 px-2 text-right font-bold text-orange-600">
-                                        {orderItems.get(order.id)!.reduce((s: number, i: any) => s + Number(i.quantity_picked_up_at_store ?? 0), 0).toLocaleString()}
-                                      </td>
-                                      <td className="py-2 px-2 text-right font-bold text-green-600">
-                                        {orderItems.get(order.id)!.reduce((s: number, i: any) => s + Number(i.quantity_delivered ?? 0), 0).toLocaleString()}
-                                      </td>
-                                      <td className="py-2 px-2 text-right font-bold text-blue-600">
-                                        {orderItems.get(order.id)!.reduce((s: number, i: any) =>
-                                          s + Math.max(0, Number(i.quantity) - Number(i.quantity_picked_up_at_store ?? 0) - Number(i.quantity_delivered ?? 0))
-                                          , 0).toLocaleString()}
-                                      </td>
-                                      <td />
-                                    </tr>
-                                  </tfoot>
-                                </table>
-                                <p className="mt-2 text-xs text-gray-400">
-                                  💡 กรอก <span className="text-orange-500 font-medium">"รับที่ร้าน"</span> เมื่อลูกค้ามารับสินค้าที่หน้าร้าน — ระบบจะหักยอดคงเหลืออัตโนมัติ
-                                </p>
-                              </div>
-                            ) : (
-                              <div className="flex items-center justify-center py-4">
-                                <LoadingSpinner size={20} />
-                                <span className="ml-2 text-sm text-gray-500 dark:text-gray-400">กำลังโหลด...</span>
-                              </div>
-                            )}
+                            <OrderItemsTable
+                              items={orderItems.get(order.id) || []}
+                              onUpdatePickup={handleUpdatePickup}
+                              savingPickupItemId={savingPickupItemId}
+                              pendingPickupValues={pendingPickupValues}
+                              showHint={true}
+                              containerClassName="bg-white"
+                              isLoading={!orderItems.get(order.id)}
+                            />
                           </div>
                         )}
                       </div>
@@ -1491,134 +1229,14 @@ export function PendingOrdersView() {
         )}
 
         {/* Products Summary Modal */}
-        {showProductsSummaryModal && (
-          <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-            <Card className="max-w-4xl w-full max-h-[80vh] overflow-hidden flex flex-col">
-              <div className="p-6 border-b border-gray-200 bg-gradient-to-r from-purple-600 to-purple-700 text-white">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h2 className="text-2xl font-bold flex items-center gap-2">
-                      <Box className="w-6 h-6" />
-                      สรุปสินค้ารวมทั้งหมด
-                    </h2>
-                    <p className="text-sm text-purple-100 mt-1">
-                      จาก {selectedOrders.size} ออเดอร์ที่เลือก
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => setShowProductsSummaryModal(false)}
-                    className="p-2 hover:bg-white/20 rounded-lg transition-colors"
-                  >
-                    <X className="w-6 h-6" />
-                  </button>
-                </div>
-              </div>
-
-              <div className="flex-1 overflow-y-auto p-6">
-                {aggregatedProducts.length === 0 ? (
-                  <div className="text-center py-12 text-gray-500 dark:text-gray-400">
-                    <Package className="w-16 h-16 mx-auto mb-4 opacity-30" />
-                    <p>ไม่มีรายการสินค้า</p>
-                  </div>
-                ) : (
-                  <div>
-                    {/* Summary Stats */}
-                    <div className="grid grid-cols-3 gap-4 mb-6">
-                      <div className="bg-purple-50 rounded-lg p-4 text-center">
-                        <div className="text-sm text-purple-600 mb-1">รายการสินค้า</div>
-                        <div className="text-3xl font-bold text-purple-900">
-                          {aggregatedProducts.length}
-                        </div>
-                      </div>
-                      <div className="bg-blue-50 rounded-lg p-4 text-center">
-                        <div className="text-sm text-blue-600 mb-1">จำนวนรวม</div>
-                        <div className="text-3xl font-bold text-blue-900">
-                          {aggregatedProducts.reduce((sum, p) => sum + p.total_quantity, 0).toLocaleString()}
-                        </div>
-                      </div>
-                      <div className="bg-green-50 rounded-lg p-4 text-center">
-                        <div className="text-sm text-green-600 mb-1">มูลค่ารวม</div>
-                        <div className="text-3xl font-bold text-green-900">
-                          ฿{selectedTotal.toLocaleString()}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Products Table */}
-                    <div className="bg-gray-50 dark:bg-gray-800 rounded-lg overflow-hidden">
-                      <table className="w-full">
-                        <thead className="bg-purple-600 text-white sticky top-0">
-                          <tr>
-                            <th className="text-left py-3 px-4 font-semibold">#</th>
-                            <th className="text-left py-3 px-4 font-semibold">รหัสสินค้า</th>
-                            <th className="text-left py-3 px-4 font-semibold">ชื่อสินค้า</th>
-                            <th className="text-right py-3 px-4 font-semibold">จำนวนรวม</th>
-                            <th className="text-center py-3 px-4 font-semibold">หน่วย</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {aggregatedProducts.map((product, index) => (
-                            <tr
-                              key={product.product_id}
-                              className="border-b border-gray-200 dark:border-gray-700 hover:bg-purple-50 dark:hover:bg-purple-900/20 transition-colors"
-                            >
-                              <td className="py-3 px-4 text-gray-500 dark:text-gray-400 text-sm">{index + 1}</td>
-                              <td className="py-3 px-4">
-                                <div className="font-mono text-sm text-gray-600 dark:text-gray-400">
-                                  {product.product_code}
-                                </div>
-                              </td>
-                              <td className="py-3 px-4">
-                                <div className="font-medium text-gray-900 dark:text-gray-100">{product.product_name}</div>
-                              </td>
-                              <td className="py-3 px-4 text-right">
-                                <div className="font-bold text-xl text-purple-700 dark:text-purple-400">
-                                  {product.total_quantity.toLocaleString()}
-                                </div>
-                              </td>
-                              <td className="py-3 px-4 text-center">
-                                <Badge variant="default">{product.unit}</Badge>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-
-                    {/* Helpful Tip */}
-                    <div className="mt-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-                      <div className="flex items-start gap-3">
-                        <div className="text-2xl">💡</div>
-                        <div className="flex-1">
-                          <div className="font-semibold text-yellow-900 mb-1">
-                            คำแนะนำในการเลือกรถ
-                          </div>
-                          <div className="text-sm text-yellow-800">
-                            ใช้ข้อมูลสรุปนี้ประกอบการพิจารณาเลือกรถที่มีพื้นที่เหมาะสมสำหรับจำนวนสินค้าในทริปนี้
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              <div className="p-4 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
-                <div className="flex justify-end gap-2">
-                  <Button
-                    variant="outline"
-                    onClick={() => setShowProductsSummaryModal(false)}
-                  >
-                    ปิด
-                  </Button>
-                  <Button onClick={handleCreateTrip}>
-                    ดำเนินการสร้างทริป
-                  </Button>
-                </div>
-              </div>
-            </Card>
-          </div>
-        )}
+        <ProductsSummaryModal
+          isOpen={showProductsSummaryModal}
+          onClose={() => setShowProductsSummaryModal(false)}
+          aggregatedProducts={aggregatedProducts}
+          selectedCount={selectedOrders.size}
+          selectedTotal={selectedTotal}
+          onCreateTrip={handleCreateTrip}
+        />
       </PageLayout>
     </>
   );
