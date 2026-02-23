@@ -819,6 +819,7 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
       // สร้าง stores payload ปกติ (ไม่แบ่ง) — ใช้ "นำไปส่งในทริปนี้" ต่อรายการ (เลือกได้เฉพาะบางสินค้า)
       // สำหรับใบแจ้งหนี้: ต้องเก็บ quantity (สั่งเต็ม) + quantity_picked_up_at_store จากออเดอร์
       // จำนวนที่โหลดรถ = quantity - quantity_picked_up_at_store (หรือ qty ที่ user เลือกถ้าแยกส่งหลายทริป)
+      // รวมรายการที่รับที่ร้านครบ (remaining=0 แต่ picked_up>0) เพื่อแสดงในใบแจ้งหนี้
       const buildStoresPayload = (deliveries: StoreDelivery[]) =>
         deliveries.map((delivery) => {
           const orderItems = orderItemsMap.get(delivery.order_id) || [];
@@ -827,10 +828,13 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
               const remaining = getRemaining(item);
               const qtyInTrip = quantityInThisTripMap[splitKey(delivery.order_id, item.id)] ?? remaining;
               const qty = Math.max(0, Math.min(remaining, qtyInTrip));
-              return { item, qty, remaining };
+              const pickedUp = Number(item.quantity_picked_up_at_store ?? 0);
+              return { item, qty, remaining, pickedUp };
             })
-            .filter(({ qty }) => qty > 0)
-            .map(({ item, qty }) => ({
+            .filter(({ qty, remaining, pickedUp }) =>
+              qty > 0 || (remaining === 0 && pickedUp > 0)
+            )
+            .map(({ item }) => ({
               product_id: item.product_id,
               quantity: Number(item.quantity),
               quantity_picked_up_at_store: Number(item.quantity_picked_up_at_store ?? 0),
@@ -851,11 +855,13 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
         for (const delivery of storeDeliveries) {
           const orderItems = orderItemsMap.get(delivery.order_id) || [];
           for (const item of orderItems) {
+            const remaining = getRemaining(item);
+            const pickedUp = Number(item.quantity_picked_up_at_store ?? 0);
             const key = splitKey(delivery.order_id, item.id);
             const split = itemSplitMap[key];
-            const qty = split ? (vehicleNum === 1 ? split.vehicle1Qty : split.vehicle2Qty) : (vehicleNum === 1 ? item.quantity : 0);
+            const qty = split ? (vehicleNum === 1 ? split.vehicle1Qty : split.vehicle2Qty) : (vehicleNum === 1 ? remaining : 0);
+
             if (qty > 0) {
-              // ใช้ delivery.id เป็น key เพราะ 1 ออเดอร์ = 1 ร้าน (1 delivery)
               if (!storesMap[delivery.id]) {
                 storesMap[delivery.id] = {
                   store_id: delivery.store_id,
@@ -863,12 +869,27 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
                   items: [],
                 };
               }
-              // กรณีแบ่ง 2 คัน: quantity = จำนวนในคันนี้ (โหลดรถถูก) ใบแจ้งหนี้กรณี split ต้องดึงจากออเดอร์
               storesMap[delivery.id].items.push({
                 product_id: item.product_id,
                 quantity: qty,
                 quantity_picked_up_at_store: 0,
                 notes: item.notes ? `${item.notes} [แบ่งจากออเดอร์ ${delivery.order_number}: ${qty}/${item.quantity}]` : `[แบ่งจากออเดอร์ ${delivery.order_number}: ${qty}/${item.quantity}]`,
+                is_bonus: item.is_bonus || false,
+              });
+            } else if (vehicleNum === 1 && remaining === 0 && pickedUp > 0) {
+              // รายการรับที่ร้านครบ — แสดงในคัน 1 เพื่อใบแจ้งหนี้
+              if (!storesMap[delivery.id]) {
+                storesMap[delivery.id] = {
+                  store_id: delivery.store_id,
+                  sequence_order: delivery.sequence,
+                  items: [],
+                };
+              }
+              storesMap[delivery.id].items.push({
+                product_id: item.product_id,
+                quantity: Number(item.quantity),
+                quantity_picked_up_at_store: pickedUp,
+                notes: item.notes || undefined,
                 is_bonus: item.is_bonus || false,
               });
             }
