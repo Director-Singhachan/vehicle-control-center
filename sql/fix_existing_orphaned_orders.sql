@@ -68,10 +68,11 @@ BEGIN
             now()
         );
 
-        -- Update ออเดอร์
+        -- Update ออเดอร์ (ล้าง order_number ด้วย เพื่อให้ได้เลขใหม่เมื่อจัดทริปครั้งถัดไป)
         UPDATE public.orders
         SET 
             status = 'confirmed',
+            order_number = NULL,
             updated_at = now()
         WHERE id = v_order_record.id;
 

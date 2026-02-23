@@ -1007,6 +1007,7 @@ export interface Database {
           delivery_trip_store_id: string;
           product_id: string;
           quantity: number;
+          quantity_picked_up_at_store: number;
           notes: string | null;
           updated_at: string;
           created_by: string | null;
@@ -1017,6 +1018,7 @@ export interface Database {
           delivery_trip_store_id: string;
           product_id: string;
           quantity: number;
+          quantity_picked_up_at_store?: number;
           notes?: string | null;
           is_bonus?: boolean;
           created_at?: string;
@@ -1029,6 +1031,7 @@ export interface Database {
           delivery_trip_store_id?: string;
           product_id?: string;
           quantity?: number;
+          quantity_picked_up_at_store?: number;
           notes?: string | null;
           is_bonus?: boolean;
           created_at?: string;

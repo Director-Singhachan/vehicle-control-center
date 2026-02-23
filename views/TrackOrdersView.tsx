@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Package, Search, Clock, CheckCircle, Eye, Edit, ChevronLeft, ChevronRight, Building2 } from 'lucide-react';
+import { Package, Search, Clock, CheckCircle, Eye, Edit, ChevronLeft, ChevronRight, Building2, ShoppingBag } from 'lucide-react';
 import { PageLayout } from '../components/ui/PageLayout';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
@@ -21,6 +21,7 @@ interface Order {
   store_id: string;
   delivery_date?: string | null;
   branch?: string | null;
+  delivery_trip_id?: string | null;
 }
 
 export function TrackOrdersView() {
@@ -82,8 +83,22 @@ export function TrackOrdersView() {
       }
 
       // Status filter
-      if (statusFilter !== 'all' && order.status !== statusFilter) {
-        return false;
+      if (statusFilter !== 'all') {
+        if (statusFilter === 'assigned') {
+          // สำหรับ 'assigned' ต้องตรวจสอบทั้ง status และ delivery_trip_id
+          if (order.status !== 'assigned' || !order.delivery_trip_id) {
+            return false;
+          }
+        } else if (statusFilter === 'pending') {
+          // สำหรับ 'pending' รวมถึงออเดอร์ที่ status เป็น 'assigned' แต่ไม่มี delivery_trip_id (ลบทริปแล้ว)
+          if (order.status !== 'pending' && order.status !== 'confirmed' && !(order.status === 'assigned' && !order.delivery_trip_id)) {
+            return false;
+          }
+        } else {
+          if (order.status !== statusFilter) {
+            return false;
+          }
+        }
       }
 
       // Branch filter
@@ -106,11 +121,26 @@ export function TrackOrdersView() {
   const startIndex = offset;
   const endIndex = Math.min(offset + itemsPerPage, filteredOrders.length);
 
-  const getStatusBadge = (status: string) => {
+  const getStatusBadge = (order: Order) => {
+    const status = order.status;
+    const deliveryTripId = order.delivery_trip_id;
+    
+    // ถ้า delivery_trip_id เป็น null แล้ว ไม่ควรแสดง "กำหนดทริปแล้ว" แม้ว่า status จะเป็น 'assigned' ก็ตาม
+    // (กรณีที่ลบทริปแล้วแต่ status ยังไม่ถูกอัปเดต)
+    if (status === 'assigned' && !deliveryTripId) {
+      return <Badge variant="warning">รอจัดทริป</Badge>;
+    }
+    
     switch (status) {
       case 'pending':
       case 'confirmed':
         return <Badge variant="warning">รอจัดทริป</Badge>;
+      case 'partial':
+        return (
+          <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-300 border border-orange-200 dark:border-orange-700">
+            ⏳ ส่งบางส่วน
+          </span>
+        );
       case 'assigned':
         return <Badge variant="info">กำหนดทริปแล้ว</Badge>;
       case 'in_delivery':
@@ -127,8 +157,9 @@ export function TrackOrdersView() {
   const stats = useMemo(() => {
     return {
       total: filteredOrders.length,
-      pending: filteredOrders.filter((o) => o.status === 'pending' || o.status === 'confirmed').length,
-      assigned: filteredOrders.filter((o) => o.status === 'assigned').length,
+      pending: filteredOrders.filter((o) => o.status === 'pending' || o.status === 'confirmed' || (o.status === 'assigned' && !o.delivery_trip_id)).length,
+      partial: filteredOrders.filter((o) => o.status === 'partial').length,
+      assigned: filteredOrders.filter((o) => o.status === 'assigned' && o.delivery_trip_id).length,
       in_delivery: filteredOrders.filter((o) => o.status === 'in_delivery').length,
       delivered: filteredOrders.filter((o) => o.status === 'delivered').length,
     };
@@ -219,6 +250,7 @@ export function TrackOrdersView() {
               >
                 <option value="all">ทุกสถานะ</option>
                 <option value="pending">รอจัดทริป</option>
+                <option value="partial">ส่งบางส่วน</option>
                 <option value="assigned">กำหนดทริปแล้ว</option>
                 <option value="in_transit">กำลังจัดส่ง</option>
                 <option value="delivered">จัดส่งแล้ว</option>
@@ -230,7 +262,7 @@ export function TrackOrdersView() {
       </Card>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-4">
+      <div className="grid grid-cols-2 md:grid-cols-6 gap-4 mb-4">
         <Card>
           <div className="p-4 text-center">
             <div className="text-2xl font-bold text-gray-900 dark:text-white">{stats.total}</div>
@@ -243,6 +275,15 @@ export function TrackOrdersView() {
             <div className="text-sm text-gray-600 dark:text-gray-400">รอจัดทริป</div>
           </div>
         </Card>
+        {/* Partial — ใหม่! */}
+        {stats.partial > 0 && (
+          <Card className="ring-2 ring-orange-300 dark:ring-orange-700">
+            <div className="p-4 text-center">
+              <div className="text-2xl font-bold text-orange-600 dark:text-orange-400">{stats.partial}</div>
+              <div className="text-sm text-orange-700 dark:text-orange-300 font-medium">⏳ ส่งบางส่วน</div>
+            </div>
+          </Card>
+        )}
         <Card>
           <div className="p-4 text-center">
             <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">{stats.assigned}</div>
@@ -291,8 +332,15 @@ export function TrackOrdersView() {
                 </thead>
                 <tbody>
                   {paginatedOrders.map((order) => (
-                    <tr key={order.id} className="border-b border-gray-100 dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-700/50">
-                      <td className="py-3 px-4 font-mono text-sm text-blue-600 dark:text-blue-400">{order.order_number}</td>
+                    <tr key={order.id} className={`border-b border-gray-100 dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-700/50 ${order.status === 'partial' ? 'bg-orange-50/30 dark:bg-orange-900/10' : ''}`}>
+                      <td className="py-3 px-4 font-mono text-sm text-blue-600 dark:text-blue-400">
+                        <div>{order.order_number}</div>
+                        {order.status === 'partial' && (
+                          <div className="text-xs text-orange-600 dark:text-orange-400 font-normal mt-0.5">
+                            รอจัดส่งส่วนที่เหลือ
+                          </div>
+                        )}
+                      </td>
                       <td className="py-3 px-4">
                         <div className="font-medium text-gray-900 dark:text-white">{order.customer_name}</div>
                         <div className="text-xs text-gray-500 dark:text-gray-400">{order.customer_code}</div>
@@ -300,7 +348,7 @@ export function TrackOrdersView() {
                       <td className="py-3 px-4 text-right font-semibold text-gray-900 dark:text-white">
                         ฿{order.total_amount.toLocaleString()}
                       </td>
-                      <td className="py-3 px-4 text-center">{getStatusBadge(order.status)}</td>
+                      <td className="py-3 px-4 text-center">{getStatusBadge(order)}</td>
                       <td className="py-3 px-4 text-sm text-gray-600 dark:text-gray-400">
                         {order.delivery_date
                           ? new Date(order.delivery_date).toLocaleDateString('th-TH', {
@@ -511,8 +559,14 @@ export function TrackOrdersView() {
                 <thead className="bg-gray-50 dark:bg-slate-800/50">
                   <tr>
                     <th className="text-left py-2 px-3 text-sm font-semibold text-gray-700 dark:text-gray-300">สินค้า</th>
-                    <th className="text-right py-2 px-3 text-sm font-semibold text-gray-700 dark:text-gray-300">จำนวน</th>
-                    <th className="text-right py-2 px-3 text-sm font-semibold text-gray-700 dark:text-gray-300">ราคาต่อหน่วย</th>
+                    <th className="text-right py-2 px-3 text-sm font-semibold text-gray-700 dark:text-gray-300">จำนวนสั่ง</th>
+                    <th className="text-right py-2 px-3 text-sm font-semibold text-amber-600 dark:text-amber-400" title="ลูกค้ามารับที่ร้านแล้ว">
+                      🏪 รับที่ร้าน
+                    </th>
+                    <th className="text-right py-2 px-3 text-sm font-semibold text-green-600 dark:text-green-400" title="การจัดส่งจากทริป">
+                      ✅ ส่งแล้ว
+                    </th>
+                    <th className="text-right py-2 px-3 text-sm font-semibold text-gray-700 dark:text-gray-300">ราคา/หน่วย</th>
                     <th className="text-right py-2 px-3 text-sm font-semibold text-gray-700 dark:text-gray-300">ส่วนลด (%)</th>
                     <th className="text-right py-2 px-3 text-sm font-semibold text-gray-700 dark:text-gray-300">รวมบรรทัด</th>
                   </tr>
@@ -525,30 +579,55 @@ export function TrackOrdersView() {
                       </td>
                     </tr>
                   ) : (
-                    detailItems.map((item: any) => (
-                      <tr key={item.id} className="border-t border-gray-100 dark:border-slate-700">
-                        <td className="py-2 px-3">
-                          <div className="font-medium text-gray-900 dark:text-white">
-                            {item.product?.product_name || 'ไม่ระบุชื่อสินค้า'}
-                          </div>
-                          <div className="text-xs text-gray-500 dark:text-gray-400">
-                            {item.product?.product_code || '-'}
-                          </div>
-                        </td>
-                        <td className="py-2 px-3 text-right text-gray-900 dark:text-white">
-                          {item.quantity?.toLocaleString()} {item.product?.unit || ''}
-                        </td>
-                        <td className="py-2 px-3 text-right text-gray-900 dark:text-white">
-                          ฿{item.unit_price?.toLocaleString()}
-                        </td>
-                        <td className="py-2 px-3 text-right text-gray-900 dark:text-white">
-                          {item.discount_percent || 0}%
-                        </td>
-                        <td className="py-2 px-3 text-right font-semibold text-gray-900 dark:text-white">
-                          ฿{item.line_total?.toLocaleString()}
-                        </td>
-                      </tr>
-                    ))
+                    detailItems.map((item: any) => {
+                      const pickedUp = Number(item.quantity_picked_up_at_store ?? 0);
+                      const delivered = Number(item.quantity_delivered ?? 0);
+                      const hasPickupOrDelivery = pickedUp > 0 || delivered > 0;
+                      return (
+                        <tr key={item.id} className={`border-t border-gray-100 dark:border-slate-700 ${hasPickupOrDelivery ? 'bg-amber-50/30 dark:bg-amber-900/10' : ''}`}>
+                          <td className="py-2 px-3">
+                            <div className="font-medium text-gray-900 dark:text-white">
+                              {item.product?.product_name || 'ไม่ระบุชื่อสินค้า'}
+                            </div>
+                            <div className="text-xs text-gray-500 dark:text-gray-400">
+                              {item.product?.product_code || '-'}
+                            </div>
+                          </td>
+                          <td className="py-2 px-3 text-right text-gray-900 dark:text-white">
+                            {item.quantity?.toLocaleString()} {item.product?.unit || ''}
+                          </td>
+                          {/* 🏪 รับที่ร้าน */}
+                          <td className="py-2 px-3 text-right">
+                            {pickedUp > 0 ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300">
+                                {pickedUp.toLocaleString()} {item.product?.unit || ''}
+                              </span>
+                            ) : (
+                              <span className="text-gray-300 dark:text-gray-600">—</span>
+                            )}
+                          </td>
+                          {/* ✅ ส่งแล้ว */}
+                          <td className="py-2 px-3 text-right">
+                            {delivered > 0 ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300">
+                                {delivered.toLocaleString()} {item.product?.unit || ''}
+                              </span>
+                            ) : (
+                              <span className="text-gray-300 dark:text-gray-600">—</span>
+                            )}
+                          </td>
+                          <td className="py-2 px-3 text-right text-gray-900 dark:text-white">
+                            ฿{item.unit_price?.toLocaleString()}
+                          </td>
+                          <td className="py-2 px-3 text-right text-gray-900 dark:text-white">
+                            {item.discount_percent || 0}%
+                          </td>
+                          <td className="py-2 px-3 text-right font-semibold text-gray-900 dark:text-white">
+                            ฿{item.line_total?.toLocaleString()}
+                          </td>
+                        </tr>
+                      );
+                    })
                   )}
                 </tbody>
               </table>

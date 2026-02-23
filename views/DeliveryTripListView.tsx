@@ -793,6 +793,8 @@ export const DeliveryTripListView: React.FC<DeliveryTripListViewProps> = ({
             await deliveryTripService.delete(deleteTripId);
             console.log('[DeliveryTripListView] Trip deleted successfully');
             setDeleteTripId(null);
+            // แจ้งให้หน้าออเดอร์ที่รอจัดทริป refetch เมื่อผู้ใช้ไปที่หน้านั้น
+            window.dispatchEvent(new CustomEvent('trip-deleted'));
             // Wait a bit before refetching to ensure database is updated
             setTimeout(async () => {
               await refetch();

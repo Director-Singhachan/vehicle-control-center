@@ -100,6 +100,10 @@ type OrderItem = {
   order_id: string;
   product_id: string;
   quantity: number;
+  quantity_picked_up_at_store: number; // ลูกค้ารับที่หน้าร้านแล้ว (sales บันทึก)
+  quantity_delivered: number;           // ส่งแล้ว (รวมทุก completed trips — auto)
+  // computed (from view or service):
+  quantity_remaining?: number;          // = quantity - picked_up - delivered
   unit_price: number | null;
   discount_percent: number | null;
   discount_amount: number | null;
@@ -161,23 +165,73 @@ export const ordersService = {
   },
 
   /**
-   * ดึงออเดอร์ที่รอจัดทริป
+   * รหัสออเดอร์รูปแบบเก่า (เช่น SD-ORD-2601-0017) ที่ไม่ได้ใช้แล้ว — ไม่แสดงในหน้ารอจัดทริป
+   * รูปแบบใหม่: SD/HQ + YYMMDD + เลข 3 หลัก (ไม่มี -ORD-)
+   */
+  isOldOrderNumberFormat(orderNumber: string | null | undefined): boolean {
+    if (!orderNumber || typeof orderNumber !== 'string') return false;
+    return orderNumber.includes('-ORD-');
+  },
+
+  /**
+   * ดึงออเดอร์ที่รอจัดทริป — เฉพาะออเดอร์ที่ยังไม่เคยจัดทริป
+   * แสดงเมื่อ: delivery_trip_id IS NULL, remaining > 0, status ไม่ใช่ delivered, ไม่ใช้รหัสเก่า (-ORD-)
+   * remaining = สั่ง - รับที่ร้าน - ส่งแล้ว (จาก order_items)
    */
   async getPendingOrders(filters?: { branch?: string }) {
     let query = supabase
       .from('orders_with_details')
       .select('*')
-      .eq('status', 'confirmed')
-      .is('delivery_trip_id', null)
+      .in('status', ['confirmed', 'partial', 'assigned'])
+      .is('delivery_trip_id', null) // เฉพาะออเดอร์ที่ยังไม่จัดทริป
       .order('created_at', { ascending: true });
 
     if (filters?.branch && filters.branch !== 'ALL') {
       query = query.eq('branch', filters.branch);
     }
 
-    const { data, error } = await query;
+    const { data: orders, error } = await query;
     if (error) throw error;
-    return data;
+    if (!orders?.length) return [];
+
+    const orderIds = orders.map((o: any) => o.id);
+
+    const { data: ordersRaw } = await supabase
+      .from('orders')
+      .select('id, status')
+      .in('id', orderIds);
+    const orderIdToStatus = new Map<string, string>();
+    (ordersRaw ?? []).forEach((r: any) => {
+      orderIdToStatus.set(r.id, String(r.status ?? '').toLowerCase());
+    });
+
+    const { data: items, error: itemsError } = await supabase
+      .from('order_items')
+      .select('order_id, product_id, quantity, quantity_picked_up_at_store, quantity_delivered')
+      .in('order_id', orderIds);
+
+    if (itemsError) {
+      console.error('[ordersService.getPendingOrders] order_items error:', itemsError);
+      return [];
+    }
+
+    // ออเดอร์ที่ยังไม่มีทริป (delivery_trip_id null) — ใช้เฉพาะ order_items.quantity_delivered
+    const orderIdToRemaining = new Map<string, number>();
+    for (const row of items ?? []) {
+      const pickedUp = Number(row.quantity_picked_up_at_store ?? 0);
+      const delivered = Number(row.quantity_delivered ?? 0);
+      const rem = Math.max(0, Number(row.quantity) - pickedUp - delivered);
+      orderIdToRemaining.set(row.order_id, (orderIdToRemaining.get(row.order_id) ?? 0) + rem);
+    }
+
+    return orders.filter((o: any) => {
+      if (this.isOldOrderNumberFormat(o.order_number)) return false;
+      const orderStatus = (orderIdToStatus.get(o.id) ?? String(o.status ?? '')).toLowerCase();
+      if (orderStatus === 'delivered') return false;
+      const remaining = orderIdToRemaining.get(o.id) ?? 0;
+      if (remaining <= 0) return false;
+      return true; // delivery_trip_id IS NULL แล้วจาก query ต้นทาง
+    });
   },
 
   /**
@@ -493,7 +547,39 @@ export const orderItemsService = {
       .order('created_at');
 
     if (error) throw error;
-    return data;
+
+    // Compute quantity_remaining client-side
+    return (data || []).map(item => ({
+      ...item,
+      quantity_picked_up_at_store: Number(item.quantity_picked_up_at_store ?? 0),
+      quantity_delivered: Number(item.quantity_delivered ?? 0),
+      quantity_remaining: Math.max(
+        0,
+        Number(item.quantity)
+        - Number(item.quantity_picked_up_at_store ?? 0)
+        - Number(item.quantity_delivered ?? 0)
+      ),
+    }));
+  },
+
+  /**
+   * อัปเดตจำนวนที่ลูกค้ารับที่หน้าร้าน (ฝ่ายขายเป็นผู้บันทึก)
+   * ต้องเป็นจำนวนเต็มเท่านั้น — จำนวนที่ต้องส่ง = quantity - quantity_picked_up_at_store - quantity_delivered
+   */
+  async updatePickedUpAtStore(itemId: string, quantityPickedUp: number): Promise<void> {
+    const qty = Math.max(0, Math.floor(Number(quantityPickedUp) || 0));
+    const { error } = await supabase
+      .from('order_items')
+      .update({
+        quantity_picked_up_at_store: qty,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', itemId);
+
+    if (error) {
+      console.error('[orderItemsService] Error updating quantity_picked_up_at_store:', error);
+      throw error;
+    }
   },
 
   /**

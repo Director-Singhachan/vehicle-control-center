@@ -43,7 +43,9 @@ interface TripItem {
     product_code: string;
     category: string;
     unit: string;
-    quantity: number;          // จำนวนรวม
+    quantity: number;          // จำนวนที่สั่ง (เต็ม)
+    quantity_picked_up_at_store: number; // รับที่ร้านแล้ว
+    quantity_to_deliver: number; // ต้องขนส่ง = quantity - quantity_picked_up_at_store
     weight_kg: number | null;
     store_name?: string;
 }
@@ -381,6 +383,8 @@ export const PackingSimulator: React.FC<SimulatorProps> = ({ tripId, onClose, on
                             category: product.category || 'อื่นๆ',
                             unit: product.unit || 'หน่วย',
                             quantity: Number(item.quantity) || 0,
+                            quantity_picked_up_at_store: Number((item as any).quantity_picked_up_at_store ?? 0),
+                            quantity_to_deliver: Number((item as any).quantity_to_deliver ?? item.quantity) || 0,
                             weight_kg: product.weight_kg ?? null,
                             store_name: store.store?.customer_name || undefined,
                         });
@@ -502,8 +506,8 @@ export const PackingSimulator: React.FC<SimulatorProps> = ({ tripId, onClose, on
                 product_code: item.product_code,
                 category: item.category,
                 unit: item.unit,
-                quantity: item.quantity,
-                remaining: item.quantity - (allocated.get(item.id) || 0),
+                quantity: item.quantity_to_deliver,
+                remaining: item.quantity_to_deliver - (allocated.get(item.id) || 0),
                 store_name: item.store_name,
             }))
             .filter(row => row.remaining > 0)
@@ -514,7 +518,7 @@ export const PackingSimulator: React.FC<SimulatorProps> = ({ tripId, onClose, on
     const pickerItemsAggregated = useMemo((): AggregatedPickerRow[] => {
         const byProduct = new Map<string, { name: string; code: string; category: string; unit: string; totalQty: number; totalRemaining: number; count: number }>();
         for (const item of tripItems) {
-            const remaining = item.quantity - (allocated.get(item.id) || 0);
+            const remaining = item.quantity_to_deliver - (allocated.get(item.id) || 0);
             const ex = byProduct.get(item.product_id);
             if (!ex) {
                 byProduct.set(item.product_id, {
@@ -522,12 +526,12 @@ export const PackingSimulator: React.FC<SimulatorProps> = ({ tripId, onClose, on
                     code: item.product_code,
                     category: item.category,
                     unit: item.unit,
-                    totalQty: item.quantity,
+                    totalQty: item.quantity_to_deliver,
                     totalRemaining: remaining,
                     count: 1,
                 });
             } else {
-                ex.totalQty += item.quantity;
+                ex.totalQty += item.quantity_to_deliver;
                 ex.totalRemaining += remaining;
                 ex.count += 1;
             }
@@ -564,7 +568,7 @@ export const PackingSimulator: React.FC<SimulatorProps> = ({ tripId, onClose, on
         }
 
         for (const ti of tripItems) {
-            totalItems += ti.quantity;
+            totalItems += ti.quantity_to_deliver; // ใช้ quantity_to_deliver เพื่อ utilization ที่ถูกต้อง
         }
 
         const utilizationPct = totalItems > 0 ? Math.round((totalAllocated / totalItems) * 100) : 0;
@@ -610,7 +614,7 @@ export const PackingSimulator: React.FC<SimulatorProps> = ({ tripId, onClose, on
         if (!tripItem) return;
 
         const used = allocated.get(itemId) || 0;
-        const remaining = tripItem.quantity - used;
+        const remaining = tripItem.quantity_to_deliver - used;
         const actualQty = Math.min(qty, remaining);
         if (actualQty <= 0) return;
 
@@ -645,7 +649,7 @@ export const PackingSimulator: React.FC<SimulatorProps> = ({ tripId, onClose, on
     const addProductToPosition = useCallback((posId: string, productId: string, qty: number) => {
         const itemsWithProduct = tripItems
             .filter(i => i.product_id === productId)
-            .map(item => ({ item, remaining: item.quantity - (allocated.get(item.id) || 0) }))
+            .map(item => ({ item, remaining: item.quantity_to_deliver - (allocated.get(item.id) || 0) }))
             .filter(x => x.remaining > 0)
             .sort((a, b) => b.remaining - a.remaining); // ร้านที่เหลือมากก่อน → จับกลุ่มกัน
         const toAdd: { itemId: string; addQty: number; tripItem: TripItem }[] = [];
@@ -719,7 +723,7 @@ export const PackingSimulator: React.FC<SimulatorProps> = ({ tripId, onClose, on
                 const used = allocated.get(itemId) || 0;
                 const groupQty = groupItems.reduce((s, i) => s + i.quantity, 0);
                 const usedElsewhere = used - groupQty;
-                const maxAllowed = tripItem.quantity - usedElsewhere;
+                const maxAllowed = tripItem.quantity_to_deliver - usedElsewhere;
                 const clamped = Math.max(0, Math.min(newTotal, maxAllowed));
                 if (clamped <= 0) {
                     return { ...pos, items: pos.items.filter(i => !(i.product_id === productId && i.delivery_trip_item_id === itemId)) };
@@ -768,7 +772,7 @@ export const PackingSimulator: React.FC<SimulatorProps> = ({ tripId, onClose, on
         const groupItems = pos.items.filter(i => i.product_id === productId && i.delivery_trip_item_id === itemId);
         const currentTotal = groupItems.reduce((s, i) => s + i.quantity, 0);
         const allocatedTotal = allocated.get(itemId) || 0;
-        const maxAllowed = tripItem.quantity - allocatedTotal + currentTotal;
+        const maxAllowed = tripItem.quantity_to_deliver - allocatedTotal + currentTotal;
         const toFill = Math.min(std.total_units, Math.max(0, Math.floor(maxAllowed)));
         if (toFill <= 0) return;
 
@@ -1381,418 +1385,418 @@ export const PackingSimulator: React.FC<SimulatorProps> = ({ tripId, onClose, on
     return (
         <div className="relative">
             <div className="space-y-6 pb-24">
-            {/* Trip Summary Banner */}
-            <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 p-6 shadow-xl">
-                <div className="absolute inset-0 bg-gradient-to-r from-enterprise-600/10 via-blue-600/10 to-indigo-600/10" />
-                <div className="relative z-10 flex flex-wrap items-center gap-6">
-                    <div className="flex items-center gap-3">
-                        <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-enterprise-500 to-blue-600 flex items-center justify-center shadow-lg shadow-enterprise-500/30">
-                            <Truck className="text-white" size={24} />
+                {/* Trip Summary Banner */}
+                <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 p-6 shadow-xl">
+                    <div className="absolute inset-0 bg-gradient-to-r from-enterprise-600/10 via-blue-600/10 to-indigo-600/10" />
+                    <div className="relative z-10 flex flex-wrap items-center gap-6">
+                        <div className="flex items-center gap-3">
+                            <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-enterprise-500 to-blue-600 flex items-center justify-center shadow-lg shadow-enterprise-500/30">
+                                <Truck className="text-white" size={24} />
+                            </div>
+                            <div>
+                                <div className="text-xl font-bold text-white">
+                                    {tripData.trip_number || `ทริป #${tripId.substring(0, 8)}`}
+                                </div>
+                                <div className="flex items-center gap-3 text-sm text-slate-400">
+                                    <span className="flex items-center gap-1"><Calendar size={13} />{new Date(tripData.planned_date).toLocaleDateString('th-TH', { month: 'short', day: 'numeric' })}</span>
+                                    <span className="flex items-center gap-1"><Truck size={13} />{vehicleLabel}</span>
+                                    <span className="flex items-center gap-1"><Users size={13} />{driverLabel}</span>
+                                    <span className="flex items-center gap-1"><MapPin size={13} />{storeCount} ร้าน</span>
+                                </div>
+                            </div>
                         </div>
+                    </div>
+                </div>
+
+                {/* Stats Row */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <StatCard icon={Box} label="พาเลท" value={stats.pallets} subtext={stats.floors > 0 ? `+ ${stats.floors} พื้นรถ` : undefined} />
+                    <StatCard icon={Package} label="จัดแล้ว / ทั้งหมด" value={`${stats.totalAllocated} / ${stats.totalItems}`} subtext={`${stats.utilizationPct}% ครบถ้วน`} color={stats.utilizationPct === 100 ? 'text-green-600 dark:text-green-400' : 'text-enterprise-600 dark:text-enterprise-400'} />
+                    <StatCard icon={Weight} label="น้ำหนักที่จัด" value={`${stats.totalWeight.toFixed(0)} kg`} />
+                    <StatCard icon={Layers} label="ตำแหน่งทั้งหมด" value={layout.positions.length} />
+                </div>
+
+                {/* Unallocated items warning */}
+                {stats.totalAllocated < stats.totalItems && (
+                    <div className="flex items-center gap-3 p-4 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800">
+                        <AlertCircle className="text-amber-500 flex-shrink-0" size={20} />
                         <div>
-                            <div className="text-xl font-bold text-white">
-                                {tripData.trip_number || `ทริป #${tripId.substring(0, 8)}`}
+                            <div className="text-sm font-medium text-amber-800 dark:text-amber-200">
+                                ยังจัดไม่ครบ — เหลือ {stats.totalItems - stats.totalAllocated} หน่วย
                             </div>
-                            <div className="flex items-center gap-3 text-sm text-slate-400">
-                                <span className="flex items-center gap-1"><Calendar size={13} />{new Date(tripData.planned_date).toLocaleDateString('th-TH', { month: 'short', day: 'numeric' })}</span>
-                                <span className="flex items-center gap-1"><Truck size={13} />{vehicleLabel}</span>
-                                <span className="flex items-center gap-1"><Users size={13} />{driverLabel}</span>
-                                <span className="flex items-center gap-1"><MapPin size={13} />{storeCount} ร้าน</span>
+                            <div className="text-xs text-amber-600 dark:text-amber-400 mt-0.5">
+                                กดปุ่ม "เพิ่มสินค้า" ในแต่ละพาเลทเพื่อจัดสินค้าที่เหลือ
                             </div>
                         </div>
                     </div>
-                </div>
-            </div>
+                )}
 
-            {/* Stats Row */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <StatCard icon={Box} label="พาเลท" value={stats.pallets} subtext={stats.floors > 0 ? `+ ${stats.floors} พื้นรถ` : undefined} />
-                <StatCard icon={Package} label="จัดแล้ว / ทั้งหมด" value={`${stats.totalAllocated} / ${stats.totalItems}`} subtext={`${stats.utilizationPct}% ครบถ้วน`} color={stats.utilizationPct === 100 ? 'text-green-600 dark:text-green-400' : 'text-enterprise-600 dark:text-enterprise-400'} />
-                <StatCard icon={Weight} label="น้ำหนักที่จัด" value={`${stats.totalWeight.toFixed(0)} kg`} />
-                <StatCard icon={Layers} label="ตำแหน่งทั้งหมด" value={layout.positions.length} />
-            </div>
-
-            {/* Unallocated items warning */}
-            {stats.totalAllocated < stats.totalItems && (
-                <div className="flex items-center gap-3 p-4 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800">
-                    <AlertCircle className="text-amber-500 flex-shrink-0" size={20} />
-                    <div>
-                        <div className="text-sm font-medium text-amber-800 dark:text-amber-200">
-                            ยังจัดไม่ครบ — เหลือ {stats.totalItems - stats.totalAllocated} หน่วย
-                        </div>
-                        <div className="text-xs text-amber-600 dark:text-amber-400 mt-0.5">
-                            กดปุ่ม "เพิ่มสินค้า" ในแต่ละพาเลทเพื่อจัดสินค้าที่เหลือ
+                {stats.totalAllocated === stats.totalItems && stats.totalItems > 0 && (
+                    <div className="flex items-center gap-3 p-4 rounded-xl bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800">
+                        <Check className="text-green-500 flex-shrink-0" size={20} />
+                        <div className="text-sm font-medium text-green-800 dark:text-green-200">
+                            จัดครบทุกรายการแล้ว! 🎉
                         </div>
                     </div>
-                </div>
-            )}
+                )}
 
-            {stats.totalAllocated === stats.totalItems && stats.totalItems > 0 && (
-                <div className="flex items-center gap-3 p-4 rounded-xl bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800">
-                    <Check className="text-green-500 flex-shrink-0" size={20} />
-                    <div className="text-sm font-medium text-green-800 dark:text-green-200">
-                        จัดครบทุกรายการแล้ว! 🎉
-                    </div>
-                </div>
-            )}
-
-            {/* Save error */}
-            {saveError && (
-                <div className="flex items-center gap-3 p-4 rounded-xl bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800">
-                    <AlertCircle className="text-red-500 flex-shrink-0" size={20} />
-                    <div className="flex-1 min-w-0">
-                        <div className="text-sm font-medium text-red-800 dark:text-red-200">บันทึกไม่สำเร็จ</div>
-                        <div className="text-xs text-red-600 dark:text-red-300 mt-1 break-words">{saveError}</div>
-                    </div>
-                    <button type="button" onClick={() => setSaveError(null)} className="p-1.5 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/30 text-red-600 dark:text-red-400">
-                        <X size={18} />
-                    </button>
-                </div>
-            )}
-
-            {/* Save success */}
-            {saved && (
-                <div className="flex items-center gap-3 p-4 rounded-xl bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800">
-                    <Check className="text-green-500 flex-shrink-0" size={20} />
-                    <div className="flex-1">
-                        <div className="text-sm font-medium text-green-800 dark:text-green-200">บันทึกการจัดเรียงแล้ว</div>
-                        {!embedInDetailView && <div className="text-xs text-green-600 dark:text-green-300 mt-0.5">ดูการจัดเรียงได้ที่หน้ารายละเอียดทริป</div>}
-                    </div>
-                    <Button variant="outline" size="sm" onClick={onClose} className="border-green-300 text-green-800 dark:text-green-200 hover:bg-green-100 dark:hover:bg-green-900/30">
-                        {embedInDetailView ? 'ปิด' : 'กลับไปรายการทริป'}
-                    </Button>
-                </div>
-            )}
-
-            {/* Action Bar */}
-            <div className="flex flex-wrap items-center gap-3">
-                <Button variant="primary" onClick={() => addPosition('pallet')}>
-                    <Plus size={16} className="mr-1" /> เพิ่มพาเลท
-                </Button>
-                <Button variant="outline" onClick={() => addPosition('floor')}>
-                    <Plus size={16} className="mr-1" /> พื้นรถ
-                </Button>
-                <div className="flex-1" />
-                <Button variant="outline" onClick={undo} disabled={historyIndex <= 0}>
-                    <Undo2 size={16} />
-                </Button>
-                <Button variant="outline" onClick={redo} disabled={historyIndex >= history.length - 1}>
-                    <Redo2 size={16} />
-                </Button>
-                <Button variant="outline" onClick={loadAiSuggestions}>
-                    <Sparkles size={16} className="mr-1" /> AI แนะนำ
-                </Button>
-                <Button
-                    variant="primary"
-                    onClick={handleSaveClick}
-                    isLoading={saving}
-                    disabled={
-                        layout.positions.length === 0 ||
-                        stats.totalAllocated === 0 ||
-                        stats.totalAllocated < stats.totalItems
-                    }
-                    title={
-                        stats.totalAllocated < stats.totalItems && stats.totalItems > 0
-                            ? 'จัดให้ครบทุกชิ้นก่อนจึงจะบันทึกได้'
-                            : undefined
-                    }
-                >
-                    <Save size={16} className="mr-1" />
-                    {saved ? 'บันทึกแล้ว ✓' : 'บันทึกการจัดเรียง'}
-                </Button>
-            </div>
-
-            <ConfirmDialog
-                isOpen={showSaveConfirm}
-                title="ยืนยันการบันทึก"
-                message="คุณต้องการบันทึกการจัดเรียงจริงหรือไม่? กรุณาตรวจสอบให้แน่ใจว่าจัดครบทุกชิ้นแล้ว"
-                confirmText="บันทึก"
-                cancelText="ยกเลิก"
-                variant="info"
-                onConfirm={() => handleApply()}
-                onCancel={() => setShowSaveConfirm(false)}
-            />
-
-            <ConfirmDialog
-                isOpen={positionToDelete != null}
-                title="ยืนยันการลบ"
-                message={(() => {
-                    const pos = layout.positions.find(p => p.id === positionToDelete);
-                    if (!pos) return 'ต้องการลบตำแหน่งนี้จริงหรือไม่?';
-                    const label = pos.position_type === 'pallet' ? `พาเลท #${pos.position_index}` : `พื้นรถ #${pos.position_index}`;
-                    const itemCount = pos.items.reduce((s, i) => s + i.quantity, 0);
-                    if (itemCount > 0) {
-                        return `ต้องการลบ${label} จริงหรือไม่? ตำแหน่งนี้มีสินค้าจัดไว้แล้ว ${itemCount} ชิ้น — การลบจะนำสินค้าออกจากตำแหน่งนี้ (สามารถจัดใหม่ได้)`;
-                    }
-                    return `ต้องการลบ${label} จริงหรือไม่?`;
-                })()}
-                confirmText="ลบ"
-                cancelText="ยกเลิก"
-                variant="danger"
-                onConfirm={() => {
-                    if (positionToDelete) {
-                        removePosition(positionToDelete);
-                        setPositionToDelete(null);
-                    }
-                }}
-                onCancel={() => setPositionToDelete(null)}
-            />
-
-            {/* AI Suggestions Panel */}
-            {showAi && aiSuggestions && (
-                <Card className="bg-gradient-to-r from-violet-50 to-blue-50 dark:from-violet-950/20 dark:to-blue-950/20 border-violet-200 dark:border-violet-800">
-                    <div className="flex items-center justify-between mb-3">
-                        <div className="flex items-center gap-2">
-                            <Sparkles size={18} className="text-violet-500" />
-                            <span className="font-semibold text-violet-900 dark:text-violet-200">AI แนะนำการจัดเรียง</span>
+                {/* Save error */}
+                {saveError && (
+                    <div className="flex items-center gap-3 p-4 rounded-xl bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800">
+                        <AlertCircle className="text-red-500 flex-shrink-0" size={20} />
+                        <div className="flex-1 min-w-0">
+                            <div className="text-sm font-medium text-red-800 dark:text-red-200">บันทึกไม่สำเร็จ</div>
+                            <div className="text-xs text-red-600 dark:text-red-300 mt-1 break-words">{saveError}</div>
                         </div>
-                        <button onClick={() => setShowAi(false)} className="p-1 rounded hover:bg-violet-100 dark:hover:bg-violet-900/30">
-                            <X size={16} className="text-violet-400" />
+                        <button type="button" onClick={() => setSaveError(null)} className="p-1.5 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/30 text-red-600 dark:text-red-400">
+                            <X size={18} />
                         </button>
                     </div>
-                    <pre className="text-sm text-violet-800 dark:text-violet-200 whitespace-pre-wrap font-sans leading-relaxed">
-                        {aiSuggestions}
-                    </pre>
-                </Card>
-            )}
+                )}
 
-            {/* Pallet Grid */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {layout.positions.map((pos) => {
-                    const posWeight = pos.items.reduce((sum, i) => {
-                        const w = i.weight_kg ?? tripItems.find(t => t.id === i.delivery_trip_item_id)?.weight_kg ?? 0;
-                        return sum + w * i.quantity;
-                    }, 0);
-                    const posItemCount = pos.items.reduce((sum, i) => sum + i.quantity, 0);
-                    // จัดกลุ่ม: สินค้าชนิดเดียวกันในพาเลทเดียว = 1 รายการ (ลีโอ 60 ลัง 4 ชั้น → 1 รายการ)
-                    const positionGroups = (() => {
-                        const byKey = new Map<string, { product_id: string; delivery_trip_item_id: string; product_name: string; product_code: string; category: string; unit: string; weight_kg: number | null; totalQty: number; layerCount: number; items: PositionItem[] }>();
-                        for (const it of pos.items) {
-                            const key = `${it.product_id}|${it.delivery_trip_item_id}`;
-                            if (!byKey.has(key)) {
-                                byKey.set(key, { product_id: it.product_id, delivery_trip_item_id: it.delivery_trip_item_id, product_name: it.product_name, product_code: it.product_code, category: it.category, unit: it.unit, weight_kg: it.weight_kg, totalQty: 0, layerCount: 0, items: [] });
-                            }
-                            const g = byKey.get(key)!;
-                            g.totalQty += it.quantity;
-                            g.layerCount += 1;
-                            g.items.push(it);
+                {/* Save success */}
+                {saved && (
+                    <div className="flex items-center gap-3 p-4 rounded-xl bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800">
+                        <Check className="text-green-500 flex-shrink-0" size={20} />
+                        <div className="flex-1">
+                            <div className="text-sm font-medium text-green-800 dark:text-green-200">บันทึกการจัดเรียงแล้ว</div>
+                            {!embedInDetailView && <div className="text-xs text-green-600 dark:text-green-300 mt-0.5">ดูการจัดเรียงได้ที่หน้ารายละเอียดทริป</div>}
+                        </div>
+                        <Button variant="outline" size="sm" onClick={onClose} className="border-green-300 text-green-800 dark:text-green-200 hover:bg-green-100 dark:hover:bg-green-900/30">
+                            {embedInDetailView ? 'ปิด' : 'กลับไปรายการทริป'}
+                        </Button>
+                    </div>
+                )}
+
+                {/* Action Bar */}
+                <div className="flex flex-wrap items-center gap-3">
+                    <Button variant="primary" onClick={() => addPosition('pallet')}>
+                        <Plus size={16} className="mr-1" /> เพิ่มพาเลท
+                    </Button>
+                    <Button variant="outline" onClick={() => addPosition('floor')}>
+                        <Plus size={16} className="mr-1" /> พื้นรถ
+                    </Button>
+                    <div className="flex-1" />
+                    <Button variant="outline" onClick={undo} disabled={historyIndex <= 0}>
+                        <Undo2 size={16} />
+                    </Button>
+                    <Button variant="outline" onClick={redo} disabled={historyIndex >= history.length - 1}>
+                        <Redo2 size={16} />
+                    </Button>
+                    <Button variant="outline" onClick={loadAiSuggestions}>
+                        <Sparkles size={16} className="mr-1" /> AI แนะนำ
+                    </Button>
+                    <Button
+                        variant="primary"
+                        onClick={handleSaveClick}
+                        isLoading={saving}
+                        disabled={
+                            layout.positions.length === 0 ||
+                            stats.totalAllocated === 0 ||
+                            stats.totalAllocated < stats.totalItems
                         }
-                        return Array.from(byKey.values());
-                    })();
-                    const isPallet = pos.position_type === 'pallet';
-                    const headerGradient = isPallet
-                        ? 'from-enterprise-500 to-blue-600'
-                        : 'from-slate-500 to-slate-600';
+                        title={
+                            stats.totalAllocated < stats.totalItems && stats.totalItems > 0
+                                ? 'จัดให้ครบทุกชิ้นก่อนจึงจะบันทึกได้'
+                                : undefined
+                        }
+                    >
+                        <Save size={16} className="mr-1" />
+                        {saved ? 'บันทึกแล้ว ✓' : 'บันทึกการจัดเรียง'}
+                    </Button>
+                </div>
 
-                    return (
-                        <div
-                            key={pos.id}
-                            className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden shadow-sm hover:shadow-lg transition-all duration-300"
-                        >
-                            {/* Position Header */}
-                            <div className={`bg-gradient-to-r ${headerGradient} p-4`}>
-                                <div className="flex items-center justify-between">
-                                    <div className="flex items-center gap-3">
-                                        <div className="w-10 h-10 rounded-xl bg-white/20 backdrop-blur-sm flex items-center justify-center">
-                                            {isPallet ? <Box className="text-white" size={20} /> : <Truck className="text-white" size={20} />}
-                                        </div>
-                                        <div>
-                                            <div className="font-bold text-white text-lg">
-                                                {isPallet ? `พาเลท #${pos.position_index}` : `พื้นรถ #${pos.position_index}`}
-                                                {isPallet && pos.total_layers > 1 && (
-                                                    <span className="ml-2 text-white/90 text-sm font-semibold">{pos.total_layers} ชั้น</span>
-                                                )}
-                                            </div>
-                                            <div className="text-white/70 text-xs">
-                                                ทั้งหมด {posItemCount} ชิ้น · {positionGroups.length} รายการ · {posWeight.toFixed(0)} kg
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                        <button
-                                            onClick={() => toggleCollapse(pos.id)}
-                                            className="p-2 rounded-lg bg-white/10 hover:bg-white/20 transition-colors"
-                                        >
-                                            {pos.collapsed ? <Eye className="text-white" size={16} /> : <EyeOff className="text-white" size={16} />}
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={() => setPositionToDelete(pos.id)}
-                                            className="p-2 rounded-lg bg-white/10 hover:bg-red-500/30 transition-colors"
-                                            title="ลบพาเลท"
-                                        >
-                                            <Trash2 className="text-white" size={16} />
-                                        </button>
-                                    </div>
-                                </div>
+                <ConfirmDialog
+                    isOpen={showSaveConfirm}
+                    title="ยืนยันการบันทึก"
+                    message="คุณต้องการบันทึกการจัดเรียงจริงหรือไม่? กรุณาตรวจสอบให้แน่ใจว่าจัดครบทุกชิ้นแล้ว"
+                    confirmText="บันทึก"
+                    cancelText="ยกเลิก"
+                    variant="info"
+                    onConfirm={() => handleApply()}
+                    onCancel={() => setShowSaveConfirm(false)}
+                />
+
+                <ConfirmDialog
+                    isOpen={positionToDelete != null}
+                    title="ยืนยันการลบ"
+                    message={(() => {
+                        const pos = layout.positions.find(p => p.id === positionToDelete);
+                        if (!pos) return 'ต้องการลบตำแหน่งนี้จริงหรือไม่?';
+                        const label = pos.position_type === 'pallet' ? `พาเลท #${pos.position_index}` : `พื้นรถ #${pos.position_index}`;
+                        const itemCount = pos.items.reduce((s, i) => s + i.quantity, 0);
+                        if (itemCount > 0) {
+                            return `ต้องการลบ${label} จริงหรือไม่? ตำแหน่งนี้มีสินค้าจัดไว้แล้ว ${itemCount} ชิ้น — การลบจะนำสินค้าออกจากตำแหน่งนี้ (สามารถจัดใหม่ได้)`;
+                        }
+                        return `ต้องการลบ${label} จริงหรือไม่?`;
+                    })()}
+                    confirmText="ลบ"
+                    cancelText="ยกเลิก"
+                    variant="danger"
+                    onConfirm={() => {
+                        if (positionToDelete) {
+                            removePosition(positionToDelete);
+                            setPositionToDelete(null);
+                        }
+                    }}
+                    onCancel={() => setPositionToDelete(null)}
+                />
+
+                {/* AI Suggestions Panel */}
+                {showAi && aiSuggestions && (
+                    <Card className="bg-gradient-to-r from-violet-50 to-blue-50 dark:from-violet-950/20 dark:to-blue-950/20 border-violet-200 dark:border-violet-800">
+                        <div className="flex items-center justify-between mb-3">
+                            <div className="flex items-center gap-2">
+                                <Sparkles size={18} className="text-violet-500" />
+                                <span className="font-semibold text-violet-900 dark:text-violet-200">AI แนะนำการจัดเรียง</span>
                             </div>
+                            <button onClick={() => setShowAi(false)} className="p-1 rounded hover:bg-violet-100 dark:hover:bg-violet-900/30">
+                                <X size={16} className="text-violet-400" />
+                            </button>
+                        </div>
+                        <pre className="text-sm text-violet-800 dark:text-violet-200 whitespace-pre-wrap font-sans leading-relaxed">
+                            {aiSuggestions}
+                        </pre>
+                    </Card>
+                )}
 
-                            {/* Position Content: ซ่อน = แสดงแค่รายการคร่าวๆ, เปิด = แสดงเต็ม */}
-                            {pos.collapsed ? (
-                                <div className="p-3 border-t border-slate-100 dark:border-slate-800">
-                                    {pos.items.length > 0 ? (() => {
-                                        const byProduct = new Map<string, { name: string; unit: string; parts: { store: string; qty: number }[] }>();
-                                        for (const it of pos.items) {
-                                            const storeName = tripItems.find(t => t.id === it.delivery_trip_item_id)?.store_name || 'ไม่ระบุร้าน';
-                                            const ex = byProduct.get(it.product_id);
-                                            if (!ex) byProduct.set(it.product_id, { name: it.product_name, unit: it.unit, parts: [{ store: storeName, qty: it.quantity }] });
-                                            else {
-                                                const part = ex.parts.find(p => p.store === storeName);
-                                                if (part) part.qty += it.quantity;
-                                                else ex.parts.push({ store: storeName, qty: it.quantity });
-                                            }
-                                        }
-                                        return (
-                                            <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-slate-600 dark:text-slate-400">
-                                                {Array.from(byProduct.entries()).map(([, v]) => {
-                                                    const total = v.parts.reduce((s, p) => s + p.qty, 0);
-                                                    const detail = v.parts.length > 1 ? v.parts.map(p => `${p.store} ${p.qty} ${v.unit}`).join(', ') : `${total} ${v.unit}`;
-                                                    return (
-                                                        <span key={v.name} className="bg-slate-100 dark:bg-slate-800/60 rounded px-2 py-0.5">
-                                                            {v.name}: {detail}
-                                                        </span>
-                                                    );
-                                                })}
+                {/* Pallet Grid */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    {layout.positions.map((pos) => {
+                        const posWeight = pos.items.reduce((sum, i) => {
+                            const w = i.weight_kg ?? tripItems.find(t => t.id === i.delivery_trip_item_id)?.weight_kg ?? 0;
+                            return sum + w * i.quantity;
+                        }, 0);
+                        const posItemCount = pos.items.reduce((sum, i) => sum + i.quantity, 0);
+                        // จัดกลุ่ม: สินค้าชนิดเดียวกันในพาเลทเดียว = 1 รายการ (ลีโอ 60 ลัง 4 ชั้น → 1 รายการ)
+                        const positionGroups = (() => {
+                            const byKey = new Map<string, { product_id: string; delivery_trip_item_id: string; product_name: string; product_code: string; category: string; unit: string; weight_kg: number | null; totalQty: number; layerCount: number; items: PositionItem[] }>();
+                            for (const it of pos.items) {
+                                const key = `${it.product_id}|${it.delivery_trip_item_id}`;
+                                if (!byKey.has(key)) {
+                                    byKey.set(key, { product_id: it.product_id, delivery_trip_item_id: it.delivery_trip_item_id, product_name: it.product_name, product_code: it.product_code, category: it.category, unit: it.unit, weight_kg: it.weight_kg, totalQty: 0, layerCount: 0, items: [] });
+                                }
+                                const g = byKey.get(key)!;
+                                g.totalQty += it.quantity;
+                                g.layerCount += 1;
+                                g.items.push(it);
+                            }
+                            return Array.from(byKey.values());
+                        })();
+                        const isPallet = pos.position_type === 'pallet';
+                        const headerGradient = isPallet
+                            ? 'from-enterprise-500 to-blue-600'
+                            : 'from-slate-500 to-slate-600';
+
+                        return (
+                            <div
+                                key={pos.id}
+                                className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden shadow-sm hover:shadow-lg transition-all duration-300"
+                            >
+                                {/* Position Header */}
+                                <div className={`bg-gradient-to-r ${headerGradient} p-4`}>
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-10 h-10 rounded-xl bg-white/20 backdrop-blur-sm flex items-center justify-center">
+                                                {isPallet ? <Box className="text-white" size={20} /> : <Truck className="text-white" size={20} />}
                                             </div>
-                                        );
-                                    })() : (
-                                        <p className="text-xs text-slate-400 dark:text-slate-500">ยังไม่มีสินค้าในตำแหน่งนี้</p>
-                                    )}
-                                </div>
-                            ) : (
-                                <div className="p-4 space-y-3">
-                                    {/* สรุป: สินค้าแยกร้าน (เบียร์: ร้าน A 75 ลัง, ร้าน B 25 ลัง) */}
-                                    {pos.items.length > 0 && (() => {
-                                        const byProduct = new Map<string, { name: string; unit: string; parts: { store: string; qty: number }[] }>();
-                                        for (const it of pos.items) {
-                                            const storeName = tripItems.find(t => t.id === it.delivery_trip_item_id)?.store_name || 'ไม่ระบุร้าน';
-                                            const ex = byProduct.get(it.product_id);
-                                            if (!ex) byProduct.set(it.product_id, { name: it.product_name, unit: it.unit, parts: [{ store: storeName, qty: it.quantity }] });
-                                            else {
-                                                const part = ex.parts.find(p => p.store === storeName);
-                                                if (part) part.qty += it.quantity;
-                                                else ex.parts.push({ store: storeName, qty: it.quantity });
-                                            }
-                                        }
-                                        return (
-                                            <div className="rounded-lg bg-slate-100/80 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 p-2.5">
-                                                <div className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-1.5">ในตำแหน่งนี้</div>
-                                                <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-700 dark:text-slate-300">
-                                                    {Array.from(byProduct.entries()).map(([, v]) => (
-                                                        <span key={v.name}>
-                                                            {v.name}: {v.parts.map(p => `${p.store} ${p.qty} ${v.unit}`).join(', ')}
-                                                        </span>
-                                                    ))}
+                                            <div>
+                                                <div className="font-bold text-white text-lg">
+                                                    {isPallet ? `พาเลท #${pos.position_index}` : `พื้นรถ #${pos.position_index}`}
+                                                    {isPallet && pos.total_layers > 1 && (
+                                                        <span className="ml-2 text-white/90 text-sm font-semibold">{pos.total_layers} ชั้น</span>
+                                                    )}
+                                                </div>
+                                                <div className="text-white/70 text-xs">
+                                                    ทั้งหมด {posItemCount} ชิ้น · {positionGroups.length} รายการ · {posWeight.toFixed(0)} kg
                                                 </div>
                                             </div>
-                                        );
-                                    })()}
-                                    {/* Layers + Detailed mode (pallets only) */}
-                                    {isPallet && (
-                                        <div className="flex flex-wrap items-center gap-3 py-2 border-b border-slate-100 dark:border-slate-800">
-                                            <div className="flex items-center gap-1.5">
-                                                <span className="text-xs text-slate-500 dark:text-slate-400">จำนวนชั้น</span>
-                                                <button type="button" onClick={() => setTotalLayers(pos.id, pos.total_layers - 1)} disabled={pos.total_layers <= 1} className="w-7 h-7 rounded-lg bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 flex items-center justify-center disabled:opacity-40">
-                                                    <Minus size={12} />
-                                                </button>
-                                                <span className="min-w-[2rem] text-center font-semibold text-sm text-slate-900 dark:text-slate-100 tabular-nums">{pos.total_layers}</span>
-                                                <button type="button" onClick={() => setTotalLayers(pos.id, pos.total_layers + 1)} className="w-7 h-7 rounded-lg bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 flex items-center justify-center">
-                                                    <Plus size={12} />
-                                                </button>
-                                            </div>
-                                            {pos.total_layers > 1 && (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => toggleDetailedMode(pos.id)}
-                                                    className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${pos.detailedMode ? 'bg-violet-100 dark:bg-violet-900/40 text-violet-700 dark:text-violet-300' : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-400 hover:bg-violet-50 dark:hover:bg-violet-900/20'}`}
-                                                >
-                                                    {pos.detailedMode ? <ToggleRight size={14} /> : <ToggleLeft size={14} />}
-                                                    {pos.detailedMode ? 'โหมดละเอียด' : 'แยกตามชั้น'}
-                                                </button>
-                                            )}
                                         </div>
-                                    )}
+                                        <div className="flex items-center gap-2">
+                                            <button
+                                                onClick={() => toggleCollapse(pos.id)}
+                                                className="p-2 rounded-lg bg-white/10 hover:bg-white/20 transition-colors"
+                                            >
+                                                {pos.collapsed ? <Eye className="text-white" size={16} /> : <EyeOff className="text-white" size={16} />}
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => setPositionToDelete(pos.id)}
+                                                className="p-2 rounded-lg bg-white/10 hover:bg-red-500/30 transition-colors"
+                                                title="ลบพาเลท"
+                                            >
+                                                <Trash2 className="text-white" size={16} />
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
 
-                                    {pos.detailedMode && isPallet ? (
-                                        /* Per-layer layout */
-                                        <>
-                                            {Array.from({ length: pos.total_layers }, (_, li) => {
-                                                const layerItems = pos.items.filter(i => i.layer_index === li);
-                                                const layerLabel = li === 0 ? 'ชั้น 1 (ล่าง)' : li === pos.total_layers - 1 ? `ชั้น ${li + 1} (บน)` : `ชั้น ${li + 1}`;
-                                                return (
-                                                    <div key={li} className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/30 p-3">
-                                                        <div className="flex items-center justify-between mb-2 gap-2">
-                                                            <div className="flex items-center gap-1.5">
-                                                                <span className="text-xs font-semibold text-slate-600 dark:text-slate-400">{layerLabel}</span>
-                                                                {pos.total_layers > 1 && (
-                                                                    <span className="flex items-center gap-0.5">
-                                                                        {li > 0 && (
-                                                                            <button type="button" onClick={() => swapLayers(pos.id, li, li - 1)} title="สลับกับชั้นล่าง" className="p-1 rounded bg-slate-200 dark:bg-slate-600 hover:bg-slate-300 dark:hover:bg-slate-500 text-slate-600 dark:text-slate-300">
-                                                                                <ChevronDown size={14} />
-                                                                            </button>
-                                                                        )}
-                                                                        {li < pos.total_layers - 1 && (
-                                                                            <button type="button" onClick={() => swapLayers(pos.id, li, li + 1)} title="สลับกับชั้นบน" className="p-1 rounded bg-slate-200 dark:bg-slate-600 hover:bg-slate-300 dark:hover:bg-slate-500 text-slate-600 dark:text-slate-300">
-                                                                                <ChevronUp size={14} />
-                                                                            </button>
-                                                                        )}
-                                                                    </span>
-                                                                )}
+                                {/* Position Content: ซ่อน = แสดงแค่รายการคร่าวๆ, เปิด = แสดงเต็ม */}
+                                {pos.collapsed ? (
+                                    <div className="p-3 border-t border-slate-100 dark:border-slate-800">
+                                        {pos.items.length > 0 ? (() => {
+                                            const byProduct = new Map<string, { name: string; unit: string; parts: { store: string; qty: number }[] }>();
+                                            for (const it of pos.items) {
+                                                const storeName = tripItems.find(t => t.id === it.delivery_trip_item_id)?.store_name || 'ไม่ระบุร้าน';
+                                                const ex = byProduct.get(it.product_id);
+                                                if (!ex) byProduct.set(it.product_id, { name: it.product_name, unit: it.unit, parts: [{ store: storeName, qty: it.quantity }] });
+                                                else {
+                                                    const part = ex.parts.find(p => p.store === storeName);
+                                                    if (part) part.qty += it.quantity;
+                                                    else ex.parts.push({ store: storeName, qty: it.quantity });
+                                                }
+                                            }
+                                            return (
+                                                <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-slate-600 dark:text-slate-400">
+                                                    {Array.from(byProduct.entries()).map(([, v]) => {
+                                                        const total = v.parts.reduce((s, p) => s + p.qty, 0);
+                                                        const detail = v.parts.length > 1 ? v.parts.map(p => `${p.store} ${p.qty} ${v.unit}`).join(', ') : `${total} ${v.unit}`;
+                                                        return (
+                                                            <span key={v.name} className="bg-slate-100 dark:bg-slate-800/60 rounded px-2 py-0.5">
+                                                                {v.name}: {detail}
+                                                            </span>
+                                                        );
+                                                    })}
+                                                </div>
+                                            );
+                                        })() : (
+                                            <p className="text-xs text-slate-400 dark:text-slate-500">ยังไม่มีสินค้าในตำแหน่งนี้</p>
+                                        )}
+                                    </div>
+                                ) : (
+                                    <div className="p-4 space-y-3">
+                                        {/* สรุป: สินค้าแยกร้าน (เบียร์: ร้าน A 75 ลัง, ร้าน B 25 ลัง) */}
+                                        {pos.items.length > 0 && (() => {
+                                            const byProduct = new Map<string, { name: string; unit: string; parts: { store: string; qty: number }[] }>();
+                                            for (const it of pos.items) {
+                                                const storeName = tripItems.find(t => t.id === it.delivery_trip_item_id)?.store_name || 'ไม่ระบุร้าน';
+                                                const ex = byProduct.get(it.product_id);
+                                                if (!ex) byProduct.set(it.product_id, { name: it.product_name, unit: it.unit, parts: [{ store: storeName, qty: it.quantity }] });
+                                                else {
+                                                    const part = ex.parts.find(p => p.store === storeName);
+                                                    if (part) part.qty += it.quantity;
+                                                    else ex.parts.push({ store: storeName, qty: it.quantity });
+                                                }
+                                            }
+                                            return (
+                                                <div className="rounded-lg bg-slate-100/80 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 p-2.5">
+                                                    <div className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-1.5">ในตำแหน่งนี้</div>
+                                                    <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-700 dark:text-slate-300">
+                                                        {Array.from(byProduct.entries()).map(([, v]) => (
+                                                            <span key={v.name}>
+                                                                {v.name}: {v.parts.map(p => `${p.store} ${p.qty} ${v.unit}`).join(', ')}
+                                                            </span>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            );
+                                        })()}
+                                        {/* Layers + Detailed mode (pallets only) */}
+                                        {isPallet && (
+                                            <div className="flex flex-wrap items-center gap-3 py-2 border-b border-slate-100 dark:border-slate-800">
+                                                <div className="flex items-center gap-1.5">
+                                                    <span className="text-xs text-slate-500 dark:text-slate-400">จำนวนชั้น</span>
+                                                    <button type="button" onClick={() => setTotalLayers(pos.id, pos.total_layers - 1)} disabled={pos.total_layers <= 1} className="w-7 h-7 rounded-lg bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 flex items-center justify-center disabled:opacity-40">
+                                                        <Minus size={12} />
+                                                    </button>
+                                                    <span className="min-w-[2rem] text-center font-semibold text-sm text-slate-900 dark:text-slate-100 tabular-nums">{pos.total_layers}</span>
+                                                    <button type="button" onClick={() => setTotalLayers(pos.id, pos.total_layers + 1)} className="w-7 h-7 rounded-lg bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 flex items-center justify-center">
+                                                        <Plus size={12} />
+                                                    </button>
+                                                </div>
+                                                {pos.total_layers > 1 && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => toggleDetailedMode(pos.id)}
+                                                        className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${pos.detailedMode ? 'bg-violet-100 dark:bg-violet-900/40 text-violet-700 dark:text-violet-300' : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-400 hover:bg-violet-50 dark:hover:bg-violet-900/20'}`}
+                                                    >
+                                                        {pos.detailedMode ? <ToggleRight size={14} /> : <ToggleLeft size={14} />}
+                                                        {pos.detailedMode ? 'โหมดละเอียด' : 'แยกตามชั้น'}
+                                                    </button>
+                                                )}
+                                            </div>
+                                        )}
+
+                                        {pos.detailedMode && isPallet ? (
+                                            /* Per-layer layout */
+                                            <>
+                                                {Array.from({ length: pos.total_layers }, (_, li) => {
+                                                    const layerItems = pos.items.filter(i => i.layer_index === li);
+                                                    const layerLabel = li === 0 ? 'ชั้น 1 (ล่าง)' : li === pos.total_layers - 1 ? `ชั้น ${li + 1} (บน)` : `ชั้น ${li + 1}`;
+                                                    return (
+                                                        <div key={li} className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/30 p-3">
+                                                            <div className="flex items-center justify-between mb-2 gap-2">
+                                                                <div className="flex items-center gap-1.5">
+                                                                    <span className="text-xs font-semibold text-slate-600 dark:text-slate-400">{layerLabel}</span>
+                                                                    {pos.total_layers > 1 && (
+                                                                        <span className="flex items-center gap-0.5">
+                                                                            {li > 0 && (
+                                                                                <button type="button" onClick={() => swapLayers(pos.id, li, li - 1)} title="สลับกับชั้นล่าง" className="p-1 rounded bg-slate-200 dark:bg-slate-600 hover:bg-slate-300 dark:hover:bg-slate-500 text-slate-600 dark:text-slate-300">
+                                                                                    <ChevronDown size={14} />
+                                                                                </button>
+                                                                            )}
+                                                                            {li < pos.total_layers - 1 && (
+                                                                                <button type="button" onClick={() => swapLayers(pos.id, li, li + 1)} title="สลับกับชั้นบน" className="p-1 rounded bg-slate-200 dark:bg-slate-600 hover:bg-slate-300 dark:hover:bg-slate-500 text-slate-600 dark:text-slate-300">
+                                                                                    <ChevronUp size={14} />
+                                                                                </button>
+                                                                            )}
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                                <button type="button" onClick={() => setShowItemPicker({ posId: pos.id, layerIndex: li })} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border-2 border-enterprise-300 dark:border-enterprise-600 bg-enterprise-50 dark:bg-enterprise-900/30 text-enterprise-700 dark:text-enterprise-300 text-xs font-semibold shadow-sm hover:bg-enterprise-100 dark:hover:bg-enterprise-800/50 hover:border-enterprise-400 dark:hover:border-enterprise-500 hover:shadow active:scale-[0.98] transition-all">
+                                                                    <Plus size={12} /> เพิ่มสินค้า
+                                                                </button>
                                                             </div>
-                                                            <button type="button" onClick={() => setShowItemPicker({ posId: pos.id, layerIndex: li })} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border-2 border-enterprise-300 dark:border-enterprise-600 bg-enterprise-50 dark:bg-enterprise-900/30 text-enterprise-700 dark:text-enterprise-300 text-xs font-semibold shadow-sm hover:bg-enterprise-100 dark:hover:bg-enterprise-800/50 hover:border-enterprise-400 dark:hover:border-enterprise-500 hover:shadow active:scale-[0.98] transition-all">
-                                                                <Plus size={12} /> เพิ่มสินค้า
-                                                            </button>
-                                                        </div>
-                                                        {layerItems.length === 0 ? (
-                                                            <p className="text-xs text-slate-400 dark:text-slate-500 py-2">ยังไม่มีสินค้าในชั้นนี้</p>
-                                                        ) : (
-                                                            <div className="space-y-2">
-                                                                {layerItems.map(item => {
-                                                                    const catColor = getCategoryColor(item.category);
-                                                                    const tripItem = tripItems.find(ti => ti.id === item.delivery_trip_item_id);
-                                                                    const w = item.weight_kg ?? tripItem?.weight_kg ?? 0;
-                                                                    const itemWeight = w * item.quantity;
-                                                                    const totalQty = tripItem?.quantity || 0;
-                                                                    const usedTotal = allocated.get(item.delivery_trip_item_id) || 0;
-                                                                    const usedElsewhere = usedTotal - item.quantity;
-                                                                    const maxCanAdd = totalQty - usedElsewhere;
-                                                                    const isEditing = quantityEdit?.posId === pos.id && quantityEdit?.itemId === item.delivery_trip_item_id && quantityEdit?.layerIndex === li;
-                                                                    const displayQty = isEditing ? quantityEdit!.value : String(item.quantity);
-                                                                    return (
-                                                                        <div key={`${item.delivery_trip_item_id}-${li}`} className={`flex flex-col sm:flex-row sm:items-center gap-2 p-2 rounded-lg ${catColor.bg} border ${catColor.border}`}>
-                                                                            <div className="flex items-center gap-2 min-w-0 flex-1">
-                                                                                <Package className={`flex-shrink-0 ${catColor.text}`} size={14} />
-                                                                                <div className="flex-1 min-w-0">
-                                                                                    <div className="text-sm font-medium text-slate-900 dark:text-slate-100 break-words" title={tripItem?.store_name ? `${item.product_name} · ${tripItem.store_name}` : item.product_name}>
-                                                                                        {item.product_name}
-                                                                                        {tripItem?.store_name && <span className="text-enterprise-600 dark:text-enterprise-400 ml-1">· {tripItem.store_name}</span>}
+                                                            {layerItems.length === 0 ? (
+                                                                <p className="text-xs text-slate-400 dark:text-slate-500 py-2">ยังไม่มีสินค้าในชั้นนี้</p>
+                                                            ) : (
+                                                                <div className="space-y-2">
+                                                                    {layerItems.map(item => {
+                                                                        const catColor = getCategoryColor(item.category);
+                                                                        const tripItem = tripItems.find(ti => ti.id === item.delivery_trip_item_id);
+                                                                        const w = item.weight_kg ?? tripItem?.weight_kg ?? 0;
+                                                                        const itemWeight = w * item.quantity;
+                                                                        const totalQty = tripItem?.quantity || 0;
+                                                                        const usedTotal = allocated.get(item.delivery_trip_item_id) || 0;
+                                                                        const usedElsewhere = usedTotal - item.quantity;
+                                                                        const maxCanAdd = totalQty - usedElsewhere;
+                                                                        const isEditing = quantityEdit?.posId === pos.id && quantityEdit?.itemId === item.delivery_trip_item_id && quantityEdit?.layerIndex === li;
+                                                                        const displayQty = isEditing ? quantityEdit!.value : String(item.quantity);
+                                                                        return (
+                                                                            <div key={`${item.delivery_trip_item_id}-${li}`} className={`flex flex-col sm:flex-row sm:items-center gap-2 p-2 rounded-lg ${catColor.bg} border ${catColor.border}`}>
+                                                                                <div className="flex items-center gap-2 min-w-0 flex-1">
+                                                                                    <Package className={`flex-shrink-0 ${catColor.text}`} size={14} />
+                                                                                    <div className="flex-1 min-w-0">
+                                                                                        <div className="text-sm font-medium text-slate-900 dark:text-slate-100 break-words" title={tripItem?.store_name ? `${item.product_name} · ${tripItem.store_name}` : item.product_name}>
+                                                                                            {item.product_name}
+                                                                                            {tripItem?.store_name && <span className="text-enterprise-600 dark:text-enterprise-400 ml-1">· {tripItem.store_name}</span>}
+                                                                                        </div>
+                                                                                        <div className="text-xs text-slate-500 dark:text-slate-400 break-words">{item.product_code} · {itemWeight} kg</div>
                                                                                     </div>
-                                                                                    <div className="text-xs text-slate-500 dark:text-slate-400 break-words">{item.product_code} · {itemWeight} kg</div>
+                                                                                    <div className="flex items-center gap-1 flex-shrink-0">
+                                                                                        <button type="button" onClick={() => adjustItemQty(pos.id, item.delivery_trip_item_id, -1, li)} disabled={item.quantity <= 1} className="w-6 h-6 rounded bg-white dark:bg-slate-800 border flex items-center justify-center disabled:opacity-40"><Minus size={10} /></button>
+                                                                                        <input
+                                                                                            type="number"
+                                                                                            min={1}
+                                                                                            max={maxCanAdd}
+                                                                                            value={displayQty}
+                                                                                            onChange={e => setQuantityEdit(prev => (prev?.posId === pos.id && prev?.itemId === item.delivery_trip_item_id && prev?.layerIndex === li ? { ...prev, value: e.target.value } : { posId: pos.id, itemId: item.delivery_trip_item_id, layerIndex: li, value: e.target.value }))}
+                                                                                            onFocus={() => setQuantityEdit({ posId: pos.id, itemId: item.delivery_trip_item_id, layerIndex: li, value: String(item.quantity) })}
+                                                                                            onBlur={e => {
+                                                                                                const raw = (e.target as HTMLInputElement).value;
+                                                                                                const n = parseInt(raw, 10);
+                                                                                                const clamped = isNaN(n) || n < 1 ? 1 : Math.min(n, maxCanAdd);
+                                                                                                setItemQuantity(pos.id, item.delivery_trip_item_id, clamped, li);
+                                                                                                setQuantityEdit(null);
+                                                                                            }}
+                                                                                            onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+                                                                                            className="w-12 text-center py-1 rounded border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-sm font-semibold text-slate-900 dark:text-slate-100 tabular-nums"
+                                                                                        />
+                                                                                        <button type="button" onClick={() => adjustItemQty(pos.id, item.delivery_trip_item_id, 1, li)} disabled={item.quantity >= maxCanAdd} className="w-6 h-6 rounded bg-white dark:bg-slate-800 border flex items-center justify-center disabled:opacity-40"><Plus size={10} /></button>
+                                                                                        <button type="button" onClick={() => removeItemFromLayer(pos.id, item.delivery_trip_item_id, li)} className="w-6 h-6 rounded border border-red-200 dark:border-red-800 text-red-500 flex items-center justify-center"><X size={10} /></button>
+                                                                                    </div>
                                                                                 </div>
-                                                                                <div className="flex items-center gap-1 flex-shrink-0">
-                                                                                    <button type="button" onClick={() => adjustItemQty(pos.id, item.delivery_trip_item_id, -1, li)} disabled={item.quantity <= 1} className="w-6 h-6 rounded bg-white dark:bg-slate-800 border flex items-center justify-center disabled:opacity-40"><Minus size={10} /></button>
-                                                                                    <input
-                                                                                        type="number"
-                                                                                        min={1}
-                                                                                        max={maxCanAdd}
-                                                                                        value={displayQty}
-                                                                                        onChange={e => setQuantityEdit(prev => (prev?.posId === pos.id && prev?.itemId === item.delivery_trip_item_id && prev?.layerIndex === li ? { ...prev, value: e.target.value } : { posId: pos.id, itemId: item.delivery_trip_item_id, layerIndex: li, value: e.target.value }))}
-                                                                                        onFocus={() => setQuantityEdit({ posId: pos.id, itemId: item.delivery_trip_item_id, layerIndex: li, value: String(item.quantity) })}
-                                                                                        onBlur={e => {
-                                                                                            const raw = (e.target as HTMLInputElement).value;
-                                                                                            const n = parseInt(raw, 10);
-                                                                                            const clamped = isNaN(n) || n < 1 ? 1 : Math.min(n, maxCanAdd);
-                                                                                            setItemQuantity(pos.id, item.delivery_trip_item_id, clamped, li);
-                                                                                            setQuantityEdit(null);
-                                                                                        }}
-                                                                                        onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
-                                                                                        className="w-12 text-center py-1 rounded border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-sm font-semibold text-slate-900 dark:text-slate-100 tabular-nums"
-                                                                                    />
-                                                                                    <button type="button" onClick={() => adjustItemQty(pos.id, item.delivery_trip_item_id, 1, li)} disabled={item.quantity >= maxCanAdd} className="w-6 h-6 rounded bg-white dark:bg-slate-800 border flex items-center justify-center disabled:opacity-40"><Plus size={10} /></button>
-                                                                                    <button type="button" onClick={() => removeItemFromLayer(pos.id, item.delivery_trip_item_id, li)} className="w-6 h-6 rounded border border-red-200 dark:border-red-800 text-red-500 flex items-center justify-center"><X size={10} /></button>
-                                                                                </div>
-                                                                            </div>
-                                                                            <div className="flex flex-wrap gap-1.5 w-full sm:w-auto sm:justify-end min-w-0">
+                                                                                <div className="flex flex-wrap gap-1.5 w-full sm:w-auto sm:justify-end min-w-0">
                                                                                     {(() => {
                                                                                         const configs: PackingStandard[] = packingConfigs.get(item.product_id)?.length
                                                                                             ? packingConfigs.get(item.product_id)!
@@ -1815,166 +1819,168 @@ export const PackingSimulator: React.FC<SimulatorProps> = ({ tripId, onClose, on
                                                                                     ).map((std) => {
                                                                                         const multiStore = tripItems.filter(t => t.product_id === item.product_id).length > 1;
                                                                                         return (
-                                                                                        <button
-                                                                                            key={std.total_units}
-                                                                                            type="button"
-                                                                                            onClick={() => multiStore ? fillFullPalletByProduct(pos.id, item.product_id, std) : fillFullPalletForGroup(pos.id, item.product_id, item.delivery_trip_item_id, std)}
-                                                                                            title={multiStore ? `เต็มพาเลท ${std.total_units} (แบ่งทั้งร้าน) · ${std.layers} ชั้น · ชั้นละ ${std.units_per_layer}` : `เต็มพาเลท ${std.total_units} · ${std.layers} ชั้น · ชั้นละ ${std.units_per_layer}`}
-                                                                                            className="text-xs font-semibold px-2.5 py-1 rounded-lg border-2 border-violet-300 dark:border-violet-600 bg-violet-100 dark:bg-violet-900/50 text-violet-700 dark:text-violet-300 cursor-pointer shadow-sm hover:bg-violet-200 dark:hover:bg-violet-800/60 hover:shadow hover:border-violet-400 active:scale-[0.98] transition-all"
-                                                                                        >
-                                                                                            เต็มพาเลท {std.total_units}
-                                                                                        </button>
-                                                                                    ); })}
+                                                                                            <button
+                                                                                                key={std.total_units}
+                                                                                                type="button"
+                                                                                                onClick={() => multiStore ? fillFullPalletByProduct(pos.id, item.product_id, std) : fillFullPalletForGroup(pos.id, item.product_id, item.delivery_trip_item_id, std)}
+                                                                                                title={multiStore ? `เต็มพาเลท ${std.total_units} (แบ่งทั้งร้าน) · ${std.layers} ชั้น · ชั้นละ ${std.units_per_layer}` : `เต็มพาเลท ${std.total_units} · ${std.layers} ชั้น · ชั้นละ ${std.units_per_layer}`}
+                                                                                                className="text-xs font-semibold px-2.5 py-1 rounded-lg border-2 border-violet-300 dark:border-violet-600 bg-violet-100 dark:bg-violet-900/50 text-violet-700 dark:text-violet-300 cursor-pointer shadow-sm hover:bg-violet-200 dark:hover:bg-violet-800/60 hover:shadow hover:border-violet-400 active:scale-[0.98] transition-all"
+                                                                                            >
+                                                                                                เต็มพาเลท {std.total_units}
+                                                                                            </button>
+                                                                                        );
+                                                                                    })}
                                                                                 </div>
-                                                                        </div>
-                                                                    );
-                                                                })}
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                );
-                                            })}
-                                            {/* ปุ่มจำนวนชั้นซ้ำด้านล่าง — เพิ่มชั้นได้โดยไม่ต้องเลื่อนขึ้น */}
-                                            <div className="sticky bottom-0 flex flex-wrap items-center gap-3 py-3 mt-2 border-t border-slate-200 dark:border-slate-700 rounded-lg bg-slate-100/80 dark:bg-slate-800/50">
-                                                <span className="text-xs text-slate-500 dark:text-slate-400">จำนวนชั้น</span>
-                                                <button type="button" onClick={() => setTotalLayers(pos.id, pos.total_layers - 1)} disabled={pos.total_layers <= 1} className="w-7 h-7 rounded-lg bg-slate-200 dark:bg-slate-600 hover:bg-slate-300 dark:hover:bg-slate-500 flex items-center justify-center disabled:opacity-40">
-                                                    <Minus size={12} />
-                                                </button>
-                                                <span className="min-w-[2rem] text-center font-semibold text-sm text-slate-900 dark:text-slate-100 tabular-nums">{pos.total_layers}</span>
-                                                <button type="button" onClick={() => setTotalLayers(pos.id, pos.total_layers + 1)} className="w-7 h-7 rounded-lg bg-slate-200 dark:bg-slate-600 hover:bg-slate-300 dark:hover:bg-slate-500 flex items-center justify-center">
-                                                    <Plus size={12} />
-                                                </button>
-                                                <span className="text-xs text-slate-400 dark:text-slate-500">เพิ่มชั้นได้ที่นี่</span>
-                                            </div>
-                                        </>
-                                    ) : (
-                                        /* Simple list */
-                                        <>
-                                            {pos.items.length === 0 ? (
-                                                <div className="text-center py-8 border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-xl">
-                                                    <Package className="mx-auto mb-2 text-slate-300 dark:text-slate-600" size={32} />
-                                                    <p className="text-sm text-slate-400 dark:text-slate-500">ยังไม่มีสินค้า</p>
-                                                    <p className="text-xs text-slate-300 dark:text-slate-600">กดปุ่ม "เพิ่มสินค้า" เพื่อเริ่มจัด</p>
+                                                                            </div>
+                                                                        );
+                                                                    })}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    );
+                                                })}
+                                                {/* ปุ่มจำนวนชั้นซ้ำด้านล่าง — เพิ่มชั้นได้โดยไม่ต้องเลื่อนขึ้น */}
+                                                <div className="sticky bottom-0 flex flex-wrap items-center gap-3 py-3 mt-2 border-t border-slate-200 dark:border-slate-700 rounded-lg bg-slate-100/80 dark:bg-slate-800/50">
+                                                    <span className="text-xs text-slate-500 dark:text-slate-400">จำนวนชั้น</span>
+                                                    <button type="button" onClick={() => setTotalLayers(pos.id, pos.total_layers - 1)} disabled={pos.total_layers <= 1} className="w-7 h-7 rounded-lg bg-slate-200 dark:bg-slate-600 hover:bg-slate-300 dark:hover:bg-slate-500 flex items-center justify-center disabled:opacity-40">
+                                                        <Minus size={12} />
+                                                    </button>
+                                                    <span className="min-w-[2rem] text-center font-semibold text-sm text-slate-900 dark:text-slate-100 tabular-nums">{pos.total_layers}</span>
+                                                    <button type="button" onClick={() => setTotalLayers(pos.id, pos.total_layers + 1)} className="w-7 h-7 rounded-lg bg-slate-200 dark:bg-slate-600 hover:bg-slate-300 dark:hover:bg-slate-500 flex items-center justify-center">
+                                                        <Plus size={12} />
+                                                    </button>
+                                                    <span className="text-xs text-slate-400 dark:text-slate-500">เพิ่มชั้นได้ที่นี่</span>
                                                 </div>
-                                            ) : (
-                                                <>
-                                                    {positionGroups.map((group) => {
-                                                        const catColor = getCategoryColor(group.category);
-                                                        const tripItem = tripItems.find(ti => ti.id === group.delivery_trip_item_id);
-                                                        const groupWeight = (group.weight_kg ?? tripItem?.weight_kg ?? 0) * group.totalQty;
-                                                        const totalQty = tripItem?.quantity || 0;
-                                                        const usedTotal = allocated.get(group.delivery_trip_item_id) || 0;
-                                                        const usedElsewhere = usedTotal - group.totalQty;
-                                                        const maxCanAdd = totalQty - usedElsewhere;
-                                                        const isEditingGroup = quantityEdit?.posId === pos.id && quantityEdit?.itemId === group.delivery_trip_item_id && quantityEdit?.layerIndex == null;
-                                                        const displayQty = isEditingGroup ? quantityEdit!.value : String(group.totalQty);
-                                                        return (
-                                                            <div
-                                                                key={`${group.product_id}|${group.delivery_trip_item_id}`}
-                                                                className={`flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 p-3 rounded-xl ${catColor.bg} border ${catColor.border} transition-all duration-200 hover:shadow-md`}
-                                                            >
-                                                                <div className="flex items-center gap-3 min-w-0 flex-1">
-                                                                    <div className={`w-9 h-9 rounded-lg bg-gradient-to-br ${catColor.gradient} flex items-center justify-center flex-shrink-0`}>
-                                                                        <Package className="text-white" size={14} />
-                                                                    </div>
-                                                                    <div className="flex-1 min-w-0">
-                                                                        <div className="text-sm font-medium text-slate-900 dark:text-slate-100 break-words" title={tripItem?.store_name ? `${group.product_name} · ${tripItem.store_name}` : group.product_name}>
-                                                                            {group.product_name}
-                                                                            {tripItem?.store_name && <span className="text-enterprise-600 dark:text-enterprise-400 ml-1">· {tripItem.store_name}</span>}
+                                            </>
+                                        ) : (
+                                            /* Simple list */
+                                            <>
+                                                {pos.items.length === 0 ? (
+                                                    <div className="text-center py-8 border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-xl">
+                                                        <Package className="mx-auto mb-2 text-slate-300 dark:text-slate-600" size={32} />
+                                                        <p className="text-sm text-slate-400 dark:text-slate-500">ยังไม่มีสินค้า</p>
+                                                        <p className="text-xs text-slate-300 dark:text-slate-600">กดปุ่ม "เพิ่มสินค้า" เพื่อเริ่มจัด</p>
+                                                    </div>
+                                                ) : (
+                                                    <>
+                                                        {positionGroups.map((group) => {
+                                                            const catColor = getCategoryColor(group.category);
+                                                            const tripItem = tripItems.find(ti => ti.id === group.delivery_trip_item_id);
+                                                            const groupWeight = (group.weight_kg ?? tripItem?.weight_kg ?? 0) * group.totalQty;
+                                                            const totalQty = tripItem?.quantity || 0;
+                                                            const usedTotal = allocated.get(group.delivery_trip_item_id) || 0;
+                                                            const usedElsewhere = usedTotal - group.totalQty;
+                                                            const maxCanAdd = totalQty - usedElsewhere;
+                                                            const isEditingGroup = quantityEdit?.posId === pos.id && quantityEdit?.itemId === group.delivery_trip_item_id && quantityEdit?.layerIndex == null;
+                                                            const displayQty = isEditingGroup ? quantityEdit!.value : String(group.totalQty);
+                                                            return (
+                                                                <div
+                                                                    key={`${group.product_id}|${group.delivery_trip_item_id}`}
+                                                                    className={`flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 p-3 rounded-xl ${catColor.bg} border ${catColor.border} transition-all duration-200 hover:shadow-md`}
+                                                                >
+                                                                    <div className="flex items-center gap-3 min-w-0 flex-1">
+                                                                        <div className={`w-9 h-9 rounded-lg bg-gradient-to-br ${catColor.gradient} flex items-center justify-center flex-shrink-0`}>
+                                                                            <Package className="text-white" size={14} />
                                                                         </div>
-                                                                        <div className="text-xs text-slate-500 dark:text-slate-400 break-words">
-                                                                            {group.product_code} · {groupWeight > 0 ? `${groupWeight.toFixed(1)} kg` : group.unit}
-                                                                            {group.layerCount > 1 && <span className="text-enterprise-600 dark:text-enterprise-400 ml-1">· {group.layerCount} ชั้น</span>}
+                                                                        <div className="flex-1 min-w-0">
+                                                                            <div className="text-sm font-medium text-slate-900 dark:text-slate-100 break-words" title={tripItem?.store_name ? `${group.product_name} · ${tripItem.store_name}` : group.product_name}>
+                                                                                {group.product_name}
+                                                                                {tripItem?.store_name && <span className="text-enterprise-600 dark:text-enterprise-400 ml-1">· {tripItem.store_name}</span>}
+                                                                            </div>
+                                                                            <div className="text-xs text-slate-500 dark:text-slate-400 break-words">
+                                                                                {group.product_code} · {groupWeight > 0 ? `${groupWeight.toFixed(1)} kg` : group.unit}
+                                                                                {group.layerCount > 1 && <span className="text-enterprise-600 dark:text-enterprise-400 ml-1">· {group.layerCount} ชั้น</span>}
+                                                                            </div>
                                                                         </div>
                                                                     </div>
-                                                                </div>
-                                                                <div className="flex flex-wrap items-center gap-1.5 w-full sm:w-auto">
-                                                                    <button type="button" onClick={() => adjustGroupQty(pos.id, group.product_id, group.delivery_trip_item_id, -1)} disabled={group.totalQty <= 1} className="w-7 h-7 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 flex items-center justify-center hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-30 transition-colors">
-                                                                        <Minus size={12} />
-                                                                    </button>
-                                                                    <input
-                                                                        type="number"
-                                                                        min={1}
-                                                                        max={maxCanAdd}
-                                                                        value={displayQty}
-                                                                        onChange={e => setQuantityEdit(prev => (prev?.posId === pos.id && prev?.itemId === group.delivery_trip_item_id && prev?.layerIndex == null ? { ...prev, value: e.target.value } : { posId: pos.id, itemId: group.delivery_trip_item_id, layerIndex: null, value: e.target.value }))}
-                                                                        onFocus={() => setQuantityEdit({ posId: pos.id, itemId: group.delivery_trip_item_id, layerIndex: null, value: String(group.totalQty) })}
-                                                                        onBlur={e => {
-                                                                            const raw = (e.target as HTMLInputElement).value;
-                                                                            const n = parseInt(raw, 10);
-                                                                            const clamped = isNaN(n) || n < 1 ? 1 : Math.min(n, maxCanAdd);
-                                                                            setGroupQuantity(pos.id, group.product_id, group.delivery_trip_item_id, clamped);
-                                                                            setQuantityEdit(null);
-                                                                        }}
-                                                                        onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
-                                                                        className="w-14 text-center py-1.5 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-sm font-bold text-slate-900 dark:text-slate-100 tabular-nums focus:outline-none focus:ring-2 focus:ring-enterprise-500"
-                                                                    />
-                                                                    <button type="button" onClick={() => adjustGroupQty(pos.id, group.product_id, group.delivery_trip_item_id, 1)} disabled={group.totalQty >= maxCanAdd} className="w-7 h-7 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 flex items-center justify-center hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-30 transition-colors">
-                                                                        <Plus size={12} />
-                                                                    </button>
-                                                                    <button type="button" onClick={() => removeGroupFromPosition(pos.id, group.product_id, group.delivery_trip_item_id)} className="w-7 h-7 rounded-lg border border-red-200 dark:border-red-800 text-red-500 flex items-center justify-center hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors ml-1">
-                                                                        <X size={12} />
-                                                                    </button>
-                                                                    {(packingConfigs.get(group.product_id)?.length
-                                                                        ? packingConfigs.get(group.product_id)!
-                                                                        : packingStandards.get(group.product_id) ? [packingStandards.get(group.product_id)!] : []
-                                                                    ).map((std) => {
-                                                                        const multiStore = tripItems.filter(t => t.product_id === group.product_id).length > 1;
-                                                                        const totalRemainingProduct = tripItems.filter(t => t.product_id === group.product_id).reduce((s, t) => s + (t.quantity - (allocated.get(t.id) || 0)), 0);
-                                                                        return (
-                                                                        <button
-                                                                            key={std.total_units}
-                                                                            type="button"
-                                                                            onClick={() => multiStore ? fillFullPalletByProduct(pos.id, group.product_id, std) : fillFullPalletForGroup(pos.id, group.product_id, group.delivery_trip_item_id, std)}
-                                                                            disabled={multiStore ? totalRemainingProduct <= 0 : maxCanAdd <= 0}
-                                                                            title={multiStore ? `เต็มพาเลท ${std.total_units} (แบ่งทั้งร้าน) · ${std.layers} ชั้น · ชั้นละ ${std.units_per_layer}` : `เต็มพาเลท ${std.total_units} ชิ้น · ${std.layers} ชั้น · ชั้นละ ${std.units_per_layer}`}
-                                                                            className="ml-1 px-2.5 py-1 rounded-lg border-2 border-enterprise-300 dark:border-enterprise-600 text-xs font-semibold bg-enterprise-100 dark:bg-enterprise-900/50 text-enterprise-700 dark:text-enterprise-300 cursor-pointer shadow-sm hover:bg-enterprise-200 dark:hover:bg-enterprise-800/60 hover:shadow hover:border-enterprise-400 disabled:opacity-40 disabled:cursor-not-allowed active:scale-[0.98] transition-all"
-                                                                        >
-                                                                            เต็มพาเลท {std.total_units}
+                                                                    <div className="flex flex-wrap items-center gap-1.5 w-full sm:w-auto">
+                                                                        <button type="button" onClick={() => adjustGroupQty(pos.id, group.product_id, group.delivery_trip_item_id, -1)} disabled={group.totalQty <= 1} className="w-7 h-7 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 flex items-center justify-center hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-30 transition-colors">
+                                                                            <Minus size={12} />
                                                                         </button>
-                                                                    ); })}
+                                                                        <input
+                                                                            type="number"
+                                                                            min={1}
+                                                                            max={maxCanAdd}
+                                                                            value={displayQty}
+                                                                            onChange={e => setQuantityEdit(prev => (prev?.posId === pos.id && prev?.itemId === group.delivery_trip_item_id && prev?.layerIndex == null ? { ...prev, value: e.target.value } : { posId: pos.id, itemId: group.delivery_trip_item_id, layerIndex: null, value: e.target.value }))}
+                                                                            onFocus={() => setQuantityEdit({ posId: pos.id, itemId: group.delivery_trip_item_id, layerIndex: null, value: String(group.totalQty) })}
+                                                                            onBlur={e => {
+                                                                                const raw = (e.target as HTMLInputElement).value;
+                                                                                const n = parseInt(raw, 10);
+                                                                                const clamped = isNaN(n) || n < 1 ? 1 : Math.min(n, maxCanAdd);
+                                                                                setGroupQuantity(pos.id, group.product_id, group.delivery_trip_item_id, clamped);
+                                                                                setQuantityEdit(null);
+                                                                            }}
+                                                                            onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+                                                                            className="w-14 text-center py-1.5 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-sm font-bold text-slate-900 dark:text-slate-100 tabular-nums focus:outline-none focus:ring-2 focus:ring-enterprise-500"
+                                                                        />
+                                                                        <button type="button" onClick={() => adjustGroupQty(pos.id, group.product_id, group.delivery_trip_item_id, 1)} disabled={group.totalQty >= maxCanAdd} className="w-7 h-7 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 flex items-center justify-center hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-30 transition-colors">
+                                                                            <Plus size={12} />
+                                                                        </button>
+                                                                        <button type="button" onClick={() => removeGroupFromPosition(pos.id, group.product_id, group.delivery_trip_item_id)} className="w-7 h-7 rounded-lg border border-red-200 dark:border-red-800 text-red-500 flex items-center justify-center hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors ml-1">
+                                                                            <X size={12} />
+                                                                        </button>
+                                                                        {(packingConfigs.get(group.product_id)?.length
+                                                                            ? packingConfigs.get(group.product_id)!
+                                                                            : packingStandards.get(group.product_id) ? [packingStandards.get(group.product_id)!] : []
+                                                                        ).map((std) => {
+                                                                            const multiStore = tripItems.filter(t => t.product_id === group.product_id).length > 1;
+                                                                            const totalRemainingProduct = tripItems.filter(t => t.product_id === group.product_id).reduce((s, t) => s + (t.quantity - (allocated.get(t.id) || 0)), 0);
+                                                                            return (
+                                                                                <button
+                                                                                    key={std.total_units}
+                                                                                    type="button"
+                                                                                    onClick={() => multiStore ? fillFullPalletByProduct(pos.id, group.product_id, std) : fillFullPalletForGroup(pos.id, group.product_id, group.delivery_trip_item_id, std)}
+                                                                                    disabled={multiStore ? totalRemainingProduct <= 0 : maxCanAdd <= 0}
+                                                                                    title={multiStore ? `เต็มพาเลท ${std.total_units} (แบ่งทั้งร้าน) · ${std.layers} ชั้น · ชั้นละ ${std.units_per_layer}` : `เต็มพาเลท ${std.total_units} ชิ้น · ${std.layers} ชั้น · ชั้นละ ${std.units_per_layer}`}
+                                                                                    className="ml-1 px-2.5 py-1 rounded-lg border-2 border-enterprise-300 dark:border-enterprise-600 text-xs font-semibold bg-enterprise-100 dark:bg-enterprise-900/50 text-enterprise-700 dark:text-enterprise-300 cursor-pointer shadow-sm hover:bg-enterprise-200 dark:hover:bg-enterprise-800/60 hover:shadow hover:border-enterprise-400 disabled:opacity-40 disabled:cursor-not-allowed active:scale-[0.98] transition-all"
+                                                                                >
+                                                                                    เต็มพาเลท {std.total_units}
+                                                                                </button>
+                                                                            );
+                                                                        })}
+                                                                    </div>
                                                                 </div>
-                                                            </div>
-                                                        );
-                                                    })}
-                                                </>
-                                            )}
+                                                            );
+                                                        })}
+                                                    </>
+                                                )}
 
-                                            <button type="button" onClick={() => setShowItemPicker(pos.id)} className="w-full flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-enterprise-300 dark:border-enterprise-600 bg-enterprise-50 dark:bg-enterprise-900/30 text-enterprise-700 dark:text-enterprise-300 hover:bg-enterprise-100 dark:hover:bg-enterprise-800/50 hover:border-enterprise-400 dark:hover:border-enterprise-500 hover:shadow-md transition-all text-sm font-semibold shadow-sm cursor-pointer active:scale-[0.99]">
-                                                <Plus size={16} />
-                                                เพิ่มสินค้า
-                                            </button>
-                                        </>
-                                    )}
-                                </div>
-                            )}
-                        </div>
-                    );
-                })}
-            </div>
-
-            {/* Empty state */}
-
-            {layout.positions.length === 0 && (
-                <div className="text-center py-16">
-                    <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-enterprise-500 to-blue-600 flex items-center justify-center mx-auto mb-6 shadow-xl shadow-enterprise-500/30">
-                        <Box className="text-white" size={32} />
-                    </div>
-                    <h3 className="text-xl font-bold text-slate-900 dark:text-slate-100 mb-2">เริ่มจัดเรียง</h3>
-                    <p className="text-slate-500 dark:text-slate-400 mb-6 max-w-md mx-auto">
-                        กดปุ่ม "เพิ่มพาเลท" หรือ "พื้นรถ" เพื่อสร้างตำแหน่งจัดสินค้า
-                        แล้วเพิ่มสินค้าเข้าตำแหน่งที่ต้องการ
-                    </p>
-                    <div className="flex items-center justify-center gap-3">
-                        <Button variant="primary" onClick={() => addPosition('pallet')}>
-                            <Plus size={16} className="mr-1" /> เพิ่มพาเลท
-                        </Button>
-                        <Button variant="outline" onClick={() => addPosition('floor')}>
-                            <Plus size={16} className="mr-1" /> พื้นรถ
-                        </Button>
-                    </div>
+                                                <button type="button" onClick={() => setShowItemPicker(pos.id)} className="w-full flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-enterprise-300 dark:border-enterprise-600 bg-enterprise-50 dark:bg-enterprise-900/30 text-enterprise-700 dark:text-enterprise-300 hover:bg-enterprise-100 dark:hover:bg-enterprise-800/50 hover:border-enterprise-400 dark:hover:border-enterprise-500 hover:shadow-md transition-all text-sm font-semibold shadow-sm cursor-pointer active:scale-[0.99]">
+                                                    <Plus size={16} />
+                                                    เพิ่มสินค้า
+                                                </button>
+                                            </>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })}
                 </div>
-            )}
+
+                {/* Empty state */}
+
+                {layout.positions.length === 0 && (
+                    <div className="text-center py-16">
+                        <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-enterprise-500 to-blue-600 flex items-center justify-center mx-auto mb-6 shadow-xl shadow-enterprise-500/30">
+                            <Box className="text-white" size={32} />
+                        </div>
+                        <h3 className="text-xl font-bold text-slate-900 dark:text-slate-100 mb-2">เริ่มจัดเรียง</h3>
+                        <p className="text-slate-500 dark:text-slate-400 mb-6 max-w-md mx-auto">
+                            กดปุ่ม "เพิ่มพาเลท" หรือ "พื้นรถ" เพื่อสร้างตำแหน่งจัดสินค้า
+                            แล้วเพิ่มสินค้าเข้าตำแหน่งที่ต้องการ
+                        </p>
+                        <div className="flex items-center justify-center gap-3">
+                            <Button variant="primary" onClick={() => addPosition('pallet')}>
+                                <Plus size={16} className="mr-1" /> เพิ่มพาเลท
+                            </Button>
+                            <Button variant="outline" onClick={() => addPosition('floor')}>
+                                <Plus size={16} className="mr-1" /> พื้นรถ
+                            </Button>
+                        </div>
+                    </div>
+                )}
             </div>
 
             {/* Sticky bottom bar: เพิ่มพาเลท/พื้นรถ — ไม่ต้องเลื่อนขึ้นบนเมื่อมีหลายพาเลท */}
