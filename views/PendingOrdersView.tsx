@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback, memo, useRef } from 'react';
-import { Package, Calendar, MapPin, DollarSign, User, Phone, Filter, X, Zap, ChevronDown, ChevronRight, Eye, Box, Edit, CheckCircle2, Clock, Layers, List } from 'lucide-react';
+import { Package, Calendar, MapPin, DollarSign, User, Phone, Filter, X, Zap, ChevronDown, ChevronRight, Eye, Box, Edit, CheckCircle2, Clock, Layers, List, Navigation } from 'lucide-react';
 import { usePendingOrders } from '../hooks/useOrders';
 import { orderItemsService } from '../services/ordersService';
 import { CreateTripFromOrdersView } from './CreateTripFromOrdersView';
@@ -425,6 +425,7 @@ export function PendingOrdersView() {
   const [groupByArea, setGroupByArea] = useState(false);
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
   const [districtFilter, setDistrictFilter] = useState<string>('ALL');
+  const [subDistrictFilter, setSubDistrictFilter] = useState<string>('ALL');
 
   // อัปเดต quantity_picked_up_at_store — debounce 800ms
   const handleUpdatePickup = useCallback((itemId: string, qty: number) => {
@@ -618,17 +619,47 @@ export function PendingOrdersView() {
       });
   }, [filteredOrders]);
 
+  // รวบรวมรายชื่อตำบลภายในอำเภอที่เลือก (ใช้กับ chip filter ชั้น 2)
+  const availableSubDistricts = useMemo(() => {
+    if (districtFilter === 'ALL') return [];
+    const map = new Map<string, { count: number; total: number }>();
+    filteredOrders.forEach((order: any) => {
+      const address = order.delivery_address || order.store_address || '';
+      const dk = getDistrictKey(address);
+      if (dk !== districtFilter) return;
+      const areaKey = getAreaGroupKey(address);
+      const existing = map.get(areaKey) || { count: 0, total: 0 };
+      existing.count++;
+      existing.total += (order.total_amount || 0);
+      map.set(areaKey, existing);
+    });
+    return Array.from(map.entries())
+      .map(([key, val]) => ({ key, ...val }))
+      .sort((a, b) => {
+        if (a.key.includes('ไม่ระบุ')) return 1;
+        if (b.key.includes('ไม่ระบุ')) return -1;
+        return b.count - a.count;
+      });
+  }, [filteredOrders, districtFilter]);
+
   // จัดกลุ่มออเดอร์ตาม อำเภอ > ตำบล
   const groupedOrders = useMemo(() => {
     if (!groupByArea) return null;
 
-    // Source orders — apply districtFilter if set
-    const sourceOrders = districtFilter === 'ALL'
-      ? filteredOrders
-      : filteredOrders.filter((order: any) => {
+    // Source orders — apply districtFilter + subDistrictFilter
+    let sourceOrders = filteredOrders;
+    if (districtFilter !== 'ALL') {
+      sourceOrders = sourceOrders.filter((order: any) => {
         const address = order.delivery_address || order.store_address || '';
         return getDistrictKey(address) === districtFilter;
       });
+    }
+    if (subDistrictFilter !== 'ALL') {
+      sourceOrders = sourceOrders.filter((order: any) => {
+        const address = order.delivery_address || order.store_address || '';
+        return getAreaGroupKey(address) === subDistrictFilter;
+      });
+    }
 
     // Group by district first, then by area (district + sub-district)
     const districtMap = new Map<string, {
@@ -664,7 +695,7 @@ export function PendingOrdersView() {
       if (b.districtKey === 'ไม่ระบุอำเภอ') return -1;
       return b.totalOrders - a.totalOrders;
     });
-  }, [filteredOrders, groupByArea, districtFilter]);
+  }, [filteredOrders, groupByArea, districtFilter, subDistrictFilter]);
 
   // Toggle group collapse
   const toggleGroupCollapse = useCallback((groupKey: string) => {
@@ -944,7 +975,7 @@ export function PendingOrdersView() {
 
             {/* Toggle Group by Area */}
             <Button
-              onClick={() => { setGroupByArea(prev => !prev); setCollapsedGroups(new Set()); setDistrictFilter('ALL'); }}
+              onClick={() => { setGroupByArea(prev => !prev); setCollapsedGroups(new Set()); setDistrictFilter('ALL'); setSubDistrictFilter('ALL'); }}
               variant={groupByArea ? 'primary' : 'outline'}
               className={`flex items-center gap-2 ${groupByArea ? 'bg-indigo-600 hover:bg-indigo-700 text-white' : 'border-indigo-300 text-indigo-600 hover:bg-indigo-50'}`}
             >
@@ -1019,7 +1050,7 @@ export function PendingOrdersView() {
             <div className="flex flex-wrap gap-2">
               {/* ALL chip */}
               <button
-                onClick={() => setDistrictFilter('ALL')}
+                onClick={() => { setDistrictFilter('ALL'); setSubDistrictFilter('ALL'); }}
                 className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium border transition-all ${districtFilter === 'ALL'
                     ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
                     : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:border-indigo-400 hover:text-indigo-600 dark:hover:text-indigo-400'
@@ -1038,7 +1069,10 @@ export function PendingOrdersView() {
               {availableDistricts.map(d => (
                 <button
                   key={d.key}
-                  onClick={() => setDistrictFilter(prev => prev === d.key ? 'ALL' : d.key)}
+                  onClick={() => {
+                    setDistrictFilter(prev => prev === d.key ? 'ALL' : d.key);
+                    setSubDistrictFilter('ALL');
+                  }}
                   className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium border transition-all ${districtFilter === d.key
                       ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
                       : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:border-indigo-400 hover:text-indigo-600 dark:hover:text-indigo-400'
@@ -1058,6 +1092,57 @@ export function PendingOrdersView() {
                 </button>
               ))}
             </div>
+
+            {/* Sub-district chips (shown when a district is selected) */}
+            {districtFilter !== 'ALL' && availableSubDistricts.length > 1 && (
+              <div className="mt-3 ml-4 pl-4 border-l-2 border-indigo-200 dark:border-indigo-700">
+                <div className="flex items-center gap-2 mb-2 px-1">
+                  <Navigation className="w-3.5 h-3.5 text-teal-500" />
+                  <span className="text-xs font-medium text-gray-600 dark:text-gray-400">ตำบลใน {districtFilter}:</span>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {/* ALL sub-districts chip */}
+                  <button
+                    onClick={() => setSubDistrictFilter('ALL')}
+                    className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium border transition-all ${subDistrictFilter === 'ALL'
+                        ? 'bg-teal-600 text-white border-teal-600 shadow-sm'
+                        : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-600 hover:border-teal-400 hover:text-teal-600 dark:hover:text-teal-400'
+                      }`}
+                  >
+                    ทุกตำบล
+                    <span className={`text-xs px-1 py-0 rounded-full ${subDistrictFilter === 'ALL'
+                        ? 'bg-white/20 text-white'
+                        : 'bg-gray-100 dark:bg-gray-700 text-gray-400'
+                      }`}>
+                      {availableSubDistricts.reduce((s, d) => s + d.count, 0)}
+                    </span>
+                  </button>
+
+                  {availableSubDistricts.map(sd => {
+                    // ดึงเฉพาะชื่อตำบลจาก areaKey ("อ.XXX / ต.YYY" -> "ต.YYY")
+                    const label = sd.key.includes(' / ') ? sd.key.split(' / ')[1] : sd.key;
+                    return (
+                      <button
+                        key={sd.key}
+                        onClick={() => setSubDistrictFilter(prev => prev === sd.key ? 'ALL' : sd.key)}
+                        className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium border transition-all ${subDistrictFilter === sd.key
+                            ? 'bg-teal-600 text-white border-teal-600 shadow-sm'
+                            : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-600 hover:border-teal-400 hover:text-teal-600 dark:hover:text-teal-400'
+                          }`}
+                      >
+                        {label}
+                        <span className={`text-xs px-1 py-0 rounded-full ${subDistrictFilter === sd.key
+                            ? 'bg-white/20 text-white'
+                            : 'bg-gray-100 dark:bg-gray-700 text-gray-400'
+                          }`}>
+                          {sd.count}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
         )}
 
