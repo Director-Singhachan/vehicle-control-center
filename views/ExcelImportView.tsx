@@ -29,11 +29,11 @@ const CATEGORY_RULES = [
     { name: 'เบียร์มาย', keywords: ['มาย', 'MY Beer', 'MYBEER'] },
     { name: 'เบียร์สโนวี่', keywords: ['สโนวี่', 'Snowy'] },
     { name: 'เบียร์อาซาฮี', keywords: ['อาซาฮี', 'Asahi'] },
-    { name: 'น้ำดื่ม', keywords: ['น้ำดื่ม', 'น้ำสิงห์', 'น้ำเปล่า', 'Purra', 'เพอร์รา'] },
+    { name: 'น้ำดื่ม', keywords: ['น้ำดื่ม', 'น้ำสิงห์', 'Purra', 'เพอร์รา'] },
     { name: 'โซดา', keywords: ['โซดา'] },
     { name: 'อิชิตัน', keywords: ['อิชิตัน', 'Ichitan'] },
     { name: 'เลม่อน', keywords: ['เลม่อน', 'Lemonade'] },
-    { name: 'เหล้าอื่นๆ', keywords: ['เหล้า', 'ไวน์', 'วิสกี้', 'Spirit', 'บรั่นดี', 'Sake', 'สาเก'] },
+    { name: 'เหล้าอื่นๆ', keywords: ['เหล้า', 'ไวน์', 'วิสกี้', 'Spirit', 'บรั่นดี'] },
     { name: 'เบียร์อื่นๆ', keywords: ['เบียร์'] },
 ];
 
@@ -177,11 +177,18 @@ export function ExcelImportView() {
 
                 // Map columns
                 const colIndices = {
-                    code: headers.findIndex(h => h && h.includes('รหัส')),
-                    name: headers.findIndex(h => h && h.includes('สินค้า')),
-                    unit: headers.findIndex(h => h && h.includes('หน่วย')),
+                    code: headers.findIndex(h => h && (h.toString().trim() === 'รหัสสินค้า' || h.toString().trim() === 'รหัส')),
+                    name: headers.findIndex(h => h && (h.toString().trim() === 'ชื่อสินค้า' || h.toString().trim() === 'รายการ')),
+                    unit: headers.findIndex(h => h && (h.toString().includes('หน่วย') || h.toString().includes('Unit'))),
                     prices: [] as { level: string; index: number }[]
                 };
+
+                // Fallbacks if specific matches weren't found
+                if (colIndices.code === -1) colIndices.code = headers.findIndex(h => h && h.toString().includes('รหัส'));
+                if (colIndices.name === -1) colIndices.name = headers.findIndex(h => h && h.toString().includes('สินค้า') && !h.toString().includes('รหัส'));
+
+                console.log('Mapped Column Indices:', colIndices);
+                console.log('Headers found:', headers);
 
                 for (let i = 1; i <= 9; i++) {
                     const idx = headers.findIndex(h => h && h.includes(`ราคา ${i}`));
@@ -457,12 +464,12 @@ export function ExcelImportView() {
                                     <p className="text-sm text-slate-500 dark:text-slate-400">หมวดหมู่หลัก</p>
                                     <div className="flex gap-1 mt-1 overflow-x-auto pb-1 scrollbar-hide">
                                         {Object.entries(importStats.categoryDistribution).slice(0, 3).map(([cat, count]) => (
-                                            <Badge key={cat} variant="outline" className="text-[10px] whitespace-nowrap">
+                                            <Badge key={cat} variant="info" className="text-[10px] whitespace-nowrap">
                                                 {cat}: {count}
                                             </Badge>
                                         ))}
                                         {Object.keys(importStats.categoryDistribution).length > 3 && (
-                                            <Badge variant="outline" className="text-[10px]">...</Badge>
+                                            <Badge variant="info" className="text-[10px]">...</Badge>
                                         )}
                                     </div>
                                 </Card>
