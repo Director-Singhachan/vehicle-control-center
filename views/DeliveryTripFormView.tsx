@@ -45,8 +45,10 @@ interface StoreWithItems {
   store_id: string;
   sequence_order: number;
   items: Array<{
+    item_id?: string; // DB id for direct updates
     product_id: string;
     quantity: number;
+    quantity_picked_up_at_store?: number;
     notes?: string;
     selected_pallet_config_id?: string; // Phase 0: User-selected config
   }>;
@@ -59,8 +61,8 @@ function storesAndItemsEqual(a: StoreWithItems[], b: StoreWithItems[] | null): b
     const sa = a[i], sb = b[i];
     if (sa.store_id !== sb.store_id || sa.sequence_order !== sb.sequence_order) return false;
     if (sa.items.length !== sb.items.length) return false;
-    const sortKey = (item: { product_id: string; quantity: number; notes?: string }) =>
-      `${item.product_id}:${item.quantity}:${item.notes ?? ''}`;
+    const sortKey = (item: { product_id: string; quantity: number; quantity_picked_up_at_store?: number; notes?: string }) =>
+      `${item.product_id}:${item.quantity}:${item.quantity_picked_up_at_store ?? 0}:${item.notes ?? ''}`;
     const aItems = [...sa.items].sort((x, y) => sortKey(x).localeCompare(sortKey(y)));
     const bItems = [...sb.items].sort((x, y) => sortKey(x).localeCompare(sortKey(y)));
     for (let j = 0; j < aItems.length; j++) {
@@ -322,7 +324,7 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
     const allItems = selectedStores.flatMap(store =>
       store.items.map(item => ({
         product_id: item.product_id,
-        quantity: item.quantity,
+        quantity: Math.max(0, item.quantity - (item.quantity_picked_up_at_store ?? 0)),
       }))
     );
 
@@ -420,10 +422,12 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
           store_id: store.store_id,
           sequence_order: store.sequence_order,
           items: (store.items || []).map(item => ({
+            item_id: item.id,
             product_id: item.product_id,
             quantity: Number(item.quantity),
+            quantity_picked_up_at_store: Number((item as any).quantity_picked_up_at_store ?? 0),
             notes: item.notes || '',
-            selected_pallet_config_id: item.selected_pallet_config_id || undefined,
+            selected_pallet_config_id: (item as any).selected_pallet_config_id || undefined,
           })),
         }));
         setSelectedStores(storesWithItems);
@@ -2241,11 +2245,12 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
                           </div>
 
                           {/* Header row */}
-                          <div className="hidden sm:grid sm:grid-cols-[2fr_2fr_1.5fr_1fr_auto] gap-2 px-2 text-xs font-medium text-slate-500 dark:text-slate-400">
+                          <div className={`hidden sm:grid gap-2 px-2 text-xs font-medium text-slate-500 dark:text-slate-400 ${isEdit ? 'sm:grid-cols-[2fr_2fr_1.5fr_1fr_1fr_auto]' : 'sm:grid-cols-[2fr_2fr_1.5fr_1fr_auto]'}`}>
                             <div>รหัสสินค้า</div>
                             <div>ชื่อสินค้า</div>
                             <div>หมวดหมู่</div>
                             <div className="text-right">จำนวน / หน่วย</div>
+                            {isEdit && <div className="text-right text-amber-600 dark:text-amber-400">รับที่ร้าน</div>}
                             <div className="text-center">ลบ</div>
                           </div>
 
@@ -2256,7 +2261,7 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
                             return (
                               <div
                                 key={item.product_id}
-                                className="flex flex-col sm:grid sm:grid-cols-[2fr_2fr_1.5fr_1fr_auto] gap-2 p-2 bg-slate-50 dark:bg-slate-800 rounded"
+                                className={`flex flex-col gap-2 p-2 bg-slate-50 dark:bg-slate-800 rounded ${isEdit ? 'sm:grid sm:grid-cols-[2fr_2fr_1.5fr_1fr_1fr_auto]' : 'sm:grid sm:grid-cols-[2fr_2fr_1.5fr_1fr_auto]'}`}
                               >
                                 {/* Code */}
                                 <div className="min-w-0">
@@ -2313,6 +2318,36 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
                                     {product.unit}
                                   </div>
                                 </div>
+
+                                {/* Quantity picked up at store (edit mode only) */}
+                                {isEdit && (
+                                  <div className="flex flex-col gap-0.5 sm:justify-end">
+                                    <div className="sm:hidden text-[11px] text-amber-600 dark:text-amber-400 mb-0.5">
+                                      รับที่ร้านแล้ว
+                                    </div>
+                                    <Input
+                                      type="number"
+                                      value={item.quantity_picked_up_at_store ?? 0}
+                                      onChange={(e) => {
+                                        const raw = parseFloat(e.target.value) || 0;
+                                        const val = Math.min(item.quantity, Math.max(0, Math.floor(raw)));
+                                        const updatedStores = [...selectedStores];
+                                        updatedStores[storeIndex].items[itemIndex].quantity_picked_up_at_store = val;
+                                        setSelectedStores(updatedStores);
+                                      }}
+                                      className="w-full text-right border-amber-300 dark:border-amber-700"
+                                      min="0"
+                                      max={item.quantity}
+                                      step="1"
+                                      title="จำนวนเต็มที่ลูกค้ารับที่ร้านแล้ว (ไม่ต้องขนส่ง)"
+                                    />
+                                    {(item.quantity_picked_up_at_store ?? 0) > 0 && (
+                                      <div className="text-[10px] text-green-600 dark:text-green-400 text-right">
+                                        ส่ง: {Math.max(0, item.quantity - (item.quantity_picked_up_at_store ?? 0)).toLocaleString()} {product.unit}
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
 
                                 {/* Remove button */}
                                 <div className="flex items-center justify-end">
