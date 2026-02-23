@@ -327,93 +327,6 @@ export const deliveryTripService = {
 
       storeMap = new Map((stores || []).map(s => [s.id, s]));
 
-      // ออเดอร์ที่ส่งให้ร้านเหล่านี้ (เพื่อแสดง "ส่งบางส่วน มีของค้างส่ง" ในหน้าออกบิล)
-      // ตรวจสอบว่าออเดอร์ที่ส่งให้ร้านนี้ยังมีของค้างส่งจริงๆ หรือไม่ (quantity_remaining > 0)
-      // หมายเหตุ: ไม่ต้องดึงออเดอร์ที่ผูกกับทริปนี้ เพราะออเดอร์ที่ส่งบางส่วนอาจผูกกับทริปอื่น
-      if (storeIds.length > 0) {
-        // ดึงออเดอร์ที่ส่งให้ร้านเหล่านี้ (รวม delivered ด้วยเพื่อตรวจสอบ remaining)
-        const { data: ordersForStores } = await supabase
-          .from('orders')
-          .select('id, store_id, status')
-          .in('store_id', storeIds)
-          .in('status', ['confirmed', 'partial', 'assigned', 'delivered']); // รวม delivered เพื่อตรวจสอบ remaining
-        
-        // ตรวจสอบ quantity_remaining ของแต่ละออเดอร์
-        if (ordersForStores && ordersForStores.length > 0) {
-          const orderIds = ordersForStores.map((o: any) => o.id).filter(Boolean);
-          const { data: orderItems } = orderIds.length > 0
-            ? await supabase
-              .from('order_items')
-              .select('order_id, quantity, quantity_picked_up_at_store, quantity_delivered')
-              .in('order_id', orderIds)
-            : { data: [] as any[] };
-          
-          // คำนวณ quantity_remaining ต่อออเดอร์
-          const orderRemainingMap = new Map<string, number>();
-          (orderItems || []).forEach((item: any) => {
-            const remaining = Math.max(0,
-              Number(item.quantity || 0)
-              - Number(item.quantity_picked_up_at_store || 0)
-              - Number(item.quantity_delivered || 0)
-            );
-            const current = orderRemainingMap.get(item.order_id) || 0;
-            orderRemainingMap.set(item.order_id, current + remaining);
-          });
-          
-          // เซ็ต order_status เฉพาะออเดอร์ที่ยังมีของค้างส่งจริงๆ (remaining > 0)
-          // และ map กลับไปที่ (trip_id, store_id) เพื่อแสดงใน UI
-          // วนผ่าน tripStores ที่ดึงมาแล้วเพื่อหา (trip_id, store_id) ที่ตรงกัน
-          (tripStores || []).forEach((ts: any) => {
-            const storeId = ts.store_id;
-            // หาออเดอร์ทั้งหมดที่ส่งให้ร้านนี้
-            const ordersForThisStore = ordersForStores.filter((o: any) => o.store_id === storeId);
-            
-            // ตรวจสอบว่ามีออเดอร์ใดออเดอร์หนึ่งที่ยังมีของค้างส่งหรือไม่
-            let hasRemainingItems = false;
-            let orderStatusToShow: string | null = null;
-            
-            for (const order of ordersForThisStore) {
-              // ข้ามออเดอร์ที่ส่งครบแล้ว (status = 'delivered')
-              if (order.status === 'delivered') {
-                continue; // ไม่ต้องแสดง badge สำหรับออเดอร์ที่ส่งครบแล้ว
-              }
-              
-              const remaining = orderRemainingMap.get(order.id) || 0;
-              
-              // แสดง "ส่งบางส่วน มีของค้างส่ง" เฉพาะเมื่อ:
-              // 1. status เป็น partial หรือ assigned (ไม่ใช่ delivered)
-              // 2. และยังมีของค้างส่งจริงๆ (remaining > 0) - ตรวจสอบอย่างเข้มงวด
-              // หมายเหตุ: ถ้า remaining = 0 แม้ว่า status จะเป็น partial ก็ไม่ควรแสดง badge
-              if ((order.status === 'partial' || order.status === 'assigned') && remaining > 0) {
-                hasRemainingItems = true;
-                orderStatusToShow = order.status;
-                break; // พบออเดอร์ที่มีของค้างส่งแล้ว ไม่ต้องตรวจสอบต่อ
-              }
-              // ถ้า remaining = 0 หรือ status ไม่ใช่ partial/assigned ไม่ต้องแสดง badge
-            }
-            
-            // คำนวณ total remaining สำหรับร้านนี้ (รวมทุกออเดอร์)
-            let totalRemaining = 0;
-            for (const order of ordersForThisStore) {
-              if (order.status !== 'delivered') {
-                const remaining = orderRemainingMap.get(order.id) || 0;
-                totalRemaining += remaining;
-              }
-            }
-            
-            // แสดง badge เฉพาะเมื่อ:
-            // 1. totalRemaining > 0 (ยังมีของค้างส่งจริงๆ)
-            // 2. และมีออเดอร์ที่มี status เป็น partial หรือ assigned
-            // ถ้า totalRemaining = 0 แม้ว่า status จะเป็น partial/assigned ก็ไม่ต้องแสดง badge
-            if (totalRemaining > 0 && orderStatusToShow) {
-              orderStatusByTripStore.set(`${ts.delivery_trip_id}_${storeId}`, orderStatusToShow);
-            }
-            // ถ้า totalRemaining = 0 หรือไม่มี orderStatusToShow ไม่ต้องแสดง badge
-            // ถ้าไม่มีออเดอร์ที่มีของค้างส่ง (remaining = 0 หรือ status = 'delivered') ไม่ต้องแสดง badge
-          });
-        }
-      }
-
       // Fetch items for all trip stores
       // Note: tripStores has 'id' field (which is delivery_trip_stores.id) and 'delivery_trip_store_id' alias
       // We need to use the actual 'id' field from delivery_trip_stores table
@@ -1675,16 +1588,16 @@ export const deliveryTripService = {
 
         // ดึงข้อมูล completed trips ที่ส่งให้ร้านเหล่านี้ (ไม่รวมทริปที่กำลังจะลบ)
         const storeIds = [...new Set(ordersWithStore.map((o: any) => o.store_id).filter(Boolean))];
-        
+
         // ดึง completed trip IDs — ไม่รวมทริปนี้ (id) เพราะกำลังจะลบ
         const { data: completedTrips } = await supabase
           .from('delivery_trips')
           .select('id')
           .eq('status', 'completed')
           .neq('id', id);
-        
+
         const completedTripIds = completedTrips ? completedTrips.map((t: any) => t.id) : [];
-        
+
         // ดึง delivery_trip_stores ของ completed trips ที่ส่งให้ร้านเหล่านี้
         const { data: completedTripStores } = completedTripIds.length > 0 && storeIds.length > 0
           ? await supabase
@@ -1696,7 +1609,7 @@ export const deliveryTripService = {
 
         if (completedTripStores && completedTripStores.length > 0) {
           const tripStoreIds = completedTripStores.map((ts: any) => ts.id);
-          
+
           // ดึง delivery_trip_items ของ completed trips (ใช้ quantity - quantity_picked_up_at_store = จำนวนที่จัดส่งจริง)
           const { data: tripItems } = await supabase
             .from('delivery_trip_items')
@@ -1898,73 +1811,73 @@ export const deliveryTripService = {
           .in('id', orderIds);
 
         if (orderItems && ordersWithStore && orderItems.length > 0) {
-            const storeIdByOrderId = new Map(ordersWithStore.map((o: any) => [o.id, o.store_id]));
-            const storeIds = [...new Set(ordersWithStore.map((o: any) => o.store_id).filter(Boolean))];
-            
-            // ดึง completed trip IDs (ไม่รวมทริปนี้ที่ถูกยกเลิก)
-            const { data: completedTrips } = await supabase
-              .from('delivery_trips')
-              .select('id')
-              .eq('status', 'completed')
-              .neq('id', id);
-            
-            const completedTripIds = completedTrips ? completedTrips.map((t: any) => t.id) : [];
-            
-            // ดึง delivery_trip_stores ของ completed trips
-            const { data: completedTripStores } = completedTripIds.length > 0 && storeIds.length > 0
-              ? await supabase
-                .from('delivery_trip_stores')
-                .select('id, store_id, delivery_trip_id')
-                .in('store_id', storeIds)
-                .in('delivery_trip_id', completedTripIds)
-              : { data: [] };
+          const storeIdByOrderId = new Map(ordersWithStore.map((o: any) => [o.id, o.store_id]));
+          const storeIds = [...new Set(ordersWithStore.map((o: any) => o.store_id).filter(Boolean))];
 
-            if (completedTripStores && completedTripStores.length > 0) {
-              const tripStoreIds = completedTripStores.map((ts: any) => ts.id);
-              const { data: tripItems } = await supabase
-                .from('delivery_trip_items')
-                .select('delivery_trip_store_id, product_id, quantity, quantity_picked_up_at_store')
-                .in('delivery_trip_store_id', tripStoreIds);
+          // ดึง completed trip IDs (ไม่รวมทริปนี้ที่ถูกยกเลิก)
+          const { data: completedTrips } = await supabase
+            .from('delivery_trips')
+            .select('id')
+            .eq('status', 'completed')
+            .neq('id', id);
 
-              const deliveredByStoreProduct = new Map<string, number>();
-              if (tripItems) {
-                tripItems.forEach((ti: any) => {
-                  const tripStore = completedTripStores.find((ts: any) => ts.id === ti.delivery_trip_store_id);
-                  if (tripStore) {
-                    const key = `${tripStore.store_id}_${ti.product_id}`;
-                    const pickedUp = Number(ti.quantity_picked_up_at_store ?? 0);
-                    const delivered = Math.max(0, Number(ti.quantity || 0) - pickedUp);
-                    const current = deliveredByStoreProduct.get(key) || 0;
-                    deliveredByStoreProduct.set(key, current + delivered);
-                  }
-                });
-              }
+          const completedTripIds = completedTrips ? completedTrips.map((t: any) => t.id) : [];
 
-              for (const item of orderItems) {
-                const storeId = storeIdByOrderId.get(item.order_id);
-                if (!storeId) continue;
-                const key = `${storeId}_${item.product_id}`;
-                const totalDelivered = deliveredByStoreProduct.get(key) || 0;
-                await supabase
-                  .from('order_items')
-                  .update({
-                    quantity_delivered: Math.min(totalDelivered, Number(item.quantity || 0)),
-                    updated_at: new Date().toISOString(),
-                  })
-                  .eq('id', item.id);
-              }
-            } else {
-              // ถ้าไม่มี completed trips ให้รีเซ็ต quantity_delivered เป็น 0
+          // ดึง delivery_trip_stores ของ completed trips
+          const { data: completedTripStores } = completedTripIds.length > 0 && storeIds.length > 0
+            ? await supabase
+              .from('delivery_trip_stores')
+              .select('id, store_id, delivery_trip_id')
+              .in('store_id', storeIds)
+              .in('delivery_trip_id', completedTripIds)
+            : { data: [] };
+
+          if (completedTripStores && completedTripStores.length > 0) {
+            const tripStoreIds = completedTripStores.map((ts: any) => ts.id);
+            const { data: tripItems } = await supabase
+              .from('delivery_trip_items')
+              .select('delivery_trip_store_id, product_id, quantity, quantity_picked_up_at_store')
+              .in('delivery_trip_store_id', tripStoreIds);
+
+            const deliveredByStoreProduct = new Map<string, number>();
+            if (tripItems) {
+              tripItems.forEach((ti: any) => {
+                const tripStore = completedTripStores.find((ts: any) => ts.id === ti.delivery_trip_store_id);
+                if (tripStore) {
+                  const key = `${tripStore.store_id}_${ti.product_id}`;
+                  const pickedUp = Number(ti.quantity_picked_up_at_store ?? 0);
+                  const delivered = Math.max(0, Number(ti.quantity || 0) - pickedUp);
+                  const current = deliveredByStoreProduct.get(key) || 0;
+                  deliveredByStoreProduct.set(key, current + delivered);
+                }
+              });
+            }
+
+            for (const item of orderItems) {
+              const storeId = storeIdByOrderId.get(item.order_id);
+              if (!storeId) continue;
+              const key = `${storeId}_${item.product_id}`;
+              const totalDelivered = deliveredByStoreProduct.get(key) || 0;
               await supabase
                 .from('order_items')
                 .update({
-                  quantity_delivered: 0,
+                  quantity_delivered: Math.min(totalDelivered, Number(item.quantity || 0)),
                   updated_at: new Date().toISOString(),
                 })
-                .in('id', orderItems.map((item: any) => item.id));
+                .eq('id', item.id);
             }
+          } else {
+            // ถ้าไม่มี completed trips ให้รีเซ็ต quantity_delivered เป็น 0
+            await supabase
+              .from('order_items')
+              .update({
+                quantity_delivered: 0,
+                updated_at: new Date().toISOString(),
+              })
+              .in('id', orderItems.map((item: any) => item.id));
           }
-          
+        }
+
         console.log(`[deliveryTripService] Reset ${orderIds.length} orders (cleared delivery_trip_id, order_number, recalculated quantity_delivered)`);
       }
     }

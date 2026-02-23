@@ -173,9 +173,7 @@ const TripCard = memo(({
                   {store.invoice_status === 'issued' && (
                     <CheckCircle className="w-3 h-3 text-green-600 dark:text-green-400" />
                   )}
-                  {(store.order_status === 'partial' || store.order_status === 'assigned') && (
-                    <span className="text-amber-600 dark:text-amber-400" title="ส่งบางส่วน มีของค้างส่ง">⏳</span>
-                  )}
+
                 </span>
               ))}
             </div>
@@ -218,11 +216,7 @@ const TripCard = memo(({
                           ส่งแล้ว
                         </Badge>
                       )}
-                      {(store.order_status === 'partial' || store.order_status === 'assigned') && (
-                        <Badge variant="warning" className="text-xs" title="ออเดอร์นี้ส่งไม่ครบในทริปนี้ มีบางส่วนค้างส่งทริปอื่น">
-                          ⏳ ส่งบางส่วน มีของค้างส่ง
-                        </Badge>
-                      )}
+
                     </div>
 
                     {store.store?.address && (
@@ -489,11 +483,7 @@ const StoreCard = memo(({ entry, expandedStores, updatingStatus, onToggleExpand,
                   แบ่งส่ง {entry.trips.length} คัน
                 </Badge>
               )}
-              {hasPartialRemaining && (
-                <Badge variant="warning" className="text-xs" title="ออเดอร์นี้ส่งไม่ครบในทริปนี้ มีบางส่วนค้างส่งทริปอื่น">
-                  ⏳ ส่งบางส่วน มีของค้างส่ง
-                </Badge>
-              )}
+
             </div>
             {entry.store?.address && (
               <div className="flex items-start gap-2 text-sm text-gray-600 dark:text-gray-400 mb-1">
