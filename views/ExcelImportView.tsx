@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Upload, FileText, CheckCircle, AlertCircle, Clock, Search, ArrowRight, Save, History, Package, DollarSign } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { supabase } from '../lib/supabase';
@@ -17,8 +17,55 @@ const UNIT_MAP: Record<string, string> = {
     'TR': 'ถาด',
     'CV': 'ลัง',
     'PA': 'แพ็ค',
-    'CA': 'คาร์ตั้น', // Defaulting CA to คาร์ตั้น as discussed
+    'CA': 'คาร์ตั้น',
 };
+
+// Category Mapping Rules
+const CATEGORY_RULES = [
+    { name: 'เบียร์สิงห์', required: ['เบียร์', 'สิงห์'] },
+    { name: 'เบียร์ลีโอ', keywords: ['ลีโอ', 'LEO'] },
+    { name: 'เบียร์คาร์ลสเบิร์ก', keywords: ['คาร์ลสเบิร์ก', 'Carlsberg'] },
+    { name: 'เบียร์โคโรน่า', keywords: ['โคโรน่า', 'Corona'] },
+    { name: 'เบียร์มาย', keywords: ['มาย', 'MY Beer', 'MYBEER'] },
+    { name: 'เบียร์สโนวี่', keywords: ['สโนวี่', 'Snowy'] },
+    { name: 'เบียร์อาซาฮี', keywords: ['อาซาฮี', 'Asahi'] },
+    { name: 'น้ำดื่ม', keywords: ['น้ำดื่ม'] },
+    { name: 'โซดา', keywords: ['โซดา'] },
+    { name: 'อิชิตัน', keywords: ['อิชิตัน'] },
+    { name: 'เลม่อน', keywords: ['เลม่อน'] },
+    { name: 'เหล้าอื่นๆ', keywords: ['เหล้า', 'ไวน์', 'วิสกี้', 'Spirit', 'บรั่นดี'] },
+    { name: 'เบียร์อื่นๆ', keywords: ['เบียร์'] },
+];
+
+function getCategoryFromProductName(name: string): string {
+    const upperName = name.toUpperCase();
+
+    // Check specific rules
+    for (const rule of CATEGORY_RULES) {
+        if (rule.required) {
+            // Must have all required keywords
+            if (rule.required.every(k => upperName.includes(k.toUpperCase()))) {
+                return rule.name;
+            }
+        } else if (rule.keywords) {
+            // Must have at least one keyword
+            if (rule.keywords.some(k => upperName.includes(k.toUpperCase()))) {
+                return rule.name;
+            }
+        }
+    }
+
+    return 'อื่นๆ';
+}
+
+interface ProductData {
+    code: string;
+    name: string;
+    unit: string;
+    category: string;
+    isNew: boolean;
+    prices: { level: string; price: number }[];
+}
 
 interface ImportLogRow {
     id: string;
@@ -31,6 +78,13 @@ interface ImportLogRow {
     created_at: string;
 }
 
+interface ImportStats {
+    total: number;
+    created: number;
+    updated: number;
+    categoryDistribution: Record<string, number>;
+}
+
 export function ExcelImportView() {
     const { profile } = useAuth();
     const { showNotification } = useNotification();
@@ -38,17 +92,35 @@ export function ExcelImportView() {
 
     // Import states
     const [file, setFile] = useState<File | null>(null);
-    const [previewData, setPreviewData] = useState<any[]>([]);
+    const [previewData, setPreviewData] = useState<ProductData[]>([]);
     const [isProcessing, setIsProcessing] = useState(false);
-    const [importStats, setImportStats] = useState({ total: 0, created: 0, updated: 0, failed: 0 });
     const [showTemplateExample, setShowTemplateExample] = useState(false);
-
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     // History states
     const [logs, setLogs] = useState<ImportLogRow[]>([]);
     const [loadingLogs, setLoadingLogs] = useState(false);
     const [logSearchQuery, setLogSearchQuery] = useState('');
+
+    const importStats: ImportStats = useMemo(() => {
+        const stats: ImportStats = {
+            total: previewData.length,
+            created: 0,
+            updated: 0,
+            categoryDistribution: {},
+        };
+
+        previewData.forEach(item => {
+            if (item.isNew) {
+                stats.created++;
+            } else {
+                stats.updated++;
+            }
+            stats.categoryDistribution[item.category] = (stats.categoryDistribution[item.category] || 0) + 1;
+        });
+
+        return stats;
+    }, [previewData]);
 
     useEffect(() => {
         if (activeSubTab === 'history') {
@@ -62,7 +134,8 @@ export function ExcelImportView() {
             const { data, error } = await supabase
                 .from('product_import_logs')
                 .select('*')
-                .order('created_at', { ascending: false });
+                .order('created_at', { ascending: false })
+                .limit(100);
 
             if (error) throw error;
             setLogs(data || []);
@@ -81,52 +154,80 @@ export function ExcelImportView() {
         }
     };
 
-    const parseFile = (file: File) => {
+    const parseFile = async (file: File) => {
+        setIsProcessing(true);
         const reader = new FileReader();
-        reader.onload = (e) => {
-            const data = new Uint8Array(e.target?.result as ArrayBuffer);
-            const workbook = XLSX.read(data, { type: 'array' });
-            const sheetName = workbook.SheetNames[0];
-            const worksheet = workbook.Sheets[sheetName];
+        reader.onload = async (e) => {
+            try {
+                const data = new Uint8Array(e.target?.result as ArrayBuffer);
+                const workbook = XLSX.read(data, { type: 'array' });
+                const sheetName = workbook.SheetNames[0];
+                const worksheet = workbook.Sheets[sheetName];
 
-            // Read from Row 8 (range: 7)
-            const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, range: 7 }) as any[][];
+                // Read from Row 8 (range: 7)
+                const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, range: 7 }) as any[][];
 
-            if (jsonData.length === 0) {
-                showNotification('error', 'ไม่พบข้อมูลในไฟล์ หรือไฟล์ไม่ถูกต้อง');
-                return;
-            }
+                if (jsonData.length === 0) {
+                    showNotification('error', 'ไม่พบข้อมูลในไฟล์ หรือไฟล์ไม่ถูกต้อง');
+                    return;
+                }
 
-            const headers = jsonData[0];
-            const items = jsonData.slice(1).filter(row => row[0]); // Filter out empty rows
+                const headers = (jsonData[0] as any[]).map(h => h?.toString().trim());
+                const items = jsonData.slice(1).filter(row => row[0]); // Filter out empty rows
 
-            // Map columns
-            const colIndices = {
-                code: headers.findIndex(h => h && h.toString().includes('รหัส')),
-                name: headers.findIndex(h => h && h.toString().includes('สินค้า')),
-                unit: headers.findIndex(h => h && h.toString().includes('หน่วย')),
-                prices: [] as { level: string; index: number }[]
-            };
-
-            for (let i = 1; i <= 9; i++) {
-                const idx = headers.findIndex(h => h && h.toString().includes(`ราคา ${i}`));
-                if (idx !== -1) colIndices.prices.push({ level: i.toString(), index: idx });
-            }
-
-            const mappedItems = items.map(row => {
-                const rawUnit = row[colIndices.unit] ? row[colIndices.unit].toString().trim() : '';
-                return {
-                    code: row[colIndices.code]?.toString().trim() || '',
-                    name: row[colIndices.name]?.toString().trim() || '',
-                    unit: UNIT_MAP[rawUnit] || rawUnit,
-                    prices: colIndices.prices.map(p => ({
-                        level: p.level,
-                        price: parseFloat(row[p.index] || '0')
-                    }))
+                // Map columns
+                const colIndices = {
+                    code: headers.findIndex(h => h && h.includes('รหัส')),
+                    name: headers.findIndex(h => h && h.includes('สินค้า')),
+                    unit: headers.findIndex(h => h && h.includes('หน่วย')),
+                    prices: [] as { level: string; index: number }[]
                 };
-            });
 
-            setPreviewData(mappedItems);
+                for (let i = 1; i <= 9; i++) {
+                    const idx = headers.findIndex(h => h && h.includes(`ราคา ${i}`));
+                    if (idx !== -1) colIndices.prices.push({ level: i.toString(), index: idx });
+                }
+
+                if (colIndices.code === -1 || colIndices.name === -1) {
+                    showNotification('error', 'ไม่พบคอลัมน์รหัสสินค้าหรือชื่อสินค้า');
+                    return;
+                }
+
+                // Fetch existing product codes to show New/Update status
+                const codes = items.map(row => row[colIndices.code]?.toString().trim()).filter(Boolean);
+                const { data: existingCodes } = await supabase
+                    .from('products')
+                    .select('product_code')
+                    .in('product_code', codes);
+
+                const existingCodeSet = new Set(existingCodes?.map(p => p.product_code) || []);
+
+                const mappedItems: ProductData[] = items.map(row => {
+                    const rawName = row[colIndices.name]?.toString().trim() || '';
+                    const rawCode = row[colIndices.code]?.toString().trim() || '';
+                    const rawUnit = row[colIndices.unit] ? row[colIndices.unit].toString().trim() : '';
+                    const category = getCategoryFromProductName(rawName);
+
+                    return {
+                        code: rawCode,
+                        name: rawName,
+                        unit: UNIT_MAP[rawUnit] || rawUnit,
+                        category: category,
+                        isNew: !existingCodeSet.has(rawCode),
+                        prices: colIndices.prices.map(p => ({
+                            level: p.level,
+                            price: parseFloat(row[p.index] || '0')
+                        }))
+                    };
+                });
+
+                setPreviewData(mappedItems);
+                showNotification('success', `อ่านข้อมูลสำเร็จ ${mappedItems.length} รายการ`);
+            } catch (err: any) {
+                showNotification('error', 'เกิดข้อผิดพลาดในการอ่านไฟล์: ' + err.message);
+            } finally {
+                setIsProcessing(false);
+            }
         };
         reader.readAsArrayBuffer(file);
     };
@@ -139,7 +240,6 @@ export function ExcelImportView() {
         let updated = 0;
         let failed = 0;
 
-        // We'll use the current date for the import
         const importDate = new Date().toISOString().split('T')[0];
 
         // 0. Get Tier Mapping (tier_code -> id)
@@ -154,11 +254,11 @@ export function ExcelImportView() {
                 // 1. Check if product exists
                 const { data: existingProduct } = await supabase
                     .from('products')
-                    .select('id, base_price, unit')
+                    .select('id, base_price, unit, product_name, category')
                     .eq('product_code', item.code)
                     .maybeSingle();
 
-                let productId = existingProduct?.id;
+                let productId;
                 let actionType: 'created' | 'updated' = 'updated';
                 let changes: any = {};
 
@@ -169,7 +269,7 @@ export function ExcelImportView() {
                         .insert({
                             product_code: item.code,
                             product_name: item.name,
-                            category: 'นำเข้าจาก Excel', // Default category for new items
+                            category: item.category,
                             unit: item.unit,
                             base_price: item.prices[0]?.price || 0,
                             is_active: true,
@@ -186,16 +286,22 @@ export function ExcelImportView() {
                     created++;
                 } else {
                     // UPDATE Product if needed
+                    productId = existingProduct.id;
                     const pChanges: any = {};
-                    if (existingProduct.unit !== item.unit) pChanges.unit = item.unit;
-                    if (existingProduct.base_price !== item.prices[0]?.price) pChanges.base_price = item.prices[0]?.price;
+                    if (existingProduct.unit !== item.unit) pChanges.unit = { old: existingProduct.unit, new: item.unit };
+                    if (existingProduct.product_name !== item.name) pChanges.product_name = { old: existingProduct.product_name, new: item.name };
+                    if (existingProduct.base_price !== item.prices[0]?.price) pChanges.base_price = { old: existingProduct.base_price, new: item.prices[0]?.price };
+                    if (existingProduct.category !== item.category) pChanges.category = { old: existingProduct.category, new: item.category };
 
                     if (Object.keys(pChanges).length > 0) {
-                        await supabase.from('products').update({
-                            ...pChanges,
-                            updated_by: profile?.id
-                        }).eq('id', productId);
-                        changes = { ...pChanges };
+                        const updateData: any = { updated_by: profile?.id };
+                        if (pChanges.unit) updateData.unit = item.unit;
+                        if (pChanges.product_name) updateData.product_name = item.name;
+                        if (pChanges.base_price) updateData.base_price = item.prices[0]?.price;
+                        if (pChanges.category) updateData.category = item.category;
+
+                        await supabase.from('products').update(updateData).eq('id', productId);
+                        changes = pChanges;
                     }
                     updated++;
                 }
@@ -236,11 +342,11 @@ export function ExcelImportView() {
             }
         }
 
-        setImportStats({ total: previewData.length, created, updated, failed });
         setIsProcessing(false);
         showNotification('success', `นำเข้าข้อมูลเสร็จสิ้น: เพิ่มใหม่ ${created}, อัปเดต ${updated}, ล้มเหลว ${failed}`);
         setPreviewData([]);
         setFile(null);
+        if (fileInputRef.current) fileInputRef.current.value = '';
     };
 
     const filteredLogs = logs.filter(log =>
@@ -248,10 +354,32 @@ export function ExcelImportView() {
         log.product_name.toLowerCase().includes(logSearchQuery.toLowerCase())
     );
 
+    function renderChangeDetails(changes: any, type: string) {
+        if (type === 'created') {
+            return <span className="text-xs text-slate-500 italic">บันทึกข้อมูลสินค้าและราคาทั้ง 9 ระดับเริ่มต้น</span>;
+        }
+
+        const entries = Object.entries(changes || {});
+        if (entries.length === 0) return <span className="text-xs text-slate-400 italic">ไม่พบการเปลี่ยนแปลงฟิลด์หลัก</span>;
+
+        return (
+            <div className="flex flex-wrap gap-2">
+                {entries.map(([key, val]: [string, any]) => (
+                    <div key={key} className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded text-[10px]">
+                        <span className="font-bold">{key}:</span>
+                        <span className="text-slate-500 line-through">{val.old?.toString() || '-'}</span>
+                        <ArrowRight size={10} className="text-slate-400" />
+                        <span className="text-blue-600 dark:text-blue-400">{val.new?.toString() || val.toString()}</span>
+                    </div>
+                ))}
+            </div>
+        );
+    }
+
     return (
         <PageLayout title="นำเข้าข้อมูล (ฝ่ายขาย - Step Pricing)">
             <div className="flex gap-4 mb-6">
-                <button
+                <Button
                     onClick={() => setActiveSubTab('import')}
                     className={`flex items-center gap-2 px-6 py-2.5 rounded-xl font-medium transition-all ${activeSubTab === 'import'
                         ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20'
@@ -260,8 +388,8 @@ export function ExcelImportView() {
                 >
                     <Upload size={18} />
                     นำเข้าข้อมูล
-                </button>
-                <button
+                </Button>
+                <Button
                     onClick={() => setActiveSubTab('history')}
                     className={`flex items-center gap-2 px-6 py-2.5 rounded-xl font-medium transition-all ${activeSubTab === 'history'
                         ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20'
@@ -270,7 +398,7 @@ export function ExcelImportView() {
                 >
                     <History size={18} />
                     ประวัติการนำเข้า (LOG)
-                </button>
+                </Button>
             </div>
 
             {activeSubTab === 'import' ? (
@@ -309,6 +437,102 @@ export function ExcelImportView() {
                         </div>
                     </Card>
 
+                    {previewData.length > 0 && (
+                        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-300">
+                            {/* Summary Dashboard */}
+                            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                                <Card className="p-4 bg-white dark:bg-slate-800 border-l-4 border-l-blue-500">
+                                    <p className="text-sm text-slate-500 dark:text-slate-400">ทั้งหมด</p>
+                                    <p className="text-2xl font-bold text-slate-900 dark:text-white">{importStats.total}</p>
+                                </Card>
+                                <Card className="p-4 bg-white dark:bg-slate-800 border-l-4 border-l-green-500">
+                                    <p className="text-sm text-slate-500 dark:text-slate-400">เพิ่มใหม่</p>
+                                    <p className="text-2xl font-bold text-green-600">{importStats.created}</p>
+                                </Card>
+                                <Card className="p-4 bg-white dark:bg-slate-800 border-l-4 border-l-orange-500">
+                                    <p className="text-sm text-slate-500 dark:text-slate-400">อัปเดต</p>
+                                    <p className="text-2xl font-bold text-orange-600">{importStats.updated}</p>
+                                </Card>
+                                <Card className="p-4 bg-white dark:bg-slate-800 border-l-4 border-l-purple-500 overflow-hidden">
+                                    <p className="text-sm text-slate-500 dark:text-slate-400">หมวดหมู่หลัก</p>
+                                    <div className="flex gap-1 mt-1 overflow-x-auto pb-1 scrollbar-hide">
+                                        {Object.entries(importStats.categoryDistribution).slice(0, 3).map(([cat, count]) => (
+                                            <Badge key={cat} variant="outline" className="text-[10px] whitespace-nowrap">
+                                                {cat}: {count}
+                                            </Badge>
+                                        ))}
+                                        {Object.keys(importStats.categoryDistribution).length > 3 && (
+                                            <Badge variant="outline" className="text-[10px]">...</Badge>
+                                        )}
+                                    </div>
+                                </Card>
+                            </div>
+
+                            <div className="flex items-center justify-between">
+                                <h3 className="text-lg font-bold text-slate-900 dark:text-white">
+                                    ตัวอย่างข้อมูล ({previewData.length} รายการ)
+                                </h3>
+                                <div className="flex gap-2">
+                                    <Button variant="outline" onClick={() => { setPreviewData([]); setFile(null); if (fileInputRef.current) fileInputRef.current.value = ''; }} disabled={isProcessing}>
+                                        ยกเลิก
+                                    </Button>
+                                    <Button onClick={startImport} disabled={isProcessing}>
+                                        <CheckCircle size={18} className="mr-2" />
+                                        ยืนยันการนำเข้าข้อมูล
+                                    </Button>
+                                </div>
+                            </div>
+
+                            <Card className="overflow-hidden">
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-sm">
+                                        <thead>
+                                            <tr className="bg-slate-50 dark:bg-slate-800/50 border-b border-slate-200 dark:border-slate-700">
+                                                <th className="px-4 py-3 text-left font-bold text-slate-700 dark:text-slate-300">รหัส</th>
+                                                <th className="px-4 py-3 text-left font-bold text-slate-700 dark:text-slate-300">สินค้า</th>
+                                                <th className="px-4 py-3 text-left font-bold text-slate-700 dark:text-slate-300">หมวดหมู่</th>
+                                                <th className="px-4 py-3 text-center font-bold text-slate-700 dark:text-slate-300">หน่วย</th>
+                                                <th className="px-4 py-3 text-center font-bold text-slate-700 dark:text-slate-300">สถานะ</th>
+                                                <th className="px-4 py-3 text-right font-bold text-slate-700 dark:text-slate-300">ราคาฐาน</th>
+                                                <th className="px-4 py-3 text-right font-bold text-slate-700 dark:text-slate-300">ราคาต่ำสุด</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {previewData.slice(0, 50).map((item, idx) => (
+                                                <tr key={idx} className="border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700/50">
+                                                    <td className="px-4 py-3 font-mono text-xs">{item.code}</td>
+                                                    <td className="px-4 py-3">
+                                                        <p className="font-medium">{item.name}</p>
+                                                    </td>
+                                                    <td className="px-4 py-3">
+                                                        <Badge variant="info" className="text-[10px]">{item.category}</Badge>
+                                                    </td>
+                                                    <td className="px-4 py-3 text-center">
+                                                        <Badge>{item.unit}</Badge>
+                                                    </td>
+                                                    <td className="px-4 py-3 text-center">
+                                                        {item.isNew ? (
+                                                            <Badge className="bg-green-100 text-green-700 border-green-200">เพิ่มใหม่</Badge>
+                                                        ) : (
+                                                            <Badge className="bg-blue-100 text-blue-700 border-blue-200">อัปเดต</Badge>
+                                                        )}
+                                                    </td>
+                                                    <td className="px-4 py-3 text-right font-bold">{item.prices[0]?.price.toLocaleString()} ฿</td>
+                                                    <td className="px-4 py-3 text-right">{item.prices[item.prices.length - 1]?.price.toLocaleString() || '-'} ฿</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                    {previewData.length > 50 && (
+                                        <div className="p-4 text-center text-slate-500 bg-slate-50/50 dark:bg-slate-800/20 italic">
+                                            แสดงเพียง 50 รายการแรก จากทั้งหมด {previewData.length} รายการ
+                                        </div>
+                                    )}
+                                </div>
+                            </Card>
+                        </div>
+                    )}
+
                     <div className="mt-8 w-full max-w-2xl mx-auto">
                         <button
                             onClick={() => setShowTemplateExample(!showTemplateExample)}
@@ -321,10 +545,10 @@ export function ExcelImportView() {
                         {showTemplateExample && (
                             <Card className="overflow-hidden border-blue-100 dark:border-blue-900/30 bg-blue-50/10 dark:bg-blue-900/10 animate-in fade-in slide-in-from-top-2 duration-300">
                                 <div className="p-4 border-b border-blue-100 dark:border-blue-900/30 bg-blue-50/20 dark:bg-blue-900/20">
-                                    <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                                    <h4 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
                                         <Package size={16} />
                                         โครงสร้างไฟล์ Excel ที่รองรับ (ตัวอย่าง)
-                                    </h3>
+                                    </h4>
                                     <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
                                         ข้อมูลควรเริ่มจากแถวที่ 8 เป็นต้นไป โดยมีหัวตารางดังนี้:
                                     </p>
@@ -387,59 +611,6 @@ export function ExcelImportView() {
                             </Card>
                         )}
                     </div>
-
-                    {previewData.length > 0 && (
-                        <div className="animate-in fade-in slide-in-from-bottom-4 duration-300">
-                            <div className="flex items-center justify-between mb-4">
-                                <h4 className="text-lg font-bold text-slate-900 dark:text-white">
-                                    ตัวอย่างข้อมูล ({previewData.length} รายการ)
-                                </h4>
-                                <div className="flex gap-2">
-                                    <Button variant="outline" onClick={() => setPreviewData([])} disabled={isProcessing}>
-                                        ยกเลิก
-                                    </Button>
-                                    <Button onClick={startImport} disabled={isProcessing}>
-                                        <Save size={18} className="mr-2" />
-                                        ยืนยันการนำเข้าข้อมูล
-                                    </Button>
-                                </div>
-                            </div>
-
-                            <Card className="overflow-hidden">
-                                <div className="overflow-x-auto">
-                                    <table className="w-full text-sm">
-                                        <thead>
-                                            <tr className="bg-slate-50 dark:bg-slate-800/50 border-b border-slate-200 dark:border-slate-700">
-                                                <th className="px-4 py-3 text-left font-bold text-slate-700 dark:text-slate-300">รหัส</th>
-                                                <th className="px-4 py-3 text-left font-bold text-slate-700 dark:text-slate-300">ชื่อสินค้า</th>
-                                                <th className="px-4 py-3 text-center font-bold text-slate-700 dark:text-slate-300">หน่วย</th>
-                                                <th className="px-4 py-3 text-right font-bold text-slate-700 dark:text-slate-300">ราคา 1 (ฐาน)</th>
-                                                <th className="px-4 py-3 text-right font-bold text-slate-700 dark:text-slate-300">ราคา 9 (ต่ำสุด)</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {previewData.slice(0, 50).map((item, idx) => (
-                                                <tr key={idx} className="border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700/50">
-                                                    <td className="px-4 py-3 font-mono text-xs">{item.code}</td>
-                                                    <td className="px-4 py-3">{item.name}</td>
-                                                    <td className="px-4 py-3 text-center">
-                                                        <Badge>{item.unit}</Badge>
-                                                    </td>
-                                                    <td className="px-4 py-3 text-right font-bold">{item.prices[0]?.price.toLocaleString()} ฿</td>
-                                                    <td className="px-4 py-3 text-right">{item.prices[item.prices.length - 1]?.price.toLocaleString() || '-'} ฿</td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                    {previewData.length > 50 && (
-                                        <div className="p-4 text-center text-slate-500 bg-slate-50/50 dark:bg-slate-800/20 italic">
-                                            แสดงเพียง 50 รายการแรก จากทั้งหมด {previewData.length} รายการ
-                                        </div>
-                                    )}
-                                </div>
-                            </Card>
-                        </div>
-                    )}
                 </div>
             ) : (
                 <div className="space-y-4">
@@ -476,7 +647,7 @@ export function ExcelImportView() {
                                 <table className="w-full text-sm">
                                     <thead>
                                         <tr className="bg-slate-50 dark:bg-slate-800/50 border-b border-slate-200 dark:border-slate-700">
-                                            <th className="px-4 py-3 text-left font-bold">วัน/เวลา นำเข้า</th>
+                                            <th className="px-4 py-3 text-left font-bold">วัน / เวลา นำเข้า</th>
                                             <th className="px-4 py-3 text-left font-bold">รหัสสินค้า</th>
                                             <th className="px-4 py-3 text-left font-bold">ดำเนินการ</th>
                                             <th className="px-4 py-3 text-left font-bold">รายละเอียดการเปลี่ยนแปลง</th>
@@ -511,27 +682,5 @@ export function ExcelImportView() {
                 </div>
             )}
         </PageLayout>
-    );
-}
-
-function renderChangeDetails(changes: any, type: string) {
-    if (type === 'created') {
-        return <span className="text-xs text-slate-500 italic">บันทึกข้อมูลสินค้าและราคาทั้ง 9 ระดับเริ่มต้น</span>;
-    }
-
-    const entries = Object.entries(changes || {});
-    if (entries.length === 0) return <span className="text-xs text-slate-400 italic">ไม่พบการเปลี่ยนแปลงฟิลด์หลัก</span>;
-
-    return (
-        <div className="flex flex-wrap gap-2">
-            {entries.map(([key, val]: [string, any]) => (
-                <div key={key} className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded text-[10px]">
-                    <span className="font-bold">{key}:</span>
-                    <span className="text-slate-500 line-through">{val.old?.toString() || '-'}</span>
-                    <ArrowRight size={10} className="text-slate-400" />
-                    <span className="text-blue-600 dark:text-blue-400">{val.new?.toString() || val.toString()}</span>
-                </div>
-            ))}
-        </div>
     );
 }
