@@ -646,6 +646,13 @@ export function SalesTripsView() {
   const [selectedMergedStore, setSelectedMergedStore] = useState<MergedStoreEntry | null>(null);
   // Index สำหรับเลื่อน \"หน้าต่าง\" สรุปทริปวันนี้ (ควบคุมด้วยปุ่มลูกศรเท่านั้น)
   const [tripSummaryIndex, setTripSummaryIndex] = useState(0);
+  // ขนาด viewport สรุปทริป - คำนวณจากความกว้างหน้าจอ
+  const tripSummaryContainerRef = useRef<HTMLDivElement>(null);
+  const [tripSummaryLayout, setTripSummaryLayout] = useState({
+    blockWidth: 260,
+    blocksVisible: 5,
+    stepSize: 272,
+  });
 
   // Auto-check all items when invoice_status is 'issued'
   useEffect(() => {
@@ -751,6 +758,37 @@ export function SalesTripsView() {
       };
     });
   }, [myTrips]);
+
+  // คำนวณขนาดบล็อคให้พอดีกับหน้าจอ — แสดง 5 บล็อคเสมอ แบ่งสัดส่วนเท่ากัน
+  useEffect(() => {
+    const el = tripSummaryContainerRef.current;
+    if (!el) return;
+    const GAP = 12;
+    const PADDING = 16;
+    const BLOCKS = 5; // แสดง 5 บล็อคเสมอ
+    const MIN_BLOCK = 180;
+
+    const update = () => {
+      const w = el.offsetWidth;
+      if (w <= 0) return;
+      // 5 บล็อค เรียงเท่ากัน: (ความกว้าง - padding - ช่องว่าง 4 จุด) / 5
+      const rawBlockWidth = (w - PADDING - (BLOCKS - 1) * GAP) / BLOCKS;
+      const blockWidth = Math.max(MIN_BLOCK, rawBlockWidth);
+      const stepSize = blockWidth + GAP;
+      setTripSummaryLayout({ blockWidth, blocksVisible: BLOCKS, stepSize });
+    };
+
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [tripInvoiceStats.length]); // re-measure when trips change (section may mount/unmount)
+
+  // Clamp tripSummaryIndex เมื่อ layout เปลี่ยน (เช่น resize หน้าต่าง)
+  useEffect(() => {
+    const maxIndex = Math.max(0, tripInvoiceStats.length - tripSummaryLayout.blocksVisible);
+    setTripSummaryIndex(prev => Math.min(prev, maxIndex));
+  }, [tripSummaryLayout.blocksVisible, tripInvoiceStats.length]);
 
   // สร้าง merged stores: รวมร้านเดียวกันจากหลายทริปเข้าด้วยกัน
   const mergedStores = useMemo((): MergedStoreEntry[] => {
@@ -924,7 +962,7 @@ export function SalesTripsView() {
     <>
       <ToastContainer toasts={toasts} onDismiss={dismissToast} />
       <PageLayout title="ออกใบแจ้งหนี้ - ทริปส่งสินค้า">
-        <div className="space-y-6">
+        <div className="space-y-6 min-w-0 overflow-x-hidden">
           {/* Date Filter + Branch Filter + View Mode Toggle */}
           <div className="mb-6 flex items-center gap-4 flex-wrap">
             <div className="flex items-center gap-2">
@@ -1068,24 +1106,24 @@ export function SalesTripsView() {
             </Card>
           </div>
 
-          {/* Trip Summary Index - เลื่อนแนวนอน คลิกเพื่อ scroll ไปที่ทริป */}
+          {/* Trip Summary Index - เลื่อนแนวนอน คลิกเพื่อ scroll ไปที่ทริป (แสดงสูงสุด 5 บล็อค) */}
           {myTrips.length > 0 && viewMode === 'by_trip' && (
-            <Card className="mb-6">
-              <div className="p-4 pb-3">
+            <Card className="mb-6 min-w-0 overflow-hidden">
+              <div className="p-4 pb-3 min-w-0">
                 <div className="flex items-center justify-between mb-3">
                   <h3 className="text-sm font-semibold text-gray-900 dark:text-white flex items-center gap-2">
                     <Truck className="w-4 h-4 text-blue-500" />
                     สรุปทริปวันนี้ ({myTrips.length} ทริป)
                   </h3>
-                  {tripInvoiceStats.length > 2 && (
+                  {tripInvoiceStats.length > tripSummaryLayout.blocksVisible && (
                     <span className="text-[11px] text-gray-400 dark:text-gray-500 flex items-center gap-1">
                       เลื่อนเพื่อดูเพิ่ม <ChevronRight className="w-3 h-3" />
                     </span>
                   )}
                 </div>
 
-                {/* Horizontal viewport (Window) แสดงเฉพาะช่วงที่พอดีกับจอ */}
-                <div className="relative w-full overflow-hidden">
+                {/* Horizontal viewport - คำนวณขนาดบล็อคให้พอดีกับหน้าจอ (สูงสุด 5 บล็อค) */}
+                <div ref={tripSummaryContainerRef} className="relative w-full min-w-0 overflow-hidden">
                   {/* Left scroll button (เลื่อนไปดูทริปก่อนหน้า) */}
                   {tripInvoiceStats.length > 1 && tripSummaryIndex > 0 && (
                     <button
@@ -1103,7 +1141,7 @@ export function SalesTripsView() {
                     id="trip-summary-scroll"
                     className="flex flex-nowrap gap-3 pb-2 px-2 transition-transform duration-300 ease-out"
                     style={{
-                      transform: `translateX(-${tripSummaryIndex * 280}px)`,
+                      transform: `translateX(-${tripSummaryIndex * tripSummaryLayout.stepSize}px)`,
                     }}
                   >
                     {tripInvoiceStats.map((stat) => {
@@ -1121,7 +1159,8 @@ export function SalesTripsView() {
                               setTimeout(() => el.classList.remove('ring-2', 'ring-blue-500', 'ring-offset-2'), 2000);
                             }
                           }}
-                          className={`flex-none w-[260px] p-3 rounded-lg border-2 transition-all text-left hover:shadow-md hover:scale-[1.02] active:scale-[0.98] cursor-pointer ${stat.isAllIssued
+                          style={{ width: tripSummaryLayout.blockWidth }}
+                          className={`flex-none flex-shrink-0 p-3 rounded-lg border-2 transition-all text-left hover:shadow-md hover:scale-[1.02] active:scale-[0.98] cursor-pointer ${stat.isAllIssued
                             ? 'border-green-300 dark:border-green-700 bg-green-50 dark:bg-green-900/20 hover:border-green-400'
                             : stat.issuedStores > 0
                               ? 'border-yellow-300 dark:border-yellow-700 bg-yellow-50 dark:bg-yellow-900/20 hover:border-yellow-400'
@@ -1208,11 +1247,10 @@ export function SalesTripsView() {
 
 
                   {/* Right scroll button (เลื่อนไปดูทริปถัดไป) */}
-                  {tripInvoiceStats.length > 1 && (
+                  {tripInvoiceStats.length > 1 && tripSummaryIndex < Math.max(0, tripInvoiceStats.length - tripSummaryLayout.blocksVisible) && (
                     <button
                       onClick={() => {
-                        const visibleCount = 3; // ประมาณจำนวนการ์ดที่มองเห็นได้ใน 1 หน้าต่าง
-                        const maxIndex = Math.max(0, tripInvoiceStats.length - visibleCount);
+                        const maxIndex = Math.max(0, tripInvoiceStats.length - tripSummaryLayout.blocksVisible);
                         setTripSummaryIndex(prev => Math.min(maxIndex, prev + 1));
                       }}
                       className="absolute right-0 top-1/2 -translate-y-1/2 z-10 w-8 h-8 rounded-full bg-white dark:bg-slate-800 shadow-lg border border-gray-200 dark:border-slate-600 flex items-center justify-center opacity-70 hover:opacity-100 transition-opacity hover:bg-gray-50 dark:hover:bg-slate-700"

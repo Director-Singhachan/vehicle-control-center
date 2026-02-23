@@ -60,7 +60,7 @@ export const PageLayout: React.FC<PageLayoutProps> = ({
   }
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="space-y-6 animate-fade-in min-w-0">
       {/* Page Header */}
       <div className="flex justify-between items-center">
         <div>
