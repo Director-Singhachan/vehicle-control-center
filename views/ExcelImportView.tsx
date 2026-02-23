@@ -29,7 +29,7 @@ const CATEGORY_RULES = [
     { name: 'เบียร์มาย', keywords: ['มาย', 'MY Beer', 'MYBEER'] },
     { name: 'เบียร์สโนวี่', keywords: ['สโนวี่', 'Snowy'] },
     { name: 'เบียร์อาซาฮี', keywords: ['อาซาฮี', 'Asahi'] },
-    { name: 'น้ำดื่ม', keywords: ['น้ำดื่ม', 'น้ำสิงห์', 'Purra', 'เพอร์รา'] },
+    { name: 'น้ำดื่ม', keywords: ['น้ำดื่ม', 'น้ำสิงห์', 'Purra', 'เพอร์รา', 'น้ำแร่', 'Mineral'] },
     { name: 'โซดา', keywords: ['โซดา'] },
     { name: 'อิชิตัน', keywords: ['อิชิตัน', 'Ichitan'] },
     { name: 'เลม่อน', keywords: ['เลม่อน', 'Lemonade'] },
