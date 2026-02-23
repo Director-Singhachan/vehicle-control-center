@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Upload, FileText, CheckCircle, AlertCircle, Clock, Search, ArrowRight, Save, History, Package, DollarSign } from 'lucide-react';
+import { Upload, FileText, CheckCircle, AlertCircle, Clock, Search, ArrowRight, Save, History, Package, DollarSign, ChevronLeft, ChevronRight } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { supabase } from '../lib/supabase';
 import { Card } from '../components/ui/Card';
@@ -65,6 +65,12 @@ interface ProductData {
     category: string;
     isNew: boolean;
     prices: { level: string; price: number }[];
+    oldData?: {
+        name: string;
+        unit: string;
+        category: string;
+        prices: Record<string, number>; // level -> price
+    };
 }
 
 interface ImportLogRow {
@@ -101,6 +107,14 @@ export function ExcelImportView() {
     const [logs, setLogs] = useState<ImportLogRow[]>([]);
     const [loadingLogs, setLoadingLogs] = useState(false);
     const [logSearchQuery, setLogSearchQuery] = useState('');
+
+    // Pagination states
+    const [currentPage, setCurrentPage] = useState(1);
+    const itemsPerPage = 50;
+
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [previewData]);
 
     const importStats: ImportStats = useMemo(() => {
         const stats: ImportStats = {
@@ -183,12 +197,9 @@ export function ExcelImportView() {
                     prices: [] as { level: string; index: number }[]
                 };
 
-                // Fallbacks if specific matches weren't found
+                // Fallbacks
                 if (colIndices.code === -1) colIndices.code = headers.findIndex(h => h && h.toString().includes('รหัส'));
                 if (colIndices.name === -1) colIndices.name = headers.findIndex(h => h && h.toString().includes('สินค้า') && !h.toString().includes('รหัส'));
-
-                console.log('Mapped Column Indices:', colIndices);
-                console.log('Headers found:', headers);
 
                 for (let i = 1; i <= 9; i++) {
                     const idx = headers.findIndex(h => h && h.includes(`ราคา ${i}`));
@@ -200,31 +211,51 @@ export function ExcelImportView() {
                     return;
                 }
 
-                // Fetch existing product codes to show New/Update status
+                // 1. Get Tier Mapping
+                const { data: tierList } = await supabase.from('customer_tiers').select('id, tier_code');
+                const tierCodeMap: Record<string, string> = {}; // id -> tier_code
+                tierList?.forEach(t => { tierCodeMap[t.id] = t.tier_code; });
+
+                // 2. Fetch existing products and prices
                 const codes = items.map(row => row[colIndices.code]?.toString().trim()).filter(Boolean);
-                const { data: existingCodes } = await supabase
+                const { data: existingProducts } = await supabase
                     .from('products')
-                    .select('product_code')
+                    .select('id, product_code, product_name, unit, category, product_tier_prices(tier_id, price)')
                     .in('product_code', codes);
 
-                const existingCodeSet = new Set(existingCodes?.map(p => p.product_code) || []);
+                const existingMap: Record<string, any> = {};
+                existingProducts?.forEach(p => {
+                    const prices: Record<string, number> = {};
+                    p.product_tier_prices?.forEach((tp: any) => {
+                        const tCode = tierCodeMap[tp.tier_id];
+                        if (tCode) prices[tCode] = tp.price;
+                    });
+                    existingMap[p.product_code] = { ...p, mappedPrices: prices };
+                });
 
                 const mappedItems: ProductData[] = items.map(row => {
                     const rawName = row[colIndices.name]?.toString().trim() || '';
                     const rawCode = row[colIndices.code]?.toString().trim() || '';
                     const rawUnit = row[colIndices.unit] ? row[colIndices.unit].toString().trim() : '';
                     const category = getCategoryFromProductName(rawName);
+                    const existing = existingMap[rawCode];
 
                     return {
                         code: rawCode,
                         name: rawName,
                         unit: UNIT_MAP[rawUnit] || rawUnit,
                         category: category,
-                        isNew: !existingCodeSet.has(rawCode),
+                        isNew: !existing,
                         prices: colIndices.prices.map(p => ({
                             level: p.level,
                             price: parseFloat(row[p.index] || '0')
-                        }))
+                        })),
+                        oldData: existing ? {
+                            name: existing.product_name,
+                            unit: existing.unit,
+                            category: existing.category,
+                            prices: existing.mappedPrices
+                        } : undefined
                     };
                 });
 
@@ -361,6 +392,37 @@ export function ExcelImportView() {
         log.product_name.toLowerCase().includes(logSearchQuery.toLowerCase())
     );
 
+    function renderDiff(oldVal: string | undefined, newVal: string, label?: string) {
+        const isChanged = oldVal !== undefined && oldVal !== newVal;
+        if (!isChanged) return <span>{newVal}</span>;
+
+        return (
+            <div className="flex flex-col gap-0.5">
+                <span className="text-[10px] text-slate-400 line-through decoration-red-400/50">{oldVal}</span>
+                <span className="text-blue-600 dark:text-blue-400 font-bold flex items-center gap-1">
+                    <ArrowRight size={10} />
+                    {newVal}
+                </span>
+            </div>
+        );
+    }
+
+    function renderPriceDiff(oldPrice: number | undefined, newPrice: number) {
+        const isChanged = oldPrice !== undefined && oldPrice !== newPrice;
+        const colorClass = isChanged
+            ? (newPrice > oldPrice ? 'text-green-600 font-bold' : 'text-red-600 font-bold')
+            : 'text-slate-600 dark:text-slate-400';
+
+        return (
+            <div className="flex flex-col items-end">
+                {isChanged && (
+                    <span className="text-[9px] text-slate-400 line-through">{oldPrice?.toLocaleString()}</span>
+                )}
+                <span className={`text-xs ${colorClass}`}>{newPrice.toLocaleString()} ฿</span>
+            </div>
+        );
+    }
+
     function renderChangeDetails(changes: any, type: string) {
         if (type === 'created') {
             return <span className="text-xs text-slate-500 italic">บันทึกข้อมูลสินค้าและราคาทั้ง 9 ระดับเริ่มต้น</span>;
@@ -492,50 +554,112 @@ export function ExcelImportView() {
 
                             <Card className="overflow-hidden">
                                 <div className="overflow-x-auto">
-                                    <table className="w-full text-sm">
+                                    <table className="w-full text-sm border-collapse">
                                         <thead>
                                             <tr className="bg-slate-50 dark:bg-slate-800/50 border-b border-slate-200 dark:border-slate-700">
-                                                <th className="px-4 py-3 text-left font-bold text-slate-700 dark:text-slate-300">รหัส</th>
-                                                <th className="px-4 py-3 text-left font-bold text-slate-700 dark:text-slate-300">สินค้า</th>
-                                                <th className="px-4 py-3 text-left font-bold text-slate-700 dark:text-slate-300">หมวดหมู่</th>
-                                                <th className="px-4 py-3 text-center font-bold text-slate-700 dark:text-slate-300">หน่วย</th>
-                                                <th className="px-4 py-3 text-center font-bold text-slate-700 dark:text-slate-300">สถานะ</th>
-                                                <th className="px-4 py-3 text-right font-bold text-slate-700 dark:text-slate-300">ราคาฐาน</th>
-                                                <th className="px-4 py-3 text-right font-bold text-slate-700 dark:text-slate-300">ราคาต่ำสุด</th>
+                                                <th className="px-3 py-3 text-left font-bold text-slate-700 dark:text-slate-300 min-w-[100px] sticky left-0 bg-slate-50 dark:bg-slate-900 z-10">รหัส</th>
+                                                <th className="px-3 py-3 text-left font-bold text-slate-700 dark:text-slate-300 min-w-[200px] sticky left-[100px] bg-slate-50 dark:bg-slate-900 z-10 border-r border-slate-200 dark:border-slate-700">สินค้า (เก่า → ใหม่)</th>
+                                                <th className="px-3 py-3 text-left font-bold text-slate-700 dark:text-slate-300 min-w-[120px]">หมวดหมู่</th>
+                                                <th className="px-3 py-3 text-center font-bold text-slate-700 dark:text-slate-300">หน่วย</th>
+                                                <th className="px-3 py-3 text-center font-bold text-slate-700 dark:text-slate-300">สถานะ</th>
+                                                {[1, 2, 3, 4, 5, 6, 7, 8, 9].map(i => (
+                                                    <th key={i} className="px-3 py-3 text-right font-bold text-slate-500 whitespace-nowrap">ราคา {i}</th>
+                                                ))}
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            {previewData.slice(0, 50).map((item, idx) => (
+                                            {previewData.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage).map((item, idx) => (
                                                 <tr key={idx} className="border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700/50">
-                                                    <td className="px-4 py-3 font-mono text-xs">{item.code}</td>
-                                                    <td className="px-4 py-3">
-                                                        <p className="font-medium">{item.name}</p>
+                                                    <td className="px-3 py-3 font-mono text-[10px] sticky left-0 bg-white dark:bg-slate-800 z-10">{item.code}</td>
+                                                    <td className="px-3 py-3 sticky left-[100px] bg-white dark:bg-slate-800 z-10 border-r border-slate-200 dark:border-slate-700">
+                                                        {renderDiff(item.isNew ? undefined : item.oldData?.name, item.name)}
                                                     </td>
-                                                    <td className="px-4 py-3">
-                                                        <Badge variant="info" className="text-[10px]">{item.category}</Badge>
+                                                    <td className="px-3 py-3">
+                                                        {renderDiff(item.isNew ? undefined : item.oldData?.category, item.category)}
                                                     </td>
-                                                    <td className="px-4 py-3 text-center">
-                                                        <Badge>{item.unit}</Badge>
+                                                    <td className="px-3 py-3 text-center">
+                                                        {renderDiff(item.isNew ? undefined : item.oldData?.unit, item.unit)}
                                                     </td>
-                                                    <td className="px-4 py-3 text-center">
+                                                    <td className="px-3 py-3 text-center">
                                                         {item.isNew ? (
-                                                            <Badge className="bg-green-100 text-green-700 border-green-200">เพิ่มใหม่</Badge>
+                                                            <Badge variant="success" className="text-[10px]">เพิ่มใหม่</Badge>
                                                         ) : (
-                                                            <Badge className="bg-blue-100 text-blue-700 border-blue-200">อัปเดต</Badge>
+                                                            <Badge variant="info" className="text-[10px]">อัปเดต</Badge>
                                                         )}
                                                     </td>
-                                                    <td className="px-4 py-3 text-right font-bold">{item.prices[0]?.price.toLocaleString()} ฿</td>
-                                                    <td className="px-4 py-3 text-right">{item.prices[item.prices.length - 1]?.price.toLocaleString() || '-'} ฿</td>
+                                                    {[1, 2, 3, 4, 5, 6, 7, 8, 9].map(level => {
+                                                        const pInfo = item.prices.find(p => p.level === level.toString());
+                                                        const oldP = item.oldData?.prices[level.toString()];
+                                                        return (
+                                                            <td key={level} className="px-3 py-3 text-right border-l border-slate-50 dark:border-slate-800/50">
+                                                                {renderPriceDiff(oldP, pInfo?.price || 0)}
+                                                            </td>
+                                                        );
+                                                    })}
                                                 </tr>
                                             ))}
                                         </tbody>
                                     </table>
-                                    {previewData.length > 50 && (
-                                        <div className="p-4 text-center text-slate-500 bg-slate-50/50 dark:bg-slate-800/20 italic">
-                                            แสดงเพียง 50 รายการแรก จากทั้งหมด {previewData.length} รายการ
-                                        </div>
-                                    )}
                                 </div>
+
+                                {/* Pagination Controls */}
+                                {previewData.length > itemsPerPage && (
+                                    <div className="p-4 bg-slate-50 dark:bg-slate-800/30 border-t border-slate-200 dark:border-slate-700 flex items-center justify-between">
+                                        <div className="text-sm text-slate-500">
+                                            แสดง {(currentPage - 1) * itemsPerPage + 1} ถึง {Math.min(currentPage * itemsPerPage, previewData.length)} จาก {previewData.length} รายการ
+                                        </div>
+                                        <div className="flex gap-2">
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                disabled={currentPage === 1}
+                                                onClick={() => setCurrentPage(prev => prev - 1)}
+                                                className="px-2"
+                                            >
+                                                <ChevronLeft size={16} />
+                                            </Button>
+                                            <div className="flex items-center gap-1">
+                                                {Array.from({ length: Math.ceil(previewData.length / itemsPerPage) }).map((_, i) => {
+                                                    const pageNum = i + 1;
+                                                    // Only show first, last, and pages around current
+                                                    if (
+                                                        pageNum === 1 ||
+                                                        pageNum === Math.ceil(previewData.length / itemsPerPage) ||
+                                                        (pageNum >= currentPage - 1 && pageNum <= currentPage + 1)
+                                                    ) {
+                                                        return (
+                                                            <button
+                                                                key={pageNum}
+                                                                onClick={() => setCurrentPage(pageNum)}
+                                                                className={`w-8 h-8 rounded-lg text-xs font-medium transition-all ${currentPage === pageNum
+                                                                    ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20'
+                                                                    : 'hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400'
+                                                                    }`}
+                                                            >
+                                                                {pageNum}
+                                                            </button>
+                                                        );
+                                                    } else if (
+                                                        pageNum === currentPage - 2 ||
+                                                        pageNum === currentPage + 2
+                                                    ) {
+                                                        return <span key={pageNum} className="text-slate-400">...</span>;
+                                                    }
+                                                    return null;
+                                                })}
+                                            </div>
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                disabled={currentPage === Math.ceil(previewData.length / itemsPerPage)}
+                                                onClick={() => setCurrentPage(prev => prev + 1)}
+                                                className="px-2"
+                                            >
+                                                <ChevronRight size={16} />
+                                            </Button>
+                                        </div>
+                                    </div>
+                                )}
                             </Card>
                         </div>
                     )}
