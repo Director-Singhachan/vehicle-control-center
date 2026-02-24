@@ -283,6 +283,7 @@ export function ExcelImportView() {
         let created = 0;
         let updated = 0;
         let failed = 0;
+        let errorMessages: string[] = [];
 
         const importDate = new Date().toISOString().split('T')[0];
 
@@ -300,11 +301,13 @@ export function ExcelImportView() {
                 // Update progress
                 setImportProgress(Math.round(((i + 1) / totalItems) * 100));
                 // 1. Check if product exists
-                const { data: existingProduct } = await supabase
+                const { data: existingProduct, error: fetchError } = await supabase
                     .from('products')
                     .select('id, base_price, unit, product_name, category')
                     .eq('product_code', item.code)
                     .maybeSingle();
+
+                if (fetchError) throw fetchError;
 
                 let productId;
                 let actionType: 'created' | 'updated' = 'updated';
@@ -348,10 +351,11 @@ export function ExcelImportView() {
                         if (pChanges.base_price) updateData.base_price = item.prices[0]?.price;
                         if (pChanges.category) updateData.category = item.category;
 
-                        await supabase.from('products').update(updateData).eq('id', productId);
+                        const { error: uError } = await supabase.from('products').update(updateData).eq('id', productId);
+                        if (uError) throw uError;
                         changes = pChanges;
+                        updated++;
                     }
-                    updated++;
                 }
 
                 // 2. Upsert Tier Prices
@@ -360,7 +364,7 @@ export function ExcelImportView() {
                     const tierId = tierMap[pInfo.level];
                     if (!tierId) continue;
 
-                    await supabase
+                    const { error: tError } = await supabase
                         .from('product_tier_prices')
                         .upsert({
                             product_id: productId,
@@ -371,10 +375,16 @@ export function ExcelImportView() {
                             created_by: profile?.id,
                             is_active: true
                         }, { onConflict: 'product_id, tier_id, min_quantity' });
+
+                    if (tError) {
+                        console.error(`Failed to upsert price for ${item.code} tier ${pInfo.level}:`, tError);
+                        // We might not want to fail the whole product just for one price level, 
+                        // but let's at least log it.
+                    }
                 }
 
                 // 3. Log the action
-                await supabase.from('product_import_logs').insert({
+                const { error: logError } = await supabase.from('product_import_logs').insert({
                     import_date: importDate,
                     product_code: item.code,
                     product_name: item.name,
@@ -382,17 +392,27 @@ export function ExcelImportView() {
                     action_type: actionType,
                     changes: changes,
                 });
+                if (logError) console.error('Failed to log import:', logError);
 
-            } catch (err) {
+            } catch (err: any) {
                 console.error(`Failed to import ${item.code}:`, err);
                 failed++;
+                errorMessages.push(`${item.code}: ${err.message || 'Unknown error'}`);
             }
         }
 
         setIsProcessing(false);
         setIsImporting(false);
         setImportProgress(0);
-        showNotification('success', `นำเข้าข้อมูลเสร็จสิ้น: เพิ่มใหม่ ${created}, อัปเดต ${updated}, ล้มเหลว ${failed}`);
+
+        if (failed > 0) {
+            showNotification('error', `นำเข้าเสร็จสิ้นพร้อมปัญหา: ล้มเหลว ${failed} รายการ (เพิ่มใหม่ ${created}, อัปเดต ${updated})`);
+            console.group('Import Error Summary');
+            errorMessages.forEach(msg => console.error(msg));
+            console.groupEnd();
+        } else {
+            showNotification('success', `นำเข้าข้อมูลเสร็จสิ้น: เพิ่มใหม่ ${created}, อัปเดต ${updated}`);
+        }
         setPreviewData([]);
         setFile(null);
         if (fileInputRef.current) fileInputRef.current.value = '';
