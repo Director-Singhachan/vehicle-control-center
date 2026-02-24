@@ -92,12 +92,26 @@ interface FailedItem {
     reason: string;
 }
 
+interface CreatedItem {
+    code: string;
+    name: string;
+    unit?: string;
+}
+
+interface UpdatedItem {
+    code: string;
+    name: string;
+    changes: Record<string, { old: any; new: any }>;
+}
+
 interface ImportResult {
     total: number;
     created: number;
     updated: number;
     failed: number;
     failedItems: FailedItem[];
+    createdItems: CreatedItem[];
+    updatedItems: UpdatedItem[];
 }
 
 interface ImportStats {
@@ -121,6 +135,7 @@ export function ExcelImportView() {
     const [showTemplateExample, setShowTemplateExample] = useState(false);
     const [importResult, setImportResult] = useState<ImportResult | null>(null);
     const [showResultModal, setShowResultModal] = useState(false);
+    const [resultTab, setResultTab] = useState<'created' | 'updated' | 'failed'>('failed');
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     // History states
@@ -300,6 +315,8 @@ export function ExcelImportView() {
         let updated = 0;
         let failed = 0;
         let failedItems: FailedItem[] = [];
+        let createdItems: CreatedItem[] = [];
+        let updatedItems: UpdatedItem[] = [];
 
         const importDate = new Date().toISOString().split('T')[0];
 
@@ -321,6 +338,7 @@ export function ExcelImportView() {
                     .from('products')
                     .select('id, base_price, unit, product_name, category')
                     .eq('product_code', item.code)
+                    .eq('unit', item.unit)
                     .maybeSingle();
 
                 if (fetchError) throw fetchError;
@@ -344,13 +362,21 @@ export function ExcelImportView() {
                             updated_by: profile?.id
                         })
                         .select()
-                        .single();
+                        .maybeSingle();
 
                     if (pError) throw pError;
+                    if (!newP) {
+                        throw new Error('ไม่สามารถสร้างสินค้าได้: ระบบไม่ส่งข้อมูลสินค้าที่สร้างใหม่กลับมา');
+                    }
                     productId = newP.id;
                     actionType = 'created';
                     changes = { initial_prices: item.prices };
                     created++;
+                    createdItems.push({
+                        code: item.code,
+                        name: item.name,
+                        unit: item.unit,
+                    });
                 } else {
                     // UPDATE Product if needed
                     productId = existingProduct.id;
@@ -371,6 +397,11 @@ export function ExcelImportView() {
                         if (uError) throw uError;
                         changes = pChanges;
                         updated++;
+                        updatedItems.push({
+                            code: item.code,
+                            name: item.name,
+                            changes: pChanges,
+                        });
                     }
                 }
 
@@ -425,12 +456,18 @@ export function ExcelImportView() {
         setIsImporting(false);
         setImportProgress(0);
 
+        const defaultResultTab: 'created' | 'updated' | 'failed' =
+            failed > 0 ? 'failed' : created > 0 ? 'created' : 'updated';
+        setResultTab(defaultResultTab);
+
         setImportResult({
             total: totalItems,
             created,
             updated,
             failed,
-            failedItems: failedItems
+            failedItems: failedItems,
+            createdItems,
+            updatedItems,
         });
         setShowResultModal(true);
 
@@ -892,7 +929,15 @@ export function ExcelImportView() {
             >
                 <div className="space-y-6">
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <div className="p-4 bg-green-50 dark:bg-green-900/20 rounded-xl border border-green-100 dark:border-green-900/30 flex items-center gap-4">
+                        <button
+                            type="button"
+                            onClick={() => setResultTab('created')}
+                            className={`p-4 rounded-xl border flex items-center gap-4 text-left transition cursor-pointer focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 ${
+                                resultTab === 'created'
+                                    ? 'bg-green-100 dark:bg-green-900/40 border-green-300 dark:border-green-500'
+                                    : 'bg-green-50 dark:bg-green-900/20 border-green-100 dark:border-green-900/30'
+                            }`}
+                        >
                             <div className="w-10 h-10 bg-green-500 text-white rounded-full flex items-center justify-center shrink-0">
                                 <CheckCircle size={24} />
                             </div>
@@ -900,8 +945,16 @@ export function ExcelImportView() {
                                 <p className="text-xs text-green-600 dark:text-green-400 font-medium">เพิ่มใหม่</p>
                                 <p className="text-xl font-bold text-green-700 dark:text-green-300">{importResult?.created}</p>
                             </div>
-                        </div>
-                        <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-xl border border-blue-100 dark:border-blue-900/30 flex items-center gap-4">
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setResultTab('updated')}
+                            className={`p-4 rounded-xl border flex items-center gap-4 text-left transition cursor-pointer focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 ${
+                                resultTab === 'updated'
+                                    ? 'bg-blue-100 dark:bg-blue-900/40 border-blue-300 dark:border-blue-500'
+                                    : 'bg-blue-50 dark:bg-blue-900/20 border-blue-100 dark:border-blue-900/30'
+                            }`}
+                        >
                             <div className="w-10 h-10 bg-blue-500 text-white rounded-full flex items-center justify-center shrink-0">
                                 <History size={24} />
                             </div>
@@ -909,8 +962,20 @@ export function ExcelImportView() {
                                 <p className="text-xs text-blue-600 dark:text-blue-400 font-medium">อัปเดต</p>
                                 <p className="text-xl font-bold text-blue-700 dark:text-blue-300">{importResult?.updated}</p>
                             </div>
-                        </div>
-                        <div className={`p-4 rounded-xl border flex items-center gap-4 ${importResult?.failed ? 'bg-red-50 dark:bg-red-900/20 border-red-100 dark:border-red-900/30' : 'bg-slate-50 dark:bg-slate-800 border-slate-100 dark:border-slate-700'}`}>
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setResultTab('failed')}
+                            className={`p-4 rounded-xl border flex items-center gap-4 text-left transition cursor-pointer focus:outline-none focus:ring-2 focus:ring-offset-2 ${
+                                resultTab === 'failed'
+                                    ? importResult?.failed
+                                        ? 'bg-red-100 dark:bg-red-900/40 border-red-300 dark:border-red-500'
+                                        : 'bg-slate-200 dark:bg-slate-700 border-slate-400 dark:border-slate-500'
+                                    : importResult?.failed
+                                        ? 'bg-red-50 dark:bg-red-900/20 border-red-100 dark:border-red-900/30'
+                                        : 'bg-slate-50 dark:bg-slate-800 border-slate-100 dark:border-slate-700'
+                            }`}
+                        >
                             <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${importResult?.failed ? 'bg-red-500 text-white' : 'bg-slate-300 text-white'}`}>
                                 <AlertCircle size={24} />
                             </div>
@@ -918,45 +983,129 @@ export function ExcelImportView() {
                                 <p className={`text-xs font-medium ${importResult?.failed ? 'text-red-600 dark:text-red-400' : 'text-slate-500'}`}>ล้มเหลว</p>
                                 <p className={`text-xl font-bold ${importResult?.failed ? 'text-red-700 dark:text-red-300' : 'text-slate-700 dark:text-slate-300'}`}>{importResult?.failed}</p>
                             </div>
-                        </div>
+                        </button>
                     </div>
 
-                    {importResult?.failedItems.length ? (
-                        <div className="space-y-3">
-                            <h4 className="font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                                <AlertCircle size={18} className="text-red-500" />
-                                รายการที่ล้มเหลว ({importResult.failedItems.length})
-                            </h4>
-                            <div className="border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden">
-                                <div className="max-h-[300px] overflow-y-auto">
-                                    <table className="w-full text-sm text-left">
-                                        <thead className="bg-slate-50 dark:bg-slate-800/50 text-slate-500 sticky top-0 z-10">
-                                            <tr>
-                                                <th className="px-4 py-2 border-b border-slate-200 dark:border-slate-700">รหัส</th>
-                                                <th className="px-4 py-2 border-b border-slate-200 dark:border-slate-700">ชื่อสินค้า</th>
-                                                <th className="px-4 py-2 border-b border-slate-200 dark:border-slate-700">เหตุผลที่ล้มเหลว</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                                            {importResult.failedItems.map((item, idx) => (
-                                                <tr key={idx} className="hover:bg-red-50/30 dark:hover:bg-red-900/10">
-                                                    <td className="px-4 py-3 font-mono text-xs text-slate-600 dark:text-slate-400">{item.code}</td>
-                                                    <td className="px-4 py-3 text-slate-900 dark:text-white font-medium">{item.name}</td>
-                                                    <td className="px-4 py-3 text-red-600 dark:text-red-400 flex items-start gap-2">
-                                                        <AlertCircle size={14} className="shrink-0 mt-0.5" />
-                                                        {item.reason}
-                                                    </td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
+                    {importResult && (
+                        <div className="space-y-4">
+                            {resultTab === 'created' && (
+                                <div className="space-y-3">
+                                    <h4 className="font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                                        <CheckCircle size={18} className="text-green-500" />
+                                        รายการที่เพิ่มใหม่ ({importResult.createdItems.length})
+                                    </h4>
+                                    {importResult.createdItems.length ? (
+                                        <div className="border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden">
+                                            <div className="max-h-[300px] overflow-y-auto">
+                                                <table className="w-full text-sm text-left">
+                                                    <thead className="bg-slate-50 dark:bg-slate-800/50 text-slate-500 sticky top-0 z-10">
+                                                        <tr>
+                                                            <th className="px-4 py-2 border-b border-slate-200 dark:border-slate-700">รหัส</th>
+                                                            <th className="px-4 py-2 border-b border-slate-200 dark:border-slate-700">ชื่อสินค้า</th>
+                                                            <th className="px-4 py-2 border-b border-slate-200 dark:border-slate-700">หน่วย</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                                                        {importResult.createdItems.map((item, idx) => (
+                                                            <tr key={idx} className="hover:bg-green-50/30 dark:hover:bg-green-900/10">
+                                                                <td className="px-4 py-3 font-mono text-xs text-slate-600 dark:text-slate-400">{item.code}</td>
+                                                                <td className="px-4 py-3 text-slate-900 dark:text-white font-medium">{item.name}</td>
+                                                                <td className="px-4 py-3 text-slate-700 dark:text-slate-300">{item.unit || '-'}</td>
+                                                            </tr>
+                                                        ))}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div className="bg-slate-50 dark:bg-slate-800/60 p-4 rounded-xl text-slate-600 dark:text-slate-300 text-sm">
+                                            ไม่มีรายการที่เพิ่มใหม่ในรอบนี้
+                                        </div>
+                                    )}
                                 </div>
-                            </div>
-                        </div>
-                    ) : (
-                        <div className="bg-green-50 dark:bg-green-900/10 p-4 rounded-xl flex items-center justify-center gap-3 text-green-700 dark:text-green-300 border border-green-100 dark:border-green-900/20">
-                            <CheckCircle size={20} />
-                            <span className="font-medium">นำเข้าข้อมูลสำเร็จทุกรายการ</span>
+                            )}
+
+                            {resultTab === 'updated' && (
+                                <div className="space-y-3">
+                                    <h4 className="font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                                        <History size={18} className="text-blue-500" />
+                                        รายการที่อัปเดต ({importResult.updatedItems.length})
+                                    </h4>
+                                    {importResult.updatedItems.length ? (
+                                        <div className="border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden">
+                                            <div className="max-h-[300px] overflow-y-auto">
+                                                <table className="w-full text-sm text-left">
+                                                    <thead className="bg-slate-50 dark:bg-slate-800/50 text-slate-500 sticky top-0 z-10">
+                                                        <tr>
+                                                            <th className="px-4 py-2 border-b border-slate-200 dark:border-slate-700">รหัส</th>
+                                                            <th className="px-4 py-2 border-b border-slate-200 dark:border-slate-700">ชื่อสินค้า</th>
+                                                            <th className="px-4 py-2 border-b border-slate-200 dark:border-slate-700">รายละเอียดการเปลี่ยนแปลง</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                                                        {importResult.updatedItems.map((item, idx) => (
+                                                            <tr key={idx} className="hover:bg-blue-50/30 dark:hover:bg-blue-900/10">
+                                                                <td className="px-4 py-3 font-mono text-xs text-slate-600 dark:text-slate-400">{item.code}</td>
+                                                                <td className="px-4 py-3 text-slate-900 dark:text-white font-medium">{item.name}</td>
+                                                                <td className="px-4 py-3">
+                                                                    <div className="max-w-md overflow-hidden text-ellipsis">
+                                                                        {renderChangeDetails(item.changes, 'updated')}
+                                                                    </div>
+                                                                </td>
+                                                            </tr>
+                                                        ))}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div className="bg-slate-50 dark:bg-slate-800/60 p-4 rounded-xl text-slate-600 dark:text-slate-300 text-sm">
+                                            ไม่มีรายการที่อัปเดตในรอบนี้
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {resultTab === 'failed' && (
+                                importResult.failedItems.length ? (
+                                    <div className="space-y-3">
+                                        <h4 className="font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                                            <AlertCircle size={18} className="text-red-500" />
+                                            รายการที่ล้มเหลว ({importResult.failedItems.length})
+                                        </h4>
+                                        <div className="border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden">
+                                            <div className="max-h-[300px] overflow-y-auto">
+                                                <table className="w-full text-sm text-left">
+                                                    <thead className="bg-slate-50 dark:bg-slate-800/50 text-slate-500 sticky top-0 z-10">
+                                                        <tr>
+                                                            <th className="px-4 py-2 border-b border-slate-200 dark:border-slate-700">รหัส</th>
+                                                            <th className="px-4 py-2 border-b border-slate-200 dark:border-slate-700">ชื่อสินค้า</th>
+                                                            <th className="px-4 py-2 border-b border-slate-200 dark:border-slate-700">เหตุผลที่ล้มเหลว</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                                                        {importResult.failedItems.map((item, idx) => (
+                                                            <tr key={idx} className="hover:bg-red-50/30 dark:hover:bg-red-900/10">
+                                                                <td className="px-4 py-3 font-mono text-xs text-slate-600 dark:text-slate-400">{item.code}</td>
+                                                                <td className="px-4 py-3 text-slate-900 dark:text-white font-medium">{item.name}</td>
+                                                                <td className="px-4 py-3 text-red-600 dark:text-red-400 flex items-start gap-2">
+                                                                    <AlertCircle size={14} className="shrink-0 mt-0.5" />
+                                                                    {item.reason}
+                                                                </td>
+                                                            </tr>
+                                                        ))}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="bg-green-50 dark:bg-green-900/10 p-4 rounded-xl flex items-center justify-center gap-3 text-green-700 dark:text-green-300 border border-green-100 dark:border-green-900/20">
+                                        <CheckCircle size={20} />
+                                        <span className="font-medium">นำเข้าข้อมูลสำเร็จทุกรายการ</span>
+                                    </div>
+                                )
+                            )}
                         </div>
                     )}
 
