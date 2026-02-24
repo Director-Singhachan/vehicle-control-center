@@ -86,6 +86,20 @@ interface ImportLogRow {
     created_at: string;
 }
 
+interface FailedItem {
+    code: string;
+    name: string;
+    reason: string;
+}
+
+interface ImportResult {
+    total: number;
+    created: number;
+    updated: number;
+    failed: number;
+    failedItems: FailedItem[];
+}
+
 interface ImportStats {
     total: number;
     created: number;
@@ -105,6 +119,8 @@ export function ExcelImportView() {
     const [isImporting, setIsImporting] = useState(false);
     const [importProgress, setImportProgress] = useState(0);
     const [showTemplateExample, setShowTemplateExample] = useState(false);
+    const [importResult, setImportResult] = useState<ImportResult | null>(null);
+    const [showResultModal, setShowResultModal] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     // History states
@@ -283,7 +299,7 @@ export function ExcelImportView() {
         let created = 0;
         let updated = 0;
         let failed = 0;
-        let errorMessages: string[] = [];
+        let failedItems: FailedItem[] = [];
 
         const importDate = new Date().toISOString().split('T')[0];
 
@@ -397,7 +413,11 @@ export function ExcelImportView() {
             } catch (err: any) {
                 console.error(`Failed to import ${item.code}:`, err);
                 failed++;
-                errorMessages.push(`${item.code}: ${err.message || 'Unknown error'}`);
+                failedItems.push({
+                    code: item.code,
+                    name: item.name,
+                    reason: err.message || 'Unknown error'
+                });
             }
         }
 
@@ -405,14 +425,15 @@ export function ExcelImportView() {
         setIsImporting(false);
         setImportProgress(0);
 
-        if (failed > 0) {
-            showNotification('error', `นำเข้าเสร็จสิ้นพร้อมปัญหา: ล้มเหลว ${failed} รายการ (เพิ่มใหม่ ${created}, อัปเดต ${updated})`);
-            console.group('Import Error Summary');
-            errorMessages.forEach(msg => console.error(msg));
-            console.groupEnd();
-        } else {
-            showNotification('success', `นำเข้าข้อมูลเสร็จสิ้น: เพิ่มใหม่ ${created}, อัปเดต ${updated}`);
-        }
+        setImportResult({
+            total: totalItems,
+            created,
+            updated,
+            failed,
+            failedItems: failedItems
+        });
+        setShowResultModal(true);
+
         setPreviewData([]);
         setFile(null);
         if (fileInputRef.current) fileInputRef.current.value = '';
@@ -858,6 +879,91 @@ export function ExcelImportView() {
                     <div className="mt-8 flex items-center justify-center text-xs text-slate-400 animate-pulse">
                         <LoadingSpinner size={12} className="mr-2" />
                         ห้ามปิดหน้าจอนี้จนกว่าจะเสร็จสิ้น
+                    </div>
+                </div>
+            </Modal>
+
+            {/* Result Modal */}
+            <Modal
+                isOpen={showResultModal}
+                onClose={() => setShowResultModal(false)}
+                title="ผลสรุปการนำเข้าข้อมูล"
+                size={importResult?.failedItems.length ? 'large' : 'medium'}
+            >
+                <div className="space-y-6">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div className="p-4 bg-green-50 dark:bg-green-900/20 rounded-xl border border-green-100 dark:border-green-900/30 flex items-center gap-4">
+                            <div className="w-10 h-10 bg-green-500 text-white rounded-full flex items-center justify-center shrink-0">
+                                <CheckCircle size={24} />
+                            </div>
+                            <div>
+                                <p className="text-xs text-green-600 dark:text-green-400 font-medium">เพิ่มใหม่</p>
+                                <p className="text-xl font-bold text-green-700 dark:text-green-300">{importResult?.created}</p>
+                            </div>
+                        </div>
+                        <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-xl border border-blue-100 dark:border-blue-900/30 flex items-center gap-4">
+                            <div className="w-10 h-10 bg-blue-500 text-white rounded-full flex items-center justify-center shrink-0">
+                                <History size={24} />
+                            </div>
+                            <div>
+                                <p className="text-xs text-blue-600 dark:text-blue-400 font-medium">อัปเดต</p>
+                                <p className="text-xl font-bold text-blue-700 dark:text-blue-300">{importResult?.updated}</p>
+                            </div>
+                        </div>
+                        <div className={`p-4 rounded-xl border flex items-center gap-4 ${importResult?.failed ? 'bg-red-50 dark:bg-red-900/20 border-red-100 dark:border-red-900/30' : 'bg-slate-50 dark:bg-slate-800 border-slate-100 dark:border-slate-700'}`}>
+                            <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${importResult?.failed ? 'bg-red-500 text-white' : 'bg-slate-300 text-white'}`}>
+                                <AlertCircle size={24} />
+                            </div>
+                            <div>
+                                <p className={`text-xs font-medium ${importResult?.failed ? 'text-red-600 dark:text-red-400' : 'text-slate-500'}`}>ล้มเหลว</p>
+                                <p className={`text-xl font-bold ${importResult?.failed ? 'text-red-700 dark:text-red-300' : 'text-slate-700 dark:text-slate-300'}`}>{importResult?.failed}</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    {importResult?.failedItems.length ? (
+                        <div className="space-y-3">
+                            <h4 className="font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                                <AlertCircle size={18} className="text-red-500" />
+                                รายการที่ล้มเหลว ({importResult.failedItems.length})
+                            </h4>
+                            <div className="border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden">
+                                <div className="max-h-[300px] overflow-y-auto">
+                                    <table className="w-full text-sm text-left">
+                                        <thead className="bg-slate-50 dark:bg-slate-800/50 text-slate-500 sticky top-0 z-10">
+                                            <tr>
+                                                <th className="px-4 py-2 border-b border-slate-200 dark:border-slate-700">รหัส</th>
+                                                <th className="px-4 py-2 border-b border-slate-200 dark:border-slate-700">ชื่อสินค้า</th>
+                                                <th className="px-4 py-2 border-b border-slate-200 dark:border-slate-700">เหตุผลที่ล้มเหลว</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                                            {importResult.failedItems.map((item, idx) => (
+                                                <tr key={idx} className="hover:bg-red-50/30 dark:hover:bg-red-900/10">
+                                                    <td className="px-4 py-3 font-mono text-xs text-slate-600 dark:text-slate-400">{item.code}</td>
+                                                    <td className="px-4 py-3 text-slate-900 dark:text-white font-medium">{item.name}</td>
+                                                    <td className="px-4 py-3 text-red-600 dark:text-red-400 flex items-start gap-2">
+                                                        <AlertCircle size={14} className="shrink-0 mt-0.5" />
+                                                        {item.reason}
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="bg-green-50 dark:bg-green-900/10 p-4 rounded-xl flex items-center justify-center gap-3 text-green-700 dark:text-green-300 border border-green-100 dark:border-green-900/20">
+                            <CheckCircle size={20} />
+                            <span className="font-medium">นำเข้าข้อมูลสำเร็จทุกรายการ</span>
+                        </div>
+                    )}
+
+                    <div className="flex justify-end pt-4 border-t border-slate-100 dark:border-slate-700">
+                        <Button onClick={() => setShowResultModal(false)} className="px-8">
+                            ปิดหน้าต่าง
+                        </Button>
                     </div>
                 </div>
             </Modal>
