@@ -438,8 +438,12 @@ export function ExcelImportView() {
                     unit: item.unit,
                     action_type: actionType,
                     changes: changes,
+                    created_by: profile?.id,
                 });
-                if (logError) console.error('Failed to log import:', logError);
+                if (logError) {
+                    console.error('Failed to log import:', logError);
+                    showNotification('error', 'บันทึกประวัติการนำเข้าไม่สำเร็จ: ' + (logError.message || 'Unknown error'));
+                }
 
             } catch (err: any) {
                 console.error(`Failed to import ${item.code}:`, err);
