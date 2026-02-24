@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useCallback, memo, useRef } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, memo } from 'react';
 import { Package, Calendar, MapPin, DollarSign, User, Phone, Filter, X, Zap, ChevronDown, ChevronRight, Eye, Edit, Layers, List, Navigation } from 'lucide-react';
 import { usePendingOrders } from '../hooks/useOrders';
 import { orderItemsService } from '../services/ordersService';
@@ -14,10 +14,12 @@ import { useToast } from '../hooks/useToast';
 import { ToastContainer } from '../components/ui/Toast';
 import { useAuth } from '../hooks/useAuth';
 import { Building2 } from 'lucide-react';
-import { getAreaGroupKey, getDistrictKey } from '../utils/parseThaiAddress';
 import { OrderItemsTable } from '../components/order/OrderItemsTable';
 import { ProductsSummaryModal } from '../components/order/ProductsSummaryModal';
 import { SelectedOrdersSummaryBar } from '../components/order/SelectedOrdersSummaryBar';
+import { AreaGroupedOrderList } from '../components/order/AreaGroupedOrderList';
+import { usePendingOrdersFilters } from '../hooks/usePendingOrdersFilters';
+import { usePickupUpdate } from '../hooks/usePickupUpdate';
 
 // Memoized OrderCard component to prevent unnecessary re-renders
 interface OrderCardProps {
@@ -238,17 +240,14 @@ const OrderCard = memo(({
   );
 }, (prevProps, nextProps) => {
   // Custom comparison function for better performance
-  // Only re-render if relevant props changed
   if (prevProps.order.id !== nextProps.order.id) return false;
   if (prevProps.isSelected !== nextProps.isSelected) return false;
   if (prevProps.isExpanded !== nextProps.isExpanded) return false;
   if (prevProps.savingPickupItemId !== nextProps.savingPickupItemId) return false;
   if (prevProps.orderItems.length !== nextProps.orderItems.length) return false;
-  // Deep compare order items if expanded
   if (prevProps.isExpanded && nextProps.isExpanded) {
     for (let i = 0; i < prevProps.orderItems.length; i++) {
       if (prevProps.orderItems[i] !== nextProps.orderItems[i]) return false;
-      // ตรวจสอบ pendingPickupValues สำหรับทุก item ที่กำลัง expanded
       const itemId = prevProps.orderItems[i]?.id;
       if (itemId) {
         const prevPending = prevProps.pendingPickupValues[itemId];
@@ -257,7 +256,7 @@ const OrderCard = memo(({
       }
     }
   }
-  return true; // Props are equal, skip re-render
+  return true;
 });
 
 OrderCard.displayName = 'OrderCard';
@@ -267,112 +266,50 @@ const TRIP_DELETED_EVENT = 'trip-deleted';
 export function PendingOrdersView() {
   const { orders, loading, error, refetch } = usePendingOrders();
   const { toasts, warning, dismissToast } = useToast();
-  const { profile } = useAuth(); // For default branch
+  const { profile } = useAuth();
 
-  // Refetch เมื่อมีการลบทริป (ออเดอร์จะกลับมาอยู่รอจัดทริปอีกครั้ง)
+  // Refetch เมื่อมีการลบทริป
   useEffect(() => {
     const handleTripDeleted = () => refetch();
     window.addEventListener(TRIP_DELETED_EVENT, handleTripDeleted);
     return () => window.removeEventListener(TRIP_DELETED_EVENT, handleTripDeleted);
   }, [refetch]);
 
+  // ── Custom Hooks (Phase 2) ──
+  const {
+    searchQuery, setSearchQuery,
+    dateFilter, setDateFilter,
+    branchFilter, setBranchFilter,
+    groupByArea,
+    collapsedGroups,
+    districtFilter,
+    subDistrictFilter,
+    filteredOrders,
+    filteredOrdersTotal,
+    availableDistricts,
+    availableSubDistricts,
+    groupedOrders,
+    toggleGroupCollapse,
+    toggleGroupByArea,
+    handleSetDistrictFilter,
+    handleSetSubDistrictFilter,
+    resetDistrictFilter,
+  } = usePendingOrdersFilters({ orders, profile });
+
   const [selectedOrders, setSelectedOrders] = useState<Set<string>>(new Set());
-  const [searchQuery, setSearchQuery] = useState('');
-  const [dateFilter, setDateFilter] = useState('');
-  const [branchFilter, setBranchFilter] = useState<string>(() => {
-    // High-level roles or HQ users can see everything
-    const isHighLevel = profile?.role === 'admin' || profile?.role === 'manager' || profile?.role === 'inspector' || profile?.role === 'executive';
-    if (isHighLevel || profile?.branch === 'HQ') {
-      return 'ALL';
-    }
-    // SD regular users are restricted to SD
-    return profile?.branch || 'ALL';
-  });
   const [showCreateTrip, setShowCreateTrip] = useState(false);
   const [showQuickCreate, setShowQuickCreate] = useState(false);
   const [expandedOrders, setExpandedOrders] = useState<Set<string>>(new Set());
   const [orderItems, setOrderItems] = useState<Map<string, any[]>>(new Map());
   const [showProductsSummaryModal, setShowProductsSummaryModal] = useState(false);
   const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
-  const [savingPickupItemId, setSavingPickupItemId] = useState<string | null>(null);
-  // ค่าที่กำลังพิมพ์ (แสดงทันที, ก่อน debounce)
-  const [pendingPickupValues, setPendingPickupValues] = useState<Record<string, number>>({});
-  const pickupDebounceRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
-  // จัดกลุ่มตามพื้นที่ (ตำบล/อำเภอ)
-  const [groupByArea, setGroupByArea] = useState(false);
-  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
-  const [districtFilter, setDistrictFilter] = useState<string>('ALL');
-  const [subDistrictFilter, setSubDistrictFilter] = useState<string>('ALL');
 
-  // อัปเดต quantity_picked_up_at_store — debounce 800ms
-  const handleUpdatePickup = useCallback((itemId: string, qty: number) => {
-    // 1. แสดงค่าใหม่ทันที (ไม่มี spinner)
-    setPendingPickupValues(prev => ({ ...prev, [itemId]: qty }));
+  const { savingPickupItemId, pendingPickupValues, handleUpdatePickup } = usePickupUpdate({
+    setOrderItems,
+    refetch,
+  });
 
-    // 2. ถ้ากำลังมี API call อยู่ (spinner ค้าง) ให้เคลียร์ทันทีเพราะ user กำลังพิมพ์ใหม่
-    setSavingPickupItemId(prev => prev === itemId ? null : prev);
-
-    // 3. ยกเลิก timer เดิม (ถ้ายังพิมพ์ไม่หยุด)
-    if (pickupDebounceRef.current[itemId]) {
-      clearTimeout(pickupDebounceRef.current[itemId]);
-    }
-
-    // 4. ตั้ง timer ใหม่ — ส่ง API หลังหยุดพิมพ์ 800ms
-    pickupDebounceRef.current[itemId] = setTimeout(async () => {
-      // อัปเดต orderItems map (optimistic update ก่อน API call)
-      setOrderItems(prev => {
-        const newMap = new Map(prev);
-        newMap.forEach((items: any[], orderId) => {
-          const updated = items.map((item: any) =>
-            item.id === itemId
-              ? { ...item, quantity_picked_up_at_store: qty }
-              : item
-          );
-          newMap.set(orderId, updated);
-        });
-        return newMap;
-      });
-
-      setSavingPickupItemId(itemId); // แสดง spinner เฉพาะตอน API กำลังทำงาน
-      try {
-        await orderItemsService.updatePickedUpAtStore(itemId, qty);
-      } catch (err) {
-        console.error('[PendingOrdersView] updatePickedUpAtStore error:', err);
-        refetch(); // revert on error
-      } finally {
-        setSavingPickupItemId(null);
-        // ลบออกจาก pending เมื่อ save แล้ว (แสดงค่าจาก DB แทน)
-        setPendingPickupValues(prev => {
-          const next = { ...prev };
-          delete next[itemId];
-          return next;
-        });
-      }
-    }, 800);
-  }, [refetch]);
-
-  // Filter orders
-  const filteredOrders = useMemo(() => {
-    if (!orders) return [];
-
-    return orders.filter((order: any) => {
-      const matchesSearch = !searchQuery ||
-        order.customer_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        order.customer_code?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        order.order_number?.toLowerCase().includes(searchQuery.toLowerCase());
-
-      // กรอกวันที่ใน filter แล้วให้กรองตามวันที่นัดส่ง ถ้ามี
-      const matchesDate = !dateFilter || order.delivery_date === dateFilter;
-
-      // Filter by branch
-      const matchesBranch = !branchFilter || branchFilter === 'ALL' ||
-        (order.branch && order.branch === branchFilter);
-
-      return matchesSearch && matchesDate && matchesBranch;
-    });
-  }, [orders, searchQuery, dateFilter, branchFilter]);
-
-  // Toggle order selection - use useCallback to prevent re-renders
+  // Toggle order selection
   const toggleOrderSelection = useCallback((orderId: string) => {
     setSelectedOrders(prev => {
       const newSelection = new Set(prev);
@@ -385,13 +322,13 @@ export function PendingOrdersView() {
     });
   }, []);
 
-  // Select all filtered orders - use useCallback
+  // Select all filtered orders
   const selectAll = useCallback(() => {
     const allIds = new Set(filteredOrders.map((o: any) => o.id));
     setSelectedOrders(allIds);
   }, [filteredOrders]);
 
-  // Clear selection - use useCallback
+  // Clear selection
   const clearSelection = useCallback(() => {
     setSelectedOrders(new Set());
   }, []);
@@ -471,139 +408,21 @@ export function PendingOrdersView() {
     return aggregatedProducts.reduce((sum, p) => sum + p.total_quantity, 0);
   }, [aggregatedProducts]);
 
-  // Memoize filtered orders total amount
-  const filteredOrdersTotal = useMemo(() => {
-    return filteredOrders.reduce((sum: number, o: any) => sum + (o.total_amount || 0), 0);
-  }, [filteredOrders]);
-
-  // รวบรวมรายชื่ออำเภอ + จำนวนออเดอร์ (ใช้กับ chip filter)
-  const availableDistricts = useMemo(() => {
-    const map = new Map<string, { count: number; total: number }>();
-    filteredOrders.forEach((order: any) => {
-      const address = order.delivery_address || order.store_address || '';
-      const dk = getDistrictKey(address);
-      const existing = map.get(dk) || { count: 0, total: 0 };
-      existing.count++;
-      existing.total += (order.total_amount || 0);
-      map.set(dk, existing);
-    });
-    return Array.from(map.entries())
-      .map(([key, val]) => ({ key, ...val }))
-      .sort((a, b) => {
-        if (a.key === 'ไม่ระบุอำเภอ') return 1;
-        if (b.key === 'ไม่ระบุอำเภอ') return -1;
-        return b.count - a.count;
-      });
-  }, [filteredOrders]);
-
-  // รวบรวมรายชื่อตำบลภายในอำเภอที่เลือก (ใช้กับ chip filter ชั้น 2)
-  const availableSubDistricts = useMemo(() => {
-    if (districtFilter === 'ALL') return [];
-    const map = new Map<string, { count: number; total: number }>();
-    filteredOrders.forEach((order: any) => {
-      const address = order.delivery_address || order.store_address || '';
-      const dk = getDistrictKey(address);
-      if (dk !== districtFilter) return;
-      const areaKey = getAreaGroupKey(address);
-      const existing = map.get(areaKey) || { count: 0, total: 0 };
-      existing.count++;
-      existing.total += (order.total_amount || 0);
-      map.set(areaKey, existing);
-    });
-    return Array.from(map.entries())
-      .map(([key, val]) => ({ key, ...val }))
-      .sort((a, b) => {
-        if (a.key.includes('ไม่ระบุ')) return 1;
-        if (b.key.includes('ไม่ระบุ')) return -1;
-        return b.count - a.count;
-      });
-  }, [filteredOrders, districtFilter]);
-
-  // จัดกลุ่มออเดอร์ตาม อำเภอ > ตำบล
-  const groupedOrders = useMemo(() => {
-    if (!groupByArea) return null;
-
-    // Source orders — apply districtFilter + subDistrictFilter
-    let sourceOrders = filteredOrders;
-    if (districtFilter !== 'ALL') {
-      sourceOrders = sourceOrders.filter((order: any) => {
-        const address = order.delivery_address || order.store_address || '';
-        return getDistrictKey(address) === districtFilter;
-      });
-    }
-    if (subDistrictFilter !== 'ALL') {
-      sourceOrders = sourceOrders.filter((order: any) => {
-        const address = order.delivery_address || order.store_address || '';
-        return getAreaGroupKey(address) === subDistrictFilter;
-      });
-    }
-
-    // Group by district first, then by area (district + sub-district)
-    const districtMap = new Map<string, {
-      districtKey: string;
-      areas: Map<string, any[]>;
-      totalOrders: number;
-    }>();
-
-    sourceOrders.forEach((order: any) => {
-      const address = order.delivery_address || order.store_address || '';
-      const districtKey = getDistrictKey(address);
-      const areaKey = getAreaGroupKey(address);
-
-      if (!districtMap.has(districtKey)) {
-        districtMap.set(districtKey, {
-          districtKey,
-          areas: new Map(),
-          totalOrders: 0,
-        });
-      }
-
-      const district = districtMap.get(districtKey)!;
-      if (!district.areas.has(areaKey)) {
-        district.areas.set(areaKey, []);
-      }
-      district.areas.get(areaKey)!.push(order);
-      district.totalOrders++;
-    });
-
-    // Sort: ไม่ระบุอำเภอ ไว้สุดท้าย, เรียง district ที่มีออเดอร์มากที่สุด
-    return Array.from(districtMap.values()).sort((a, b) => {
-      if (a.districtKey === 'ไม่ระบุอำเภอ') return 1;
-      if (b.districtKey === 'ไม่ระบุอำเภอ') return -1;
-      return b.totalOrders - a.totalOrders;
-    });
-  }, [filteredOrders, groupByArea, districtFilter, subDistrictFilter]);
-
-  // Toggle group collapse
-  const toggleGroupCollapse = useCallback((groupKey: string) => {
-    setCollapsedGroups(prev => {
-      const next = new Set(prev);
-      if (next.has(groupKey)) {
-        next.delete(groupKey);
-      } else {
-        next.add(groupKey);
-      }
-      return next;
-    });
-  }, []);
-
   // Select all orders in a group
   const selectGroupOrders = useCallback((orders: any[]) => {
     setSelectedOrders(prev => {
       const next = new Set(prev);
       const allSelected = orders.every(o => next.has(o.id));
       if (allSelected) {
-        // Deselect all in group
         orders.forEach(o => next.delete(o.id));
       } else {
-        // Select all in group
         orders.forEach(o => next.add(o.id));
       }
       return next;
     });
   }, []);
 
-  // Toggle order details - use useCallback to prevent re-renders
+  // Toggle order details
   const toggleOrderDetails = useCallback(async (orderId: string) => {
     setExpandedOrders(prev => {
       const newExpanded = new Set(prev);
@@ -615,11 +434,9 @@ export function PendingOrdersView() {
         newExpanded.add(orderId);
       }
 
-      // Fetch items if not already fetched (check in callback to avoid stale closure)
       if (!wasExpanded) {
         setOrderItems(prevItems => {
           if (!prevItems.has(orderId)) {
-            // Fetch asynchronously
             orderItemsService.getByOrderId(orderId).then(items => {
               setOrderItems(prev => {
                 const newMap = new Map(prev);
@@ -653,10 +470,26 @@ export function PendingOrdersView() {
     refetch();
   }, [refetch]);
 
-  // Memoize edit handler
   const handleEditOrder = useCallback((orderId: string) => {
     setEditingOrderId(orderId);
   }, []);
+
+  // ── Render OrderCard helper for AreaGroupedOrderList ──
+  const renderOrderCard = useCallback((order: any) => (
+    <OrderCard
+      key={order.id}
+      order={order}
+      isSelected={selectedOrders.has(order.id)}
+      isExpanded={expandedOrders.has(order.id)}
+      orderItems={orderItems.get(order.id) || []}
+      onToggleSelection={toggleOrderSelection}
+      onToggleDetails={toggleOrderDetails}
+      onEdit={handleEditOrder}
+      onUpdatePickup={handleUpdatePickup}
+      savingPickupItemId={savingPickupItemId}
+      pendingPickupValues={pendingPickupValues}
+    />
+  ), [selectedOrders, expandedOrders, orderItems, toggleOrderSelection, toggleOrderDetails, handleEditOrder, handleUpdatePickup, savingPickupItemId, pendingPickupValues]);
 
   // Show create trip view
   if (showCreateTrip) {
@@ -702,7 +535,6 @@ export function PendingOrdersView() {
     );
   }
 
-  // ถ้ากำลังแก้ไขออเดอร์ แสดงหน้าแก้ไข
   if (editingOrderId) {
     return (
       <EditOrderView
@@ -719,10 +551,6 @@ export function PendingOrdersView() {
   return (
     <>
       <ToastContainer toasts={toasts} onDismiss={dismissToast} />
-      {/* Sticky Summary Bar — ต้องอยู่นอก PageLayout!
-          เพราะ PageLayout ห่อด้วย div.space-y-6 ซึ่งเป็น intermediate container
-          ทำให้ CSS sticky ไม่ทำงานกับ scroll container ใน index.tsx
-          เมื่อย้ายมาอยู่นอก PageLayout → เป็น direct child ของ scroll container → sticky ทำงานถูกต้อง */}
       <SelectedOrdersSummaryBar
         selectedCount={selectedOrders.size}
         productsTotal={aggregatedProductsTotal}
@@ -805,7 +633,7 @@ export function PendingOrdersView() {
 
             {/* Toggle Group by Area */}
             <Button
-              onClick={() => { setGroupByArea(prev => !prev); setCollapsedGroups(new Set()); setDistrictFilter('ALL'); setSubDistrictFilter('ALL'); }}
+              onClick={toggleGroupByArea}
               variant={groupByArea ? 'primary' : 'outline'}
               className={`flex items-center gap-2 ${groupByArea ? 'bg-indigo-600 hover:bg-indigo-700 text-white' : 'border-indigo-300 text-indigo-600 hover:bg-indigo-50'}`}
             >
@@ -813,7 +641,7 @@ export function PendingOrdersView() {
               {groupByArea ? 'จัดกลุ่มตามพื้นที่' : 'จัดกลุ่มตามพื้นที่'}
             </Button>
 
-            {/* Quick Create Button (always visible) */}
+            {/* Quick Create Button */}
             <Button
               onClick={() => setShowQuickCreate(true)}
               variant="outline"
@@ -880,7 +708,7 @@ export function PendingOrdersView() {
             <div className="flex flex-wrap gap-2">
               {/* ALL chip */}
               <button
-                onClick={() => { setDistrictFilter('ALL'); setSubDistrictFilter('ALL'); }}
+                onClick={resetDistrictFilter}
                 className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium border transition-all ${districtFilter === 'ALL'
                   ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
                   : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:border-indigo-400 hover:text-indigo-600 dark:hover:text-indigo-400'
@@ -899,10 +727,7 @@ export function PendingOrdersView() {
               {availableDistricts.map(d => (
                 <button
                   key={d.key}
-                  onClick={() => {
-                    setDistrictFilter(prev => prev === d.key ? 'ALL' : d.key);
-                    setSubDistrictFilter('ALL');
-                  }}
+                  onClick={() => handleSetDistrictFilter(d.key)}
                   className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium border transition-all ${districtFilter === d.key
                     ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
                     : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:border-indigo-400 hover:text-indigo-600 dark:hover:text-indigo-400'
@@ -919,7 +744,7 @@ export function PendingOrdersView() {
               ))}
             </div>
 
-            {/* Sub-district chips (shown when a district is selected) */}
+            {/* Sub-district chips */}
             {districtFilter !== 'ALL' && availableSubDistricts.length > 1 && (
               <div className="mt-3 ml-4 pl-4 border-l-2 border-indigo-200 dark:border-indigo-700">
                 <div className="flex items-center gap-2 mb-2 px-1">
@@ -929,7 +754,7 @@ export function PendingOrdersView() {
                 <div className="flex flex-wrap gap-1.5">
                   {/* ALL sub-districts chip */}
                   <button
-                    onClick={() => setSubDistrictFilter('ALL')}
+                    onClick={() => handleSetSubDistrictFilter('ALL')}
                     className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium border transition-all ${subDistrictFilter === 'ALL'
                       ? 'bg-teal-600 text-white border-teal-600 shadow-sm'
                       : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-600 hover:border-teal-400 hover:text-teal-600 dark:hover:text-teal-400'
@@ -945,12 +770,11 @@ export function PendingOrdersView() {
                   </button>
 
                   {availableSubDistricts.map(sd => {
-                    // ดึงเฉพาะชื่อตำบลจาก areaKey ("อ.XXX / ต.YYY" -> "ต.YYY")
                     const label = sd.key.includes(' / ') ? sd.key.split(' / ')[1] : sd.key;
                     return (
                       <button
                         key={sd.key}
-                        onClick={() => setSubDistrictFilter(prev => prev === sd.key ? 'ALL' : sd.key)}
+                        onClick={() => handleSetSubDistrictFilter(sd.key)}
                         className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium border transition-all ${subDistrictFilter === sd.key
                           ? 'bg-teal-600 text-white border-teal-600 shadow-sm'
                           : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-600 hover:border-teal-400 hover:text-teal-600 dark:hover:text-teal-400'
@@ -1110,103 +934,25 @@ export function PendingOrdersView() {
 
               {/* Grouped View by Area */}
               {groupByArea && groupedOrders ? (
-                <div className="space-y-4">
-                  {groupedOrders.map(district => (
-                    <div key={district.districtKey} className="space-y-2">
-                      {/* District Header */}
-                      <div
-                        className="flex items-center gap-3 px-4 py-3 bg-gradient-to-r from-indigo-50 to-indigo-100 dark:from-indigo-900/30 dark:to-indigo-800/20 border border-indigo-200 dark:border-indigo-700 rounded-xl cursor-pointer hover:from-indigo-100 hover:to-indigo-150 dark:hover:from-indigo-900/40 transition-colors"
-                        onClick={() => toggleGroupCollapse(district.districtKey)}
-                      >
-                        {collapsedGroups.has(district.districtKey) ? (
-                          <ChevronRight className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
-                        ) : (
-                          <ChevronDown className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
-                        )}
-                        <MapPin className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
-                        <h3 className="text-base font-bold text-indigo-900 dark:text-indigo-100 flex-1">
-                          {district.districtKey}
-                        </h3>
-                        <Badge variant="info" className="text-sm">
-                          {district.totalOrders} ออเดอร์
-                        </Badge>
-                      </div>
-
-                      {/* Sub-areas within district */}
-                      {!collapsedGroups.has(district.districtKey) && (
-                        <div className="ml-4 space-y-3">
-                          {Array.from(district.areas.entries())
-                            .sort(([, a], [, b]) => b.length - a.length)
-                            .map(([areaKey, areaOrders]) => {
-                              const allInGroupSelected = areaOrders.every((o: any) => selectedOrders.has(o.id));
-                              const someInGroupSelected = areaOrders.some((o: any) => selectedOrders.has(o.id));
-                              const isAreaCollapsed = collapsedGroups.has(areaKey);
-
-                              return (
-                                <div key={areaKey} className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
-                                  {/* Area Sub-Header */}
-                                  <div className="flex items-center gap-3 px-4 py-2.5 bg-gray-50 dark:bg-gray-800/50 border-b border-gray-200 dark:border-gray-700">
-                                    <input
-                                      type="checkbox"
-                                      checked={allInGroupSelected}
-                                      ref={(el) => { if (el) el.indeterminate = someInGroupSelected && !allInGroupSelected; }}
-                                      onChange={() => selectGroupOrders(areaOrders)}
-                                      className="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
-                                      title={`เลือกทั้งหมดใน ${areaKey}`}
-                                    />
-                                    <button
-                                      className="flex items-center gap-2 flex-1 text-left"
-                                      onClick={() => toggleGroupCollapse(areaKey)}
-                                    >
-                                      {isAreaCollapsed ? (
-                                        <ChevronRight className="w-4 h-4 text-gray-500 dark:text-gray-400" />
-                                      ) : (
-                                        <ChevronDown className="w-4 h-4 text-gray-500 dark:text-gray-400" />
-                                      )}
-                                      <span className="text-sm font-semibold text-gray-800 dark:text-gray-200">
-                                        {areaKey}
-                                      </span>
-                                    </button>
-                                    <span className="text-xs text-gray-500 dark:text-gray-400 bg-white dark:bg-gray-700 px-2 py-0.5 rounded-full border border-gray-200 dark:border-gray-600">
-                                      {areaOrders.length} ร้าน
-                                    </span>
-                                    <span className="text-xs font-medium text-indigo-600 dark:text-indigo-400">
-                                      ฿{areaOrders.reduce((s: number, o: any) => s + (o.total_amount || 0), 0).toLocaleString()}
-                                    </span>
-                                  </div>
-
-                                  {/* Orders in this area */}
-                                  {!isAreaCollapsed && (
-                                    <div className="divide-y divide-gray-100 dark:divide-gray-800">
-                                      {areaOrders.map((order: any) => (
-                                        <OrderCard
-                                          key={order.id}
-                                          order={order}
-                                          isSelected={selectedOrders.has(order.id)}
-                                          isExpanded={expandedOrders.has(order.id)}
-                                          orderItems={orderItems.get(order.id) || []}
-                                          onToggleSelection={toggleOrderSelection}
-                                          onToggleDetails={toggleOrderDetails}
-                                          onEdit={handleEditOrder}
-                                          onUpdatePickup={handleUpdatePickup}
-                                          savingPickupItemId={savingPickupItemId}
-                                          pendingPickupValues={pendingPickupValues}
-                                        />
-                                      ))}
-                                    </div>
-                                  )}
-                                </div>
-                              );
-                            })}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
+                <AreaGroupedOrderList
+                  groupedOrders={groupedOrders}
+                  selectedOrders={selectedOrders}
+                  expandedOrders={expandedOrders}
+                  collapsedGroups={collapsedGroups}
+                  orderItems={orderItems}
+                  savingPickupItemId={savingPickupItemId}
+                  pendingPickupValues={pendingPickupValues}
+                  onToggleSelection={toggleOrderSelection}
+                  onToggleDetails={toggleOrderDetails}
+                  onEdit={handleEditOrder}
+                  onUpdatePickup={handleUpdatePickup}
+                  onToggleGroupCollapse={toggleGroupCollapse}
+                  onSelectGroupOrders={selectGroupOrders}
+                  renderOrderCard={renderOrderCard}
+                />
               ) : (
                 /* Flat View (default) */
                 <div>
-                  {/* Order Cards (Full View) - Using memoized component */}
                   {filteredOrders.map((order: any) => (
                     <OrderCard
                       key={order.id}
@@ -1241,4 +987,3 @@ export function PendingOrdersView() {
     </>
   );
 }
-
