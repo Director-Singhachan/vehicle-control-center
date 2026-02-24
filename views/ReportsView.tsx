@@ -53,6 +53,8 @@ import { StaffItemStatisticsChart } from '../components/StaffItemStatisticsChart
 import { StaffItemDetailsCard } from '../components/StaffItemDetailsCard';
 import { VehicleDocumentReports } from '../components/vehicle/VehicleDocumentReports';
 import { useVehicles, useStores, useProducts, useProductCategories } from '../hooks';
+import { useReportFilters } from '../hooks/useReportFilters';
+import { ReportFilters } from './reports/ReportFilters';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -86,94 +88,26 @@ interface ReportsViewProps {
 
 type ReportTab = 'fuel' | 'trip' | 'maintenance' | 'cost' | 'usage' | 'fuel-consumption' | 'delivery' | 'vehicle-documents';
 
-type FilterPeriod = 'current-month' | 'last-3-months' | 'last-6-months' | 'last-12-months' | 'this-year' | 'custom';
-
 export const ReportsView: React.FC<ReportsViewProps> = ({ isDark = false, onNavigateToStoreDetail }) => {
   const [activeTab, setActiveTab] = useState<ReportTab>('fuel');
-  const [months, setMonths] = useState(6);
-  
-  // New filters for usage and fuel consumption charts
-  // Default to last-3-months to show more data
-  const [filterPeriod, setFilterPeriod] = useState<FilterPeriod>('last-3-months');
-  const [selectedBranch, setSelectedBranch] = useState<string | null>(null);
-  const [customStartDate, setCustomStartDate] = useState<string>('');
-  const [customEndDate, setCustomEndDate] = useState<string>('');
-  
-  const { vehicles } = useVehicles();
-  
-  // Get unique branches
-  const branches = React.useMemo(() => {
-    const branchSet = new Set<string>();
-    vehicles?.forEach(v => {
-      if (v.branch) branchSet.add(v.branch);
-    });
-    return Array.from(branchSet).sort();
-  }, [vehicles]);
-  
-  // Calculate date range based on filter period - memoized to prevent unnecessary re-renders
-  const { startDate, endDate } = React.useMemo(() => {
-    const now = new Date();
-    let startDate: Date;
-    let endDate: Date = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
-    
-    switch (filterPeriod) {
-      case 'current-month':
-        startDate = new Date(now.getFullYear(), now.getMonth(), 1);
-        break;
-      case 'last-3-months':
-        startDate = new Date(now.getFullYear(), now.getMonth() - 2, 1);
-        break;
-      case 'last-6-months':
-        startDate = new Date(now.getFullYear(), now.getMonth() - 5, 1);
-        break;
-      case 'last-12-months':
-        startDate = new Date(now.getFullYear(), now.getMonth() - 11, 1);
-        break;
-      case 'this-year':
-        startDate = new Date(now.getFullYear(), 0, 1);
-        endDate = new Date(now.getFullYear(), 11, 31, 23, 59, 59, 999);
-        break;
-      case 'custom':
-        if (customStartDate && customEndDate) {
-          // กำหนดช่วงวันที่เต็ม (เริ่ม–สิ้นสุด)
-          startDate = new Date(customStartDate);
-          endDate = new Date(customEndDate);
-          endDate.setHours(23, 59, 59, 999);
-        } else if (customStartDate && !customEndDate) {
-          // ถ้าเลือกเฉพาะวันที่เริ่มต้น ให้ถือว่าเป็นการดู "วันเดียว"
-          startDate = new Date(customStartDate);
-          endDate = new Date(customStartDate);
-          endDate.setHours(23, 59, 59, 999);
-        } else if (!customStartDate && customEndDate) {
-          // ถ้าเลือกเฉพาะวันที่สิ้นสุด ให้ถือว่าเป็นการดู "วันเดียว" ของวันนั้น
-          startDate = new Date(customEndDate);
-          endDate = new Date(customEndDate);
-          endDate.setHours(23, 59, 59, 999);
-        } else {
-          // ถ้าไม่ได้เลือกอะไรเลยให้กลับไปเดือนปัจจุบัน
-          startDate = new Date(now.getFullYear(), now.getMonth(), 1);
-        }
-        break;
-      default:
-        startDate = new Date(now.getFullYear(), now.getMonth(), 1);
-    }
-    
-    return { startDate, endDate };
-  }, [filterPeriod, customStartDate, customEndDate]);
-  
-  // Memoize options objects to prevent unnecessary re-renders
-  const usageRankingOptions = React.useMemo(() => ({
+
+  const {
+    months,
+    setMonths,
+    filterPeriod,
+    setFilterPeriod,
+    selectedBranch,
+    setSelectedBranch,
+    customStartDate,
+    setCustomStartDate,
+    customEndDate,
+    setCustomEndDate,
+    branches,
     startDate,
     endDate,
-    branch: selectedBranch || undefined,
-    limit: 20,
-  }), [startDate, endDate, selectedBranch]);
-  
-  const fuelConsumptionOptions = React.useMemo(() => ({
-    startDate,
-    endDate,
-    branch: selectedBranch || undefined,
-  }), [startDate, endDate, selectedBranch]);
+    usageRankingOptions,
+    fuelConsumptionOptions,
+  } = useReportFilters();
   
   // Vehicle Usage Ranking
   const { data: vehicleUsageRanking, loading: usageRankingLoading } = useVehicleUsageRanking(usageRankingOptions);
@@ -884,69 +818,17 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ isDark = false, onNavi
       {/* Vehicle Usage Ranking Tab */}
       {activeTab === 'usage' && (
         <div className="space-y-6">
-          {/* Filters */}
-          <Card>
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                  ช่วงเวลา
-                </label>
-                <select
-                  value={filterPeriod}
-                  onChange={(e) => setFilterPeriod(e.target.value as FilterPeriod)}
-                  className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
-                >
-                  <option value="current-month">เดือนปัจจุบัน</option>
-                  <option value="last-3-months">3 เดือนล่าสุด</option>
-                  <option value="last-6-months">6 เดือนล่าสุด</option>
-                  <option value="last-12-months">12 เดือนล่าสุด</option>
-                  <option value="this-year">ปีนี้</option>
-                  <option value="custom">กำหนดเอง</option>
-                </select>
-              </div>
-              {filterPeriod === 'custom' && (
-                <>
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                      วันที่เริ่มต้น
-                    </label>
-                    <input
-                      type="date"
-                      value={customStartDate}
-                      onChange={(e) => setCustomStartDate(e.target.value)}
-                      className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                      วันที่สิ้นสุด
-                    </label>
-                    <input
-                      type="date"
-                      value={customEndDate}
-                      onChange={(e) => setCustomEndDate(e.target.value)}
-                      className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
-                    />
-                  </div>
-                </>
-              )}
-              <div>
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                  สาขา
-                </label>
-                <select
-                  value={selectedBranch || ''}
-                  onChange={(e) => setSelectedBranch(e.target.value || null)}
-                  className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
-                >
-                  <option value="">ทุกสาขา</option>
-                  {branches.map(branch => (
-                    <option key={branch} value={branch}>{branch}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-          </Card>
+          <ReportFilters
+            filterPeriod={filterPeriod}
+            setFilterPeriod={setFilterPeriod}
+            selectedBranch={selectedBranch}
+            setSelectedBranch={setSelectedBranch}
+            customStartDate={customStartDate}
+            setCustomStartDate={setCustomStartDate}
+            customEndDate={customEndDate}
+            setCustomEndDate={setCustomEndDate}
+            branches={branches}
+          />
 
           {/* Vehicle Usage Ranking Chart */}
           <Card>
@@ -1026,69 +908,17 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ isDark = false, onNavi
       {/* Vehicle Fuel Consumption Tab */}
       {activeTab === 'fuel-consumption' && (
         <div className="space-y-6">
-          {/* Filters */}
-          <Card>
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                  ช่วงเวลา
-                </label>
-                <select
-                  value={filterPeriod}
-                  onChange={(e) => setFilterPeriod(e.target.value as FilterPeriod)}
-                  className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
-                >
-                  <option value="current-month">เดือนปัจจุบัน</option>
-                  <option value="last-3-months">3 เดือนล่าสุด</option>
-                  <option value="last-6-months">6 เดือนล่าสุด</option>
-                  <option value="last-12-months">12 เดือนล่าสุด</option>
-                  <option value="this-year">ปีนี้</option>
-                  <option value="custom">กำหนดเอง</option>
-                </select>
-              </div>
-              {filterPeriod === 'custom' && (
-                <>
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                      วันที่เริ่มต้น
-                    </label>
-                    <input
-                      type="date"
-                      value={customStartDate}
-                      onChange={(e) => setCustomStartDate(e.target.value)}
-                      className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                      วันที่สิ้นสุด
-                    </label>
-                    <input
-                      type="date"
-                      value={customEndDate}
-                      onChange={(e) => setCustomEndDate(e.target.value)}
-                      className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
-                    />
-                  </div>
-                </>
-              )}
-              <div>
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                  สาขา
-                </label>
-                <select
-                  value={selectedBranch || ''}
-                  onChange={(e) => setSelectedBranch(e.target.value || null)}
-                  className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
-                >
-                  <option value="">ทุกสาขา</option>
-                  {branches.map(branch => (
-                    <option key={branch} value={branch}>{branch}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-          </Card>
+          <ReportFilters
+            filterPeriod={filterPeriod}
+            setFilterPeriod={setFilterPeriod}
+            selectedBranch={selectedBranch}
+            setSelectedBranch={setSelectedBranch}
+            customStartDate={customStartDate}
+            setCustomStartDate={setCustomStartDate}
+            customEndDate={customEndDate}
+            setCustomEndDate={setCustomEndDate}
+            branches={branches}
+          />
 
           {/* Vehicle Fuel Consumption Chart */}
           <Card>

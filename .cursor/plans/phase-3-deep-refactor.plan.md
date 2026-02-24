@@ -63,11 +63,11 @@ isProject: false
 
 ### ขั้นตอน (ทำทีละขั้น)
 
-#### Step 1: สร้าง ReportFilters + useReportFilters
+#### Step 1: สร้าง ReportFilters + useReportFilters ✅ (ทำแล้ว)
 
-- สร้าง `views/reports/ReportFilters.tsx` — ย้าย UI ฟิลเตอร์ (period, branch, months)
-- สร้าง `hooks/useReportFilters.ts` — state + logic คำนวณ startDate/endDate
-- **เช็ค**: เปลี่ยน filter แล้ว date range ถูกต้อง
+- สร้าง `views/reports/ReportFilters.tsx` — ย้าย UI ฟิลเตอร์ (period, branch, months) ✅
+- สร้าง `hooks/useReportFilters.ts` — state + logic คำนวณ startDate/endDate ✅
+- **เช็ค**: เปลี่ยน filter แล้ว date range ถูกต้อง (รอ verify จากผู้ใช้)
 - **Commit**: `feat(reports): extract ReportFilters and useReportFilters`
 
 #### Step 2: แยกแท็บ vehicle-documents (ง่ายที่สุด)
