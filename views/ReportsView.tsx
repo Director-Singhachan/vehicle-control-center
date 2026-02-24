@@ -51,7 +51,7 @@ import { VehicleUsageRankingChart } from '../components/VehicleUsageRankingChart
 import { VehicleFuelConsumptionChart } from '../components/VehicleFuelConsumptionChart';
 import { StaffItemStatisticsChart } from '../components/StaffItemStatisticsChart';
 import { StaffItemDetailsCard } from '../components/StaffItemDetailsCard';
-import { VehicleDocumentReports } from '../components/vehicle/VehicleDocumentReports';
+import { VehicleDocumentsReport } from './reports/VehicleDocumentsReport';
 import { useVehicles, useStores, useProducts, useProductCategories } from '../hooks';
 import { useReportFilters } from '../hooks/useReportFilters';
 import { ReportFilters } from './reports/ReportFilters';
@@ -1014,9 +1014,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ isDark = false, onNavi
 
       {/* Vehicle Documents Reports Tab */}
       {activeTab === 'vehicle-documents' && (
-        <div className="space-y-6">
-          <VehicleDocumentReports isDark={isDark} />
-        </div>
+        <VehicleDocumentsReport isDark={isDark} onNavigateToStoreDetail={onNavigateToStoreDetail} />
       )}
     </PageLayout>
   );

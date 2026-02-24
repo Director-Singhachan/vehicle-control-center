@@ -70,11 +70,11 @@ isProject: false
 - **เช็ค**: เปลี่ยน filter แล้ว date range ถูกต้อง (รอ verify จากผู้ใช้)
 - **Commit**: `feat(reports): extract ReportFilters and useReportFilters`
 
-#### Step 2: แยกแท็บ vehicle-documents (ง่ายที่สุด)
+#### Step 2: แยกแท็บ vehicle-documents (ง่ายที่สุด) ✅ (ทำแล้ว)
 
-- สร้าง `views/reports/VehicleDocumentsReport.tsx`
-- ย้ายโค้ด `activeTab === 'vehicle-documents'` ทั้งบล็อก
-- รับ props: `isDark`, `onNavigateToStoreDetail` (ถ้าใช้)
+- สร้าง `views/reports/VehicleDocumentsReport.tsx` ✅
+- ย้ายโค้ด `activeTab === 'vehicle-documents'` ทั้งบล็อก ✅
+- รับ props: `isDark`, `onNavigateToStoreDetail` (ถ้าใช้) ✅
 - **เช็ค**: เปิดแท็บ "เอกสารรถ" แสดงถูก ครบ
 - **Commit**: `refactor(reports): extract VehicleDocumentsReport`
 
