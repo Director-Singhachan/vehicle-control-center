@@ -101,10 +101,10 @@ isProject: false
 - **เช็ค**: แต่ละแท็บ + Export Excel ทำงานได้
 - **Commit**: `refactor(reports): extract FuelReport, TripReport, MaintenanceReport, CostReport`
 
-#### Step 6: แยกแท็บ delivery (ซับซ้อนสุด)
+#### Step 6: แยกแท็บ delivery (ซับซ้อนสุด) ✅ (ทำแล้ว)
 
-- วิเคราะห์ก่อน: มีกี่ sub-section (by vehicle, by store, by product, staff commission, staff item)
-- แยกเป็น `DeliveryReportView.tsx` ก่อน หรือหลาย sub-component ตามโครงสร้าง
+- แยกเป็น `views/reports/DeliveryReport.tsx` ✅
+- Sub-tabs: vehicle, store, product, staff, monthly (ทั้งหมดอยู่ใน DeliveryReport)
 - **เช็ค**: ทุก sub-tab ใน delivery ทำงาน
 - **Commit**: `refactor(reports): extract DeliveryReport`
 
