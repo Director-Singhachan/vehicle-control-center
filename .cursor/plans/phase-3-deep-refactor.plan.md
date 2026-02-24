@@ -108,9 +108,10 @@ isProject: false
 - **เช็ค**: ทุก sub-tab ใน delivery ทำงาน
 - **Commit**: `refactor(reports): extract DeliveryReport`
 
-#### Step 7: Refactor ReportsView เป็น Router
+#### Step 7: Refactor ReportsView เป็น Router ✅ (ทำแล้ว)
 
-- ReportsView เหลือเฉพาะ: tab switcher + `{activeTab === 'x' && <XReport />}`
+- ReportsView เหลือเฉพาะ: tab switcher + `{activeTab === 'x' && <XReport />}` ✅
+- ใช้ TAB_CONFIG สำหรับปุ่มแท็บ (ลดความซ้ำซ้อน) ✅
 - **เช็ค**: สลับทุกแท็บ ไม่มี error
 - **Commit**: `refactor(reports): ReportsView as tab orchestrator`
 
