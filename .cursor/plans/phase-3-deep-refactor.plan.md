@@ -86,11 +86,12 @@ isProject: false
 - **เช็ค**: กราฟ usage ranking แสดงถูก filter ถูก
 - **Commit**: `refactor(reports): extract VehicleUsageReport`
 
-#### Step 4: แยกแท็บ fuel-consumption
+#### Step 4: แยกแท็บ fuel-consumption ✅ (ทำแล้ว)
 
-- สร้าง `views/reports/FuelConsumptionReport.tsx`
-- Props เหมือน Step 3
-- **เช็ค**: กราฟ fuel consumption
+- สร้าง `views/reports/FuelConsumptionReport.tsx` ✅
+- Props: filter state + `fuelConsumptionOptions`, `isDark` ✅
+- ย้าย VehicleFuelConsumptionChart + logic + ReportFilters ✅
+- **เช็ค**: กราฟ fuel consumption แสดงถูก filter ถูก
 - **Commit**: `refactor(reports): extract FuelConsumptionReport`
 
 #### Step 5: แยกแท็บ fuel, trip, maintenance, cost (ใช้ months)
