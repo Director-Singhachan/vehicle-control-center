@@ -94,12 +94,12 @@ isProject: false
 - **เช็ค**: กราฟ fuel consumption แสดงถูก filter ถูก
 - **Commit**: `refactor(reports): extract FuelConsumptionReport`
 
-#### Step 5: แยกแท็บ fuel, trip, maintenance, cost (ใช้ months)
+#### Step 5: แยกแท็บ fuel, trip, maintenance, cost (ใช้ months) ✅ (ทำแล้ว)
 
-- แยกทีละแท็บ: FuelReport, TripReport, MaintenanceReport, CostReport
-- แต่ละแท็บรับ `months`, `startDate`, `endDate`, `selectedBranch`
+- แยกทีละแท็บ: FuelReport, TripReport, MaintenanceReport, CostReport ✅
+- แต่ละแท็บรับ `months`, `isDark` ✅
 - **เช็ค**: แต่ละแท็บ + Export Excel ทำงานได้
-- **Commit**: แยก commit ต่อแท็บ
+- **Commit**: `refactor(reports): extract FuelReport, TripReport, MaintenanceReport, CostReport`
 
 #### Step 6: แยกแท็บ delivery (ซับซ้อนสุด)
 
