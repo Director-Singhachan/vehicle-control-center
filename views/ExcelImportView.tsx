@@ -7,6 +7,8 @@ import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
 import { PageLayout } from '../components/ui/PageLayout';
 import { LoadingSpinner } from '../components/ui/LoadingSpinner';
+import { Progress } from '../components/ui/Progress';
+import { Modal } from '../components/ui/Modal';
 import { useNotification } from '../hooks/useNotification';
 import { useAuth } from '../hooks/useAuth';
 
@@ -100,6 +102,8 @@ export function ExcelImportView() {
     const [file, setFile] = useState<File | null>(null);
     const [previewData, setPreviewData] = useState<ProductData[]>([]);
     const [isProcessing, setIsProcessing] = useState(false);
+    const [isImporting, setIsImporting] = useState(false);
+    const [importProgress, setImportProgress] = useState(0);
     const [showTemplateExample, setShowTemplateExample] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -274,6 +278,8 @@ export function ExcelImportView() {
         if (previewData.length === 0) return;
 
         setIsProcessing(true);
+        setIsImporting(true);
+        setImportProgress(0);
         let created = 0;
         let updated = 0;
         let failed = 0;
@@ -287,8 +293,12 @@ export function ExcelImportView() {
             tierMap[t.tier_code] = t.id;
         });
 
-        for (const item of previewData) {
+        const totalItems = previewData.length;
+        for (let i = 0; i < totalItems; i++) {
+            const item = previewData[i];
             try {
+                // Update progress
+                setImportProgress(Math.round(((i + 1) / totalItems) * 100));
                 // 1. Check if product exists
                 const { data: existingProduct } = await supabase
                     .from('products')
@@ -371,7 +381,6 @@ export function ExcelImportView() {
                     unit: item.unit,
                     action_type: actionType,
                     changes: changes,
-                    created_by: profile?.id
                 });
 
             } catch (err) {
@@ -381,6 +390,8 @@ export function ExcelImportView() {
         }
 
         setIsProcessing(false);
+        setIsImporting(false);
+        setImportProgress(0);
         showNotification('success', `นำเข้าข้อมูลเสร็จสิ้น: เพิ่มใหม่ ${created}, อัปเดต ${updated}, ล้มเหลว ${failed}`);
         setPreviewData([]);
         setFile(null);
@@ -450,20 +461,16 @@ export function ExcelImportView() {
             <div className="flex gap-4 mb-6">
                 <Button
                     onClick={() => setActiveSubTab('import')}
-                    className={`flex items-center gap-2 px-6 py-2.5 rounded-xl font-medium transition-all ${activeSubTab === 'import'
-                        ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20'
-                        : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700'
-                        }`}
+                    variant={activeSubTab === 'import' ? 'primary' : 'outline'}
+                    className="px-6 py-2.5 rounded-xl font-medium"
                 >
                     <Upload size={18} />
                     นำเข้าข้อมูล
                 </Button>
                 <Button
                     onClick={() => setActiveSubTab('history')}
-                    className={`flex items-center gap-2 px-6 py-2.5 rounded-xl font-medium transition-all ${activeSubTab === 'history'
-                        ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20'
-                        : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700'
-                        }`}
+                    variant={activeSubTab === 'history' ? 'primary' : 'outline'}
+                    className="px-6 py-2.5 rounded-xl font-medium"
                 >
                     <History size={18} />
                     ประวัติการนำเข้า (LOG)
@@ -753,7 +760,7 @@ export function ExcelImportView() {
                                 placeholder="ค้นหารหัส หรือชื่อสินค้าใน Log..."
                                 value={logSearchQuery}
                                 onChange={(e) => setLogSearchQuery(e.target.value)}
-                                className="w-full pl-10 pr-4 py-2 border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                                className="w-full pl-10 pr-4 py-2 border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-sm text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none"
                             />
                         </div>
                         <Button variant="outline" onClick={fetchLogs} disabled={loadingLogs}>
@@ -812,6 +819,28 @@ export function ExcelImportView() {
                     </Card>
                 </div>
             )}
+
+            {/* Import Progress Modal */}
+            <Modal
+                isOpen={isImporting}
+                onClose={() => { }} // Disable closing during import
+                title="กำลังนำเข้าข้อมูล..."
+                size="small"
+            >
+                <div className="py-4">
+                    <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">
+                        ระบบกำลังบันทึกข้อมูลสินค้าและราคาทั้ง 9 ระดับ กรุณารอสักครู่...
+                    </p>
+                    <Progress
+                        value={importProgress}
+                        label={`สำเร็จแล้ว ${Math.round((importProgress / 100) * previewData.length)} จาก ${previewData.length} รายการ`}
+                    />
+                    <div className="mt-8 flex items-center justify-center text-xs text-slate-400 animate-pulse">
+                        <LoadingSpinner size={12} className="mr-2" />
+                        ห้ามปิดหน้าจอนี้จนกว่าจะเสร็จสิ้น
+                    </div>
+                </div>
+            </Modal>
         </PageLayout>
     );
 }
