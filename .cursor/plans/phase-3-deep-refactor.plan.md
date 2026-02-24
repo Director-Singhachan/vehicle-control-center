@@ -78,11 +78,11 @@ isProject: false
 - **เช็ค**: เปิดแท็บ "เอกสารรถ" แสดงถูก ครบ
 - **Commit**: `refactor(reports): extract VehicleDocumentsReport`
 
-#### Step 3: แยกแท็บ usage
+#### Step 3: แยกแท็บ usage ✅ (ทำแล้ว)
 
-- สร้าง `views/reports/VehicleUsageReport.tsx`
-- Props: `startDate`, `endDate`, `selectedBranch`, `isDark`
-- ย้าย VehicleUsageRankingChart + logic
+- สร้าง `views/reports/VehicleUsageReport.tsx` ✅
+- Props: filter state + `usageRankingOptions`, `isDark` ✅
+- ย้าย VehicleUsageRankingChart + logic + ReportFilters ✅
 - **เช็ค**: กราฟ usage ranking แสดงถูก filter ถูก
 - **Commit**: `refactor(reports): extract VehicleUsageReport`
 
