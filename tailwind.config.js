@@ -33,12 +33,17 @@ export default {
         }
       },
       animation: {
-        'fade-in': 'fadeIn 0.5s ease-out',
+        'fade-in': 'fadeIn 0.4s ease-out',
       },
       keyframes: {
+        // ⚠️ ห้ามใช้ transform (translateY, scale, etc.) ใน keyframes นี้!
+        // เพราะ CSS transform จะสร้าง new containing block
+        // ซึ่งทำให้ position: sticky ของ element ลูกทั้งหมดภายในพัง
+        // PageLayout ใช้ animate-fade-in — ถ้าใส่ transform ตรงนี้
+        // sticky bar ของทุกหน้าจะไม่ทำงาน
         fadeIn: {
-          '0%': { opacity: '0', transform: 'translateY(10px)' },
-          '100%': { opacity: '1', transform: 'translateY(0)' },
+          '0%': { opacity: '0' },
+          '100%': { opacity: '1' },
         }
       }
     },

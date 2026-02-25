@@ -1,0 +1,70 @@
+﻿        created_at,
+        completed_at,
+        vehicles(plate),
+        ticket_costs(cost)
+      `)
+      .eq('vehicle_id', vehicleId)
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+
+    return (data || []).map(ticket => {
+      const costs = ticket.ticket_costs as Array<{ cost: number | null }> | null;
+      const totalCost = costs?.reduce((sum, c) => sum + (c.cost || 0), 0) || 0;
+      const vehicle = ticket.vehicles as { plate: string } | null;
+
+      return {
+        ticket_id: ticket.id,
+        vehicle_id: ticket.vehicle_id,
+        plate: vehicle?.plate || 'Unknown',
+        title: ticket.title,
+        status: ticket.status,
+        totalCost,
+        created_at: ticket.created_at,
+        completed_at: ticket.completed_at,
+      };
+    });
+  },
+
+  // ========== Cost Analysis ==========
+
+  // Get cost analysis (fuel + maintenance)
+  getCostAnalysis: async (startDate: Date, endDate: Date): Promise<CostAnalysis> => {
+    const [fuelResult, maintenanceResult] = await Promise.all([
+      // Fuel costs
+      supabase
+        .from('fuel_records')
+        .select('total_cost')
+        .gte('filled_at', startDate.toISOString())
+        .lte('filled_at', endDate.toISOString()),
+
+      // Maintenance costs
+      supabase
+        .from('ticket_costs')
+        .select(`
+          cost,
+          ticket:tickets!inner(created_at)
+        `)
+        .gte('tickets.created_at', startDate.toISOString())
+        .lte('tickets.created_at', endDate.toISOString()),
+    ]);
+
+    if (fuelResult.error) throw fuelResult.error;
+    if (maintenanceResult.error) throw maintenanceResult.error;
+
+    const totalFuelCost = fuelResult.data?.reduce((sum, item) => sum + (item.total_cost || 0), 0) || 0;
+    const totalMaintenanceCost = maintenanceResult.data?.reduce((sum, item) => sum + (item.cost || 0), 0) || 0;
+
+    return {
+      totalFuelCost,
+      totalMaintenanceCost,
+      totalCost: totalFuelCost + totalMaintenanceCost,
+      period: {
+        start: startDate.toISOString(),
+        end: endDate.toISOString(),
+      },
+    };
+  },
+
+  // Get cost per km for each vehicle
+  getCostPerKm: async (months: number = 6): Promise<CostPerKm[]> => {
