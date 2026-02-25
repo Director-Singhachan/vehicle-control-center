@@ -125,7 +125,7 @@ isProject: false
 
 ## 3.2 DeliveryTripFormView Split
 
-**สถานะรวม:** Step 1 ✅ | Step 2 ⏳ | Step 3 ⏳
+**สถานะรวม:** Step 1 ✅ | Step 2 ✅ | Step 3 ⏳
 
 ### โครงสร้างเป้าหมาย
 
@@ -157,12 +157,14 @@ views/DeliveryTripFormView.tsx (orchestrator, ~300 บรรทัด)
 
 **ขั้นถัดไป:** ทดสอบ flow สร้าง/แก้ทริปบนเครื่อง แล้วทำ Step 2 (แยก TripBasicInfoForm)
 
-#### Step 2: แยก TripBasicInfoForm
+#### Step 2: แยก TripBasicInfoForm ✅ (ทำแล้ว)
 
-- วันที่, เลือกรถ, เลือกคนขับ
-- Props: ค่า + onChange จาก hook
-- **เช็ค**: เลือกรถ/คนขับ ทำงาน validate ถูก
-- **Commit**: `refactor(delivery-trip): extract TripBasicInfoForm`
+- วันที่, เลือกรถ, เลือกคนขับ (+ ไมล์เริ่มต้น, หมายเหตุ, จุดหมายปลายทาง) ✅
+- Props: ค่า + setFormData / onChange จาก hook ✅
+- สร้าง `components/trip/TripBasicInfoForm.tsx` — รับ props จาก useDeliveryTripForm ✅
+- DeliveryTripFormView ใช้ `<TripBasicInfoForm ... />` แทน Card ข้อมูลพื้นฐาน ✅
+- **เช็ค**: Linter ผ่าน
+- **Commit (แนะนำ)**: `refactor(delivery-trip): extract TripBasicInfoForm`
 
 #### Step 3: แยก TripOrdersSection, TripItemsSection, TripCrewSection
 

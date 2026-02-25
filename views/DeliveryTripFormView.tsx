@@ -8,7 +8,6 @@ import {
   X,
   Trash2,
   Search,
-  MapPin,
   Package,
   Truck,
   User,
@@ -21,6 +20,7 @@ import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Card } from '../components/ui/Card';
 import { PalletConfigSelector } from '../components/trip/PalletConfigSelector';
+import { TripBasicInfoForm } from '../components/trip/TripBasicInfoForm';
 import { PageLayout } from '../components/layout/PageLayout';
 import { useDeliveryTripForm } from '../hooks/useDeliveryTripForm';
 
@@ -127,220 +127,26 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
       subtitle={isEdit ? 'แก้ไขข้อมูลทริปส่งสินค้า' : 'สร้างทริปส่งสินค้าใหม่'}
     >
       <form onSubmit={handleSubmit} onKeyDown={handleFormKeyDown} className="space-y-6">
-        {/* Basic Info */}
-        <Card>
-          <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-4 flex items-center gap-2">
-            <Truck size={20} />
-            ข้อมูลพื้นฐาน
-          </h3>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="relative z-10">
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                รถ <span className="text-red-500">*</span>
-              </label>
-              <div className="relative" data-vehicle-dropdown ref={vehicleInputRef}>
-                <Input
-                  type="text"
-                  value={vehicleSearch}
-                  onChange={(e) => {
-                    setVehicleSearch(e.target.value);
-                    setShowVehicleDropdown(true);
-                  }}
-                  onFocus={() => {
-                    if (!formData.vehicle_id) {
-                      setVehicleSearch('');
-                    }
-                    setShowVehicleDropdown(true);
-                  }}
-                  placeholder="พิมพ์ค้นหาหรือเลือกรถ"
-                  icon={<Search size={18} />}
-                  data-vehicle-input
-                  required={!formData.vehicle_id}
-                />
-                {showVehicleDropdown && filteredVehicles.length > 0 && vehicleDropdownPosition && createPortal(
-                  <div
-                    data-vehicle-dropdown-portal
-                    className="fixed bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg shadow-xl z-[9999] max-h-60 overflow-y-auto overscroll-contain"
-                    style={{
-                      top: `${vehicleDropdownPosition.top}px`,
-                      left: `${vehicleDropdownPosition.left}px`,
-                      width: `${vehicleDropdownPosition.width}px`,
-                    }}
-                    onMouseDown={(e) => {
-                      // Allow scrolling by not preventing default
-                      e.stopPropagation();
-                    }}
-                  >
-                    {filteredVehicles.map((vehicle) => {
-                      const isInUse = activeVehicleIds.has(vehicle.id); // In use (trip logs)
-                      const hasActiveTicket = vehiclesWithActiveTickets.has(vehicle.id); // Has active maintenance ticket
-                      const hasActiveDeliveryTrip = vehiclesWithActiveDeliveryTrips.has(vehicle.id); // Has active delivery trip
-
-                      // Collect all statuses
-                      const statuses: string[] = [];
-                      if (isInUse) {
-                        statuses.push('🚗 ใช้งานอยู่');
-                      }
-                      if (hasActiveTicket) {
-                        statuses.push('🔧 ซ่อมอยู่');
-                      }
-                      if (hasActiveDeliveryTrip) {
-                        statuses.push('📦 จัดส่งอยู่');
-                      }
-
-                      return (
-                        <button
-                          key={vehicle.id}
-                          type="button"
-                          onMouseDown={(e) => {
-                            e.preventDefault(); // Prevent input from losing focus
-                            handleSelectVehicle(vehicle.id, e);
-                          }}
-                          onClick={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                          }}
-                          className="w-full text-left px-4 py-2 hover:bg-slate-100 dark:hover:bg-slate-700"
-                        >
-                          <div className="font-medium text-slate-900 dark:text-slate-100">
-                            {vehicle.plate} {vehicle.make && vehicle.model ? `(${vehicle.make} ${vehicle.model})` : ''}
-                          </div>
-                          {statuses.length > 0 && (
-                            <div className="text-xs mt-0.5 space-y-0.5">
-                              {statuses.map((status, idx) => (
-                                <div
-                                  key={idx}
-                                  className={
-                                    status.includes('ใช้งานอยู่')
-                                      ? 'text-amber-600 dark:text-amber-400'
-                                      : status.includes('ซ่อมอยู่')
-                                        ? 'text-red-600 dark:text-red-400'
-                                        : 'text-blue-600 dark:text-blue-400'
-                                  }
-                                >
-                                  {status}
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </button>
-                      );
-                    })}
-                  </div>,
-                  document.body
-                )}
-                {formData.vehicle_id && (
-                  <div className="mt-1 space-y-1">
-                    {activeVehicleIds.has(formData.vehicle_id) && (
-                      <div className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1">
-                        <span>⚠️</span>
-                        <span>รถคันนี้กำลังใช้งานอยู่</span>
-                      </div>
-                    )}
-                    {vehiclesWithActiveTickets.has(formData.vehicle_id) && (
-                      <div className="text-xs text-red-600 dark:text-red-400 flex items-center gap-1">
-                        <span>⚠️</span>
-                        <span>รถคันนี้กำลังซ่อมอยู่</span>
-                      </div>
-                    )}
-                    {vehiclesWithActiveDeliveryTrips.has(formData.vehicle_id) && (
-                      <div className="text-xs text-blue-600 dark:text-blue-400 flex items-center gap-1">
-                        <span>⚠️</span>
-                        <span>รถคันนี้มีทริปจัดส่งอยู่</span>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                วันที่วางแผน <span className="text-red-500">*</span>
-              </label>
-              <Input
-                type="date"
-                value={formData.planned_date}
-                onChange={(e) => setFormData({ ...formData, planned_date: e.target.value })}
-                required
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                คนขับ <span className="text-red-500">*</span>
-              </label>
-              <select
-                value={formData.driver_id}
-                onChange={(e) => setFormData({ ...formData, driver_id: e.target.value })}
-                className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
-                required
-              >
-                <option value="">เลือกคนขับ</option>
-                {drivers.map((driver) => (
-                  <option key={driver.id} value={driver.id}>
-                    {driver.full_name}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              {/* placeholder for grid alignment */}
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                ไมล์เริ่มต้น
-              </label>
-              <div className="relative">
-                <Input
-                  type="number"
-                  value={formData.odometer_start}
-                  onChange={(e) => setFormData({ ...formData, odometer_start: e.target.value })}
-                  placeholder="กรอกเลขไมล์ขาออก"
-                  min="0"
-                  step="1"
-                />
-                {latestOdometer !== null && (
-                  <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                    เลขไมล์ล่าสุด: <span className="font-medium">{latestOdometer.toLocaleString()}</span> กม.
-                    {formData.odometer_start && parseInt(formData.odometer_start) < latestOdometer && (
-                      <span className="ml-2 text-amber-600 dark:text-amber-400">
-                        ⚠️ น้อยกว่าเลขไมล์ล่าสุด
-                      </span>
-                    )}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                หมายเหตุ
-              </label>
-              <Input
-                value={formData.notes}
-                onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                placeholder="หมายเหตุเพิ่มเติม"
-              />
-            </div>
-          </div>
-
-          {/* Auto-populated destinations */}
-          {formData.vehicle_id && selectedStores.length > 0 && (
-            <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
-              <div className="flex items-center gap-2 text-blue-800 dark:text-blue-200">
-                <MapPin size={16} />
-                <span className="font-medium">จุดหมายปลายทาง:</span>
-              </div>
-              <p className="mt-1 text-sm text-blue-700 dark:text-blue-300">
-                {destinations || 'ยังไม่ได้เลือกร้านค้า'}
-              </p>
-            </div>
-          )}
-        </Card>
+        <TripBasicInfoForm
+          formData={formData}
+          setFormData={setFormData}
+          vehicleSearch={vehicleSearch}
+          setVehicleSearch={setVehicleSearch}
+          showVehicleDropdown={showVehicleDropdown}
+          setShowVehicleDropdown={setShowVehicleDropdown}
+          vehicleInputRef={vehicleInputRef}
+          vehicleDropdownPosition={vehicleDropdownPosition}
+          setVehicleDropdownPosition={setVehicleDropdownPosition}
+          filteredVehicles={filteredVehicles}
+          activeVehicleIds={activeVehicleIds}
+          vehiclesWithActiveTickets={vehiclesWithActiveTickets}
+          vehiclesWithActiveDeliveryTrips={vehiclesWithActiveDeliveryTrips}
+          onSelectVehicle={handleSelectVehicle}
+          drivers={drivers}
+          latestOdometer={latestOdometer}
+          showDestinations={!!(formData.vehicle_id && selectedStores.length > 0)}
+          destinationsText={destinations}
+        />
 
         {/* Crew Assignment Section */}
         <Card>
