@@ -905,7 +905,7 @@ const AppContent = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-charcoal-950 flex font-sans selection:bg-enterprise-500 selection:text-white">
+    <div className="h-screen overflow-hidden bg-gray-50 dark:bg-charcoal-950 flex font-sans selection:bg-enterprise-500 selection:text-white">
 
       {/* Sidebar */}
       <aside
@@ -1593,7 +1593,7 @@ const AppContent = () => {
       )}
 
       {/* Main Content */}
-      <main className={`flex-1 min-w-0 flex flex-col transition-all duration-300 overflow-x-hidden ${contentMarginClass}`}>
+      <main className={`flex-1 min-w-0 min-h-0 flex flex-col transition-all duration-300 overflow-x-hidden ${contentMarginClass}`}>
 
         {/* Top Header */}
         <header className="h-16 bg-white/80 dark:bg-charcoal-900/80 backdrop-blur-md border-b border-slate-200 dark:border-slate-800/50 flex items-center justify-between px-6 sticky top-0 z-10">
@@ -1825,7 +1825,7 @@ const AppContent = () => {
         </header>
 
         {/* View Content - Lazy loaded views ใช้ Suspense เพื่อไม่ block หน้าแรก */}
-        <div className="p-6 min-w-0 overflow-x-hidden flex-1 flex flex-col">
+        <div className="p-6 min-w-0 min-h-0 overflow-x-hidden overflow-y-auto flex-1 flex flex-col">
           <Suspense fallback={
             <div className="flex items-center justify-center min-h-[320px] text-slate-500 dark:text-slate-400">
               <span>กำลังโหลด...</span>

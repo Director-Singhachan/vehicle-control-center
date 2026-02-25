@@ -1,0 +1,301 @@
+---
+name: ""
+overview: ""
+todos: []
+isProject: false
+---
+
+# Phase 3: Deep Refactor Plan — แผนปฏิบัติการลดความผิดพลาด
+
+> **วัตถุประสงค์**: แยกไฟล์วิกฤตและ Services | **ความเสี่ยงสูง** | ใช้เวลา 1–2 สัปดาห์  
+> **หลักการ**: ทำทีละหน่วย → ทดสอบ → commit → ทำต่อ
+
+---
+
+## สัญญาณเตือนความผิดพลาด (Red Flags)
+
+
+| สัญญาณ                    | การป้องกัน                            |
+| ------------------------- | ------------------------------------- |
+| แก้หลายไฟล์พร้อมกัน       | ทำทีละ 1 component/hook แล้ว commit   |
+| เปลี่ยน logic ขณะ extract | **ห้าม** — เฟสนี้เน้น move เท่านั้น   |
+| ไม่ทดสอบหลัง extract      | ทดสอบ flow หลักทันที ก่อน commit      |
+| แก้ import ทั้งโปรเจค     | ใช้ **Re-export Pattern** จากไฟล์เดิม |
+| State แยกกันแต่ต้อง sync  | รวมไว้ใน hook เดียว — อย่าแตก         |
+
+
+---
+
+## ลำดับการดำเนินงานที่แนะนำ
+
+```
+3.4 Lazy Loading           → ✅ เสร็จแล้ว (มีอยู่ใน index.tsx)
+3.1 ReportsView            → ✅ เสร็จแล้ว (ReportFilters, แท็บย่อย, Router)
+3.3 CreateTripFromOrdersView → ✅ เสร็จแล้ว (Wizard steps + useCreateTripWizard)
+3.2 DeliveryTripFormView   → ✅ เสร็จแล้ว (useDeliveryTripForm, TripBasicInfoForm, TripOrdersSection, TripItemsSection, TripCrewSection)
+3.5 Services split (reports) → ✅ เสร็จแล้ว (reportsService → fuel/trip/product/delivery)
+3.5 Services split (deliveryTrip) → ✅ เสร็จแล้ว (deliveryTripService → tripCrud/tripStatus/tripHistoryAggregates)
+```
+
+---
+
+## 3.1 ReportsView Split
+
+### สถานะจริง (8 แท็บ)
+
+
+| แท็บ | ชื่อในโค้ด        | Hooks หลัก                                                       | ความซับซ้อน |
+| ---- | ----------------- | ---------------------------------------------------------------- | ----------- |
+| 1    | fuel              | useMonthlyFuelReport, useVehicleFuelComparison, useFuelTrend     | สูง         |
+| 2    | trip              | useMonthlyTripReport, useVehicleTripSummary, useDriverTripReport | สูง         |
+| 3    | maintenance       | useMonthlyMaintenanceReport, useVehicleMaintenanceComparison     | กลาง        |
+| 4    | cost              | useCostPerKm, useMonthlyCostTrend                                | กลาง        |
+| 5    | usage             | useVehicleUsageRanking                                           | กลาง        |
+| 6    | fuel-consumption  | useVehicleFuelConsumption                                        | กลาง        |
+| 7    | delivery          | useDeliverySummary*, useStaffCommission*, useStaffItem*          | สูงมาก      |
+| 8    | vehicle-documents | VehicleDocumentReports                                           | ต่ำ         |
+
+
+### Shared State ที่ต้องจัดการ
+
+- `filterPeriod`, `customStartDate`, `customEndDate` → `startDate`, `endDate`
+- `selectedBranch`, `branches`
+- `months` (ใช้ใน fuel, trip, maintenance, cost)
+
+### ขั้นตอน (ทำทีละขั้น)
+
+#### Step 1: สร้าง ReportFilters + useReportFilters ✅ (ทำแล้ว)
+
+- สร้าง `views/reports/ReportFilters.tsx` — ย้าย UI ฟิลเตอร์ (period, branch, months) ✅
+- สร้าง `hooks/useReportFilters.ts` — state + logic คำนวณ startDate/endDate ✅
+- **เช็ค**: เปลี่ยน filter แล้ว date range ถูกต้อง (รอ verify จากผู้ใช้)
+- **Commit**: `feat(reports): extract ReportFilters and useReportFilters`
+
+#### Step 2: แยกแท็บ vehicle-documents (ง่ายที่สุด) ✅ (ทำแล้ว)
+
+- สร้าง `views/reports/VehicleDocumentsReport.tsx` ✅
+- ย้ายโค้ด `activeTab === 'vehicle-documents'` ทั้งบล็อก ✅
+- รับ props: `isDark`, `onNavigateToStoreDetail` (ถ้าใช้) ✅
+- **เช็ค**: เปิดแท็บ "เอกสารรถ" แสดงถูก ครบ
+- **Commit**: `refactor(reports): extract VehicleDocumentsReport`
+
+#### Step 3: แยกแท็บ usage ✅ (ทำแล้ว)
+
+- สร้าง `views/reports/VehicleUsageReport.tsx` ✅
+- Props: filter state + `usageRankingOptions`, `isDark` ✅
+- ย้าย VehicleUsageRankingChart + logic + ReportFilters ✅
+- **เช็ค**: กราฟ usage ranking แสดงถูก filter ถูก
+- **Commit**: `refactor(reports): extract VehicleUsageReport`
+
+#### Step 4: แยกแท็บ fuel-consumption ✅ (ทำแล้ว)
+
+- สร้าง `views/reports/FuelConsumptionReport.tsx` ✅
+- Props: filter state + `fuelConsumptionOptions`, `isDark` ✅
+- ย้าย VehicleFuelConsumptionChart + logic + ReportFilters ✅
+- **เช็ค**: กราฟ fuel consumption แสดงถูก filter ถูก
+- **Commit**: `refactor(reports): extract FuelConsumptionReport`
+
+#### Step 5: แยกแท็บ fuel, trip, maintenance, cost (ใช้ months) ✅ (ทำแล้ว)
+
+- แยกทีละแท็บ: FuelReport, TripReport, MaintenanceReport, CostReport ✅
+- แต่ละแท็บรับ `months`, `isDark` ✅
+- **เช็ค**: แต่ละแท็บ + Export Excel ทำงานได้
+- **Commit**: `refactor(reports): extract FuelReport, TripReport, MaintenanceReport, CostReport`
+
+#### Step 6: แยกแท็บ delivery (ซับซ้อนสุด) ✅ (ทำแล้ว)
+
+- แยกเป็น `views/reports/DeliveryReport.tsx` ✅
+- Sub-tabs: vehicle, store, product, staff, monthly (ทั้งหมดอยู่ใน DeliveryReport)
+- **เช็ค**: ทุก sub-tab ใน delivery ทำงาน
+- **Commit**: `refactor(reports): extract DeliveryReport`
+
+#### Step 7: Refactor ReportsView เป็น Router ✅ (ทำแล้ว)
+
+- ReportsView เหลือเฉพาะ: tab switcher + `{activeTab === 'x' && <XReport />}` ✅
+- ใช้ TAB_CONFIG สำหรับปุ่มแท็บ (ลดความซ้ำซ้อน) ✅
+- **เช็ค**: สลับทุกแท็บ ไม่มี error
+- **Commit**: `refactor(reports): ReportsView as tab orchestrator`
+
+### จุดสำคัญ (ReportsView)
+
+- **Chart.js**: ยัง register ใน entry point (index หรือ ReportsView) — อย่าย้ายไป sub-view
+- **Export functions**: ย้ายไปอยู่ในแต่ละ Report component
+- **Lazy sub-views**: พิจารณาใช้ `React.lazy` สำหรับแต่ละ Report (โหลดเมื่อเลือกแท็บ)
+
+---
+
+## 3.2 DeliveryTripFormView Split
+
+**สถานะรวม:** Step 1 ✅ | Step 2 ✅ | Step 3 ✅
+
+### โครงสร้างเป้าหมาย
+
+```
+views/DeliveryTripFormView.tsx (orchestrator, ~300 บรรทัด)
+  ├─ components/trip/TripBasicInfoForm.tsx   (วันที่, รถ, คนขับ)
+  ├─ components/trip/TripOrdersSection.tsx   (เลือกออเดอร์)
+  ├─ components/trip/TripItemsSection.tsx    (รายการสินค้า)
+  ├─ components/trip/TripCrewSection.tsx     (เลือกทีมงาน)
+  └─ hooks/useDeliveryTripForm.ts            (form state + validation)
+```
+
+### ขั้นตอน
+
+#### Step 1: สร้าง useDeliveryTripForm ✅ (ทำแล้ว)
+
+- แยก state ทั้งหมดของฟอร์มเข้า hook ✅
+- Return: `{ formData, setField, errors, validate, ... }` (return เป็น object ครบที่ view ใช้) ✅
+- **ไม่เปลี่ยน logic** — แค่ย้าย ✅
+
+**ความคืบหน้า / สิ่งที่ทำแล้ว:**
+
+- สร้าง `types/deliveryTripForm.ts` — StoreWithItems, storesAndItemsEqual, DeliveryTripFormData ✅
+- สร้าง `hooks/useDeliveryTripForm.ts` — state, effects, handlers, validation, handleSubmit ทั้งหมด (~710 บรรทัด) ✅
+- อัปเดต `views/DeliveryTripFormView.tsx` — ใช้ hook แทน state/logic ในตัว, เหลือเฉพาะ JSX + destructure จาก hook ✅
+- export ใน `hooks/index.ts` ✅
+- **เช็ค**: Linter ผ่าน (ไม่มี error)
+- **Commit (แนะนำ)**: `refactor(delivery-trip): extract useDeliveryTripForm`
+
+**ขั้นถัดไป:** ทดสอบ flow สร้าง/แก้ทริปบนเครื่อง แล้วทำ Step 2 (แยก TripBasicInfoForm)
+
+#### Step 2: แยก TripBasicInfoForm ✅ (ทำแล้ว)
+
+- วันที่, เลือกรถ, เลือกคนขับ (+ ไมล์เริ่มต้น, หมายเหตุ, จุดหมายปลายทาง) ✅
+- Props: ค่า + setFormData / onChange จาก hook ✅
+- สร้าง `components/trip/TripBasicInfoForm.tsx` — รับ props จาก useDeliveryTripForm ✅
+- DeliveryTripFormView ใช้ `<TripBasicInfoForm ... />` แทน Card ข้อมูลพื้นฐาน ✅
+- **เช็ค**: Linter ผ่าน
+- **Commit (แนะนำ)**: `refactor(delivery-trip): extract TripBasicInfoForm`
+
+#### Step 3: แยก TripOrdersSection, TripItemsSection, TripCrewSection ✅ (ทำแล้ว)
+
+- แยก `TripCrewSection` — จัดพนักงานประจำทริป (คนขับ + helpers + สรุป crew) ✅
+- แยก `TripItemsSection` — ตารางสรุปสินค้าทั้งหมดในเที่ยว (aggregated products) ✅
+- แยก `TripOrdersSection` — ร้านค้าและสินค้า (store search, selected stores, product list, PalletConfigSelector, quantity_picked_up_at_store) ✅
+- DeliveryTripFormView ใช้ทั้งสาม component แทน Card/บล็อกเดิม ลบ import ที่ไม่ใช้ ✅
+- **เช็ค**: Linter ผ่าน
+- **Commit (แนะนำ)**: `refactor(delivery-trip): extract TripOrdersSection, TripItemsSection, TripCrewSection`
+
+### จุดสำคัญ (DeliveryTripForm)
+
+- **Form state ต้องอยู่ที่ parent/hook** — อย่าแยก state ที่ต้อง sync
+- **Validation** — เก็บใน hook เดียวกัน
+- **Submit logic** — อยู่ใน DeliveryTripFormView หรือ hook
+
+---
+
+## 3.3 CreateTripFromOrdersView Split ✅
+
+### โครงสร้างเป้าหมาย
+
+```
+views/CreateTripFromOrdersView.tsx (step orchestrator, ~150 บรรทัด) ✅
+  ├─ components/trip/OrderSelectionStep.tsx ✅
+  ├─ components/trip/VehicleSelectionStep.tsx ✅
+  ├─ components/trip/CrewAssignmentStep.tsx ✅
+  ├─ components/trip/TripConfirmationStep.tsx ✅
+  └─ hooks/useCreateTripWizard.ts (step state, validation, submit) ✅
+```
+
+### ขั้นตอน
+
+#### Step 1: สร้าง useCreateTripWizard ✅ (ทำแล้ว)
+
+- ย้าย step state (currentStep), wizard data, validation, submit ไปที่ hook
+- types/createTripWizard.ts — StoreDelivery, ItemSplitQty, CapacitySummary, splitKey
+- **Commit**: `refactor(create-trip): extract useCreateTripWizard`
+
+#### Step 2: แยกทีละ Step component ✅ (ทำแล้ว)
+
+- OrderSelectionStep — ลำดับการจัดส่ง (drag-drop ร้าน, รายการสินค้า, แบ่ง 2 คัน)
+- VehicleSelectionStep — ข้อมูลทริป (AI recommendation, สาขา, ค้นหา, เลือกรถ)
+- CrewAssignmentStep — พนักงานขับรถ, แบ่ง 2 คัน (รถ+คนขับคัน 2), วันที่, หมายเหตุ, ไม่ตัดสต๊อก
+- TripConfirmationStep — สรุปทริป, ปุ่มสร้างทริป, สรุปความจุ (คัน 1/2), ออเดอร์ที่เลือก
+- **เช็ค**: Linter ผ่าน
+- **Commit**: `refactor(create-trip): extract OrderSelectionStep, VehicleSelectionStep, CrewAssignmentStep, TripConfirmationStep`
+
+### จุดสำคัญ (CreateTripFromOrders)
+
+- **Wizard flow** — อย่าหัก step logic
+- **VehicleRecommendationPanel** — มีอยู่แล้ว ใช้ต่อได้
+
+---
+
+## 3.5 Services Split
+
+### หลักการสำคัญ
+
+- **Re-export จากไฟล์เดิม** — ไม่แก้ import ทั้งโปรเจค
+- แตก function ตาม domain แล้ว re-export รวม
+
+### reportsService.ts ✅ (ทำแล้ว)
+
+**สถานะ:** แยกครบ 4 sub-services แล้ว, hub re-export ทุกอย่าง
+
+**โครงสร้างปัจจุบัน:**
+
+```
+services/reportsService.ts (re-export hub, ~27 บรรทัด) ✅
+  ├─ services/reports/fuelReportService.ts       ✅ (Financials, MonthlyFuelReport, VehicleFuelComparison, FuelTrend + getFinancials, getMonthlyFuelReport, getVehicleFuelComparison, getFuelTrend)
+  ├─ services/reports/tripSummaryService.ts    ✅ (MonthlyTripReport, VehicleTripSummary, DriverTripReport + getMonthlyTripReport, getVehicleTripSummary, getDriverTripReport)
+  ├─ services/reports/productReportService.ts    ✅ (MaintenanceTrends, MonthlyMaintenanceReport, VehicleMaintenanceComparison, VehicleMaintenanceHistory, CostAnalysis, CostPerKm, MonthlyCostTrend + getMaintenanceTrends, getMonthlyMaintenanceReport, getVehicleMaintenanceComparison, getVehicleMaintenanceHistory, getCostAnalysis, getCostPerKm, getMonthlyCostTrend, getVehicleUsageRanking, getVehicleFuelConsumption)
+  └─ services/reports/deliveryReportService.ts  ✅ (StaffCommissionSummary, StaffItemStatistics, StaffItemDetail + getDeliverySummaryByVehicle, getDeliverySummaryByStore, getDeliverySummaryByProduct, getMonthlyDeliveryReport, getStaffCommissionSummary, getProductDeliveryHistory, getStaffItemStatistics, getStaffItemDetails, refreshDeliveryStatsByVehicle)
+```
+
+- Import เดิม `from '../services/reportsService'` ยังใช้ได้ ไม่ต้องแก้
+- **เช็คแล้ว**: `npm run build` ผ่าน
+- **Commit (แนะนำ)**: `refactor(services): split reportsService into fuel/trip/product/delivery sub-services`
+
+### deliveryTripService.ts ✅ (ทำแล้ว)
+
+**สถานะ:** แยกครบแล้ว — hub re-export ทุกอย่าง
+
+**โครงสร้างปัจจุบัน:**
+
+```
+services/deliveryTripService.ts (re-export hub, ~25 บรรทัด) ✅
+  ├─ services/deliveryTrip/types.ts                  (shared types)
+  ├─ services/deliveryTrip/tripCrudService.ts       (getAll, getAllWithPagination, getById, create, update, delete, updatePickedUpQuantity, changeVehicle)
+  ├─ services/deliveryTrip/tripStatusService.ts      (cancel, updateStoreInvoiceStatus, syncQuantityDeliveredForCompletedTrip, syncStatusWithTripLogs)
+  └─ services/deliveryTrip/tripHistoryAggregatesService.ts (getAggregatedProducts, getItemChangeHistory, getDeliveryTripEditHistory, getStaffItemDistribution, getProductDistributionByTrip)
+```
+
+- Import เดิม `from '../services/deliveryTripService'` ยังใช้ได้ ไม่ต้องแก้
+- **เช็ค**: รัน `npm run build` ผ่าน (error อื่นในโปรเจคเป็นของเดิม ไม่เกี่ยวกับการแยกนี้)
+- **Commit (แนะนำ)**: `refactor(services): split deliveryTripService into tripCrud/tripStatus/tripHistoryAggregates`
+
+---
+
+## Checkpoint ทุกครั้งหลัง Refactor
+
+- `npm run build` ผ่าน
+- `npm run dev` รันได้
+- ทดสอบ flow หลักของหน้าที่แก้ (คลิก, กรอก, submit)
+- ไม่มี console error ใน browser
+- Commit ด้วยข้อความที่บอก refactor อะไร
+
+---
+
+## สรุประยะเวลาโดยประมาณ
+
+
+| งาน                                      | ระยะเวลา      | ความเสี่ยง | สถานะ       |
+| ---------------------------------------- | ------------- | ---------- | ----------- |
+| 3.1 ReportsView                          | 4–6 วัน       | สูง        | ✅ เสร็จแล้ว |
+| 3.2 DeliveryTripFormView                 | 2–3 วัน       | สูง        | ✅ เสร็จแล้ว |
+| 3.3 CreateTripFromOrdersView             | 2–3 วัน       | ปานกลาง    | ✅ เสร็จแล้ว |
+| 3.5 Services split (reportsService)      | 2–3 วัน       | ปานกลาง    | ✅ เสร็จแล้ว |
+| 3.5 Services split (deliveryTripService) | 1–2 วัน       | ปานกลาง    | ✅ เสร็จแล้ว |
+| **รวม**                                  | **10–15 วัน** |            |             |
+
+
+---
+
+## หลักการที่ต้องจำ
+
+1. **ทำทีละอย่าง** — 1 component หรือ 1 hook ต่อครั้ง
+2. **ไม่เปลี่ยน logic** — แค่ย้าย (extract) ไม่แก้ algorithm
+3. **ทดสอบก่อน commit** — อย่างน้อยรัน flow หลัก
+4. **Re-export สำหรับ services** — ไม่ต้องแก้ import ที่ใช้อยู่
+5. **State ที่ sync กันต้องอยู่ที่เดียวกัน** — อย่าแยกออกจากกัน
+

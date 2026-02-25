@@ -43,8 +43,74 @@ utils/          # Utility functions
 theme/          # Design tokens
 ```
 
+### File Size & Modularity (CRITICAL – Prevent Monolithic Views)
+
+**เหตุผล:** ไฟล์ view/component ที่ใหญ่เกินไป (เช่น DeliveryTripFormView เคยเกิน 1,000 บรรทัด) ทำให้เพิ่มฟีเจอร์ใหม่และดูแลบำรุงรักษายาก ต้องควบคุมขนาดเพื่อรองรับการขยายตัวในอนาคต
+
+**หลักการ:**
+
+1. **View = Orchestrator เท่านั้น**
+   - ไฟล์ใน `views/` ควรมีหน้าที่ **รวม layout + เรียก hook + ส่ง props ลง section components** เท่านั้น
+   - เป้าหมาย: **~250–400 บรรทัด** ต่อ view (ไม่รวม comment/blank)
+   - ห้ามยัด UI ยาวๆ (ฟอร์มหลาย section, ตารางใหญ่, modal ซับซ้อน) ไว้ใน view โดยตรง
+
+2. **เมื่อ view เกิน ~400 บรรทัด**
+   - แยก section ออกเป็น component ใน `components/[feature]/` (เช่น `components/trip/TripOrdersSection.tsx`)
+   - ย้าย state/logic ที่เกี่ยวกับ section นั้นไป custom hook ใน `hooks/` ถ้าซับซ้อน
+   - View เหลือเฉพาะ: destructure จาก hook, เรียง `<Section ... />` และ layout รอบๆ
+
+3. **เมื่อเพิ่มฟีเจอร์ใหม่ในหน้าที่มีอยู่แล้ว**
+   - **อย่า** เขียน UI ใหม่ยาวๆ ใน view โดยตรง
+   - **ให้** สร้าง component ใหม่ (หรือ subsection) รับ props จาก parent/hook แล้วเอาไปใส่ใน view
+   - ถ้า logic/state เยอะ → สร้างหรือขยาย hook แล้วให้ view ส่งลง component
+
+4. **ขอบเขตบรรทัด (แนวทาง ไม่ใช่ hard limit ทุกไฟล์)**
+   - **views/*.tsx**: เป้าหมาย ≤ ~400 บรรทัด; ถ้าเกินให้แยก section
+   - **components/** (ที่ไม่ใช่ ui): เป้าหมาย ≤ ~350 บรรทัดต่อไฟล์; ถ้าเกินให้แยก sub-component หรือ hook
+   - **hooks/*.ts**: ยอมให้ยาวได้ถ้าเป็น form/flow เดียว (เช่น useDeliveryTripForm) แต่ถ้าแยก domain ชัดให้พิจารณาแยก hook
+
+5. **ตัวอย่างที่ทำแล้ว (อ้างอิง)**
+   - `DeliveryTripFormView`: เหลือเฉพาะ orchestrator ใช้ `<TripBasicInfoForm />`, `<TripOrdersSection />`, `<TripItemsSection />`, `<TripCrewSection />` + Capacity Summary + ข้อความ/ปุ่ม
+   - State และ handlers อยู่ที่ `useDeliveryTripForm`; แต่ละ section รับ props จาก hook
+
+**เมื่อเพิ่มฟีเจอร์ใหม่:** ถ้า view หรือ component เริ่มยาวเกิน ~350–400 บรรทัด ให้หยุดและแยก section/component/hook ก่อนเขียนต่อ
+
+6. **เทมเพลต View (Orchestrator)**
+   - View ควรอ่านแล้วเห็น "flow" ทั้งหน้ารวดเดียว ไม่ต้อง scroll ไปตาม JSX ยาวๆ
+   - โครงสร้างที่แนะนำ:
+   ```tsx
+   // 1. Imports
+   // 2. Props interface
+   // 3. Component: destructure จาก hook เดียว (หรือมากสุด 2 hooks)
+   const { ...form, ...sectionA, ...sectionB, handleSubmit } = useXForm();
+   // 4. return: PageLayout > form > เรียง Section components + ข้อความ/ปุ่ม
+   return (
+     <PageLayout>
+       <form onSubmit={handleSubmit}>
+         <BasicInfoSection {...form} />
+         <OrdersSection {...sectionA} />
+         <SummarySection {...sectionB} />
+         {error && <Message type="error" />}
+         <Actions />
+       </form>
+     </PageLayout>
+   );
+   ```
+   - อนุญาตมี **Card + เนื้อหาสั้นๆ** ใน view ได้ (เช่น Capacity Summary, Error/Success, ปุ่ม) แต่ถ้าเนื้อหาเกิน ~30–50 บรรทัดให้ย้ายไป component
+
+7. **การตั้งชื่อให้เห็นบทบาท**
+   - `*View.tsx` = หน้า (orchestrator only)
+   - `*Section.tsx` = บล็อกใหญ่ในหน้านั้น (ร้านค้าและสินค้า, สรุปสินค้า, ทีมงาน)
+   - `*Form.tsx` = ฟอร์มย่อยที่มีฟิลด์ชัด (เช่น TripBasicInfoForm = วันที่, รถ, คนขับ)
+   - ช่วยให้รู้ทันทีว่าไฟล์ไหนเป็น "เปลือก" ไฟล์ไหนเป็น "ส่วนประกอบ"
+
+8. **หลัก "หนึ่งระดับของ composition"**
+   - ใน view: มีเฉพาะ `<PageLayout>`, `<form>`, `<Card>` ที่ห่อ **component** (เช่น `<TripOrdersSection />`) ไม่ใช่ห่อ JSX ยาวๆ เป็นสิบๆ บรรทัด
+   - ถ้าใน view มี block ที่มี map/layout ยาว (ตาราง, รายการซ้ำ, ฟอร์มหลายฟิลด์) → ย้าย block นั้นออกเป็น component ทันที
+
 ### Naming Conventions
 - **Components**: PascalCase (`StatusCard.tsx`, `VehicleStatusSection.tsx`)
+- **Views vs sections**: `*View` = page/orchestrator, `*Section` = large block in a page, `*Form` = form subsection (see File Size & Modularity)
 - **Hooks**: camelCase with `use` prefix (`useAuth.ts`, `useDashboard.ts`)
 - **Services**: camelCase (`ticketService.ts`, `vehicleService.ts`)
 - **Types/Interfaces**: PascalCase (`TicketWithRelations`, `VehicleStatus`)
@@ -568,11 +634,12 @@ const handleSubmit = async (e: React.FormEvent) => {
 
 1. **Check existing components** - Don't duplicate functionality
 2. **Follow file structure** - Put files in correct directories
-3. **Use design tokens** - Don't hardcode colors/spacing
-4. **Support dark mode** - Always add dark mode styles
-5. **Handle errors** - Always handle loading and error states
-6. **Test thoroughly** - Test with different user roles
-7. **Update documentation** - Update relevant docs if needed
+3. **Keep views small** - New UI goes in `components/` (or new section components); view stays as orchestrator (~250–400 lines). See "File Size & Modularity" above.
+4. **Use design tokens** - Don't hardcode colors/spacing
+5. **Support dark mode** - Always add dark mode styles
+6. **Handle errors** - Always handle loading and error states
+7. **Test thoroughly** - Test with different user roles
+8. **Update documentation** - Update relevant docs if needed
 
 ## Code Review Checklist
 
@@ -587,4 +654,5 @@ Before submitting code:
 - [ ] Follows naming conventions
 - [ ] Imports are organized correctly
 - [ ] Code is readable and well-commented
+- [ ] **File size:** Views ≤ ~400 lines (orchestrator only); large UI in new components. New features in existing views go into components/hooks, not inline in the view.
 
