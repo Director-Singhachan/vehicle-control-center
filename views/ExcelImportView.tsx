@@ -404,6 +404,15 @@ export function ExcelImportView() {
             if (t.tier_code) tierMap[t.tier_code.trim()] = t.id;
         });
 
+        const getMinQuantityForLevel = (level: string) => {
+            const l = level.trim();
+            if (l === '1') return 300;
+            if (l === '2') return 180;
+            if (l === '3') return 50;
+            if (l === '4' || l === '5' || l === '0') return 1;
+            return 1;
+        };
+
         const totalItems = previewData.length;
         for (let i = 0; i < totalItems; i++) {
             const item = previewData[i];
@@ -507,11 +516,11 @@ export function ExcelImportView() {
                     if (pInfo.price === 0) continue;
                     const tierId = tierMap[pInfo.level.trim()];
                     if (!tierId) {
-                        console.warn(`Tier ID not found for level: ${pInfo.level} (sku: ${item.code})`);
-                        continue;
+                        throw new Error(`ไม่พบกลุ่มลูกค้า (Tier) ที่ใช้รหัส "${pInfo.level}" ในฐานข้อมูล กรุณาตั้งค่าก่อนนำเข้า`);
                     }
 
                     const roundedPrice = Math.round(pInfo.price * 100) / 100;
+                    const minQty = getMinQuantityForLevel(pInfo.level);
 
                     const { error: tError } = await supabase
                         .from('product_tier_prices')
@@ -519,7 +528,7 @@ export function ExcelImportView() {
                             product_id: productId,
                             tier_id: tierId,
                             price: roundedPrice,
-                            min_quantity: 1,
+                            min_quantity: minQty,
                             effective_from: importDate,
                             created_by: profile?.id,
                             is_active: true
