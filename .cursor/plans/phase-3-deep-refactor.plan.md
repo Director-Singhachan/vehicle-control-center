@@ -125,6 +125,8 @@ isProject: false
 
 ## 3.2 DeliveryTripFormView Split
 
+**สถานะรวม:** Step 1 ✅ | Step 2 ⏳ | Step 3 ⏳
+
 ### โครงสร้างเป้าหมาย
 
 ```
@@ -138,12 +140,22 @@ views/DeliveryTripFormView.tsx (orchestrator, ~300 บรรทัด)
 
 ### ขั้นตอน
 
-#### Step 1: สร้าง useDeliveryTripForm
+#### Step 1: สร้าง useDeliveryTripForm ✅ (ทำแล้ว)
 
-- แยก state ทั้งหมดของฟอร์มเข้า hook
-- Return: `{ formData, setField, errors, validate, ... }`
-- **ไม่เปลี่ยน logic** — แค่ย้าย
-- **Commit**: `refactor(delivery-trip): extract useDeliveryTripForm`
+- แยก state ทั้งหมดของฟอร์มเข้า hook ✅
+- Return: `{ formData, setField, errors, validate, ... }` (return เป็น object ครบที่ view ใช้) ✅
+- **ไม่เปลี่ยน logic** — แค่ย้าย ✅
+
+**ความคืบหน้า / สิ่งที่ทำแล้ว:**
+
+- สร้าง `types/deliveryTripForm.ts` — StoreWithItems, storesAndItemsEqual, DeliveryTripFormData ✅
+- สร้าง `hooks/useDeliveryTripForm.ts` — state, effects, handlers, validation, handleSubmit ทั้งหมด (~710 บรรทัด) ✅
+- อัปเดต `views/DeliveryTripFormView.tsx` — ใช้ hook แทน state/logic ในตัว, เหลือเฉพาะ JSX + destructure จาก hook ✅
+- export ใน `hooks/index.ts` ✅
+- **เช็ค**: Linter ผ่าน (ไม่มี error)
+- **Commit (แนะนำ)**: `refactor(delivery-trip): extract useDeliveryTripForm`
+
+**ขั้นถัดไป:** ทดสอบ flow สร้าง/แก้ทริปบนเครื่อง แล้วทำ Step 2 (แยก TripBasicInfoForm)
 
 #### Step 2: แยก TripBasicInfoForm
 
