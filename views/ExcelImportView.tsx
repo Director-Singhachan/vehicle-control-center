@@ -151,9 +151,31 @@ export function ExcelImportView() {
     const [currentPage, setCurrentPage] = useState(1);
     const itemsPerPage = 50;
 
+    // Filter states
+    const [filterCategory, setFilterCategory] = useState<string>('all');
+    const [filterUnit, setFilterUnit] = useState<string>('all');
+    const [filterStatus, setFilterStatus] = useState<string>('all');
+
+    const filteredPreviewData = useMemo(() => {
+        return previewData.filter(item => {
+            const matchCategory = filterCategory === 'all' || item.category === filterCategory;
+            const matchUnit = filterUnit === 'all' || item.unit === filterUnit;
+            let matchStatus = true;
+            if (filterStatus !== 'all') {
+                if (filterStatus === 'new') matchStatus = item.isNew;
+                else if (filterStatus === 'updated') matchStatus = !item.isNew && !item.isUnchanged;
+                else if (filterStatus === 'unchanged') matchStatus = !!item.isUnchanged;
+            }
+            return matchCategory && matchUnit && matchStatus;
+        });
+    }, [previewData, filterCategory, filterUnit, filterStatus]);
+
     useEffect(() => {
         setCurrentPage(1);
-    }, [previewData]);
+    }, [filteredPreviewData]);
+
+    const categories = useMemo(() => ['all', ...Array.from(new Set(previewData.map(i => i.category)))], [previewData]);
+    const units = useMemo(() => ['all', ...Array.from(new Set(previewData.map(i => i.unit)))], [previewData]);
 
     const importStats: ImportStats = useMemo(() => {
         const stats: ImportStats = {
@@ -666,10 +688,54 @@ export function ExcelImportView() {
                                 </Card>
                             </div>
 
-                            <div className="flex items-center justify-between">
-                                <h3 className="text-lg font-bold text-slate-900 dark:text-white">
-                                    ตัวอย่างข้อมูล ({previewData.length} รายการ)
-                                </h3>
+                            <div className="flex flex-col md:flex-row items-end justify-between gap-4">
+                                <div className="flex flex-wrap items-center gap-3">
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">หมวดหมู่</label>
+                                        <select
+                                            value={filterCategory}
+                                            onChange={(e) => setFilterCategory(e.target.value)}
+                                            className="block w-full pl-3 pr-10 py-1.5 text-xs border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 rounded-lg focus:ring-blue-500 focus:border-blue-500"
+                                        >
+                                            {categories.map(cat => (
+                                                <option key={cat} value={cat}>{cat === 'all' ? 'ทั้งหมด' : cat}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">หน่วย</label>
+                                        <select
+                                            value={filterUnit}
+                                            onChange={(e) => setFilterUnit(e.target.value)}
+                                            className="block w-full pl-3 pr-10 py-1.5 text-xs border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 rounded-lg focus:ring-blue-500 focus:border-blue-500"
+                                        >
+                                            {units.map(u => (
+                                                <option key={u} value={u}>{u === 'all' ? 'ทั้งหมด' : u}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">สถานะ</label>
+                                        <select
+                                            value={filterStatus}
+                                            onChange={(e) => setFilterStatus(e.target.value)}
+                                            className="block w-full pl-3 pr-10 py-1.5 text-xs border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 rounded-lg focus:ring-blue-500 focus:border-blue-500"
+                                        >
+                                            <option value="all">ทั้งหมด</option>
+                                            <option value="new">เพิ่มใหม่</option>
+                                            <option value="updated">อัปเดต</option>
+                                            <option value="unchanged">คงเดิม</option>
+                                        </select>
+                                    </div>
+                                    {(filterCategory !== 'all' || filterUnit !== 'all' || filterStatus !== 'all') && (
+                                        <button
+                                            onClick={() => { setFilterCategory('all'); setFilterUnit('all'); setFilterStatus('all'); }}
+                                            className="text-[10px] text-blue-600 hover:underline mt-5"
+                                        >
+                                            ล้างตัวกรอง
+                                        </button>
+                                    )}
+                                </div>
                                 <div className="flex gap-2">
                                     <Button variant="outline" onClick={() => { setPreviewData([]); setFile(null); if (fileInputRef.current) fileInputRef.current.value = ''; }} disabled={isProcessing}>
                                         ยกเลิก
@@ -682,6 +748,11 @@ export function ExcelImportView() {
                             </div>
 
                             <Card className="overflow-hidden">
+                                <div className="p-3 bg-slate-50/50 dark:bg-slate-800/50 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
+                                    <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                                        ตัวอย่างข้อมูล ({filteredPreviewData.length} รายการ {filteredPreviewData.length !== previewData.length && `จากทั้งหมด ${previewData.length}`})
+                                    </h3>
+                                </div>
                                 <div className="overflow-x-auto">
                                     <table className="w-full text-sm border-collapse">
                                         <thead>
@@ -697,7 +768,7 @@ export function ExcelImportView() {
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            {previewData.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage).map((item, idx) => (
+                                            {filteredPreviewData.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage).map((item, idx) => (
                                                 <tr key={idx} className="border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700/50">
                                                     <td className="px-3 py-3 font-mono text-[10px] sticky left-0 bg-white dark:bg-slate-800 z-10">{item.code}</td>
                                                     <td className="px-3 py-3 sticky left-[100px] bg-white dark:bg-slate-800 z-10 border-r border-slate-200 dark:border-slate-700">
@@ -737,10 +808,10 @@ export function ExcelImportView() {
                                 </div>
 
                                 {/* Pagination Controls */}
-                                {previewData.length > itemsPerPage && (
+                                {filteredPreviewData.length > itemsPerPage && (
                                     <div className="p-4 bg-slate-50 dark:bg-slate-800/30 border-t border-slate-200 dark:border-slate-700 flex items-center justify-between">
                                         <div className="text-sm text-slate-500">
-                                            แสดง {(currentPage - 1) * itemsPerPage + 1} ถึง {Math.min(currentPage * itemsPerPage, previewData.length)} จาก {previewData.length} รายการ
+                                            แสดง {(currentPage - 1) * itemsPerPage + 1} ถึง {Math.min(currentPage * itemsPerPage, filteredPreviewData.length)} จาก {filteredPreviewData.length} รายการ
                                         </div>
                                         <div className="flex gap-2">
                                             <Button
@@ -753,12 +824,12 @@ export function ExcelImportView() {
                                                 <ChevronLeft size={16} />
                                             </Button>
                                             <div className="flex items-center gap-1">
-                                                {Array.from({ length: Math.ceil(previewData.length / itemsPerPage) }).map((_, i) => {
+                                                {Array.from({ length: Math.ceil(filteredPreviewData.length / itemsPerPage) }).map((_, i) => {
                                                     const pageNum = i + 1;
                                                     // Only show first, last, and pages around current
                                                     if (
                                                         pageNum === 1 ||
-                                                        pageNum === Math.ceil(previewData.length / itemsPerPage) ||
+                                                        pageNum === Math.ceil(filteredPreviewData.length / itemsPerPage) ||
                                                         (pageNum >= currentPage - 1 && pageNum <= currentPage + 1)
                                                     ) {
                                                         return (
@@ -785,7 +856,7 @@ export function ExcelImportView() {
                                             <Button
                                                 variant="outline"
                                                 size="sm"
-                                                disabled={currentPage === Math.ceil(previewData.length / itemsPerPage)}
+                                                disabled={currentPage === Math.ceil(filteredPreviewData.length / itemsPerPage)}
                                                 onClick={() => setCurrentPage(prev => prev + 1)}
                                                 className="px-2"
                                             >
