@@ -247,14 +247,12 @@ const AppContent = () => {
   const [flyoutPosition, setFlyoutPosition] = useState({ top: 0, left: 0 });
 
   // Settings menu state
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isSettingsHovered, setIsSettingsHovered] = useState(false);
   const settingsMenuRef = React.useRef<HTMLDivElement>(null);
   const settingsTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
   const [settingsFlyoutPosition, setSettingsFlyoutPosition] = useState({ top: 0, left: 0 });
 
   // Import menu handlers
-  const [isImportOpen, setIsImportOpen] = useState(false);
   const [isImportHovered, setIsImportHovered] = useState(false);
   const importMenuRef = React.useRef<HTMLDivElement>(null);
   const importTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
@@ -639,17 +637,6 @@ const AppContent = () => {
     setIsStockOpen(false);
     setIsTripsOpen(false);
     setIsLogisticsOpen(false);
-    setIsImportOpen(false);
-  }, [activeTab]);
-
-  // Open settings menu if one of its sub-items is active
-  useEffect(() => {
-    if (activeTab === 'profile' || activeTab === 'rls-test' || activeTab === 'settings') {
-      setIsSettingsOpen(true);
-    } else {
-      // Close settings menu when navigating to other tabs
-      setIsSettingsOpen(false);
-    }
   }, [activeTab]);
 
   // Cleanup timeout on unmount
@@ -1425,29 +1412,12 @@ const AppContent = () => {
                 label={isSidebarOpen ? "นำเข้าข้อมูล" : ""}
                 active={activeTab === 'excel-import'}
                 onClick={() => {
-                  setIsImportOpen(!isImportOpen);
+                  // No-op or handle specific click action if needed
                 }}
                 isCollapsed={!isSidebarOpen}
                 hasSubmenu={true}
-                isOpen={isImportOpen || isImportHovered}
+                isOpen={isImportHovered}
               />
-
-              {/* Accordion Style Submenu */}
-              {isImportOpen && isSidebarOpen && !isImportHovered && (
-                <div className="mt-1 space-y-1 ml-4 border-l-2 border-slate-100 dark:border-slate-800 animate-in fade-in slide-in-from-top-1 duration-200">
-                  <div className="px-4 py-2 mt-2 text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest flex items-center gap-2">
-                    <div className="w-1.5 h-1.5 rounded-full bg-blue-500/50"></div>
-                    ฝ่ายขาย
-                  </div>
-                  <SubSidebarItem
-                    label="Step Pricing"
-                    active={activeTab === 'excel-import'}
-                    onClick={() => setActiveTab('excel-import')}
-                    isCollapsed={false}
-                  />
-                  {/* Future categories can be added here */}
-                </div>
-              )}
 
               {/* Flyout Style Submenu (Level 1: Departments) */}
               {isImportHovered && (
@@ -1543,41 +1513,12 @@ const AppContent = () => {
                 label={isSidebarOpen ? "ตั้งค่า" : ""}
                 active={activeTab === 'profile' || activeTab === 'rls-test' || activeTab === 'settings'}
                 onClick={() => {
-                  setIsSettingsOpen(!isSettingsOpen);
+                  // No-op or handle specific click action if needed
                 }}
                 isCollapsed={!isSidebarOpen}
                 hasSubmenu={true}
-                isOpen={isSettingsOpen || isSettingsHovered}
+                isOpen={isSettingsHovered}
               />
-
-              {/* Accordion Style Submenu - Only when sidebar is open and clicked */}
-              {isSettingsOpen && isSidebarOpen && !isSettingsHovered && (
-                <div className="mt-1 space-y-1 ml-4 border-l-2 border-slate-100 dark:border-slate-800 animate-in fade-in slide-in-from-top-1 duration-200">
-                  <SubSidebarItem
-                    label="โปรไฟล์"
-                    active={activeTab === 'profile'}
-                    onClick={() => setActiveTab('profile')}
-                    isCollapsed={false}
-                  />
-                  {(isAdmin || isManager) && (
-                    <SubSidebarItem
-                      label="ทดสอบ RLS"
-                      active={activeTab === 'rls-test'}
-                      onClick={() => setActiveTab('rls-test')}
-                      isCollapsed={false}
-                    />
-                  )}
-                  {/* ซ่อนเมนูตั้งค่าแจ้งเตือนสำหรับพนักงานขับรถ */}
-                  {(!isDriver || isAdmin || isManager || isInspector || isExecutive) && (
-                    <SubSidebarItem
-                      label="ตั้งค่าแจ้งเตือน"
-                      active={activeTab === 'settings'}
-                      onClick={() => setActiveTab('settings')}
-                      isCollapsed={false}
-                    />
-                  )}
-                </div>
-              )}
             </div>
 
             {/* Flyout Submenu - Rendered using Portal (fixed position) */}
@@ -1603,7 +1544,6 @@ const AppContent = () => {
                       onClick={() => {
                         setActiveTab('profile');
                         setIsSettingsHovered(false);
-                        setIsSettingsOpen(true);
                       }}
                       isCollapsed={false}
                       isFlyout={true}
@@ -1615,7 +1555,6 @@ const AppContent = () => {
                         onClick={() => {
                           setActiveTab('rls-test');
                           setIsSettingsHovered(false);
-                          setIsSettingsOpen(true);
                         }}
                         isCollapsed={false}
                         isFlyout={true}
@@ -1629,7 +1568,6 @@ const AppContent = () => {
                         onClick={() => {
                           setActiveTab('settings');
                           setIsSettingsHovered(false);
-                          setIsSettingsOpen(true);
                         }}
                         isCollapsed={false}
                         isFlyout={true}

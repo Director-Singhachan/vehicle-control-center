@@ -14,18 +14,13 @@ export function useNotification() {
   const showNotification = useCallback((type: NotificationType, message: string) => {
     const id = Math.random().toString(36).substr(2, 9);
     const notification = { id, type, message };
-    
+
     setNotifications((prev) => [...prev, notification]);
 
     // Auto dismiss after 3 seconds
     setTimeout(() => {
       setNotifications((prev) => prev.filter((n) => n.id !== id));
     }, 3000);
-
-    // Also show browser alert as fallback
-    if (type === 'error') {
-      alert(message);
-    }
   }, []);
 
   const dismissNotification = useCallback((id: string) => {
