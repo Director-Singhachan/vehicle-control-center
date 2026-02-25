@@ -278,20 +278,28 @@ export function ExcelImportView() {
                 // 1. Get Tier Mapping
                 const { data: tierList } = await supabase.from('customer_tiers').select('id, tier_code');
                 const tierCodeMap: Record<string, string> = {}; // id -> tier_code
-                tierList?.forEach(t => { tierCodeMap[t.id] = t.tier_code; });
+                tierList?.forEach(t => {
+                    if (t.tier_code) tierCodeMap[t.id] = t.tier_code.trim();
+                });
 
                 // 2. Fetch existing products and prices
                 const codes = items.map(row => row[colIndices.code]?.toString().trim()).filter(Boolean);
                 const { data: existingProducts } = await supabase
                     .from('products')
-                    .select('id, product_code, product_name, unit, category, product_tier_prices(tier_id, price)')
+                    .select(`
+                        id, product_code, product_name, unit, category, 
+                        product_tier_prices(tier_id, price, min_quantity, is_active)
+                    `)
                     .in('product_code', codes);
 
                 const existingMap: Record<string, any> = {};
                 existingProducts?.forEach(p => {
                     const prices: Record<string, number> = {};
                     p.product_tier_prices?.forEach((tp: any) => {
-                        const tCode = tierCodeMap[tp.tier_id];
+                        // Filter for base tier price (min_quantity=1 and active)
+                        if (tp.min_quantity !== 1 || tp.is_active === false) return;
+
+                        const tCode = tierCodeMap[tp.tier_id]?.trim(); // Trim for safety
                         if (tCode) prices[tCode] = tp.price;
                     });
                     const key = `${p.product_code}|${p.unit}`;
@@ -323,7 +331,10 @@ export function ExcelImportView() {
                         // Check all 9 price levels
                         const samePrices = prices.every(p => {
                             const oldPrice = existing.mappedPrices[p.level] || 0;
-                            return oldPrice === p.price;
+                            // Round both to 2 decimals for fair comparison
+                            const roundedOld = Math.round(oldPrice * 100) / 100;
+                            const roundedNew = Math.round(p.price * 100) / 100;
+                            return roundedOld === roundedNew;
                         });
 
                         isUnchanged = sameName && sameUnit && sameCategory && samePrices;
@@ -377,7 +388,7 @@ export function ExcelImportView() {
         const { data: tierList } = await supabase.from('customer_tiers').select('id, tier_code');
         const tierMap: Record<string, string> = {};
         tierList?.forEach(t => {
-            tierMap[t.tier_code] = t.id;
+            if (t.tier_code) tierMap[t.tier_code.trim()] = t.id;
         });
 
         const totalItems = previewData.length;
@@ -469,15 +480,20 @@ export function ExcelImportView() {
                 // 2. Upsert Tier Prices
                 for (const pInfo of item.prices) {
                     if (pInfo.price === 0) continue;
-                    const tierId = tierMap[pInfo.level];
-                    if (!tierId) continue;
+                    const tierId = tierMap[pInfo.level.trim()];
+                    if (!tierId) {
+                        console.warn(`Tier ID not found for level: ${pInfo.level} (sku: ${item.code})`);
+                        continue;
+                    }
+
+                    const roundedPrice = Math.round(pInfo.price * 100) / 100;
 
                     const { error: tError } = await supabase
                         .from('product_tier_prices')
                         .upsert({
                             product_id: productId,
                             tier_id: tierId,
-                            price: pInfo.price,
+                            price: roundedPrice,
                             min_quantity: 1,
                             effective_from: importDate,
                             created_by: profile?.id,
@@ -569,7 +585,9 @@ export function ExcelImportView() {
 
     function renderPriceDiff(oldPrice: number | undefined, newPrice: number) {
         const effectiveOld = oldPrice ?? 0;
-        const isChanged = oldPrice !== undefined && effectiveOld !== newPrice;
+        const roundedOld = Math.round(effectiveOld * 100) / 100;
+        const roundedNew = Math.round(newPrice * 100) / 100;
+        const isChanged = oldPrice !== undefined && roundedOld !== roundedNew;
 
         // If oldPrice is undefined, and newPrice is non-zero, it's also a change (adding a price)
         const showChange = isChanged || (oldPrice === undefined && newPrice !== 0);
