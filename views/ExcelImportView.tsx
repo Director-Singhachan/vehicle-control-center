@@ -66,6 +66,7 @@ interface ProductData {
     name: string;
     unit: string;
     category: string;
+    basePrice: number;
     isNew: boolean;
     isUnchanged?: boolean;
     prices: { level: string; price: number }[];
@@ -73,6 +74,7 @@ interface ProductData {
         name: string;
         unit: string;
         category: string;
+        basePrice: number;
         prices: Record<string, number>; // level -> price
     };
 }
@@ -258,15 +260,20 @@ export function ExcelImportView() {
                     code: headers.findIndex(h => h && (h.toString().trim() === 'รหัสสินค้า' || h.toString().trim() === 'รหัส')),
                     name: headers.findIndex(h => h && (h.toString().trim() === 'ชื่อสินค้า' || h.toString().trim() === 'รายการ')),
                     unit: headers.findIndex(h => h && (h.toString().includes('หน่วย') || h.toString().includes('Unit'))),
+                    basePrice: headers.findIndex(h => h && (h.toString().trim() === 'ราคากลาง' || h.toString().trim() === 'Base Price')),
                     prices: [] as { level: string; index: number }[]
                 };
 
                 // Fallbacks
                 if (colIndices.code === -1) colIndices.code = headers.findIndex(h => h && h.toString().includes('รหัส'));
                 if (colIndices.name === -1) colIndices.name = headers.findIndex(h => h && h.toString().includes('สินค้า') && !h.toString().includes('รหัส'));
+                if (colIndices.basePrice === -1) {
+                    // If no explicit "ราคากลาง", look for Price 1 or similar if necessary, but per user image it's separate
+                    colIndices.basePrice = headers.findIndex(h => h && h.toString().includes('ราคากลาง'));
+                }
 
                 for (let i = 1; i <= 9; i++) {
-                    const idx = headers.findIndex(h => h && h.includes(`ราคา ${i}`));
+                    const idx = headers.findIndex(h => h && h.toString().trim() === `ราคา ${i}`);
                     if (idx !== -1) colIndices.prices.push({ level: i.toString(), index: idx });
                 }
 
@@ -309,12 +316,14 @@ export function ExcelImportView() {
                 const mappedItems: ProductData[] = items.map(row => {
                     const rawName = row[colIndices.name]?.toString().trim() || '';
                     const rawCode = row[colIndices.code]?.toString().trim() || '';
-                    // Uppercase and Trim unit as requested
                     const rawUnit = row[colIndices.unit] ? row[colIndices.unit].toString().trim().toUpperCase() : '';
                     const category = getCategoryFromProductName(rawName);
                     const mappedUnit = UNIT_MAP[rawUnit] || rawUnit;
                     const key = `${rawCode}|${mappedUnit}`;
                     const existing = existingMap[key];
+
+                    const basePriceRaw = colIndices.basePrice !== -1 ? parseFloat(row[colIndices.basePrice] || '0') : 0;
+                    const basePrice = Math.round(basePriceRaw * 100) / 100;
 
                     const prices = colIndices.prices.map(p => {
                         const rawPrice = parseFloat(row[p.index] || '0');
@@ -326,21 +335,20 @@ export function ExcelImportView() {
 
                     let isUnchanged = false;
                     if (existing) {
-                        // Deep Compare
                         const sameName = existing.product_name === rawName;
                         const sameUnit = existing.unit === mappedUnit;
                         const sameCategory = existing.category === category;
+                        const sameBasePrice = Math.round(existing.base_price * 100) / 100 === basePrice;
 
                         // Check all 9 price levels
                         const samePrices = prices.every(p => {
                             const oldPrice = existing.mappedPrices[p.level] || 0;
-                            // Round both to 2 decimals for fair comparison
                             const roundedOld = Math.round(oldPrice * 100) / 100;
                             const roundedNew = Math.round(p.price * 100) / 100;
                             return roundedOld === roundedNew;
                         });
 
-                        isUnchanged = sameName && sameUnit && sameCategory && samePrices;
+                        isUnchanged = sameName && sameUnit && sameCategory && sameBasePrice && samePrices;
                     }
 
                     return {
@@ -348,6 +356,7 @@ export function ExcelImportView() {
                         name: rawName,
                         unit: mappedUnit,
                         category: category,
+                        basePrice: basePrice,
                         isNew: !existing,
                         isUnchanged: isUnchanged,
                         prices: prices,
@@ -355,6 +364,7 @@ export function ExcelImportView() {
                             name: existing.product_name,
                             unit: existing.unit,
                             category: existing.category,
+                            basePrice: existing.base_price,
                             prices: existing.mappedPrices
                         } : undefined
                     };
@@ -431,7 +441,7 @@ export function ExcelImportView() {
                             product_name: item.name,
                             category: item.category,
                             unit: item.unit,
-                            base_price: item.prices[0]?.price || 0,
+                            base_price: item.basePrice,
                             is_active: true,
                             created_by: profile?.id,
                             updated_by: profile?.id
@@ -458,7 +468,7 @@ export function ExcelImportView() {
                     const pChanges: any = {};
                     if (existingProduct.unit !== item.unit) pChanges.unit = { old: existingProduct.unit, new: item.unit };
                     if (existingProduct.product_name !== item.name) pChanges.product_name = { old: existingProduct.product_name, new: item.name };
-                    if (existingProduct.base_price !== (Math.round((item.prices[0]?.price || 0) * 100) / 100)) pChanges.base_price = { old: existingProduct.base_price, new: (Math.round((item.prices[0]?.price || 0) * 100) / 100) };
+                    if (existingProduct.base_price !== item.basePrice) pChanges.base_price = { old: existingProduct.base_price, new: item.basePrice };
                     if (existingProduct.category !== item.category) pChanges.category = { old: existingProduct.category, new: item.category };
 
                     // Also check for tier price changes to include in log and stats
@@ -475,7 +485,7 @@ export function ExcelImportView() {
                         const updateData: any = { updated_by: profile?.id };
                         if (pChanges.unit) updateData.unit = item.unit;
                         if (pChanges.product_name) updateData.product_name = item.name;
-                        if (pChanges.base_price) updateData.base_price = (Math.round((item.prices[0]?.price || 0) * 100) / 100);
+                        if (pChanges.base_price) updateData.base_price = item.basePrice;
                         if (pChanges.category) updateData.category = item.category;
 
                         const { error: uError } = await supabase.from('products').update(updateData).eq('id', productId);
@@ -808,6 +818,7 @@ export function ExcelImportView() {
                                                 <th className="px-3 py-3 text-left font-bold text-slate-700 dark:text-slate-300 min-w-[120px]">หมวดหมู่</th>
                                                 <th className="px-3 py-3 text-center font-bold text-slate-700 dark:text-slate-300">หน่วย</th>
                                                 <th className="px-3 py-3 text-center font-bold text-slate-700 dark:text-slate-300">สถานะ</th>
+                                                <th className="px-3 py-3 text-right font-bold text-blue-600 dark:text-blue-400 whitespace-nowrap">ราคากลาง</th>
                                                 {[1, 2, 3, 4, 5, 6, 7, 8, 9].map(i => (
                                                     <th key={i} className="px-3 py-3 text-right font-bold text-slate-500 whitespace-nowrap">ราคา {i}</th>
                                                 ))}
@@ -837,6 +848,9 @@ export function ExcelImportView() {
                                                                 <Pencil size={10} className="text-blue-500" title="มีการแก้ไขข้อมูล" />
                                                             </div>
                                                         )}
+                                                    </td>
+                                                    <td className="px-3 py-3 text-right bg-blue-50/30 dark:bg-blue-900/10">
+                                                        {renderPriceDiff(item.isNew ? undefined : item.oldData?.basePrice, item.basePrice)}
                                                     </td>
                                                     {[1, 2, 3, 4, 5, 6, 7, 8, 9].map(level => {
                                                         const pInfo = item.prices.find(p => p.level === level.toString());
