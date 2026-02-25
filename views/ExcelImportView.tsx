@@ -272,7 +272,8 @@ export function ExcelImportView() {
                         const tCode = tierCodeMap[tp.tier_id];
                         if (tCode) prices[tCode] = tp.price;
                     });
-                    existingMap[p.product_code] = { ...p, mappedPrices: prices };
+                    const key = `${p.product_code}|${p.unit}`;
+                    existingMap[key] = { ...p, mappedPrices: prices };
                 });
 
                 const mappedItems: ProductData[] = items.map(row => {
@@ -281,7 +282,9 @@ export function ExcelImportView() {
                     // Uppercase and Trim unit as requested
                     const rawUnit = row[colIndices.unit] ? row[colIndices.unit].toString().trim().toUpperCase() : '';
                     const category = getCategoryFromProductName(rawName);
-                    const existing = existingMap[rawCode];
+                    const mappedUnit = UNIT_MAP[rawUnit] || rawUnit;
+                    const key = `${rawCode}|${mappedUnit}`;
+                    const existing = existingMap[key];
 
                     const prices = colIndices.prices.map(p => ({
                         level: p.level,
@@ -292,7 +295,7 @@ export function ExcelImportView() {
                     if (existing) {
                         // Deep Compare
                         const sameName = existing.product_name === rawName;
-                        const sameUnit = existing.unit === (UNIT_MAP[rawUnit] || rawUnit);
+                        const sameUnit = existing.unit === mappedUnit;
                         const sameCategory = existing.category === category;
 
                         // Check all 9 price levels
@@ -307,7 +310,7 @@ export function ExcelImportView() {
                     return {
                         code: rawCode,
                         name: rawName,
-                        unit: UNIT_MAP[rawUnit] || rawUnit,
+                        unit: mappedUnit,
                         category: category,
                         isNew: !existing,
                         isUnchanged: isUnchanged,
@@ -522,13 +525,15 @@ export function ExcelImportView() {
         log.product_name.toLowerCase().includes(logSearchQuery.toLowerCase())
     );
 
-    function renderDiff(oldVal: string | undefined, newVal: string, label?: string) {
-        const isChanged = oldVal !== undefined && oldVal !== newVal;
+    function renderDiff(oldVal: string | null | undefined, newVal: string, label?: string) {
+        const isChanged = oldVal !== undefined && oldVal !== null && oldVal !== newVal;
         if (!isChanged) return <span>{newVal}</span>;
+
+        const displayOld = (oldVal === null || oldVal === undefined || oldVal === '') ? '(ว่าง)' : oldVal;
 
         return (
             <div className="flex flex-col gap-0.5">
-                <span className="text-[10px] text-slate-400 line-through decoration-red-400/50">{oldVal}</span>
+                <span className="text-[10px] text-slate-400 line-through decoration-red-400/50">{displayOld}</span>
                 <span className="text-blue-600 dark:text-blue-400 font-bold flex items-center gap-1">
                     <ArrowRight size={10} />
                     {newVal}
@@ -538,15 +543,22 @@ export function ExcelImportView() {
     }
 
     function renderPriceDiff(oldPrice: number | undefined, newPrice: number) {
-        const isChanged = oldPrice !== undefined && oldPrice !== newPrice;
-        const colorClass = isChanged
-            ? (newPrice > oldPrice ? 'text-green-600 font-bold' : 'text-red-600 font-bold')
+        const effectiveOld = oldPrice ?? 0;
+        const isChanged = oldPrice !== undefined && effectiveOld !== newPrice;
+
+        // If oldPrice is undefined, and newPrice is non-zero, it's also a change (adding a price)
+        const showChange = isChanged || (oldPrice === undefined && newPrice !== 0);
+
+        const colorClass = showChange
+            ? (newPrice > effectiveOld ? 'text-green-600 font-bold' : 'text-red-600 font-bold')
             : 'text-slate-600 dark:text-slate-400';
 
         return (
             <div className="flex flex-col items-end">
-                {isChanged && (
-                    <span className="text-[9px] text-slate-400 line-through">{oldPrice?.toLocaleString()}</span>
+                {showChange && (
+                    <span className="text-[9px] text-slate-400 line-through">
+                        {oldPrice !== undefined ? oldPrice.toLocaleString() : '0'}
+                    </span>
                 )}
                 <span className={`text-xs ${colorClass}`}>{newPrice.toLocaleString()} ฿</span>
             </div>
