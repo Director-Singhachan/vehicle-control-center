@@ -540,6 +540,9 @@ export function ExcelImportView() {
         setPreviewData([]);
         setFile(null);
         if (fileInputRef.current) fileInputRef.current.value = '';
+
+        // Refetch logs to update the history tab
+        fetchLogs();
     };
 
     const filteredLogs = logs.filter(log =>
