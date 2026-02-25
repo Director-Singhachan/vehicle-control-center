@@ -125,7 +125,7 @@ isProject: false
 
 ## 3.2 DeliveryTripFormView Split
 
-**สถานะรวม:** Step 1 ✅ | Step 2 ✅ | Step 3 ⏳
+**สถานะรวม:** Step 1 ✅ | Step 2 ✅ | Step 3 ✅
 
 ### โครงสร้างเป้าหมาย
 
@@ -166,11 +166,14 @@ views/DeliveryTripFormView.tsx (orchestrator, ~300 บรรทัด)
 - **เช็ค**: Linter ผ่าน
 - **Commit (แนะนำ)**: `refactor(delivery-trip): extract TripBasicInfoForm`
 
-#### Step 3: แยก TripOrdersSection, TripItemsSection, TripCrewSection
+#### Step 3: แยก TripOrdersSection, TripItemsSection, TripCrewSection ✅ (ทำแล้ว)
 
-- ทำทีละ section
-- **เช็ค**: สร้างทริปใหม่ได้ครบ flow
-- **Commit**: แยกต่อ section
+- แยก `TripCrewSection` — จัดพนักงานประจำทริป (คนขับ + helpers + สรุป crew) ✅
+- แยก `TripItemsSection` — ตารางสรุปสินค้าทั้งหมดในเที่ยว (aggregated products) ✅
+- แยก `TripOrdersSection` — ร้านค้าและสินค้า (store search, selected stores, product list, PalletConfigSelector, quantity_picked_up_at_store) ✅
+- DeliveryTripFormView ใช้ทั้งสาม component แทน Card/บล็อกเดิม ลบ import ที่ไม่ใช้ ✅
+- **เช็ค**: Linter ผ่าน
+- **Commit (แนะนำ)**: `refactor(delivery-trip): extract TripOrdersSection, TripItemsSection, TripCrewSection`
 
 ### จุดสำคัญ (DeliveryTripForm)
 
