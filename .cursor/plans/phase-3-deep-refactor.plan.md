@@ -183,31 +183,35 @@ views/DeliveryTripFormView.tsx (orchestrator, ~300 บรรทัด)
 
 ---
 
-## 3.3 CreateTripFromOrdersView Split
+## 3.3 CreateTripFromOrdersView Split ✅
 
 ### โครงสร้างเป้าหมาย
 
 ```
-views/CreateTripFromOrdersView.tsx (step orchestrator, ~300 บรรทัด)
-  ├─ components/trip/OrderSelectionStep.tsx
-  ├─ components/trip/VehicleSelectionStep.tsx
-  ├─ components/trip/CrewAssignmentStep.tsx
-  ├─ components/trip/TripConfirmationStep.tsx
-  └─ hooks/useCreateTripWizard.ts (step state, validation, submit)
+views/CreateTripFromOrdersView.tsx (step orchestrator, ~150 บรรทัด) ✅
+  ├─ components/trip/OrderSelectionStep.tsx ✅
+  ├─ components/trip/VehicleSelectionStep.tsx ✅
+  ├─ components/trip/CrewAssignmentStep.tsx ✅
+  ├─ components/trip/TripConfirmationStep.tsx ✅
+  └─ hooks/useCreateTripWizard.ts (step state, validation, submit) ✅
 ```
 
 ### ขั้นตอน
 
-#### Step 1: สร้าง useCreateTripWizard
+#### Step 1: สร้าง useCreateTripWizard ✅ (ทำแล้ว)
 
-- ย้าย step state (currentStep), wizard data, validation
+- ย้าย step state (currentStep), wizard data, validation, submit ไปที่ hook
+- types/createTripWizard.ts — StoreDelivery, ItemSplitQty, CapacitySummary, splitKey
 - **Commit**: `refactor(create-trip): extract useCreateTripWizard`
 
-#### Step 2: แยกทีละ Step component
+#### Step 2: แยกทีละ Step component ✅ (ทำแล้ว)
 
-- OrderSelectionStep → VehicleSelectionStep → CrewAssignmentStep → TripConfirmationStep
-- **เช็ค**: ผ่านทุก step สร้างทริปสำเร็จ
-- **Commit**: แยกต่อ step
+- OrderSelectionStep — ลำดับการจัดส่ง (drag-drop ร้าน, รายการสินค้า, แบ่ง 2 คัน)
+- VehicleSelectionStep — ข้อมูลทริป (AI recommendation, สาขา, ค้นหา, เลือกรถ)
+- CrewAssignmentStep — พนักงานขับรถ, แบ่ง 2 คัน (รถ+คนขับคัน 2), วันที่, หมายเหตุ, ไม่ตัดสต๊อก
+- TripConfirmationStep — สรุปทริป, ปุ่มสร้างทริป, สรุปความจุ (คัน 1/2), ออเดอร์ที่เลือก
+- **เช็ค**: Linter ผ่าน
+- **Commit**: `refactor(create-trip): extract OrderSelectionStep, VehicleSelectionStep, CrewAssignmentStep, TripConfirmationStep`
 
 ### จุดสำคัญ (CreateTripFromOrders)
 
