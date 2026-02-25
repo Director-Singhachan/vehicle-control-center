@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Upload, FileText, CheckCircle, AlertCircle, Clock, Search, ArrowRight, Save, History, Package, DollarSign, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Upload, FileText, CheckCircle, AlertCircle, Clock, Search, ArrowRight, Save, History, Package, DollarSign, ChevronLeft, ChevronRight, Pencil } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { supabase } from '../lib/supabase';
 import { Card } from '../components/ui/Card';
@@ -14,12 +14,13 @@ import { useAuth } from '../hooks/useAuth';
 
 // Unit Mapping as requested
 const UNIT_MAP: Record<string, string> = {
-    'BT': 'ขวด',
-    'CN': 'กระป๋อง',
-    'TR': 'ถาด',
-    'CV': 'ลัง',
+    'CA': 'ลัง',
     'PA': 'แพ็ค',
-    'CA': 'คาร์ตั้น',
+    'CN': 'กระป๋อง',
+    'BT': 'ขวด',
+    'BX': 'ลัง',
+    'CV': 'ลัง',
+    'TR': 'ถาด'
 };
 
 // Category Mapping Rules
@@ -66,6 +67,7 @@ interface ProductData {
     unit: string;
     category: string;
     isNew: boolean;
+    isUnchanged?: boolean;
     prices: { level: string; price: number }[];
     oldData?: {
         name: string;
@@ -108,6 +110,7 @@ interface ImportResult {
     total: number;
     created: number;
     updated: number;
+    unchanged: number;
     failed: number;
     failedItems: FailedItem[];
     createdItems: CreatedItem[];
@@ -118,6 +121,7 @@ interface ImportStats {
     total: number;
     created: number;
     updated: number;
+    unchanged: number;
     categoryDistribution: Record<string, number>;
 }
 
@@ -156,12 +160,15 @@ export function ExcelImportView() {
             total: previewData.length,
             created: 0,
             updated: 0,
+            unchanged: 0,
             categoryDistribution: {},
         };
 
         previewData.forEach(item => {
             if (item.isNew) {
                 stats.created++;
+            } else if (item.isUnchanged) {
+                stats.unchanged++;
             } else {
                 stats.updated++;
             }
@@ -271,9 +278,31 @@ export function ExcelImportView() {
                 const mappedItems: ProductData[] = items.map(row => {
                     const rawName = row[colIndices.name]?.toString().trim() || '';
                     const rawCode = row[colIndices.code]?.toString().trim() || '';
-                    const rawUnit = row[colIndices.unit] ? row[colIndices.unit].toString().trim() : '';
+                    // Uppercase and Trim unit as requested
+                    const rawUnit = row[colIndices.unit] ? row[colIndices.unit].toString().trim().toUpperCase() : '';
                     const category = getCategoryFromProductName(rawName);
                     const existing = existingMap[rawCode];
+
+                    const prices = colIndices.prices.map(p => ({
+                        level: p.level,
+                        price: parseFloat(row[p.index] || '0')
+                    }));
+
+                    let isUnchanged = false;
+                    if (existing) {
+                        // Deep Compare
+                        const sameName = existing.product_name === rawName;
+                        const sameUnit = existing.unit === (UNIT_MAP[rawUnit] || rawUnit);
+                        const sameCategory = existing.category === category;
+
+                        // Check all 9 price levels
+                        const samePrices = prices.every(p => {
+                            const oldPrice = existing.mappedPrices[p.level] || 0;
+                            return oldPrice === p.price;
+                        });
+
+                        isUnchanged = sameName && sameUnit && sameCategory && samePrices;
+                    }
 
                     return {
                         code: rawCode,
@@ -281,10 +310,8 @@ export function ExcelImportView() {
                         unit: UNIT_MAP[rawUnit] || rawUnit,
                         category: category,
                         isNew: !existing,
-                        prices: colIndices.prices.map(p => ({
-                            level: p.level,
-                            price: parseFloat(row[p.index] || '0')
-                        })),
+                        isUnchanged: isUnchanged,
+                        prices: prices,
                         oldData: existing ? {
                             name: existing.product_name,
                             unit: existing.unit,
@@ -313,6 +340,7 @@ export function ExcelImportView() {
         setImportProgress(0);
         let created = 0;
         let updated = 0;
+        let unchanged = 0;
         let failed = 0;
         let failedItems: FailedItem[] = [];
         let createdItems: CreatedItem[] = [];
@@ -330,6 +358,14 @@ export function ExcelImportView() {
         const totalItems = previewData.length;
         for (let i = 0; i < totalItems; i++) {
             const item = previewData[i];
+
+            // Requirement 4: Skip unchanged items
+            if (item.isUnchanged) {
+                unchanged++;
+                setImportProgress(Math.round(((i + 1) / totalItems) * 100));
+                continue;
+            }
+
             try {
                 // Update progress
                 setImportProgress(Math.round(((i + 1) / totalItems) * 100));
@@ -461,13 +497,14 @@ export function ExcelImportView() {
         setImportProgress(0);
 
         const defaultResultTab: 'created' | 'updated' | 'failed' =
-            failed > 0 ? 'failed' : created > 0 ? 'created' : 'updated';
+            failed > 0 ? 'failed' : created > 0 ? 'created' : updated > 0 ? 'updated' : 'created';
         setResultTab(defaultResultTab);
 
         setImportResult({
             total: totalItems,
             created,
             updated,
+            unchanged,
             failed,
             failedItems: failedItems,
             createdItems,
@@ -611,18 +648,9 @@ export function ExcelImportView() {
                                     <p className="text-sm text-slate-500 dark:text-slate-400">อัปเดต</p>
                                     <p className="text-2xl font-bold text-orange-600">{importStats.updated}</p>
                                 </Card>
-                                <Card className="p-4 bg-white dark:bg-slate-800 border-l-4 border-l-purple-500 overflow-hidden">
-                                    <p className="text-sm text-slate-500 dark:text-slate-400">หมวดหมู่หลัก</p>
-                                    <div className="flex gap-1 mt-1 overflow-x-auto pb-1 scrollbar-hide">
-                                        {Object.entries(importStats.categoryDistribution).slice(0, 3).map(([cat, count]) => (
-                                            <Badge key={cat} variant="info" className="text-[10px] whitespace-nowrap">
-                                                {cat}: {count}
-                                            </Badge>
-                                        ))}
-                                        {Object.keys(importStats.categoryDistribution).length > 3 && (
-                                            <Badge variant="info" className="text-[10px]">...</Badge>
-                                        )}
-                                    </div>
+                                <Card className="p-4 bg-white dark:bg-slate-800 border-l-4 border-l-slate-400">
+                                    <p className="text-sm text-slate-500 dark:text-slate-400">คงเดิม</p>
+                                    <p className="text-2xl font-bold text-slate-500">{importStats.unchanged}</p>
                                 </Card>
                             </div>
 
@@ -672,8 +700,13 @@ export function ExcelImportView() {
                                                     <td className="px-3 py-3 text-center">
                                                         {item.isNew ? (
                                                             <Badge variant="success" className="text-[10px]">เพิ่มใหม่</Badge>
+                                                        ) : item.isUnchanged ? (
+                                                            <Badge variant="default" className="text-[10px] bg-slate-100 text-slate-500 border-slate-200">คงเดิม</Badge>
                                                         ) : (
-                                                            <Badge variant="info" className="text-[10px]">อัปเดต</Badge>
+                                                            <div className="flex items-center justify-center gap-1">
+                                                                <Badge variant="info" className="text-[10px]">อัปเดต</Badge>
+                                                                <Pencil size={10} className="text-blue-500" title="มีการแก้ไขข้อมูล" />
+                                                            </div>
                                                         )}
                                                     </td>
                                                     {[1, 2, 3, 4, 5, 6, 7, 8, 9].map(level => {
@@ -932,15 +965,14 @@ export function ExcelImportView() {
                 size={importResult?.failedItems.length ? 'large' : 'medium'}
             >
                 <div className="space-y-6">
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                         <button
                             type="button"
                             onClick={() => setResultTab('created')}
-                            className={`p-4 rounded-xl border flex items-center gap-4 text-left transition cursor-pointer focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 ${
-                                resultTab === 'created'
-                                    ? 'bg-green-100 dark:bg-green-900/40 border-green-300 dark:border-green-500'
-                                    : 'bg-green-50 dark:bg-green-900/20 border-green-100 dark:border-green-900/30'
-                            }`}
+                            className={`p-4 rounded-xl border flex items-center gap-4 text-left transition cursor-pointer focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 ${resultTab === 'created'
+                                ? 'bg-green-100 dark:bg-green-900/40 border-green-300 dark:border-green-500'
+                                : 'bg-green-50 dark:bg-green-900/20 border-green-100 dark:border-green-900/30'
+                                }`}
                         >
                             <div className="w-10 h-10 bg-green-500 text-white rounded-full flex items-center justify-center shrink-0">
                                 <CheckCircle size={24} />
@@ -953,11 +985,10 @@ export function ExcelImportView() {
                         <button
                             type="button"
                             onClick={() => setResultTab('updated')}
-                            className={`p-4 rounded-xl border flex items-center gap-4 text-left transition cursor-pointer focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 ${
-                                resultTab === 'updated'
-                                    ? 'bg-blue-100 dark:bg-blue-900/40 border-blue-300 dark:border-blue-500'
-                                    : 'bg-blue-50 dark:bg-blue-900/20 border-blue-100 dark:border-blue-900/30'
-                            }`}
+                            className={`p-4 rounded-xl border flex items-center gap-4 text-left transition cursor-pointer focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 ${resultTab === 'updated'
+                                ? 'bg-blue-100 dark:bg-blue-900/40 border-blue-300 dark:border-blue-500'
+                                : 'bg-blue-50 dark:bg-blue-900/20 border-blue-100 dark:border-blue-900/30'
+                                }`}
                         >
                             <div className="w-10 h-10 bg-blue-500 text-white rounded-full flex items-center justify-center shrink-0">
                                 <History size={24} />
@@ -967,18 +998,26 @@ export function ExcelImportView() {
                                 <p className="text-xl font-bold text-blue-700 dark:text-blue-300">{importResult?.updated}</p>
                             </div>
                         </button>
+                        <div className="p-4 rounded-xl border bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 flex items-center gap-4 text-left">
+                            <div className="w-10 h-10 bg-slate-400 text-white rounded-full flex items-center justify-center shrink-0">
+                                <Save size={24} />
+                            </div>
+                            <div>
+                                <p className="text-xs text-slate-500 font-medium">คงเดิม</p>
+                                <p className="text-xl font-bold text-slate-700 dark:text-slate-300">{importResult?.unchanged}</p>
+                            </div>
+                        </div>
                         <button
                             type="button"
                             onClick={() => setResultTab('failed')}
-                            className={`p-4 rounded-xl border flex items-center gap-4 text-left transition cursor-pointer focus:outline-none focus:ring-2 focus:ring-offset-2 ${
-                                resultTab === 'failed'
-                                    ? importResult?.failed
-                                        ? 'bg-red-100 dark:bg-red-900/40 border-red-300 dark:border-red-500'
-                                        : 'bg-slate-200 dark:bg-slate-700 border-slate-400 dark:border-slate-500'
-                                    : importResult?.failed
-                                        ? 'bg-red-50 dark:bg-red-900/20 border-red-100 dark:border-red-900/30'
-                                        : 'bg-slate-50 dark:bg-slate-800 border-slate-100 dark:border-slate-700'
-                            }`}
+                            className={`p-4 rounded-xl border flex items-center gap-4 text-left transition cursor-pointer focus:outline-none focus:ring-2 focus:ring-offset-2 ${resultTab === 'failed'
+                                ? importResult?.failed
+                                    ? 'bg-red-100 dark:bg-red-900/40 border-red-300 dark:border-red-500'
+                                    : 'bg-slate-200 dark:bg-slate-700 border-slate-400 dark:border-slate-500'
+                                : importResult?.failed
+                                    ? 'bg-red-50 dark:bg-red-900/20 border-red-100 dark:border-red-900/30'
+                                    : 'bg-slate-50 dark:bg-slate-800 border-slate-100 dark:border-slate-700'
+                                }`}
                         >
                             <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${importResult?.failed ? 'bg-red-500 text-white' : 'bg-slate-300 text-white'}`}>
                                 <AlertCircle size={24} />
