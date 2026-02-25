@@ -316,10 +316,13 @@ export function ExcelImportView() {
                     const key = `${rawCode}|${mappedUnit}`;
                     const existing = existingMap[key];
 
-                    const prices = colIndices.prices.map(p => ({
-                        level: p.level,
-                        price: parseFloat(row[p.index] || '0')
-                    }));
+                    const prices = colIndices.prices.map(p => {
+                        const rawPrice = parseFloat(row[p.index] || '0');
+                        return {
+                            level: p.level,
+                            price: Math.round(rawPrice * 100) / 100
+                        };
+                    });
 
                     let isUnchanged = false;
                     if (existing) {
@@ -450,24 +453,36 @@ export function ExcelImportView() {
                         unit: item.unit,
                     });
                 } else {
-                    // UPDATE Product if needed
+                    // UPDATE Product
                     productId = existingProduct.id;
                     const pChanges: any = {};
                     if (existingProduct.unit !== item.unit) pChanges.unit = { old: existingProduct.unit, new: item.unit };
                     if (existingProduct.product_name !== item.name) pChanges.product_name = { old: existingProduct.product_name, new: item.name };
-                    if (existingProduct.base_price !== item.prices[0]?.price) pChanges.base_price = { old: existingProduct.base_price, new: item.prices[0]?.price };
+                    if (existingProduct.base_price !== (Math.round((item.prices[0]?.price || 0) * 100) / 100)) pChanges.base_price = { old: existingProduct.base_price, new: (Math.round((item.prices[0]?.price || 0) * 100) / 100) };
                     if (existingProduct.category !== item.category) pChanges.category = { old: existingProduct.category, new: item.category };
+
+                    // Also check for tier price changes to include in log and stats
+                    item.prices.forEach(p => {
+                        const oldP = item.oldData?.prices[p.level] || 0;
+                        const roundedOld = Math.round(oldP * 100) / 100;
+                        const roundedNew = Math.round(p.price * 100) / 100;
+                        if (roundedOld !== roundedNew) {
+                            pChanges[`price_${p.level}`] = { old: roundedOld, new: roundedNew };
+                        }
+                    });
 
                     if (Object.keys(pChanges).length > 0) {
                         const updateData: any = { updated_by: profile?.id };
                         if (pChanges.unit) updateData.unit = item.unit;
                         if (pChanges.product_name) updateData.product_name = item.name;
-                        if (pChanges.base_price) updateData.base_price = item.prices[0]?.price;
+                        if (pChanges.base_price) updateData.base_price = (Math.round((item.prices[0]?.price || 0) * 100) / 100);
                         if (pChanges.category) updateData.category = item.category;
 
                         const { error: uError } = await supabase.from('products').update(updateData).eq('id', productId);
                         if (uError) throw uError;
+
                         changes = pChanges;
+                        actionType = 'updated';
                         updated++;
                         updatedItems.push({
                             code: item.code,
@@ -501,9 +516,7 @@ export function ExcelImportView() {
                         }, { onConflict: 'product_id, tier_id, min_quantity' });
 
                     if (tError) {
-                        console.error(`Failed to upsert price for ${item.code} tier ${pInfo.level}:`, tError);
-                        // We might not want to fail the whole product just for one price level, 
-                        // but let's at least log it.
+                        throw new Error(`ไม่สามารถบันทึกราคาระดับ ${pInfo.level} ได้: ${tError.message}`);
                     }
                 }
 
@@ -600,10 +613,12 @@ export function ExcelImportView() {
             <div className="flex flex-col items-end">
                 {showChange && (
                     <span className="text-[9px] text-slate-400 line-through">
-                        {oldPrice !== undefined ? oldPrice.toLocaleString() : '0'}
+                        {oldPrice !== undefined ? oldPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '0.00'}
                     </span>
                 )}
-                <span className={`text-xs ${colorClass}`}>{newPrice.toLocaleString()} ฿</span>
+                <span className={`text-xs ${colorClass}`}>
+                    {newPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿
+                </span>
             </div>
         );
     }
@@ -618,14 +633,24 @@ export function ExcelImportView() {
 
         return (
             <div className="flex flex-wrap gap-2">
-                {entries.map(([key, val]: [string, any]) => (
-                    <div key={key} className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded text-[10px]">
-                        <span className="font-bold">{key}:</span>
-                        <span className="text-slate-500 line-through">{val.old?.toString() || '-'}</span>
-                        <ArrowRight size={10} className="text-slate-400" />
-                        <span className="text-blue-600 dark:text-blue-400">{val.new?.toString() || val.toString()}</span>
-                    </div>
-                ))}
+                {entries.map(([key, val]: [string, any]) => {
+                    const label = key.startsWith('price_')
+                        ? `ราคา ${key.split('_')[1]}`
+                        : key === 'base_price' ? 'ราคากลาง'
+                            : key === 'product_name' ? 'ชื่อสินค้า'
+                                : key === 'category' ? 'หมวดหมู่'
+                                    : key === 'unit' ? 'หน่วย'
+                                        : key;
+
+                    return (
+                        <div key={key} className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded text-[10px]">
+                            <span className="font-bold">{label}:</span>
+                            <span className="text-slate-500 line-through">{val.old?.toString() || '-'}</span>
+                            <ArrowRight size={10} className="text-slate-400" />
+                            <span className="text-blue-600 dark:text-blue-400 font-bold">{val.new?.toString() || '-'}</span>
+                        </div>
+                    );
+                })}
             </div>
         );
     }
