@@ -29,11 +29,12 @@ isProject: false
 ## ลำดับการดำเนินงานที่แนะนำ
 
 ```
-3.4 Lazy Loading     → ✅ เสร็จแล้ว (มีอยู่ใน index.tsx)
-3.1 ReportsView      → เริ่มจาก ReportFilters + แท็บที่แยกง่าย
-3.3 CreateTripFromOrdersView → Wizard steps แยกชัด
-3.2 DeliveryTripFormView → Form sections ซับซ้อน
-3.5 Services split   → ทำหลัง views เสร็จ (มี re-export)
+3.4 Lazy Loading           → ✅ เสร็จแล้ว (มีอยู่ใน index.tsx)
+3.1 ReportsView            → ✅ เสร็จแล้ว (ReportFilters, แท็บย่อย, Router)
+3.3 CreateTripFromOrdersView → ✅ เสร็จแล้ว (Wizard steps + useCreateTripWizard)
+3.2 DeliveryTripFormView   → ✅ เสร็จแล้ว (useDeliveryTripForm, TripBasicInfoForm, TripOrdersSection, TripItemsSection, TripCrewSection)
+3.5 Services split (reports) → ✅ เสร็จแล้ว (reportsService → fuel/trip/product/delivery)
+3.5 Services split (deliveryTrip) → ✅ เสร็จแล้ว (deliveryTripService → tripCrud/tripStatus/tripHistoryAggregates)
 ```
 
 ---
@@ -227,32 +228,41 @@ views/CreateTripFromOrdersView.tsx (step orchestrator, ~150 บรรทัด) 
 - **Re-export จากไฟล์เดิม** — ไม่แก้ import ทั้งโปรเจค
 - แตก function ตาม domain แล้ว re-export รวม
 
-### reportsService.ts
+### reportsService.ts ✅ (ทำแล้ว)
+
+**สถานะ:** แยกครบ 4 sub-services แล้ว, hub re-export ทุกอย่าง
+
+**โครงสร้างปัจจุบัน:**
 
 ```
-services/reportsService.ts (re-export hub)
-  export * from './reports/deliveryReportService';
-  export * from './reports/fuelReportService';
-  export * from './reports/tripSummaryService';
-  export * from './reports/productReportService';
+services/reportsService.ts (re-export hub, ~27 บรรทัด) ✅
+  ├─ services/reports/fuelReportService.ts       ✅ (Financials, MonthlyFuelReport, VehicleFuelComparison, FuelTrend + getFinancials, getMonthlyFuelReport, getVehicleFuelComparison, getFuelTrend)
+  ├─ services/reports/tripSummaryService.ts    ✅ (MonthlyTripReport, VehicleTripSummary, DriverTripReport + getMonthlyTripReport, getVehicleTripSummary, getDriverTripReport)
+  ├─ services/reports/productReportService.ts    ✅ (MaintenanceTrends, MonthlyMaintenanceReport, VehicleMaintenanceComparison, VehicleMaintenanceHistory, CostAnalysis, CostPerKm, MonthlyCostTrend + getMaintenanceTrends, getMonthlyMaintenanceReport, getVehicleMaintenanceComparison, getVehicleMaintenanceHistory, getCostAnalysis, getCostPerKm, getMonthlyCostTrend, getVehicleUsageRanking, getVehicleFuelConsumption)
+  └─ services/reports/deliveryReportService.ts  ✅ (StaffCommissionSummary, StaffItemStatistics, StaffItemDetail + getDeliverySummaryByVehicle, getDeliverySummaryByStore, getDeliverySummaryByProduct, getMonthlyDeliveryReport, getStaffCommissionSummary, getProductDeliveryHistory, getStaffItemStatistics, getStaffItemDetails, refreshDeliveryStatsByVehicle)
 ```
 
-### deliveryTripService.ts
+- Import เดิม `from '../services/reportsService'` ยังใช้ได้ ไม่ต้องแก้
+- **เช็คแล้ว**: `npm run build` ผ่าน
+- **Commit (แนะนำ)**: `refactor(services): split reportsService into fuel/trip/product/delivery sub-services`
+
+### deliveryTripService.ts ✅ (ทำแล้ว)
+
+**สถานะ:** แยกครบแล้ว — hub re-export ทุกอย่าง
+
+**โครงสร้างปัจจุบัน:**
 
 ```
-services/deliveryTripService.ts (re-export hub)
-  export * from './deliveryTrip/tripCrudService';
-  export * from './deliveryTrip/tripStatusService';
-  ...
+services/deliveryTripService.ts (re-export hub, ~25 บรรทัด) ✅
+  ├─ services/deliveryTrip/types.ts                  (shared types)
+  ├─ services/deliveryTrip/tripCrudService.ts       (getAll, getAllWithPagination, getById, create, update, delete, updatePickedUpQuantity, changeVehicle)
+  ├─ services/deliveryTrip/tripStatusService.ts      (cancel, updateStoreInvoiceStatus, syncQuantityDeliveredForCompletedTrip, syncStatusWithTripLogs)
+  └─ services/deliveryTrip/tripHistoryAggregatesService.ts (getAggregatedProducts, getItemChangeHistory, getDeliveryTripEditHistory, getStaffItemDistribution, getProductDistributionByTrip)
 ```
 
-### ขั้นตอน
-
-- แยก function ตาม domain (ตรวจสอบ dependency ระหว่าง function)
-- สร้างไฟล์ใหม่ใน subfolder
-- แก้ reportsService.ts ให้ re-export
-- **เช็ค**: `npm run build` ผ่าน, ไม่มี broken import
-- **Commit**: `refactor(services): split reportsService` (ทำทีละ service)
+- Import เดิม `from '../services/deliveryTripService'` ยังใช้ได้ ไม่ต้องแก้
+- **เช็ค**: รัน `npm run build` ผ่าน (error อื่นในโปรเจคเป็นของเดิม ไม่เกี่ยวกับการแยกนี้)
+- **Commit (แนะนำ)**: `refactor(services): split deliveryTripService into tripCrud/tripStatus/tripHistoryAggregates`
 
 ---
 
@@ -269,13 +279,14 @@ services/deliveryTripService.ts (re-export hub)
 ## สรุประยะเวลาโดยประมาณ
 
 
-| งาน                          | ระยะเวลา      | ความเสี่ยง |
-| ---------------------------- | ------------- | ---------- |
-| 3.1 ReportsView              | 4–6 วัน       | สูง        |
-| 3.2 DeliveryTripFormView     | 2–3 วัน       | สูง        |
-| 3.3 CreateTripFromOrdersView | 2–3 วัน       | ปานกลาง    |
-| 3.5 Services split           | 2–3 วัน       | ปานกลาง    |
-| **รวม**                      | **10–15 วัน** |            |
+| งาน                                      | ระยะเวลา      | ความเสี่ยง | สถานะ       |
+| ---------------------------------------- | ------------- | ---------- | ----------- |
+| 3.1 ReportsView                          | 4–6 วัน       | สูง        | ✅ เสร็จแล้ว |
+| 3.2 DeliveryTripFormView                 | 2–3 วัน       | สูง        | ✅ เสร็จแล้ว |
+| 3.3 CreateTripFromOrdersView             | 2–3 วัน       | ปานกลาง    | ✅ เสร็จแล้ว |
+| 3.5 Services split (reportsService)      | 2–3 วัน       | ปานกลาง    | ✅ เสร็จแล้ว |
+| 3.5 Services split (deliveryTripService) | 1–2 วัน       | ปานกลาง    | ✅ เสร็จแล้ว |
+| **รวม**                                  | **10–15 วัน** |            |             |
 
 
 ---
