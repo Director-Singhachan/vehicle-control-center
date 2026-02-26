@@ -135,7 +135,9 @@ export const getCurrentUser = async () => {
     const getSessionPromise = supabase.auth.getSession();
     const timeoutPromise = new Promise<{ data: { session: any }, error: any }>((resolve) => {
       setTimeout(() => {
-        console.warn('getSession timeout in getCurrentUser after 2s - using localStorage fallback');
+        if (import.meta.env.DEV) {
+          console.warn('getSession timeout in getCurrentUser after 2s - using localStorage fallback');
+        }
         // Try localStorage one more time as fallback
         const fallback = getSessionFromStorage();
         resolve(fallback || { data: { session: null }, error: new Error('Session check timeout') });
@@ -189,10 +191,12 @@ export const getCurrentProfile = async () => {
       try {
         const timeoutPromise = new Promise<null>((resolve) => {
           setTimeout(() => {
-            if (attempt < retries) {
-              console.warn(`Profile fetch timeout after 5s (attempt ${attempt + 1}/${retries + 1}) - retrying...`);
-            } else {
-              console.warn('Profile fetch timeout after 5s - all retries exhausted, returning null');
+            if (import.meta.env.DEV) {
+              if (attempt < retries) {
+                console.warn(`Profile fetch timeout after 5s (attempt ${attempt + 1}/${retries + 1}) - retrying...`);
+              } else {
+                console.warn('Profile fetch timeout after 5s - all retries exhausted, returning null');
+              }
             }
             resolve(null);
           }, 5000); // Reduced from 10s to 5s
