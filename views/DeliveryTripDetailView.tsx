@@ -89,7 +89,7 @@ export const DeliveryTripDetailView: React.FC<DeliveryTripDetailViewProps> = ({
   const [pendingOrders, setPendingOrders] = useState<any[]>([]);
   const [pendingOrdersLoading, setPendingOrdersLoading] = useState(false);
   const [addOrderSearch, setAddOrderSearch] = useState('');
-  const [selectedOrderToAdd, setSelectedOrderToAdd] = useState<any | null>(null);
+  const [selectedOrdersToAdd, setSelectedOrdersToAdd] = useState<any[]>([]);
   const [addOrderReason, setAddOrderReason] = useState('');
   const [addOrderSubmitting, setAddOrderSubmitting] = useState(false);
   const [addOrderError, setAddOrderError] = useState<string | null>(null);
@@ -184,7 +184,7 @@ export const DeliveryTripDetailView: React.FC<DeliveryTripDetailViewProps> = ({
     if (!addOrderModalOpen || !trip) return;
     setPendingOrdersLoading(true);
     setAddOrderError(null);
-    setSelectedOrderToAdd(null);
+    setSelectedOrdersToAdd([]);
     setAddOrderReason('');
     ordersService.getPendingOrders()
       .then((data) => setPendingOrders(data || []))
@@ -208,7 +208,7 @@ export const DeliveryTripDetailView: React.FC<DeliveryTripDetailViewProps> = ({
   }, [trip?.stores, pendingOrders, addOrderSearch]);
 
   const handleAddOrderToTrip = useCallback(async () => {
-    if (!trip || !selectedOrderToAdd || !user?.id) return;
+    if (!trip || !user?.id || selectedOrdersToAdd.length === 0) return;
     if (!addOrderReason.trim()) {
       setAddOrderError('กรุณาระบุเหตุผลในการเพิ่มร้าน (เช่น เพิ่มร้านที่ตกหล่น)');
       return;
@@ -216,24 +216,10 @@ export const DeliveryTripDetailView: React.FC<DeliveryTripDetailViewProps> = ({
     setAddOrderSubmitting(true);
     setAddOrderError(null);
     try {
-      const orderItems = await orderItemsService.getByOrderId(selectedOrderToAdd.id);
-      const newStore = {
-        store_id: selectedOrderToAdd.store_id,
-        sequence_order: (trip.stores?.length || 0) + 1,
-        items: (orderItems || [])
-          .filter((item: any) => {
-            const remaining = Math.max(0, Number(item.quantity) - Number(item.quantity_picked_up_at_store ?? 0) - Number(item.quantity_delivered ?? 0));
-            return remaining > 0;
-          })
-          .map((item: any) => ({
-            product_id: item.product_id,
-            quantity: Number(item.quantity),
-            quantity_picked_up_at_store: Number(item.quantity_picked_up_at_store ?? 0),
-            notes: item.notes || undefined,
-            is_bonus: !!item.is_bonus,
-            selected_pallet_config_id: item.selected_pallet_config_id || undefined,
-          })),
-      };
+      const orderItemsLists = await Promise.all(
+        selectedOrdersToAdd.map((order: any) => orderItemsService.getByOrderId(order.id)),
+      );
+
       const existingStores = (trip.stores || []).map((s: any) => ({
         store_id: s.store_id,
         sequence_order: s.sequence_order,
@@ -245,12 +231,52 @@ export const DeliveryTripDetailView: React.FC<DeliveryTripDetailViewProps> = ({
           selected_pallet_config_id: i.selected_pallet_config_id || undefined,
         })),
       }));
-      const allStores = [...existingStores, newStore];
+
+      const baseSequence = existingStores.length;
+      const newStores = selectedOrdersToAdd
+        .map((order: any, index: number) => {
+          const orderItems = orderItemsLists[index] || [];
+          const items = (orderItems || [])
+            .filter((item: any) => {
+              const remaining = Math.max(
+                0,
+                Number(item.quantity)
+                  - Number(item.quantity_picked_up_at_store ?? 0)
+                  - Number(item.quantity_delivered ?? 0),
+              );
+              return remaining > 0;
+            })
+            .map((item: any) => ({
+              product_id: item.product_id,
+              quantity: Number(item.quantity),
+              quantity_picked_up_at_store: Number(item.quantity_picked_up_at_store ?? 0),
+              notes: item.notes || undefined,
+              is_bonus: !!item.is_bonus,
+              selected_pallet_config_id: item.selected_pallet_config_id || undefined,
+            }));
+
+          return {
+            store_id: order.store_id,
+            sequence_order: baseSequence + index + 1,
+            items,
+          };
+        })
+        .filter((store: any) => (store.items || []).length > 0);
+
+      if (newStores.length === 0) {
+        setAddOrderError('ไม่พบสินค้าที่ต้องจัดส่งในออเดอร์ที่เลือก');
+        return;
+      }
+
+      const allStores = [...existingStores, ...newStores];
+
       await deliveryTripService.update(trip.id, {
         stores: allStores,
         edit_reason: addOrderReason.trim(),
       });
-      await ordersService.assignToTrip([selectedOrderToAdd.id], trip.id, user.id);
+
+      const orderIds = selectedOrdersToAdd.map((o: any) => o.id);
+      await ordersService.assignToTrip(orderIds, trip.id, user.id);
       setAddOrderModalOpen(false);
       refetch();
     } catch (err: any) {
@@ -258,7 +284,7 @@ export const DeliveryTripDetailView: React.FC<DeliveryTripDetailViewProps> = ({
     } finally {
       setAddOrderSubmitting(false);
     }
-  }, [trip, selectedOrderToAdd, addOrderReason, user?.id, refetch]);
+  }, [trip, selectedOrdersToAdd, addOrderReason, user?.id, refetch]);
 
 
 
@@ -1246,29 +1272,48 @@ export const DeliveryTripDetailView: React.FC<DeliveryTripDetailViewProps> = ({
           : 'ออเดอร์ที่รอจัดทริปทั้งหมดอยู่ในทริปนี้แล้ว หรือไม่ตรงกับคำค้นหา'}
       </div>
     ) : (
-      <div className="max-h-64 overflow-y-auto border border-slate-200 dark:border-slate-700 rounded-lg divide-y divide-slate-200 dark:divide-slate-700">
-        {pendingOrdersToShow.map((order: any) => (
-          <button
-            key={order.id}
-            type="button"
-            onClick={() => setSelectedOrderToAdd(selectedOrderToAdd?.id === order.id ? null : order)}
-            className={`w-full p-4 text-left transition-colors ${selectedOrderToAdd?.id === order.id
-              ? 'bg-enterprise-100 dark:bg-enterprise-900/30 border-l-4 border-enterprise-600'
-              : 'hover:bg-slate-50 dark:hover:bg-slate-800/50'
-              }`}
-          >
-            <div className="flex justify-between items-start">
-              <div>
-                <span className="font-mono text-sm text-blue-600 dark:text-blue-400">{order.order_number}</span>
-                <span className="ml-2 font-medium text-slate-900 dark:text-white">{order.customer_name}</span>
+      <div className="max-h-64 overflow-y-auto border border-slate-200 dark:border-slate-700 rounded-lg px-1 py-1 space-y-1">
+        {pendingOrdersToShow.map((order: any) => {
+          const isSelected = selectedOrdersToAdd.some((o: any) => o.id === order.id);
+          return (
+            <button
+              key={order.id}
+              type="button"
+              onClick={() =>
+                setSelectedOrdersToAdd((prev) =>
+                  prev.some((o: any) => o.id === order.id)
+                    ? prev.filter((o: any) => o.id !== order.id)
+                    : [...prev, order],
+                )
+              }
+              className={`w-full p-4 text-left rounded-md border border-transparent transition-colors ${isSelected
+                ? 'bg-enterprise-100 dark:bg-enterprise-900/30 border-enterprise-200 dark:border-enterprise-800 border-l-4 border-enterprise-600'
+                : 'hover:bg-slate-50 dark:hover:bg-slate-800/50'
+                }`}
+            >
+              <div className="flex items-start gap-3">
+                <div
+                  className={`mt-0.5 flex h-6 w-6 items-center justify-center rounded-full border text-xs transition-colors ${isSelected
+                    ? 'bg-enterprise-600 border-enterprise-600 text-white shadow-sm'
+                    : 'border-slate-300 text-slate-300 bg-white dark:bg-slate-900 dark:border-slate-600'
+                    }`}
+                >
+                  {isSelected && <CheckCircle size={14} className="text-white" />}
+                </div>
+                <div className="flex-1 flex justify-between items-start">
+                  <div>
+                    <span className="font-mono text-sm text-blue-600 dark:text-blue-400">{order.order_number}</span>
+                    <span className="ml-2 font-medium text-slate-900 dark:text-white">{order.customer_name}</span>
+                  </div>
+                  <span className="text-sm font-semibold text-slate-700 dark:text-slate-300">
+                    ฿{(order.total_amount || 0).toLocaleString()}
+                  </span>
+                </div>
               </div>
-              <span className="text-sm font-semibold text-slate-700 dark:text-slate-300">
-                ฿{(order.total_amount || 0).toLocaleString()}
-              </span>
-            </div>
-            <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">{order.customer_code}</div>
-          </button>
-        ))}
+              <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">{order.customer_code}</div>
+            </button>
+          );
+        })}
       </div>
     )}
 
@@ -1278,7 +1323,7 @@ export const DeliveryTripDetailView: React.FC<DeliveryTripDetailViewProps> = ({
       </Button>
       <Button
         onClick={handleAddOrderToTrip}
-        disabled={!selectedOrderToAdd || !addOrderReason.trim() || addOrderSubmitting}
+        disabled={selectedOrdersToAdd.length === 0 || !addOrderReason.trim() || addOrderSubmitting}
         isLoading={addOrderSubmitting}
       >
         เพิ่มร้านเข้ากับทริป
