@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Upload, FileText, CheckCircle, AlertCircle, Clock, Search, ArrowRight, Save, History, Package, DollarSign, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Upload, FileText, CheckCircle, AlertCircle, Clock, Search, ArrowRight, Save, History, Package, DollarSign, ChevronLeft, ChevronRight, Pencil } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { supabase } from '../lib/supabase';
 import { Card } from '../components/ui/Card';
@@ -14,12 +14,13 @@ import { useAuth } from '../hooks/useAuth';
 
 // Unit Mapping as requested
 const UNIT_MAP: Record<string, string> = {
-    'BT': 'ขวด',
-    'CN': 'กระป๋อง',
-    'TR': 'ถาด',
-    'CV': 'ลัง',
+    'CA': 'ลัง',
     'PA': 'แพ็ค',
-    'CA': 'คาร์ตั้น',
+    'CN': 'กระป๋อง',
+    'BT': 'ขวด',
+    'BX': 'ลัง',
+    'CV': 'ลัง',
+    'TR': 'ถาด'
 };
 
 // Category Mapping Rules
@@ -65,12 +66,15 @@ interface ProductData {
     name: string;
     unit: string;
     category: string;
+    basePrice: number;
     isNew: boolean;
+    isUnchanged?: boolean;
     prices: { level: string; price: number }[];
     oldData?: {
         name: string;
         unit: string;
         category: string;
+        basePrice: number;
         prices: Record<string, number>; // level -> price
     };
 }
@@ -108,6 +112,7 @@ interface ImportResult {
     total: number;
     created: number;
     updated: number;
+    unchanged: number;
     failed: number;
     failedItems: FailedItem[];
     createdItems: CreatedItem[];
@@ -118,6 +123,7 @@ interface ImportStats {
     total: number;
     created: number;
     updated: number;
+    unchanged: number;
     categoryDistribution: Record<string, number>;
 }
 
@@ -147,21 +153,46 @@ export function ExcelImportView() {
     const [currentPage, setCurrentPage] = useState(1);
     const itemsPerPage = 50;
 
+    // Filter states
+    const [filterCategory, setFilterCategory] = useState<string>('all');
+    const [filterUnit, setFilterUnit] = useState<string>('all');
+    const [filterStatus, setFilterStatus] = useState<string>('all');
+
+    const filteredPreviewData = useMemo(() => {
+        return previewData.filter(item => {
+            const matchCategory = filterCategory === 'all' || item.category === filterCategory;
+            const matchUnit = filterUnit === 'all' || item.unit === filterUnit;
+            let matchStatus = true;
+            if (filterStatus !== 'all') {
+                if (filterStatus === 'new') matchStatus = item.isNew;
+                else if (filterStatus === 'updated') matchStatus = !item.isNew && !item.isUnchanged;
+                else if (filterStatus === 'unchanged') matchStatus = !!item.isUnchanged;
+            }
+            return matchCategory && matchUnit && matchStatus;
+        });
+    }, [previewData, filterCategory, filterUnit, filterStatus]);
+
     useEffect(() => {
         setCurrentPage(1);
-    }, [previewData]);
+    }, [filteredPreviewData]);
+
+    const categories = useMemo(() => ['all', ...Array.from(new Set(previewData.map(i => i.category)))], [previewData]);
+    const units = useMemo(() => ['all', ...Array.from(new Set(previewData.map(i => i.unit)))], [previewData]);
 
     const importStats: ImportStats = useMemo(() => {
         const stats: ImportStats = {
             total: previewData.length,
             created: 0,
             updated: 0,
+            unchanged: 0,
             categoryDistribution: {},
         };
 
         previewData.forEach(item => {
             if (item.isNew) {
                 stats.created++;
+            } else if (item.isUnchanged) {
+                stats.unchanged++;
             } else {
                 stats.updated++;
             }
@@ -229,15 +260,20 @@ export function ExcelImportView() {
                     code: headers.findIndex(h => h && (h.toString().trim() === 'รหัสสินค้า' || h.toString().trim() === 'รหัส')),
                     name: headers.findIndex(h => h && (h.toString().trim() === 'ชื่อสินค้า' || h.toString().trim() === 'รายการ')),
                     unit: headers.findIndex(h => h && (h.toString().includes('หน่วย') || h.toString().includes('Unit'))),
+                    basePrice: headers.findIndex(h => h && (h.toString().trim() === 'ราคากลาง' || h.toString().trim() === 'Base Price')),
                     prices: [] as { level: string; index: number }[]
                 };
 
                 // Fallbacks
                 if (colIndices.code === -1) colIndices.code = headers.findIndex(h => h && h.toString().includes('รหัส'));
                 if (colIndices.name === -1) colIndices.name = headers.findIndex(h => h && h.toString().includes('สินค้า') && !h.toString().includes('รหัส'));
+                if (colIndices.basePrice === -1) {
+                    // If no explicit "ราคากลาง", look for Price 1 or similar if necessary, but per user image it's separate
+                    colIndices.basePrice = headers.findIndex(h => h && h.toString().includes('ราคากลาง'));
+                }
 
                 for (let i = 1; i <= 9; i++) {
-                    const idx = headers.findIndex(h => h && h.includes(`ราคา ${i}`));
+                    const idx = headers.findIndex(h => h && h.toString().trim() === `ราคา ${i}`);
                     if (idx !== -1) colIndices.prices.push({ level: i.toString(), index: idx });
                 }
 
@@ -249,46 +285,86 @@ export function ExcelImportView() {
                 // 1. Get Tier Mapping
                 const { data: tierList } = await supabase.from('customer_tiers').select('id, tier_code');
                 const tierCodeMap: Record<string, string> = {}; // id -> tier_code
-                tierList?.forEach(t => { tierCodeMap[t.id] = t.tier_code; });
+                tierList?.forEach(t => {
+                    if (t.tier_code) tierCodeMap[t.id] = t.tier_code.trim();
+                });
 
                 // 2. Fetch existing products and prices
                 const codes = items.map(row => row[colIndices.code]?.toString().trim()).filter(Boolean);
                 const { data: existingProducts } = await supabase
                     .from('products')
-                    .select('id, product_code, product_name, unit, category, product_tier_prices(tier_id, price)')
+                    .select(`
+                        id, product_code, product_name, unit, category, 
+                        product_tier_prices(tier_id, price, min_quantity, is_active)
+                    `)
                     .in('product_code', codes);
 
                 const existingMap: Record<string, any> = {};
                 existingProducts?.forEach(p => {
                     const prices: Record<string, number> = {};
                     p.product_tier_prices?.forEach((tp: any) => {
-                        const tCode = tierCodeMap[tp.tier_id];
+                        // Filter for base tier price (min_quantity=1 and active)
+                        if (tp.min_quantity !== 1 || tp.is_active === false) return;
+
+                        const tCode = tierCodeMap[tp.tier_id]?.trim(); // Trim for safety
                         if (tCode) prices[tCode] = tp.price;
                     });
-                    existingMap[p.product_code] = { ...p, mappedPrices: prices };
+                    const key = `${p.product_code}|${p.unit}`;
+                    existingMap[key] = { ...p, mappedPrices: prices };
                 });
 
                 const mappedItems: ProductData[] = items.map(row => {
                     const rawName = row[colIndices.name]?.toString().trim() || '';
                     const rawCode = row[colIndices.code]?.toString().trim() || '';
-                    const rawUnit = row[colIndices.unit] ? row[colIndices.unit].toString().trim() : '';
+                    const rawUnit = row[colIndices.unit] ? row[colIndices.unit].toString().trim().toUpperCase() : '';
                     const category = getCategoryFromProductName(rawName);
-                    const existing = existingMap[rawCode];
+                    const mappedUnit = UNIT_MAP[rawUnit] || rawUnit;
+                    const key = `${rawCode}|${mappedUnit}`;
+                    const existing = existingMap[key];
+
+                    const basePriceRaw = colIndices.basePrice !== -1 ? parseFloat(row[colIndices.basePrice] || '0') : 0;
+                    const basePrice = Math.round(basePriceRaw * 100) / 100;
+
+                    const prices = colIndices.prices.map(p => {
+                        const rawPrice = parseFloat(row[p.index] || '0');
+                        return {
+                            level: p.level,
+                            price: Math.round(rawPrice * 100) / 100
+                        };
+                    });
+
+                    let isUnchanged = false;
+                    if (existing) {
+                        const sameName = existing.product_name === rawName;
+                        const sameUnit = existing.unit === mappedUnit;
+                        const sameCategory = existing.category === category;
+                        const sameBasePrice = Math.round(existing.base_price * 100) / 100 === basePrice;
+
+                        // Check all 9 price levels
+                        const samePrices = prices.every(p => {
+                            const oldPrice = existing.mappedPrices[p.level] || 0;
+                            const roundedOld = Math.round(oldPrice * 100) / 100;
+                            const roundedNew = Math.round(p.price * 100) / 100;
+                            return roundedOld === roundedNew;
+                        });
+
+                        isUnchanged = sameName && sameUnit && sameCategory && sameBasePrice && samePrices;
+                    }
 
                     return {
                         code: rawCode,
                         name: rawName,
-                        unit: UNIT_MAP[rawUnit] || rawUnit,
+                        unit: mappedUnit,
                         category: category,
+                        basePrice: basePrice,
                         isNew: !existing,
-                        prices: colIndices.prices.map(p => ({
-                            level: p.level,
-                            price: parseFloat(row[p.index] || '0')
-                        })),
+                        isUnchanged: isUnchanged,
+                        prices: prices,
                         oldData: existing ? {
                             name: existing.product_name,
                             unit: existing.unit,
                             category: existing.category,
+                            basePrice: existing.base_price,
                             prices: existing.mappedPrices
                         } : undefined
                     };
@@ -313,6 +389,7 @@ export function ExcelImportView() {
         setImportProgress(0);
         let created = 0;
         let updated = 0;
+        let unchanged = 0;
         let failed = 0;
         let failedItems: FailedItem[] = [];
         let createdItems: CreatedItem[] = [];
@@ -324,12 +401,29 @@ export function ExcelImportView() {
         const { data: tierList } = await supabase.from('customer_tiers').select('id, tier_code');
         const tierMap: Record<string, string> = {};
         tierList?.forEach(t => {
-            tierMap[t.tier_code] = t.id;
+            if (t.tier_code) tierMap[t.tier_code.trim()] = t.id;
         });
+
+        const getMinQuantityForLevel = (level: string) => {
+            const l = level.trim();
+            if (l === '1') return 300;
+            if (l === '2') return 180;
+            if (l === '3') return 50;
+            if (l === '4' || l === '5' || l === '0') return 1;
+            return 1;
+        };
 
         const totalItems = previewData.length;
         for (let i = 0; i < totalItems; i++) {
             const item = previewData[i];
+
+            // Requirement 4: Skip unchanged items
+            if (item.isUnchanged) {
+                unchanged++;
+                setImportProgress(Math.round(((i + 1) / totalItems) * 100));
+                continue;
+            }
+
             try {
                 // Update progress
                 setImportProgress(Math.round(((i + 1) / totalItems) * 100));
@@ -356,7 +450,7 @@ export function ExcelImportView() {
                             product_name: item.name,
                             category: item.category,
                             unit: item.unit,
-                            base_price: item.prices[0]?.price || 0,
+                            base_price: item.basePrice,
                             is_active: true,
                             created_by: profile?.id,
                             updated_by: profile?.id
@@ -378,24 +472,36 @@ export function ExcelImportView() {
                         unit: item.unit,
                     });
                 } else {
-                    // UPDATE Product if needed
+                    // UPDATE Product
                     productId = existingProduct.id;
                     const pChanges: any = {};
                     if (existingProduct.unit !== item.unit) pChanges.unit = { old: existingProduct.unit, new: item.unit };
                     if (existingProduct.product_name !== item.name) pChanges.product_name = { old: existingProduct.product_name, new: item.name };
-                    if (existingProduct.base_price !== item.prices[0]?.price) pChanges.base_price = { old: existingProduct.base_price, new: item.prices[0]?.price };
+                    if (existingProduct.base_price !== item.basePrice) pChanges.base_price = { old: existingProduct.base_price, new: item.basePrice };
                     if (existingProduct.category !== item.category) pChanges.category = { old: existingProduct.category, new: item.category };
+
+                    // Also check for tier price changes to include in log and stats
+                    item.prices.forEach(p => {
+                        const oldP = item.oldData?.prices[p.level] || 0;
+                        const roundedOld = Math.round(oldP * 100) / 100;
+                        const roundedNew = Math.round(p.price * 100) / 100;
+                        if (roundedOld !== roundedNew) {
+                            pChanges[`price_${p.level}`] = { old: roundedOld, new: roundedNew };
+                        }
+                    });
 
                     if (Object.keys(pChanges).length > 0) {
                         const updateData: any = { updated_by: profile?.id };
                         if (pChanges.unit) updateData.unit = item.unit;
                         if (pChanges.product_name) updateData.product_name = item.name;
-                        if (pChanges.base_price) updateData.base_price = item.prices[0]?.price;
+                        if (pChanges.base_price) updateData.base_price = item.basePrice;
                         if (pChanges.category) updateData.category = item.category;
 
                         const { error: uError } = await supabase.from('products').update(updateData).eq('id', productId);
                         if (uError) throw uError;
+
                         changes = pChanges;
+                        actionType = 'updated';
                         updated++;
                         updatedItems.push({
                             code: item.code,
@@ -408,25 +514,28 @@ export function ExcelImportView() {
                 // 2. Upsert Tier Prices
                 for (const pInfo of item.prices) {
                     if (pInfo.price === 0) continue;
-                    const tierId = tierMap[pInfo.level];
-                    if (!tierId) continue;
+                    const tierId = tierMap[pInfo.level.trim()];
+                    if (!tierId) {
+                        throw new Error(`ไม่พบกลุ่มลูกค้า (Tier) ที่ใช้รหัส "${pInfo.level}" ในฐานข้อมูล กรุณาตั้งค่าก่อนนำเข้า`);
+                    }
+
+                    const roundedPrice = Math.round(pInfo.price * 100) / 100;
+                    const minQty = getMinQuantityForLevel(pInfo.level);
 
                     const { error: tError } = await supabase
                         .from('product_tier_prices')
                         .upsert({
                             product_id: productId,
                             tier_id: tierId,
-                            price: pInfo.price,
-                            min_quantity: 1,
+                            price: roundedPrice,
+                            min_quantity: minQty,
                             effective_from: importDate,
                             created_by: profile?.id,
                             is_active: true
                         }, { onConflict: 'product_id, tier_id, min_quantity' });
 
                     if (tError) {
-                        console.error(`Failed to upsert price for ${item.code} tier ${pInfo.level}:`, tError);
-                        // We might not want to fail the whole product just for one price level, 
-                        // but let's at least log it.
+                        throw new Error(`ไม่สามารถบันทึกราคาระดับ ${pInfo.level} ได้: ${tError.message}`);
                     }
                 }
 
@@ -438,8 +547,12 @@ export function ExcelImportView() {
                     unit: item.unit,
                     action_type: actionType,
                     changes: changes,
+                    created_by: profile?.id,
                 });
-                if (logError) console.error('Failed to log import:', logError);
+                if (logError) {
+                    console.error('Failed to log import:', logError);
+                    showNotification('error', 'บันทึกประวัติการนำเข้าไม่สำเร็จ: ' + (logError.message || 'Unknown error'));
+                }
 
             } catch (err: any) {
                 console.error(`Failed to import ${item.code}:`, err);
@@ -457,13 +570,14 @@ export function ExcelImportView() {
         setImportProgress(0);
 
         const defaultResultTab: 'created' | 'updated' | 'failed' =
-            failed > 0 ? 'failed' : created > 0 ? 'created' : 'updated';
+            failed > 0 ? 'failed' : created > 0 ? 'created' : updated > 0 ? 'updated' : 'created';
         setResultTab(defaultResultTab);
 
         setImportResult({
             total: totalItems,
             created,
             updated,
+            unchanged,
             failed,
             failedItems: failedItems,
             createdItems,
@@ -474,6 +588,9 @@ export function ExcelImportView() {
         setPreviewData([]);
         setFile(null);
         if (fileInputRef.current) fileInputRef.current.value = '';
+
+        // Refetch logs to update the history tab
+        fetchLogs();
     };
 
     const filteredLogs = logs.filter(log =>
@@ -481,13 +598,15 @@ export function ExcelImportView() {
         log.product_name.toLowerCase().includes(logSearchQuery.toLowerCase())
     );
 
-    function renderDiff(oldVal: string | undefined, newVal: string, label?: string) {
-        const isChanged = oldVal !== undefined && oldVal !== newVal;
+    function renderDiff(oldVal: string | null | undefined, newVal: string, label?: string) {
+        const isChanged = oldVal !== undefined && oldVal !== null && oldVal !== newVal;
         if (!isChanged) return <span>{newVal}</span>;
+
+        const displayOld = (oldVal === null || oldVal === undefined || oldVal === '') ? '(ว่าง)' : oldVal;
 
         return (
             <div className="flex flex-col gap-0.5">
-                <span className="text-[10px] text-slate-400 line-through decoration-red-400/50">{oldVal}</span>
+                <span className="text-[10px] text-slate-400 line-through decoration-red-400/50">{displayOld}</span>
                 <span className="text-blue-600 dark:text-blue-400 font-bold flex items-center gap-1">
                     <ArrowRight size={10} />
                     {newVal}
@@ -497,17 +616,28 @@ export function ExcelImportView() {
     }
 
     function renderPriceDiff(oldPrice: number | undefined, newPrice: number) {
-        const isChanged = oldPrice !== undefined && oldPrice !== newPrice;
-        const colorClass = isChanged
-            ? (newPrice > oldPrice ? 'text-green-600 font-bold' : 'text-red-600 font-bold')
+        const effectiveOld = oldPrice ?? 0;
+        const roundedOld = Math.round(effectiveOld * 100) / 100;
+        const roundedNew = Math.round(newPrice * 100) / 100;
+        const isChanged = oldPrice !== undefined && roundedOld !== roundedNew;
+
+        // If oldPrice is undefined, and newPrice is non-zero, it's also a change (adding a price)
+        const showChange = isChanged || (oldPrice === undefined && newPrice !== 0);
+
+        const colorClass = showChange
+            ? (newPrice > effectiveOld ? 'text-green-600 font-bold' : 'text-red-600 font-bold')
             : 'text-slate-600 dark:text-slate-400';
 
         return (
             <div className="flex flex-col items-end">
-                {isChanged && (
-                    <span className="text-[9px] text-slate-400 line-through">{oldPrice?.toLocaleString()}</span>
+                {showChange && (
+                    <span className="text-[9px] text-slate-400 line-through">
+                        {oldPrice !== undefined ? oldPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '0.00'}
+                    </span>
                 )}
-                <span className={`text-xs ${colorClass}`}>{newPrice.toLocaleString()} ฿</span>
+                <span className={`text-xs ${colorClass}`}>
+                    {newPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿
+                </span>
             </div>
         );
     }
@@ -522,14 +652,24 @@ export function ExcelImportView() {
 
         return (
             <div className="flex flex-wrap gap-2">
-                {entries.map(([key, val]: [string, any]) => (
-                    <div key={key} className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded text-[10px]">
-                        <span className="font-bold">{key}:</span>
-                        <span className="text-slate-500 line-through">{val.old?.toString() || '-'}</span>
-                        <ArrowRight size={10} className="text-slate-400" />
-                        <span className="text-blue-600 dark:text-blue-400">{val.new?.toString() || val.toString()}</span>
-                    </div>
-                ))}
+                {entries.map(([key, val]: [string, any]) => {
+                    const label = key.startsWith('price_')
+                        ? `ราคา ${key.split('_')[1]}`
+                        : key === 'base_price' ? 'ราคากลาง'
+                            : key === 'product_name' ? 'ชื่อสินค้า'
+                                : key === 'category' ? 'หมวดหมู่'
+                                    : key === 'unit' ? 'หน่วย'
+                                        : key;
+
+                    return (
+                        <div key={key} className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded text-[10px]">
+                            <span className="font-bold">{label}:</span>
+                            <span className="text-slate-500 line-through">{val.old?.toString() || '-'}</span>
+                            <ArrowRight size={10} className="text-slate-400" />
+                            <span className="text-blue-600 dark:text-blue-400 font-bold">{val.new?.toString() || '-'}</span>
+                        </div>
+                    );
+                })}
             </div>
         );
     }
@@ -607,25 +747,60 @@ export function ExcelImportView() {
                                     <p className="text-sm text-slate-500 dark:text-slate-400">อัปเดต</p>
                                     <p className="text-2xl font-bold text-orange-600">{importStats.updated}</p>
                                 </Card>
-                                <Card className="p-4 bg-white dark:bg-slate-800 border-l-4 border-l-purple-500 overflow-hidden">
-                                    <p className="text-sm text-slate-500 dark:text-slate-400">หมวดหมู่หลัก</p>
-                                    <div className="flex gap-1 mt-1 overflow-x-auto pb-1 scrollbar-hide">
-                                        {Object.entries(importStats.categoryDistribution).slice(0, 3).map(([cat, count]) => (
-                                            <Badge key={cat} variant="info" className="text-[10px] whitespace-nowrap">
-                                                {cat}: {count}
-                                            </Badge>
-                                        ))}
-                                        {Object.keys(importStats.categoryDistribution).length > 3 && (
-                                            <Badge variant="info" className="text-[10px]">...</Badge>
-                                        )}
-                                    </div>
+                                <Card className="p-4 bg-white dark:bg-slate-800 border-l-4 border-l-slate-400">
+                                    <p className="text-sm text-slate-500 dark:text-slate-400">คงเดิม</p>
+                                    <p className="text-2xl font-bold text-slate-500">{importStats.unchanged}</p>
                                 </Card>
                             </div>
 
-                            <div className="flex items-center justify-between">
-                                <h3 className="text-lg font-bold text-slate-900 dark:text-white">
-                                    ตัวอย่างข้อมูล ({previewData.length} รายการ)
-                                </h3>
+                            <div className="flex flex-col md:flex-row items-end justify-between gap-4">
+                                <div className="flex flex-wrap items-center gap-3">
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">หมวดหมู่</label>
+                                        <select
+                                            value={filterCategory}
+                                            onChange={(e) => setFilterCategory(e.target.value)}
+                                            className="block w-full pl-3 pr-10 py-1.5 text-xs border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 rounded-lg focus:ring-blue-500 focus:border-blue-500"
+                                        >
+                                            {categories.map(cat => (
+                                                <option key={cat} value={cat}>{cat === 'all' ? 'ทั้งหมด' : cat}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">หน่วย</label>
+                                        <select
+                                            value={filterUnit}
+                                            onChange={(e) => setFilterUnit(e.target.value)}
+                                            className="block w-full pl-3 pr-10 py-1.5 text-xs border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 rounded-lg focus:ring-blue-500 focus:border-blue-500"
+                                        >
+                                            {units.map(u => (
+                                                <option key={u} value={u}>{u === 'all' ? 'ทั้งหมด' : u}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">สถานะ</label>
+                                        <select
+                                            value={filterStatus}
+                                            onChange={(e) => setFilterStatus(e.target.value)}
+                                            className="block w-full pl-3 pr-10 py-1.5 text-xs border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 rounded-lg focus:ring-blue-500 focus:border-blue-500"
+                                        >
+                                            <option value="all">ทั้งหมด</option>
+                                            <option value="new">เพิ่มใหม่</option>
+                                            <option value="updated">อัปเดต</option>
+                                            <option value="unchanged">คงเดิม</option>
+                                        </select>
+                                    </div>
+                                    {(filterCategory !== 'all' || filterUnit !== 'all' || filterStatus !== 'all') && (
+                                        <button
+                                            onClick={() => { setFilterCategory('all'); setFilterUnit('all'); setFilterStatus('all'); }}
+                                            className="text-[10px] text-blue-600 hover:underline mt-5"
+                                        >
+                                            ล้างตัวกรอง
+                                        </button>
+                                    )}
+                                </div>
                                 <div className="flex gap-2">
                                     <Button variant="outline" onClick={() => { setPreviewData([]); setFile(null); if (fileInputRef.current) fileInputRef.current.value = ''; }} disabled={isProcessing}>
                                         ยกเลิก
@@ -638,6 +813,11 @@ export function ExcelImportView() {
                             </div>
 
                             <Card className="overflow-hidden">
+                                <div className="p-3 bg-slate-50/50 dark:bg-slate-800/50 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
+                                    <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                                        ตัวอย่างข้อมูล ({filteredPreviewData.length} รายการ {filteredPreviewData.length !== previewData.length && `จากทั้งหมด ${previewData.length}`})
+                                    </h3>
+                                </div>
                                 <div className="overflow-x-auto">
                                     <table className="w-full text-sm border-collapse">
                                         <thead>
@@ -647,13 +827,14 @@ export function ExcelImportView() {
                                                 <th className="px-3 py-3 text-left font-bold text-slate-700 dark:text-slate-300 min-w-[120px]">หมวดหมู่</th>
                                                 <th className="px-3 py-3 text-center font-bold text-slate-700 dark:text-slate-300">หน่วย</th>
                                                 <th className="px-3 py-3 text-center font-bold text-slate-700 dark:text-slate-300">สถานะ</th>
+                                                <th className="px-3 py-3 text-right font-bold text-blue-600 dark:text-blue-400 whitespace-nowrap">ราคากลาง</th>
                                                 {[1, 2, 3, 4, 5, 6, 7, 8, 9].map(i => (
                                                     <th key={i} className="px-3 py-3 text-right font-bold text-slate-500 whitespace-nowrap">ราคา {i}</th>
                                                 ))}
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            {previewData.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage).map((item, idx) => (
+                                            {filteredPreviewData.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage).map((item, idx) => (
                                                 <tr key={idx} className="border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700/50">
                                                     <td className="px-3 py-3 font-mono text-[10px] sticky left-0 bg-white dark:bg-slate-800 z-10">{item.code}</td>
                                                     <td className="px-3 py-3 sticky left-[100px] bg-white dark:bg-slate-800 z-10 border-r border-slate-200 dark:border-slate-700">
@@ -668,9 +849,17 @@ export function ExcelImportView() {
                                                     <td className="px-3 py-3 text-center">
                                                         {item.isNew ? (
                                                             <Badge variant="success" className="text-[10px]">เพิ่มใหม่</Badge>
+                                                        ) : item.isUnchanged ? (
+                                                            <Badge variant="default" className="text-[10px] bg-slate-100 text-slate-500 border-slate-200">คงเดิม</Badge>
                                                         ) : (
-                                                            <Badge variant="info" className="text-[10px]">อัปเดต</Badge>
+                                                            <div className="flex items-center justify-center gap-1">
+                                                                <Badge variant="info" className="text-[10px]">อัปเดต</Badge>
+                                                                <Pencil size={10} className="text-blue-500" title="มีการแก้ไขข้อมูล" />
+                                                            </div>
                                                         )}
+                                                    </td>
+                                                    <td className="px-3 py-3 text-right bg-blue-50/30 dark:bg-blue-900/10">
+                                                        {renderPriceDiff(item.isNew ? undefined : item.oldData?.basePrice, item.basePrice)}
                                                     </td>
                                                     {[1, 2, 3, 4, 5, 6, 7, 8, 9].map(level => {
                                                         const pInfo = item.prices.find(p => p.level === level.toString());
@@ -688,10 +877,10 @@ export function ExcelImportView() {
                                 </div>
 
                                 {/* Pagination Controls */}
-                                {previewData.length > itemsPerPage && (
+                                {filteredPreviewData.length > itemsPerPage && (
                                     <div className="p-4 bg-slate-50 dark:bg-slate-800/30 border-t border-slate-200 dark:border-slate-700 flex items-center justify-between">
                                         <div className="text-sm text-slate-500">
-                                            แสดง {(currentPage - 1) * itemsPerPage + 1} ถึง {Math.min(currentPage * itemsPerPage, previewData.length)} จาก {previewData.length} รายการ
+                                            แสดง {(currentPage - 1) * itemsPerPage + 1} ถึง {Math.min(currentPage * itemsPerPage, filteredPreviewData.length)} จาก {filteredPreviewData.length} รายการ
                                         </div>
                                         <div className="flex gap-2">
                                             <Button
@@ -704,12 +893,12 @@ export function ExcelImportView() {
                                                 <ChevronLeft size={16} />
                                             </Button>
                                             <div className="flex items-center gap-1">
-                                                {Array.from({ length: Math.ceil(previewData.length / itemsPerPage) }).map((_, i) => {
+                                                {Array.from({ length: Math.ceil(filteredPreviewData.length / itemsPerPage) }).map((_, i) => {
                                                     const pageNum = i + 1;
                                                     // Only show first, last, and pages around current
                                                     if (
                                                         pageNum === 1 ||
-                                                        pageNum === Math.ceil(previewData.length / itemsPerPage) ||
+                                                        pageNum === Math.ceil(filteredPreviewData.length / itemsPerPage) ||
                                                         (pageNum >= currentPage - 1 && pageNum <= currentPage + 1)
                                                     ) {
                                                         return (
@@ -736,7 +925,7 @@ export function ExcelImportView() {
                                             <Button
                                                 variant="outline"
                                                 size="sm"
-                                                disabled={currentPage === Math.ceil(previewData.length / itemsPerPage)}
+                                                disabled={currentPage === Math.ceil(filteredPreviewData.length / itemsPerPage)}
                                                 onClick={() => setCurrentPage(prev => prev + 1)}
                                                 className="px-2"
                                             >
@@ -928,15 +1117,14 @@ export function ExcelImportView() {
                 size={importResult?.failedItems.length ? 'large' : 'medium'}
             >
                 <div className="space-y-6">
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                         <button
                             type="button"
                             onClick={() => setResultTab('created')}
-                            className={`p-4 rounded-xl border flex items-center gap-4 text-left transition cursor-pointer focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 ${
-                                resultTab === 'created'
-                                    ? 'bg-green-100 dark:bg-green-900/40 border-green-300 dark:border-green-500'
-                                    : 'bg-green-50 dark:bg-green-900/20 border-green-100 dark:border-green-900/30'
-                            }`}
+                            className={`p-4 rounded-xl border flex items-center gap-4 text-left transition cursor-pointer focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 ${resultTab === 'created'
+                                ? 'bg-green-100 dark:bg-green-900/40 border-green-300 dark:border-green-500'
+                                : 'bg-green-50 dark:bg-green-900/20 border-green-100 dark:border-green-900/30'
+                                }`}
                         >
                             <div className="w-10 h-10 bg-green-500 text-white rounded-full flex items-center justify-center shrink-0">
                                 <CheckCircle size={24} />
@@ -949,11 +1137,10 @@ export function ExcelImportView() {
                         <button
                             type="button"
                             onClick={() => setResultTab('updated')}
-                            className={`p-4 rounded-xl border flex items-center gap-4 text-left transition cursor-pointer focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 ${
-                                resultTab === 'updated'
-                                    ? 'bg-blue-100 dark:bg-blue-900/40 border-blue-300 dark:border-blue-500'
-                                    : 'bg-blue-50 dark:bg-blue-900/20 border-blue-100 dark:border-blue-900/30'
-                            }`}
+                            className={`p-4 rounded-xl border flex items-center gap-4 text-left transition cursor-pointer focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 ${resultTab === 'updated'
+                                ? 'bg-blue-100 dark:bg-blue-900/40 border-blue-300 dark:border-blue-500'
+                                : 'bg-blue-50 dark:bg-blue-900/20 border-blue-100 dark:border-blue-900/30'
+                                }`}
                         >
                             <div className="w-10 h-10 bg-blue-500 text-white rounded-full flex items-center justify-center shrink-0">
                                 <History size={24} />
@@ -963,18 +1150,26 @@ export function ExcelImportView() {
                                 <p className="text-xl font-bold text-blue-700 dark:text-blue-300">{importResult?.updated}</p>
                             </div>
                         </button>
+                        <div className="p-4 rounded-xl border bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 flex items-center gap-4 text-left">
+                            <div className="w-10 h-10 bg-slate-400 text-white rounded-full flex items-center justify-center shrink-0">
+                                <Save size={24} />
+                            </div>
+                            <div>
+                                <p className="text-xs text-slate-500 font-medium">คงเดิม</p>
+                                <p className="text-xl font-bold text-slate-700 dark:text-slate-300">{importResult?.unchanged}</p>
+                            </div>
+                        </div>
                         <button
                             type="button"
                             onClick={() => setResultTab('failed')}
-                            className={`p-4 rounded-xl border flex items-center gap-4 text-left transition cursor-pointer focus:outline-none focus:ring-2 focus:ring-offset-2 ${
-                                resultTab === 'failed'
-                                    ? importResult?.failed
-                                        ? 'bg-red-100 dark:bg-red-900/40 border-red-300 dark:border-red-500'
-                                        : 'bg-slate-200 dark:bg-slate-700 border-slate-400 dark:border-slate-500'
-                                    : importResult?.failed
-                                        ? 'bg-red-50 dark:bg-red-900/20 border-red-100 dark:border-red-900/30'
-                                        : 'bg-slate-50 dark:bg-slate-800 border-slate-100 dark:border-slate-700'
-                            }`}
+                            className={`p-4 rounded-xl border flex items-center gap-4 text-left transition cursor-pointer focus:outline-none focus:ring-2 focus:ring-offset-2 ${resultTab === 'failed'
+                                ? importResult?.failed
+                                    ? 'bg-red-100 dark:bg-red-900/40 border-red-300 dark:border-red-500'
+                                    : 'bg-slate-200 dark:bg-slate-700 border-slate-400 dark:border-slate-500'
+                                : importResult?.failed
+                                    ? 'bg-red-50 dark:bg-red-900/20 border-red-100 dark:border-red-900/30'
+                                    : 'bg-slate-50 dark:bg-slate-800 border-slate-100 dark:border-slate-700'
+                                }`}
                         >
                             <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${importResult?.failed ? 'bg-red-500 text-white' : 'bg-slate-300 text-white'}`}>
                                 <AlertCircle size={24} />
