@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { ShoppingCart, Plus, Trash2, Search, Check, Grid3x3, Clock, Gift } from 'lucide-react';
+import { ShoppingCart, Plus, Trash2, Search, Check, Grid3x3, Clock, Gift, Truck, Store } from 'lucide-react';
 import { useProducts, useWarehouses, useProductCategories } from '../hooks/useInventory';
 import { ordersService } from '../services/ordersService';
 import { productTierPriceService } from '../services/customerTierService';
@@ -19,7 +19,10 @@ interface OrderItem {
   unit_price: number;
   discount_percent: number | ''; // allow empty while typing
   is_bonus?: boolean; // ของแถม
+  fulfillment_method?: 'delivery' | 'pickup'; // วิธีรับสินค้า
 }
+
+type FulfillmentMode = 'delivery' | 'pickup' | 'mixed';
 
 // LocalStorage keys
 const RECENT_PRODUCTS_KEY = 'recent_products';
@@ -47,6 +50,7 @@ export function CreateOrderView() {
   const [deliveryDate, setDeliveryDate] = useState('');
 
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [fulfillmentMode, setFulfillmentMode] = useState<FulfillmentMode>('delivery');
 
   // Filter warehouses based on user branch
   const filteredWarehouses = useMemo(() => {
@@ -223,7 +227,8 @@ export function CreateOrderView() {
     }
 
     // ตรวจสอบว่ามีสินค้านี้แล้วหรือไม่ (ถ้าไม่ใช่ของแถม)
-    if (!asBonus) {
+    // ในโหมดผสม: อนุญาตสินค้าเดียวกันซ้ำได้ เพื่อแยก บางส่วนจัดส่ง / บางส่วนรับเอง
+    if (!asBonus && fulfillmentMode !== 'mixed') {
       const existingItem = orderItems.find(
         item => item.product_id === product.id && !item.is_bonus
       );
@@ -251,6 +256,7 @@ export function CreateOrderView() {
         unit_price: price,
         discount_percent: '', // let user type freely
         is_bonus: asBonus,
+        fulfillment_method: fulfillmentMode === 'mixed' ? 'delivery' : fulfillmentMode,
       };
 
       setOrderItems([...orderItems, newItem]);
@@ -435,6 +441,9 @@ export function CreateOrderView() {
           unit_price: item.is_bonus ? 0 : item.unit_price, // ของแถมราคาเป็น 0
           discount_percent: Number(item.discount_percent || 0),
           is_bonus: item.is_bonus || false,
+          fulfillment_method: fulfillmentMode === 'mixed'
+            ? (item.fulfillment_method || 'delivery')
+            : fulfillmentMode,
         }))
       );
 
@@ -446,6 +455,7 @@ export function CreateOrderView() {
       setOrderItems([]);
       setNotes('');
       setDeliveryDate('');
+      setFulfillmentMode('delivery');
     } catch (err: any) {
       error(err.message || 'เกิดข้อผิดพลาดในการสร้างออเดอร์');
     } finally {
@@ -565,6 +575,52 @@ export function CreateOrderView() {
                       </div>
                     )}
                   </div>
+                )}
+              </div>
+            </Card>
+
+            {/* Fulfillment Method Selection */}
+            <Card>
+              <div className="p-6">
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">วิธีรับสินค้า</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  {[
+                    { value: 'delivery' as FulfillmentMode, label: 'ทั้งหมดจัดส่ง', icon: Truck, desc: 'บริษัทจัดส่งทุกรายการ', activeClasses: 'border-blue-500 bg-blue-50 dark:bg-blue-900/20', iconClasses: 'text-blue-600 dark:text-blue-400' },
+                    { value: 'pickup' as FulfillmentMode, label: 'ทั้งหมดรับเอง', icon: Store, desc: 'ลูกค้ามารับเองทั้งหมด', activeClasses: 'border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20', iconClasses: 'text-emerald-600 dark:text-emerald-400' },
+                    { value: 'mixed' as FulfillmentMode, label: 'ผสม (กำหนดรายการ)', icon: ShoppingCart, desc: 'กำหนดรายการละ', activeClasses: 'border-amber-500 bg-amber-50 dark:bg-amber-900/20', iconClasses: 'text-amber-600 dark:text-amber-400' },
+                  ].map(opt => (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => setFulfillmentMode(opt.value)}
+                      className={`p-4 rounded-xl border-2 transition-all text-left ${fulfillmentMode === opt.value
+                          ? opt.activeClasses
+                          : 'border-gray-200 dark:border-slate-700 hover:border-gray-300 dark:hover:border-slate-600'
+                        }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <opt.icon className={`w-5 h-5 ${fulfillmentMode === opt.value
+                            ? opt.iconClasses
+                            : 'text-gray-400 dark:text-gray-500'
+                          }`} />
+                        <div>
+                          <p className={`font-semibold text-sm ${fulfillmentMode === opt.value
+                              ? 'text-gray-900 dark:text-white'
+                              : 'text-gray-700 dark:text-gray-300'
+                            }`}>{opt.label}</p>
+                          <p className="text-xs text-gray-500 dark:text-gray-400">{opt.desc}</p>
+                        </div>
+                        {fulfillmentMode === opt.value && (
+                          <Check className={`w-5 h-5 ml-auto ${opt.iconClasses}`} />
+                        )}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+                {fulfillmentMode === 'mixed' && (
+                  <p className="mt-3 text-sm text-amber-600 dark:text-amber-400">
+                    💡 เลือกวิธีรับสินค้าในคอลัมน์ "วิธีรับ" ของตารางสินค้าด้านล่าง
+                  </p>
                 )}
               </div>
             </Card>
@@ -827,12 +883,13 @@ export function CreateOrderView() {
                   <div className="overflow-x-auto">
                     <table className="w-full table-fixed">
                       <colgroup>
-                        <col className="w-[28%]" />
+                        <col className={fulfillmentMode === 'mixed' ? 'w-[22%]' : 'w-[28%]'} />
                         <col className="w-[10%]" />
                         <col className="w-[14%]" />
                         <col className="w-[14%]" />
                         <col className="w-[14%]" />
                         <col className="w-[14%]" />
+                        {fulfillmentMode === 'mixed' && <col className="w-[6%]" />}
                         <col className="w-[6%]" />
                       </colgroup>
                       <thead>
@@ -843,6 +900,9 @@ export function CreateOrderView() {
                           <th className="text-center py-3 px-2 text-sm font-semibold text-gray-700 dark:text-gray-300">จำนวน</th>
                           <th className="text-center py-3 px-2 text-sm font-semibold text-gray-700 dark:text-gray-300">ส่วนลด%</th>
                           <th className="text-right py-3 px-2 text-sm font-semibold text-gray-700 dark:text-gray-300">รวม</th>
+                          {fulfillmentMode === 'mixed' && (
+                            <th className="text-center py-3 px-2 text-sm font-semibold text-gray-700 dark:text-gray-300">วิธีรับ</th>
+                          )}
                           <th className="text-center py-3 px-2 text-sm font-semibold text-gray-700 dark:text-gray-300"></th>
                         </tr>
                       </thead>
@@ -923,6 +983,22 @@ export function CreateOrderView() {
                                   <span>{new Intl.NumberFormat('th-TH').format(lineTotal)} ฿</span>
                                 )}
                               </td>
+                              {fulfillmentMode === 'mixed' && (
+                                <td className="py-3 px-2 text-center align-top">
+                                  <select
+                                    value={item.fulfillment_method || 'delivery'}
+                                    onChange={(e) => {
+                                      const updated = [...orderItems];
+                                      updated[index] = { ...updated[index], fulfillment_method: e.target.value as 'delivery' | 'pickup' };
+                                      setOrderItems(updated);
+                                    }}
+                                    className="w-full px-1 py-1 border border-gray-300 dark:border-slate-600 rounded text-xs bg-white dark:bg-slate-800 text-gray-900 dark:text-white"
+                                  >
+                                    <option value="delivery">จัดส่ง</option>
+                                    <option value="pickup">รับเอง</option>
+                                  </select>
+                                </td>
+                              )}
                               <td className="py-3 px-2 text-center align-top">
                                 <button
                                   onClick={() => handleRemoveItem(index)}

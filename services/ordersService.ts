@@ -115,13 +115,17 @@ type OrderItem = {
   updated_at: string;
 };
 
-type OrderItemInsert = Omit<OrderItem, 'id' | 'created_at' | 'updated_at' | 'discount_amount' | 'line_total' | 'notes'> & {
+type OrderItemInsert = Omit<OrderItem, 'id' | 'created_at' | 'updated_at' | 'discount_amount' | 'line_total' | 'notes' | 'quantity_picked_up_at_store' | 'quantity_delivered' | 'quantity_remaining' | 'fulfillment_method'> & {
   id?: string;
   created_at?: string;
   updated_at?: string;
   discount_amount?: number | null;
   line_total?: number | null;
   notes?: string | null;
+  quantity_picked_up_at_store?: number;
+  quantity_delivered?: number;
+  quantity_remaining?: number;
+  fulfillment_method?: 'delivery' | 'pickup';
 };
 
 // ========================================
