@@ -11,6 +11,7 @@ import { LoadingSpinner } from '../components/ui/LoadingSpinner';
 import { ToastContainer } from '../components/ui/Toast';
 import { useAuth, useToast } from '../hooks';
 import { supabase } from '../lib/supabase';
+import { PaymentStatusBadge, PaymentStatus } from '../components/order/PaymentStatusBadge';
 
 interface OrderItem {
   product_id: string;
@@ -45,6 +46,7 @@ export function CreateOrderView() {
   const [recentProducts, setRecentProducts] = useState<string[]>([]);
   const [notes, setNotes] = useState('');
   const [deliveryDate, setDeliveryDate] = useState('');
+  const [paymentStatus, setPaymentStatus] = useState<PaymentStatus | ''>('');
 
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -435,7 +437,8 @@ export function CreateOrderView() {
           unit_price: item.is_bonus ? 0 : item.unit_price, // ของแถมราคาเป็น 0
           discount_percent: Number(item.discount_percent || 0),
           is_bonus: item.is_bonus || false,
-        }))
+        })),
+        paymentStatus || null
       );
 
       success('สร้างออเดอร์เรียบร้อย');
@@ -446,6 +449,7 @@ export function CreateOrderView() {
       setOrderItems([]);
       setNotes('');
       setDeliveryDate('');
+      setPaymentStatus('');
     } catch (err: any) {
       error(err.message || 'เกิดข้อผิดพลาดในการสร้างออเดอร์');
     } finally {
@@ -975,6 +979,11 @@ export function CreateOrderView() {
                       {new Intl.NumberFormat('th-TH').format(calculateTotal.total)} ฿
                     </span>
                   </div>
+                  {paymentStatus && (
+                    <div className="flex justify-center pt-2">
+                      <PaymentStatusBadge status={paymentStatus} />
+                    </div>
+                  )}
                 </div>
 
                 <div className="space-y-4 mb-6">
@@ -1001,6 +1010,23 @@ export function CreateOrderView() {
                       rows={3}
                       placeholder="หมายเหตุเพิ่มเติม..."
                     />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      สถานะการชำระเงิน
+                    </label>
+                    <select
+                      value={paymentStatus}
+                      onChange={(e) => setPaymentStatus(e.target.value as PaymentStatus | '')}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-gray-900 dark:text-white"
+                    >
+                      <option value="">-- ไม่ระบุ --</option>
+                      <option value="ชำระแล้ว">ชำระแล้ว</option>
+                      <option value="รอชำระ">รอชำระ</option>
+                      <option value="นัดชำระหนี้คงค้างเรียบร้อยแล้ว">นัดชำระหนี้คงค้างเรียบร้อยแล้ว</option>
+                      <option value="รอชำระหนี้คงค้าง">รอชำระหนี้คงค้าง</option>
+                    </select>
                   </div>
                 </div>
 
