@@ -212,7 +212,7 @@ export const ordersService = {
 
     const { data: items, error: itemsError } = await supabase
       .from('order_items')
-      .select('order_id, product_id, quantity, quantity_picked_up_at_store, quantity_delivered')
+      .select('order_id, product_id, quantity, quantity_picked_up_at_store, quantity_delivered, fulfillment_method')
       .in('order_id', orderIds);
 
     if (itemsError) {
@@ -220,9 +220,13 @@ export const ordersService = {
       return [];
     }
 
-    // ออเดอร์ที่ยังไม่มีทริป (delivery_trip_id null) — ใช้เฉพาะ order_items.quantity_delivered
+    // ออเดอร์ที่ยังไม่มีทริป — remaining คำนวณเฉพาะ fulfillment_method = 'delivery'
+    // รายการ pickup ไม่นำมานับ (ลูกค้ามารับเอง ไม่ต้องจัดทริป)
     const orderIdToRemaining = new Map<string, number>();
     for (const row of items ?? []) {
+      const method = (row.fulfillment_method ?? 'delivery') as string;
+      if (method === 'pickup') continue;
+
       const pickedUp = Number(row.quantity_picked_up_at_store ?? 0);
       const delivered = Number(row.quantity_delivered ?? 0);
       const rem = Math.max(0, Number(row.quantity) - pickedUp - delivered);

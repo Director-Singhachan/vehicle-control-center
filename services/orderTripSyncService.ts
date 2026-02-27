@@ -72,10 +72,10 @@ export const orderTripSyncService = {
         };
       }
 
-      // 3. ดึง order items
-      const { data: orderItems, error: itemsError } = await supabase
+      // 3. ดึง order items (เฉพาะ fulfillment_method = 'delivery' — pickup ไม่ sync)
+      const { data: allOrderItems, error: itemsError } = await supabase
         .from('order_items')
-        .select('id, product_id, quantity, is_bonus')
+        .select('id, product_id, quantity, is_bonus, fulfillment_method')
         .eq('order_id', orderId);
 
       if (itemsError) {
@@ -85,10 +85,14 @@ export const orderTripSyncService = {
         };
       }
 
-      if (!orderItems || orderItems.length === 0) {
+      const orderItems = (allOrderItems || []).filter(
+        (i: any) => (i.fulfillment_method ?? 'delivery') !== 'pickup'
+      );
+
+      if (orderItems.length === 0) {
         return {
           success: true,
-          message: 'ออเดอร์นี้ไม่มีรายการสินค้า',
+          message: 'ออเดอร์นี้ไม่มีรายการจัดส่งที่ต้อง sync (เฉพาะ delivery)',
         };
       }
 
