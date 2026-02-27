@@ -69,6 +69,8 @@ type Order = {
   approved_by: string | null;
   approved_at: string | null;
   delivery_trip_id: string | null;
+  payment_status: string | null;
+  delivery_time_slot: string | null;
 };
 
 type OrderInsert = {
@@ -91,6 +93,8 @@ type OrderInsert = {
   approved_at?: string | null;
   delivery_trip_id?: string | null;
   warehouse_id?: string | null;
+  payment_status?: string | null;
+  delivery_time_slot?: string | null;
 };
 
 type OrderUpdate = Partial<OrderInsert>;
@@ -259,12 +263,14 @@ export const ordersService = {
       unit_price: number;
       discount_percent?: number;
       is_bonus?: boolean;
-    }>
+    }>,
+    payment_status?: string | null,
+    delivery_time_slot?: string | null
   ) {
     // สร้างออเดอร์
     const { data: order, error: orderError } = await supabase
       .from('orders')
-      .insert(orderData as any)
+      .insert({ ...orderData, payment_status, delivery_time_slot } as any)
       .select()
       .single();
 
