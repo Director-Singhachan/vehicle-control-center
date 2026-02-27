@@ -110,6 +110,7 @@ type OrderItem = {
   line_total: number | null;
   notes: string | null;
   is_bonus?: boolean;
+  fulfillment_method: 'delivery' | 'pickup'; // delivery = จัดส่ง, pickup = ลูกค้ามารับเอง
   created_at: string;
   updated_at: string;
 };
@@ -259,6 +260,7 @@ export const ordersService = {
       unit_price: number;
       discount_percent?: number;
       is_bonus?: boolean;
+      fulfillment_method?: 'delivery' | 'pickup';
     }>
   ) {
     // สร้างออเดอร์
@@ -287,6 +289,7 @@ export const ordersService = {
         discount_percent: item.discount_percent || 0,
         discount_amount: discountAmount,
         line_total: lineTotal,
+        fulfillment_method: item.fulfillment_method || 'delivery',
       };
 
       // เพิ่ม is_bonus ถ้ามี (รองรับกรณีที่ migration ยังไม่ได้รัน)
