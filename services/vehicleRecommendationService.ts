@@ -75,15 +75,45 @@ interface ProductInfo {
   volume_liter: number | null;
 }
 
+/** Per-trip record for overlap filter + time-decay */
+interface TripRecord {
+  planned_date: string;
+  store_ids: string[];
+  actual_weight_kg: number | null;
+  utilization: number | null;
+  packing_score: number | null;
+  had_issues: boolean;
+}
+
 interface HistoricalTripStats {
   vehicle_id: string;
   completed_trips: number;
+  trips: TripRecord[];
   avg_utilization: number | null;
   avg_weight_kg: number | null;
   issue_count: number;
   store_ids_served: string[];
   weight_range: { min: number; max: number } | null;
   packing_score_avg: number | null;
+}
+
+/** Decay weight by days ago: 0-30→1.0, 31-60→0.7, 61-90→0.4 */
+function getDecayWeight(plannedDate: string, refDate: string): number {
+  const a = new Date(plannedDate).getTime();
+  const b = new Date(refDate).getTime();
+  const daysAgo = Math.floor((b - a) / (24 * 60 * 60 * 1000));
+  if (daysAgo <= 30) return 1.0;
+  if (daysAgo <= 60) return 0.7;
+  if (daysAgo <= 90) return 0.4;
+  return 0.2;
+}
+
+/** Overlap = |intersection| / |target|; true if >= 0.5 */
+function hasStoreOverlap(tripStoreIds: string[], targetStoreIds: string[]): boolean {
+  if (targetStoreIds.length === 0) return true;
+  const targetSet = new Set(targetStoreIds);
+  const overlap = tripStoreIds.filter((id) => targetSet.has(id)).length;
+  return overlap / targetStoreIds.length >= 0.5;
 }
 
 // ============================================================
@@ -117,28 +147,25 @@ export const vehicleRecommendationService = {
     limit: number = 5
   ): Promise<VehicleRecommendation[]> => {
     try {
-      // 1. Fetch all active vehicles
-      const vehicles = await fetchVehicles();
+      // 1–4. Parallel fetch (ลดเวลารอ ~60%)
+      const [vehicles, loadEstimate, busyTripCountByVehicle, historicalStats] = await Promise.all([
+        fetchVehicles(),
+        estimateLoad(input.items),
+        getBusyVehicles(input.planned_date),
+        getHistoricalStats(),
+      ]);
+
       if (vehicles.length === 0) return [];
-
-      // 2. Estimate total load from items (enhanced: includes pallets + product properties)
-      const loadEstimate = await estimateLoad(input.items);
-
-      // 3. Check vehicle availability on planned date
-      const busyVehicleIds = await getBusyVehicles(input.planned_date);
-
-      // 4. Fetch historical trip data (last 90 days)
-      const historicalStats = await getHistoricalStats();
 
       // 5. Score each vehicle (8 dimensions)
       const scored = vehicles.map((vehicle) => {
         const scores = {
           capacity_fit: scoreCapacityFit(vehicle, loadEstimate),
-          load_similarity: scoreLoadSimilarity(vehicle.id, historicalStats, loadEstimate),
+          load_similarity: scoreLoadSimilarity(vehicle.id, historicalStats, loadEstimate, input.store_ids),
           product_compatibility: scoreProductCompatibility(vehicle, loadEstimate),
           pallet_efficiency: scorePalletEfficiency(vehicle, loadEstimate),
           historical_success: scoreHistoricalSuccess(vehicle.id, historicalStats, loadEstimate),
-          availability: scoreAvailability(vehicle.id, busyVehicleIds),
+          availability: scoreAvailability(vehicle.id, busyTripCountByVehicle),
           branch_match: scoreBranchMatch(vehicle.branch, input.branch),
           store_familiarity: scoreStoreFamiliarity(vehicle.id, input.store_ids, historicalStats),
         };
@@ -169,7 +196,8 @@ export const vehicleRecommendationService = {
         }
 
         const confidence = determineConfidence(historicalStats, vehicle.id);
-        const reasoning = generateReasoning(scores, vehicle, loadEstimate, confidence);
+        const tripCount = busyTripCountByVehicle.get(vehicle.id) ?? 0;
+        const reasoning = generateReasoning(scores, vehicle, loadEstimate, confidence, tripCount);
 
         return {
           vehicle_id: vehicle.id,
@@ -194,7 +222,7 @@ export const vehicleRecommendationService = {
             estimated_pallets: loadEstimate.estimatedPallets,
             max_pallets: getVehicleMaxPallets(vehicle),
           },
-          historical_stats: getVehicleHistoricalSummary(vehicle.id, historicalStats),
+          historical_stats: getVehicleHistoricalSummary(vehicle.id, historicalStats, input.store_ids),
           reasoning,
           confidence,
         } as VehicleRecommendation;
@@ -471,7 +499,7 @@ async function estimateLoad(
   };
 }
 
-async function getBusyVehicles(plannedDate: string): Promise<Set<string>> {
+async function getBusyVehicles(plannedDate: string): Promise<Map<string, number>> {
   const { data, error } = await supabase
     .from('delivery_trips')
     .select('vehicle_id')
@@ -480,10 +508,15 @@ async function getBusyVehicles(plannedDate: string): Promise<Set<string>> {
 
   if (error) {
     console.error('[vehicleRecommendation] getBusyVehicles error:', error);
-    return new Set();
+    return new Map();
   }
 
-  return new Set((data || []).map((t: any) => t.vehicle_id));
+  const countByVehicle = new Map<string, number>();
+  for (const t of data || []) {
+    const vid = (t as any).vehicle_id;
+    countByVehicle.set(vid, (countByVehicle.get(vid) || 0) + 1);
+  }
+  return countByVehicle;
 }
 
 async function getHistoricalStats(): Promise<HistoricalTripStats[]> {
@@ -497,6 +530,7 @@ async function getHistoricalStats(): Promise<HistoricalTripStats[]> {
     .select(`
       id,
       vehicle_id,
+      planned_date,
       space_utilization_percent,
       actual_weight_kg,
       had_packing_issues,
@@ -511,15 +545,31 @@ async function getHistoricalStats(): Promise<HistoricalTripStats[]> {
     return [];
   }
 
-  // Aggregate by vehicle
+  const refDate = new Date().toISOString().split('T')[0];
+
   const statsMap = new Map<string, HistoricalTripStats>();
 
   for (const trip of (trips || [])) {
     const vid = trip.vehicle_id;
+    const storeIds = (trip.delivery_trip_stores || []).map((s: any) => s.store_id);
+    const util = trip.space_utilization_percent ?? null;
+    const weight = trip.actual_weight_kg ?? null;
+    const packScore = (trip as any).packing_efficiency_score ?? null;
+
+    const record: TripRecord = {
+      planned_date: trip.planned_date || refDate,
+      store_ids: storeIds,
+      actual_weight_kg: weight,
+      utilization: util,
+      packing_score: packScore,
+      had_issues: Boolean(trip.had_packing_issues),
+    };
+
     if (!statsMap.has(vid)) {
       statsMap.set(vid, {
         vehicle_id: vid,
         completed_trips: 0,
+        trips: [],
         avg_utilization: null,
         avg_weight_kg: null,
         issue_count: 0,
@@ -531,39 +581,57 @@ async function getHistoricalStats(): Promise<HistoricalTripStats[]> {
 
     const stat = statsMap.get(vid)!;
     stat.completed_trips += 1;
+    stat.trips.push(record);
+    if (record.had_issues) stat.issue_count += 1;
+    stat.store_ids_served.push(...storeIds);
 
-    if (trip.had_packing_issues) {
-      stat.issue_count += 1;
-    }
-
-    // Collect utilization values for averaging
-    if (trip.space_utilization_percent !== null && trip.space_utilization_percent !== undefined) {
-      const prevTotal = (stat.avg_utilization ?? 0) * (stat.completed_trips - 1);
-      stat.avg_utilization = (prevTotal + trip.space_utilization_percent) / stat.completed_trips;
-    }
-
-    if (trip.actual_weight_kg !== null && trip.actual_weight_kg !== undefined) {
-      const prevTotal = (stat.avg_weight_kg ?? 0) * (stat.completed_trips - 1);
-      stat.avg_weight_kg = (prevTotal + trip.actual_weight_kg) / stat.completed_trips;
-      // Track weight range
-      if (!stat.weight_range) {
-        stat.weight_range = { min: trip.actual_weight_kg, max: trip.actual_weight_kg };
-      } else {
-        stat.weight_range.min = Math.min(stat.weight_range.min, trip.actual_weight_kg);
-        stat.weight_range.max = Math.max(stat.weight_range.max, trip.actual_weight_kg);
+    if (weight !== null) {
+      if (!stat.weight_range) stat.weight_range = { min: weight, max: weight };
+      else {
+        stat.weight_range.min = Math.min(stat.weight_range.min, weight);
+        stat.weight_range.max = Math.max(stat.weight_range.max, weight);
       }
     }
+  }
 
-    // Track packing score
-    const packScore = (trip as any).packing_efficiency_score;
-    if (packScore !== null && packScore !== undefined) {
-      const prevPackTotal = (stat.packing_score_avg ?? 0) * (stat.completed_trips - 1);
-      stat.packing_score_avg = (prevPackTotal + packScore) / stat.completed_trips;
+  for (const stat of statsMap.values()) {
+    if (stat.trips.length > 0) {
+      // Weighted average utilization (time-decay)
+      let sumW = 0;
+      let sumUW = 0;
+      for (const t of stat.trips) {
+        if (t.utilization !== null) {
+          const w = getDecayWeight(t.planned_date, refDate);
+          sumUW += t.utilization * w;
+          sumW += w;
+        }
+      }
+      stat.avg_utilization = sumW > 0 ? sumUW / sumW : null;
+
+      // Weighted average weight (time-decay)
+      let sumWW = 0;
+      let sumWWt = 0;
+      for (const t of stat.trips) {
+        if (t.actual_weight_kg !== null) {
+          const w = getDecayWeight(t.planned_date, refDate);
+          sumWW += t.actual_weight_kg * w;
+          sumWWt += w;
+        }
+      }
+      stat.avg_weight_kg = sumWWt > 0 ? sumWW / sumWWt : null;
+
+      // Weighted average packing score (time-decay)
+      let sumPW = 0;
+      let sumPWt = 0;
+      for (const t of stat.trips) {
+        if (t.packing_score !== null) {
+          const w = getDecayWeight(t.planned_date, refDate);
+          sumPW += t.packing_score * w;
+          sumPWt += w;
+        }
+      }
+      stat.packing_score_avg = sumPWt > 0 ? sumPW / sumPWt : null;
     }
-
-    // Collect store IDs served
-    const storeIds = (trip.delivery_trip_stores || []).map((s: any) => s.store_id);
-    stat.store_ids_served.push(...storeIds);
   }
 
   return Array.from(statsMap.values());
@@ -680,22 +748,38 @@ function scoreHistoricalSuccess(
   return Math.max(0, Math.min(100, Math.round(score)));
 }
 
-// ★ NEW: เทียบน้ำหนักทริปปัจจุบันกับประวัติน้ำหนักของรถคันนี้
+// ★ เทียบน้ำหนักทริปปัจจุบันกับประวัติ — ใช้เฉพาะทริปที่ overlap ≥ 50% กับร้านปลายทาง
 function scoreLoadSimilarity(
   vehicleId: string,
   stats: HistoricalTripStats[],
-  load: LoadEstimate
+  load: LoadEstimate,
+  targetStoreIds: string[]
 ): number {
   const vehicleStat = stats.find((s) => s.vehicle_id === vehicleId);
-  if (!vehicleStat || vehicleStat.avg_weight_kg === null || load.totalWeightKg <= 0) {
+  if (!vehicleStat || !vehicleStat.trips.length || load.totalWeightKg <= 0) {
     return 50; // No data: neutral
   }
 
-  const avgWeight = vehicleStat.avg_weight_kg;
+  const refDate = new Date().toISOString().split('T')[0];
+  const similar = vehicleStat.trips.filter((t) => hasStoreOverlap(t.store_ids, targetStoreIds));
+  if (similar.length === 0) return 50; // No similar trips
+
+  let sumW = 0;
+  let sumWW = 0;
+  for (const t of similar) {
+    if (t.actual_weight_kg !== null) {
+      const w = getDecayWeight(t.planned_date, refDate);
+      sumWW += t.actual_weight_kg * w;
+      sumW += w;
+    }
+  }
+  const avgWeight = sumW > 0 ? sumWW / sumW : null;
+  if (avgWeight === null) return 50;
+
   const diff = Math.abs(load.totalWeightKg - avgWeight);
   const diffPct = diff / avgWeight;
 
-  // ±15% → 100, ±30% → 75, ±50% → 50, >80% → 25
+  // ±15% → 100, ±30% → 85, ±50% → 65, ±80% → 40, >80% → 25
   if (diffPct <= 0.15) return 100;
   if (diffPct <= 0.30) return 85;
   if (diffPct <= 0.50) return 65;
@@ -741,8 +825,8 @@ function scoreProductCompatibility(
 function getVehicleMaxPallets(vehicle: VehicleRow): number | null {
   const config =
     vehicle.loading_constraints != null &&
-    typeof vehicle.loading_constraints === 'object' &&
-    typeof (vehicle.loading_constraints as any).max_pallets === 'number'
+      typeof vehicle.loading_constraints === 'object' &&
+      typeof (vehicle.loading_constraints as any).max_pallets === 'number'
       ? (vehicle.loading_constraints as any).max_pallets
       : null;
   if (config != null && config > 0) return config;
@@ -778,8 +862,11 @@ function scorePalletEfficiency(
   return 60;
 }
 
-function scoreAvailability(vehicleId: string, busyVehicleIds: Set<string>): number {
-  return busyVehicleIds.has(vehicleId) ? 10 : 100;
+function scoreAvailability(vehicleId: string, busyTripCount: Map<string, number>): number {
+  const count = busyTripCount.get(vehicleId) ?? 0;
+  if (count === 0) return 100;
+  if (count === 1) return 50;
+  return 10; // 2+
 }
 
 function scoreBranchMatch(vehicleBranch: string | null, orderBranch?: string): number {
@@ -829,12 +916,18 @@ function determineConfidence(
 
 function getVehicleHistoricalSummary(
   vehicleId: string,
-  stats: HistoricalTripStats[]
+  stats: HistoricalTripStats[],
+  targetStoreIds: string[] = []
 ): VehicleRecommendation['historical_stats'] {
   const vehicleStat = stats.find((s) => s.vehicle_id === vehicleId);
   if (!vehicleStat) {
     return { similar_trips_count: 0, avg_utilization: null, success_rate: null };
   }
+
+  const similarCount =
+    targetStoreIds.length > 0
+      ? vehicleStat.trips.filter((t) => hasStoreOverlap(t.store_ids, targetStoreIds)).length
+      : vehicleStat.completed_trips;
 
   const successRate =
     vehicleStat.completed_trips > 0
@@ -842,7 +935,7 @@ function getVehicleHistoricalSummary(
       : null;
 
   return {
-    similar_trips_count: vehicleStat.completed_trips,
+    similar_trips_count: similarCount,
     avg_utilization: vehicleStat.avg_utilization !== null ? Math.round(vehicleStat.avg_utilization) : null,
     success_rate: successRate !== null ? Math.round(successRate) : null,
   };
@@ -852,7 +945,8 @@ function generateReasoning(
   scores: VehicleRecommendation['scores'],
   vehicle: VehicleRow,
   load: LoadEstimate,
-  confidence: 'high' | 'medium' | 'low'
+  confidence: 'high' | 'medium' | 'low',
+  tripCountToday: number = 0
 ): string {
   const parts: string[] = [];
 
@@ -897,7 +991,7 @@ function generateReasoning(
     if (load.hasFragile) parts.push('⚠️ มีสินค้าเปราะบาง');
   }
   if (scores.availability < 50) {
-    parts.push('⚠️ รถมีทริปอื่นในวันนี้');
+    parts.push(tripCountToday > 0 ? `⚠️ มีทริป ${tripCountToday} เที่ยวในวันนี้` : '⚠️ รถมีทริปอื่นในวันนี้');
   }
 
   if (parts.length === 0) {
