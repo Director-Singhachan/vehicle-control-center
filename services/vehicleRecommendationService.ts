@@ -1,7 +1,8 @@
 // Vehicle Recommendation Service - AI-powered vehicle suggestions for trip planning
-// Phase 1: Rule-based scoring algorithm using historical trip data
+// Phase 1+2: Rule-based scoring algorithm using historical trip data
 import { supabase } from '../lib/supabase';
 import { tripMetricsService } from './tripMetricsService';
+import { parseThaiAddress } from '../utils/parseThaiAddress';
 
 // ============================================================
 // Interfaces
@@ -24,13 +25,15 @@ export interface VehicleRecommendation {
   rank: number;
   scores: {
     capacity_fit: number; // 0-100
-    load_similarity: number; // 0-100 ★ NEW: น้ำหนักทริปใกล้เคียงประวัติรถ
-    product_compatibility: number; // 0-100 ★ NEW: สินค้า fragile/liquid/temp vs รถ
-    pallet_efficiency: number; // 0-100 ★ NEW: จำนวนพาเลท vs พื้นที่รถ
+    load_similarity: number; // 0-100 น้ำหนักทริปใกล้เคียงประวัติรถ
+    product_compatibility: number; // 0-100 สินค้า fragile/liquid/temp vs รถ
+    pallet_efficiency: number; // 0-100 จำนวนพาเลท vs พื้นที่รถ
     historical_success: number; // 0-100
     availability: number; // 0-100
     branch_match: number; // 0-100
     store_familiarity: number; // 0-100
+    district_familiarity: number; // 0-100 ★ Phase 2: รถคุ้นเคยอำเภอเดียวกัน
+    category_match: number; // 0-100 ★ Phase 2: หมวดสินค้าตรงกับประวัติ
   };
   capacity_info: {
     estimated_weight_kg: number;
@@ -79,6 +82,8 @@ interface ProductInfo {
 interface TripRecord {
   planned_date: string;
   store_ids: string[];
+  district_keys: string[]; // Phase 2: อำเภอของร้านในทริปนี้
+  product_categories: string[]; // Phase 2: หมวดสินค้าในทริปนี้
   actual_weight_kg: number | null;
   utilization: number | null;
   packing_score: number | null;
@@ -93,6 +98,8 @@ interface HistoricalTripStats {
   avg_weight_kg: number | null;
   issue_count: number;
   store_ids_served: string[];
+  district_keys_served: string[]; // Phase 2: อำเภอทั้งหมดที่เคยส่ง
+  product_categories_served: string[]; // Phase 2: หมวดสินค้าทั้งหมดที่เคยส่ง
   weight_range: { min: number; max: number } | null;
   packing_score_avg: number | null;
 }
@@ -117,22 +124,120 @@ function hasStoreOverlap(tripStoreIds: string[], targetStoreIds: string[]): bool
 }
 
 // ============================================================
-// Scoring Weights (configurable)
-// Logic ใหม่: ให้ความสำคัญกับประวัติข้อมูลทริปที่เคยวิ่งมาแล้ว
+// Scoring Weights — Phase 3: Dynamic Weights from Feedback Loop
 // ============================================================
 
-const WEIGHTS = {
-  // ★ ประวัติทริป (รวม 60%) — เน้นรถที่เคยวิ่งทริปคล้ายกัน
-  load_similarity: 0.18,     // น้ำหนักทริปใกล้เคียงที่เคยส่ง
-  historical_success: 0.25,  // จำนวนทริปสำเร็จ, utilization, packing, น้อยปัญหา
-  store_familiarity: 0.17,   // เคยส่งร้านเหล่านี้
-  // ความจุ/ความเหมาะสม (ต้องบรรทุกได้)
+/** Feature flag: เปิด/ปิด dynamic weights จาก feedback data */
+const ENABLE_DYNAMIC_WEIGHTS = false; // เปิดเมื่อมี feedback data เพียงพอ (≥30 records)
+
+/** Baseline weights — ค่าเริ่มต้นที่ใช้เมื่อปิด dynamic weights */
+const BASELINE_WEIGHTS = {
+  historical_success: 0.22,
+  load_similarity: 0.16,
+  store_familiarity: 0.14,
+  district_familiarity: 0.05,
+  category_match: 0.05,
   capacity_fit: 0.18,
   pallet_efficiency: 0.08,
   product_compatibility: 0.06,
-  availability: 0.05,
-  branch_match: 0.05,
+  availability: 0.03,
+  branch_match: 0.03,
 };
+
+type WeightKeys = keyof typeof BASELINE_WEIGHTS;
+
+/** Mutable WEIGHTS — จะถูก override จาก feedback ถ้าเปิด dynamic weights */
+let WEIGHTS = { ...BASELINE_WEIGHTS };
+
+/** Cache สำหรับ dynamic weights (refresh ทุก 30 นาที) */
+let _dynamicWeightsCache: { weights: typeof BASELINE_WEIGHTS; ts: number } | null = null;
+const DYNAMIC_WEIGHTS_TTL = 30 * 60 * 1000; // 30 minutes
+
+/**
+ * Phase 3G: Feedback Loop — อ่าน accepted/rejected จาก ai_trip_recommendations
+ * แล้วปรับ WEIGHTS ± ≤ 0.03 ต่อรอบ (clamp ที่ ±30% จาก baseline)
+ */
+async function computeDynamicWeights(): Promise<typeof BASELINE_WEIGHTS> {
+  const now = Date.now();
+  if (_dynamicWeightsCache && (now - _dynamicWeightsCache.ts) < DYNAMIC_WEIGHTS_TTL) {
+    return _dynamicWeightsCache.weights;
+  }
+
+  try {
+    // ดึง feedback ล่าสุด 100 records ที่มีสถานะ accepted/rejected
+    const { data: feedbacks, error } = await supabase
+      .from('ai_trip_recommendations')
+      .select('status, utilization_scores, confidence_score')
+      .in('status', ['accepted', 'rejected'])
+      .order('created_at', { ascending: false })
+      .limit(100);
+
+    if (error || !feedbacks || feedbacks.length < 10) {
+      // ถ้า feedback น้อยกว่า 10 → ใช้ baseline
+      const result = { ...BASELINE_WEIGHTS };
+      _dynamicWeightsCache = { weights: result, ts: now };
+      return result;
+    }
+
+    const accepted = feedbacks.filter((f: any) => f.status === 'accepted');
+    const rejected = feedbacks.filter((f: any) => f.status === 'rejected');
+    const acceptRate = accepted.length / feedbacks.length;
+
+    // คำนวณ delta: ถ้า accept rate สูง → เพิ่ม historical dimensions เล็กน้อย
+    // ถ้า reject rate สูง → ลด historical dimensions + เพิ่ม capacity dimensions
+    const delta: Partial<Record<WeightKeys, number>> = {};
+    const MAX_DELTA = 0.03;
+
+    if (acceptRate >= 0.7) {
+      // Users ยอมรับบ่อย → เพิ่ม historical weights เล็กน้อย
+      delta.historical_success = 0.01;
+      delta.store_familiarity = 0.01;
+      delta.district_familiarity = 0.005;
+      delta.category_match = 0.005;
+      // ลดจากที่อื่น
+      delta.capacity_fit = -0.01;
+      delta.branch_match = -0.01;
+    } else if (acceptRate <= 0.3) {
+      // Users reject บ่อย → เพิ่ม capacity, ลด historical
+      delta.capacity_fit = 0.02;
+      delta.pallet_efficiency = 0.01;
+      delta.historical_success = -0.02;
+      delta.load_similarity = -0.01;
+    }
+    // accept rate 30-70% → ไม่ปรับ
+
+    // Apply deltas with clamp ±30% of baseline
+    const result = { ...BASELINE_WEIGHTS };
+    for (const key of Object.keys(BASELINE_WEIGHTS) as WeightKeys[]) {
+      const base = BASELINE_WEIGHTS[key];
+      const d = delta[key] ?? 0;
+      const clamped = Math.max(-MAX_DELTA, Math.min(MAX_DELTA, d));
+      result[key] = Math.max(base * 0.7, Math.min(base * 1.3, base + clamped));
+    }
+
+    // Normalize to sum = 1.0
+    const total = Object.values(result).reduce((s, v) => s + v, 0);
+    if (total > 0) {
+      for (const key of Object.keys(result) as WeightKeys[]) {
+        result[key] = result[key] / total;
+      }
+    }
+
+    _dynamicWeightsCache = { weights: result, ts: now };
+    return result;
+  } catch (err) {
+    console.warn('[vehicleRecommendation] computeDynamicWeights error:', err);
+    const result = { ...BASELINE_WEIGHTS };
+    _dynamicWeightsCache = { weights: result, ts: now };
+    return result;
+  }
+}
+
+/** ดึง WEIGHTS ปัจจุบัน (baseline หรือ dynamic ตาม feature flag) */
+async function getActiveWeights(): Promise<typeof BASELINE_WEIGHTS> {
+  if (!ENABLE_DYNAMIC_WEIGHTS) return BASELINE_WEIGHTS;
+  return computeDynamicWeights();
+}
 
 // ============================================================
 // Service Implementation
@@ -147,17 +252,22 @@ export const vehicleRecommendationService = {
     limit: number = 5
   ): Promise<VehicleRecommendation[]> => {
     try {
-      // 1–4. Parallel fetch (ลดเวลารอ ~60%)
-      const [vehicles, loadEstimate, busyTripCountByVehicle, historicalStats] = await Promise.all([
+      // 1–6. Parallel fetch (ลดเวลารอ ~60%)
+      const [vehicles, loadEstimate, busyTripCountByVehicle, historicalStats, targetDistrictKeys, w] = await Promise.all([
         fetchVehicles(),
         estimateLoad(input.items),
         getBusyVehicles(input.planned_date),
-        getHistoricalStats(),
+        getHistoricalStatsCached(),
+        getStoreDistrictKeys(input.store_ids),
+        getActiveWeights(),
       ]);
 
       if (vehicles.length === 0) return [];
 
-      // 5. Score each vehicle (8 dimensions)
+      // Phase 2: หมวดสินค้าของออเดอร์ปัจจุบัน
+      const targetCategories = loadEstimate.productCategories;
+
+      // 7. Score each vehicle (10 dimensions)
       const scored = vehicles.map((vehicle) => {
         const scores = {
           capacity_fit: scoreCapacityFit(vehicle, loadEstimate),
@@ -168,17 +278,21 @@ export const vehicleRecommendationService = {
           availability: scoreAvailability(vehicle.id, busyTripCountByVehicle),
           branch_match: scoreBranchMatch(vehicle.branch, input.branch),
           store_familiarity: scoreStoreFamiliarity(vehicle.id, input.store_ids, historicalStats),
+          district_familiarity: scoreDistrictFamiliarity(vehicle.id, targetDistrictKeys, historicalStats),
+          category_match: scoreCategoryMatch(vehicle.id, targetCategories, historicalStats),
         };
 
         const overall_raw = Math.round(
-          scores.capacity_fit * WEIGHTS.capacity_fit +
-          scores.load_similarity * WEIGHTS.load_similarity +
-          scores.product_compatibility * WEIGHTS.product_compatibility +
-          scores.pallet_efficiency * WEIGHTS.pallet_efficiency +
-          scores.historical_success * WEIGHTS.historical_success +
-          scores.availability * WEIGHTS.availability +
-          scores.branch_match * WEIGHTS.branch_match +
-          scores.store_familiarity * WEIGHTS.store_familiarity
+          scores.capacity_fit * w.capacity_fit +
+          scores.load_similarity * w.load_similarity +
+          scores.product_compatibility * w.product_compatibility +
+          scores.pallet_efficiency * w.pallet_efficiency +
+          scores.historical_success * w.historical_success +
+          scores.availability * w.availability +
+          scores.branch_match * w.branch_match +
+          scores.store_familiarity * w.store_familiarity +
+          scores.district_familiarity * w.district_familiarity +
+          scores.category_match * w.category_match
         );
 
         // Hard penalty: ถ้าพาเลทไม่พอ หรือสินค้าไม่เข้ากับรถ → ลดคะแนนรวมอย่างรุนแรง
@@ -402,6 +516,7 @@ interface LoadEstimate {
   hasLiquid: boolean;
   hasTemperatureReq: boolean;
   tempRequirements: string[];
+  productCategories: string[]; // Phase 2: หมวดสินค้าที่อยู่ในออเดอร์
 }
 
 async function estimateLoad(
@@ -409,17 +524,17 @@ async function estimateLoad(
 ): Promise<LoadEstimate> {
   const productIds = [...new Set(items.map((i) => i.product_id))];
   if (productIds.length === 0) {
-    return { totalWeightKg: 0, totalVolumeLiter: 0, totalItems: 0, estimatedPallets: 0, hasFragile: false, hasLiquid: false, hasTemperatureReq: false, tempRequirements: [] };
+    return { totalWeightKg: 0, totalVolumeLiter: 0, totalItems: 0, estimatedPallets: 0, hasFragile: false, hasLiquid: false, hasTemperatureReq: false, tempRequirements: [], productCategories: [] };
   }
 
   const { data: products, error } = await supabase
     .from('products')
-    .select('id, product_name, weight_kg, volume_liter, is_fragile, is_liquid, requires_temperature, uses_pallet')
+    .select('id, product_name, weight_kg, volume_liter, is_fragile, is_liquid, requires_temperature, uses_pallet, category')
     .in('id', productIds);
 
   if (error) {
     console.error('[vehicleRecommendation] estimateLoad error:', error);
-    return { totalWeightKg: 0, totalVolumeLiter: 0, totalItems: items.length, estimatedPallets: 0, hasFragile: false, hasLiquid: false, hasTemperatureReq: false, tempRequirements: [] };
+    return { totalWeightKg: 0, totalVolumeLiter: 0, totalItems: items.length, estimatedPallets: 0, hasFragile: false, hasLiquid: false, hasTemperatureReq: false, tempRequirements: [], productCategories: [] };
   }
 
   const productMap = new Map<string, any>();
@@ -432,6 +547,7 @@ async function estimateLoad(
   let hasLiquid = false;
   let hasTemperatureReq = false;
   const tempReqSet = new Set<string>();
+  const categorySet = new Set<string>(); // Phase 2
 
   for (const item of items) {
     const product = productMap.get(item.product_id);
@@ -445,6 +561,7 @@ async function estimateLoad(
         hasTemperatureReq = true;
         tempReqSet.add(product.requires_temperature);
       }
+      if (product.category) categorySet.add(product.category); // Phase 2
     }
   }
 
@@ -496,6 +613,7 @@ async function estimateLoad(
     hasLiquid,
     hasTemperatureReq,
     tempRequirements: Array.from(tempReqSet),
+    productCategories: Array.from(categorySet),
   };
 }
 
@@ -535,7 +653,8 @@ async function getHistoricalStats(): Promise<HistoricalTripStats[]> {
       actual_weight_kg,
       had_packing_issues,
       packing_efficiency_score,
-      delivery_trip_stores (store_id)
+      delivery_trip_stores (store_id, stores:store_id (address)),
+      delivery_trip_items (products:product_id (category))
     `)
     .eq('status', 'completed')
     .gte('planned_date', fromDate);
@@ -551,7 +670,24 @@ async function getHistoricalStats(): Promise<HistoricalTripStats[]> {
 
   for (const trip of (trips || [])) {
     const vid = trip.vehicle_id;
-    const storeIds = (trip.delivery_trip_stores || []).map((s: any) => s.store_id);
+    const storeEntries = (trip as any).delivery_trip_stores || [];
+    const storeIds = storeEntries.map((s: any) => s.store_id);
+    // Phase 2: parse district from store address
+    const districtKeys: string[] = [];
+    for (const se of storeEntries) {
+      const addr = se.stores?.address;
+      if (addr) {
+        const parsed = parseThaiAddress(addr);
+        if (parsed.district) districtKeys.push(`อ.${parsed.district}`);
+      }
+    }
+    // Phase 2: product categories
+    const itemEntries = (trip as any).delivery_trip_items || [];
+    const prodCats: string[] = [];
+    for (const ie of itemEntries) {
+      const cat = ie.products?.category;
+      if (cat) prodCats.push(cat);
+    }
     const util = trip.space_utilization_percent ?? null;
     const weight = trip.actual_weight_kg ?? null;
     const packScore = (trip as any).packing_efficiency_score ?? null;
@@ -559,6 +695,8 @@ async function getHistoricalStats(): Promise<HistoricalTripStats[]> {
     const record: TripRecord = {
       planned_date: trip.planned_date || refDate,
       store_ids: storeIds,
+      district_keys: [...new Set(districtKeys)],
+      product_categories: [...new Set(prodCats)],
       actual_weight_kg: weight,
       utilization: util,
       packing_score: packScore,
@@ -574,6 +712,8 @@ async function getHistoricalStats(): Promise<HistoricalTripStats[]> {
         avg_weight_kg: null,
         issue_count: 0,
         store_ids_served: [],
+        district_keys_served: [],
+        product_categories_served: [],
         weight_range: null,
         packing_score_avg: null,
       });
@@ -584,6 +724,8 @@ async function getHistoricalStats(): Promise<HistoricalTripStats[]> {
     stat.trips.push(record);
     if (record.had_issues) stat.issue_count += 1;
     stat.store_ids_served.push(...storeIds);
+    stat.district_keys_served.push(...record.district_keys);
+    stat.product_categories_served.push(...record.product_categories);
 
     if (weight !== null) {
       if (!stat.weight_range) stat.weight_range = { min: weight, max: weight };
@@ -635,6 +777,93 @@ async function getHistoricalStats(): Promise<HistoricalTripStats[]> {
   }
 
   return Array.from(statsMap.values());
+}
+
+// ============================================================
+// Cache Layer: getHistoricalStatsCached (TTL 5 นาที)
+// ============================================================
+
+let _historicalStatsCache: { data: HistoricalTripStats[]; ts: number } | null = null;
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+async function getHistoricalStatsCached(): Promise<HistoricalTripStats[]> {
+  const now = Date.now();
+  if (_historicalStatsCache && (now - _historicalStatsCache.ts) < CACHE_TTL) {
+    return _historicalStatsCache.data;
+  }
+  const data = await getHistoricalStats();
+  _historicalStatsCache = { data, ts: now };
+  return data;
+}
+
+// ============================================================
+// Phase 2: District helpers
+// ============================================================
+
+/** ดึง district key ของร้านใน order ปัจจุบัน — ใช้ parseThaiAddress parse จาก address */
+async function getStoreDistrictKeys(storeIds: string[]): Promise<string[]> {
+  if (storeIds.length === 0) return [];
+  const { data, error } = await supabase
+    .from('stores')
+    .select('id, address')
+    .in('id', storeIds);
+  if (error || !data) return [];
+
+  const keys = new Set<string>();
+  for (const store of data) {
+    const addr = (store as any).address;
+    if (addr) {
+      const parsed = parseThaiAddress(addr);
+      if (parsed.district) keys.add(`อ.${parsed.district}`);
+    }
+  }
+  return Array.from(keys);
+}
+
+// ============================================================
+// Phase 2: New Scoring Functions
+// ============================================================
+
+/** ★ Phase 2D: รถเคยส่งในอำเภอเดียวกันกับออเดอร์ปัจจุบันหรือไม่ */
+function scoreDistrictFamiliarity(
+  vehicleId: string,
+  targetDistrictKeys: string[],
+  stats: HistoricalTripStats[]
+): number {
+  if (targetDistrictKeys.length === 0) return 50; // ไม่มีข้อมูล district
+
+  const vehicleStat = stats.find((s) => s.vehicle_id === vehicleId);
+  if (!vehicleStat || vehicleStat.district_keys_served.length === 0) return 40; // ไม่มีประวัติ
+
+  const servedSet = new Set(vehicleStat.district_keys_served);
+  const matchCount = targetDistrictKeys.filter((dk) => servedSet.has(dk)).length;
+  const matchRate = matchCount / targetDistrictKeys.length;
+
+  if (matchRate >= 0.7) return 100;
+  if (matchRate >= 0.3) return 75;
+  if (matchRate > 0) return 55;
+  return 40;
+}
+
+/** ★ Phase 2E: หมวดสินค้าในออเดอร์ตรงกับที่รถเคยส่งหรือไม่ */
+function scoreCategoryMatch(
+  vehicleId: string,
+  targetCategories: string[],
+  stats: HistoricalTripStats[]
+): number {
+  if (targetCategories.length === 0) return 50; // ไม่มีข้อมูลหมวดสินค้า
+
+  const vehicleStat = stats.find((s) => s.vehicle_id === vehicleId);
+  if (!vehicleStat || vehicleStat.product_categories_served.length === 0) return 40; // ไม่มีประวัติ
+
+  const servedSet = new Set(vehicleStat.product_categories_served);
+  const matchCount = targetCategories.filter((cat) => servedSet.has(cat)).length;
+  const matchRate = matchCount / targetCategories.length;
+
+  if (matchRate >= 0.8) return 100;
+  if (matchRate >= 0.5) return 80;
+  if (matchRate > 0) return 60;
+  return 40;
 }
 
 // ============================================================
@@ -992,6 +1221,15 @@ function generateReasoning(
   }
   if (scores.availability < 50) {
     parts.push(tripCountToday > 0 ? `⚠️ มีทริป ${tripCountToday} เที่ยวในวันนี้` : '⚠️ รถมีทริปอื่นในวันนี้');
+  }
+  // Phase 2: district + category
+  if (scores.district_familiarity >= 75) {
+    parts.push('📍 คุ้นเคยพื้นที่อำเภอนี้');
+  } else if (scores.district_familiarity <= 40) {
+    parts.push('ไม่เคยส่งพื้นที่นี้');
+  }
+  if (scores.category_match >= 80) {
+    parts.push('📦 สินค้าตรงหมวดที่เคยส่ง');
   }
 
   if (parts.length === 0) {
