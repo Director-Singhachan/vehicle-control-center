@@ -46,6 +46,7 @@ export function CreateOrderView() {
   const [recentProducts, setRecentProducts] = useState<string[]>([]);
   const [notes, setNotes] = useState('');
   const [deliveryDate, setDeliveryDate] = useState('');
+  const [deliveryTimeSlot, setDeliveryTimeSlot] = useState<'เช้า' | 'บ่าย' | null>(null);
   const [paymentStatus, setPaymentStatus] = useState<PaymentStatus | ''>('');
 
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -419,26 +420,31 @@ export function CreateOrderView() {
     setIsSubmitting(true);
 
     try {
-      await ordersService.createWithItems(
-        {
-          store_id: selectedStore.id,
-          order_date: new Date().toISOString().split('T')[0],
-          status: 'confirmed',
-          notes: notes || null,
-          delivery_address: selectedStore.address || null,
-          // บันทึกวันที่ต้องการส่ง (ถ้าไม่ได้เลือก ให้เป็น null)
-          delivery_date: deliveryDate || null,
-          created_by: profile?.id,
-          warehouse_id: selectedWarehouse?.id || null,
-        },
-        orderItems.map(item => ({
-          product_id: item.product_id,
-          quantity: Number(item.quantity || 0),
-          unit_price: item.is_bonus ? 0 : item.unit_price, // ของแถมราคาเป็น 0
-          discount_percent: Number(item.discount_percent || 0),
-          is_bonus: item.is_bonus || false,
-        })),
-        paymentStatus || null
+      const orderInsert = {
+        store_id: selectedStore.id,
+        order_date: new Date().toISOString().split('T')[0],
+        status: 'confirmed',
+        notes: notes || null,
+        delivery_address: selectedStore.address || null,
+        // บันทึกวันที่ต้องการส่ง (ถ้าไม่ได้เลือก ให้เป็น null)
+        delivery_date: deliveryDate || null,
+        created_by: profile?.id,
+        warehouse_id: selectedWarehouse?.id || null,
+      };
+
+      const itemsToSubmit = orderItems.map(item => ({
+        product_id: item.product_id,
+        quantity: Number(item.quantity || 0),
+        unit_price: item.is_bonus ? 0 : item.unit_price, // ของแถมราคาเป็น 0
+        discount_percent: Number(item.discount_percent || 0),
+        is_bonus: item.is_bonus || false,
+      }));
+
+      const order = await ordersService.createWithItems(
+        orderInsert,
+        itemsToSubmit,
+        paymentStatus || null,
+        deliveryTimeSlot
       );
 
       success('สร้างออเดอร์เรียบร้อย');
@@ -449,6 +455,7 @@ export function CreateOrderView() {
       setOrderItems([]);
       setNotes('');
       setDeliveryDate('');
+      setDeliveryTimeSlot(null);
       setPaymentStatus('');
     } catch (err: any) {
       error(err.message || 'เกิดข้อผิดพลาดในการสร้างออเดอร์');
@@ -989,31 +996,6 @@ export function CreateOrderView() {
                 <div className="space-y-4 mb-6">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                      วันที่ต้องการส่ง
-                    </label>
-                    <input
-                      type="date"
-                      value={deliveryDate}
-                      onChange={(e) => setDeliveryDate(e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-gray-900 dark:text-white"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                      หมายเหตุ
-                    </label>
-                    <textarea
-                      value={notes}
-                      onChange={(e) => setNotes(e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500"
-                      rows={3}
-                      placeholder="หมายเหตุเพิ่มเติม..."
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                       สถานะการชำระเงิน
                     </label>
                     <select
@@ -1027,6 +1009,65 @@ export function CreateOrderView() {
                       <option value="นัดชำระหนี้คงค้างเรียบร้อยแล้ว">นัดชำระหนี้คงค้างเรียบร้อยแล้ว</option>
                       <option value="รอชำระหนี้คงค้าง">รอชำระหนี้คงค้าง</option>
                     </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      วันที่ต้องการส่ง
+                    </label>
+                    <div className="flex gap-4">
+                      <div className="flex-1">
+                        <input
+                          type="date"
+                          value={deliveryDate}
+                          onChange={(e) => setDeliveryDate(e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-gray-900 dark:text-white"
+                        />
+                      </div>
+                      <div className="flex items-center gap-4 bg-gray-50 dark:bg-slate-800/50 px-4 rounded-lg border border-gray-200 dark:border-slate-700">
+                        <label className="flex items-center gap-2 cursor-pointer group">
+                          <input
+                            type="radio"
+                            name="deliveryTimeSlot"
+                            checked={deliveryTimeSlot === 'เช้า'}
+                            onChange={() => setDeliveryTimeSlot('เช้า')}
+                            className="w-4 h-4 text-enterprise-600 focus:ring-enterprise-500 border-gray-300"
+                          />
+                          <span className="text-sm text-gray-700 dark:text-gray-300 group-hover:text-enterprise-600 transition-colors">เช้า</span>
+                        </label>
+                        <label className="flex items-center gap-2 cursor-pointer group">
+                          <input
+                            type="radio"
+                            name="deliveryTimeSlot"
+                            checked={deliveryTimeSlot === 'บ่าย'}
+                            onChange={() => setDeliveryTimeSlot('บ่าย')}
+                            className="w-4 h-4 text-enterprise-600 focus:ring-enterprise-500 border-gray-300"
+                          />
+                          <span className="text-sm text-gray-700 dark:text-gray-300 group-hover:text-enterprise-600 transition-colors">บ่าย</span>
+                        </label>
+                        {deliveryTimeSlot && (
+                          <button
+                            onClick={() => setDeliveryTimeSlot(null)}
+                            className="text-[10px] text-gray-400 hover:text-red-500 underline ml-1"
+                          >
+                            ล้าง
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      หมายเหตุ
+                    </label>
+                    <textarea
+                      value={notes}
+                      onChange={(e) => setNotes(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500"
+                      rows={3}
+                      placeholder="หมายเหตุเพิ่มเติม..."
+                    />
                   </div>
                 </div>
 
