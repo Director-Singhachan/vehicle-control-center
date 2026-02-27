@@ -11,6 +11,7 @@ import { LoadingSpinner } from '../components/ui/LoadingSpinner';
 import { useAuth } from '../hooks';
 import { supabase } from '../lib/supabase';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
+import { PaymentStatusBadge, PaymentStatus } from '../components/order/PaymentStatusBadge';
 
 interface OrderItem {
   id?: string; // สำหรับ item ที่มีอยู่แล้ว
@@ -74,6 +75,7 @@ export function EditOrderView({ orderId, onSave, onCancel }: EditOrderViewProps)
   const [recentProducts, setRecentProducts] = useState<string[]>([]);
   const [notes, setNotes] = useState('');
   const [deliveryDate, setDeliveryDate] = useState('');
+  const [paymentStatus, setPaymentStatus] = useState<PaymentStatus | ''>('');
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showWarningDialog, setShowWarningDialog] = useState(false);
@@ -143,6 +145,7 @@ export function EditOrderView({ orderId, onSave, onCancel }: EditOrderViewProps)
 
       setNotes(orderData.notes || '');
       setDeliveryDate(orderData.delivery_date || '');
+      setPaymentStatus(orderData.payment_status || '');
     } catch (error: any) {
       showNotification('error', 'เกิดข้อผิดพลาดในการโหลดข้อมูลออเดอร์');
       console.error('Error loading order:', error);
@@ -495,6 +498,7 @@ export function EditOrderView({ orderId, onSave, onCancel }: EditOrderViewProps)
         delivery_date: deliveryDate || null,
         warehouse_id: selectedWarehouse?.id || null,
         updated_by: user?.id,
+        payment_status: paymentStatus || null,
       });
 
       // 2. ดึง order items ที่มีอยู่
@@ -1176,9 +1180,6 @@ export function EditOrderView({ orderId, onSave, onCancel }: EditOrderViewProps)
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    หมายเหตุ
-                  </label>
                   <textarea
                     value={notes}
                     onChange={(e) => setNotes(e.target.value)}
@@ -1186,6 +1187,23 @@ export function EditOrderView({ orderId, onSave, onCancel }: EditOrderViewProps)
                     rows={3}
                     placeholder="หมายเหตุเพิ่มเติม..."
                   />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    สถานะการชำระเงิน
+                  </label>
+                  <select
+                    value={paymentStatus}
+                    onChange={(e) => setPaymentStatus(e.target.value as PaymentStatus | '')}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-gray-900 dark:text-white"
+                  >
+                    <option value="">-- ไม่ระบุ (สั่งได้ / จัดส่งได้) --</option>
+                    <option value="ชำระแล้ว">ชำระแล้ว</option>
+                    <option value="รอชำระ">รอชำระ (ห้ามจัดส่ง)</option>
+                    <option value="นัดชำระหนี้คงค้างเรียบร้อยแล้ว">นัดชำระหนี้คงค้างเรียบร้อยแล้ว</option>
+                    <option value="รอชำระหนี้คงค้าง">รอชำระหนี้คงค้าง (หนี้คงค้าง)</option>
+                  </select>
                 </div>
               </div>
 
