@@ -213,36 +213,55 @@ export function PickupOrdersView() {
           <div className="space-y-4">
             {historyOrders.map((order: any) => (
               <Card key={order.id} className="overflow-hidden">
-                <div className="p-4 flex flex-wrap items-center justify-between gap-3">
-                  <div className="flex items-center gap-3">
-                    <Building2 className="w-5 h-5 text-slate-500 dark:text-slate-400" />
-                    <div>
-                      <h3 className="font-semibold text-gray-900 dark:text-white">
-                        {order.order_number || `#${order.id?.slice(0, 8)}`}
-                      </h3>
-                      <p className="text-sm text-gray-600 dark:text-gray-400">
-                        {order.customer_code} — {order.customer_name}
-                      </p>
-                      <p className="text-xs text-gray-500 dark:text-gray-500">
-                        รับแล้วเมื่อ{' '}
-                        {new Date(order.pickup_fulfilled_at || order.updated_at || order.created_at).toLocaleDateString('th-TH', {
-                          year: 'numeric',
-                          month: 'short',
-                          day: 'numeric',
-                          hour: '2-digit',
-                          minute: '2-digit',
-                        })}
-                      </p>
+                <div className="p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <Building2 className="w-5 h-5 text-slate-500 dark:text-slate-400" />
+                      <div>
+                        <h3 className="font-semibold text-gray-900 dark:text-white">
+                          {order.order_number || `#${order.id?.slice(0, 8)}`}
+                        </h3>
+                        <p className="text-sm text-gray-600 dark:text-gray-400">
+                          {order.customer_code} — {order.customer_name}
+                        </p>
+                        <p className="text-xs text-gray-500 dark:text-gray-500">
+                          รับแล้วเมื่อ{' '}
+                          {new Date(order.pickup_fulfilled_at || order.updated_at || order.created_at).toLocaleDateString('th-TH', {
+                            year: 'numeric',
+                            month: 'short',
+                            day: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })}
+                        </p>
+                      </div>
+                      {order.branch && (
+                        <span className="px-2 py-0.5 rounded-full text-xs bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-400">
+                          {order.branch}
+                        </span>
+                      )}
                     </div>
-                    {order.branch && (
-                      <span className="px-2 py-0.5 rounded-full text-xs bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-400">
-                        {order.branch}
-                      </span>
-                    )}
+                    <span className="px-3 py-1 rounded-full text-sm font-medium bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300">
+                      รับครบแล้ว
+                    </span>
                   </div>
-                  <span className="px-3 py-1 rounded-full text-sm font-medium bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300">
-                    รับครบแล้ว
-                  </span>
+                  {order.pickup_items?.length > 0 && (
+                    <div className="mt-3 pl-8 pt-3 border-t border-gray-100 dark:border-slate-700">
+                      <div className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-2">รายการที่รับไป:</div>
+                      <ul className="space-y-1 text-sm text-gray-700 dark:text-gray-300">
+                        {order.pickup_items.map((item: any, idx: number) => (
+                          <li key={idx} className="flex items-center gap-2">
+                            • {item.product_code} — {item.product_name}: {item.quantity.toLocaleString('th-TH')} {item.unit}
+                            {item.is_bonus && (
+                              <span className="text-xs px-1.5 py-0.5 rounded bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300">
+                                ของแถม
+                              </span>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
                 </div>
               </Card>
             ))}

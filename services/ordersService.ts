@@ -470,7 +470,7 @@ export const ordersService = {
   async getPickupFulfilledOrders(filters?: { branch?: string }): Promise<any[]> {
     const { data: pickupItems, error: itemsError } = await supabase
       .from('order_items')
-      .select('order_id, quantity, quantity_picked_up_at_store, fulfillment_method, updated_at')
+      .select('order_id, product_id, quantity, quantity_picked_up_at_store, fulfillment_method, updated_at, is_bonus')
       .eq('fulfillment_method', 'pickup');
 
     if (itemsError) throw itemsError;
@@ -508,8 +508,16 @@ export const ordersService = {
       result = result.filter((o: any) => o.branch === filters.branch);
     }
 
-    // เรียงและแนบ pickup_fulfilled_at สำหรับแสดง "รับแล้วเมื่อ" (ใช้ order_items.updated_at สำหรับออเดอร์ผสม)
+    // โหลด product สำหรับ pickup items
+    const productIds = [...new Set(pickupItems.map((r: any) => r.product_id).filter(Boolean))];
+    const { data: products } = productIds.length
+      ? await supabase.from('products').select('id, product_code, product_name, unit').in('id', productIds)
+      : { data: [] as any[] };
+    const productMap = new Map((products ?? []).map((p: any) => [p.id, p]));
+
+    // เรียงและแนบ pickup_fulfilled_at + pickup_items สำหรับแสดง "รับแล้วเมื่อ" และรายการที่รับ
     const orderIdToLatestPickupAt = new Map<string, string>();
+    const orderIdToItems = new Map<string, Array<{ product_code: string; product_name: string; unit: string; quantity: number; is_bonus: boolean }>>();
     for (const [oid, rows] of orderIdToPickupItems) {
       if (!fulfilledOrderIds.includes(oid)) continue;
       const latest = rows.reduce((max: string, r: any) => {
@@ -517,6 +525,17 @@ export const ordersService = {
         return t > max ? t : max;
       }, '');
       orderIdToLatestPickupAt.set(oid, latest);
+      const items = rows.map((r: any) => {
+        const p = productMap.get(r.product_id) as { product_code?: string; product_name?: string; unit?: string } | undefined;
+        return {
+          product_code: p?.product_code ?? '-',
+          product_name: p?.product_name ?? '-',
+          unit: p?.unit ?? 'ชิ้น',
+          quantity: Number(r.quantity ?? r.quantity_picked_up_at_store ?? 0),
+          is_bonus: Boolean(r.is_bonus),
+        };
+      });
+      orderIdToItems.set(oid, items);
     }
     result.sort((a: any, b: any) => {
       const at = orderIdToLatestPickupAt.get(a.id) || a.updated_at || '';
@@ -524,10 +543,10 @@ export const ordersService = {
       return bt.localeCompare(at);
     });
 
-    // แนบ pickup_fulfilled_at ให้ UI แสดงวันที่รับส่วน pickup (โดยเฉพาะออเดอร์ผสม)
     return result.map((o: any) => ({
       ...o,
       pickup_fulfilled_at: orderIdToLatestPickupAt.get(o.id) || o.updated_at || o.created_at,
+      pickup_items: orderIdToItems.get(o.id) ?? [],
     }));
   },
 
