@@ -153,9 +153,9 @@ UPDATE public.order_items SET fulfillment_method = 'delivery' WHERE fulfillment_
 
 ---
 
-## Phase 4: ใบเบิกสำหรับลูกค้ามารับเอง
+## Phase 4: ใบเบิกสำหรับลูกค้ามารับเอง ✅
 
-### 4.1 ฟังก์ชัน PDF ใหม่
+### 4.1 ฟังก์ชัน PDF ใหม่ ✅
 
 **ไฟล์:** `services/pdfService.ts`
 
@@ -174,9 +174,9 @@ generateOrderPickupSlipPDF(order, itemsWithProducts)
 
 อ้างอิงโครงสร้างจาก `generateDeliveryTripForkliftSummaryPDFA5` แต่ไม่ใช้ข้อมูลทริป/รถ
 
-### 4.2 Service สำหรับรายการรอรับเอง
+### 4.2 Service สำหรับรายการรอรับเอง ✅
 
-**ไฟล์:** `services/ordersService.ts` (หรือ `services/pickupOrderService.ts` แยก)
+**ไฟล์:** `services/ordersService.ts`
 
 เพิ่มฟังก์ชัน:
 
@@ -186,7 +186,7 @@ getPickupPendingItems(filters?: { branch?: string }): Promise<PickupPendingItem[
 
 - ดึง `order_items` ที่ `fulfillment_method = 'pickup'` และ `quantity_picked_up_at_store < quantity`
 - Join กับ orders, stores, products
-- คืนโครงสร้างที่เหมาะกับการแสดงใน UI และพิมพ์ใบเบิก
+- คืนโครงสร้าง `PickupPendingItem[]` ที่เหมาะกับการแสดงใน UI และพิมพ์ใบเบิก
 
 ---
 

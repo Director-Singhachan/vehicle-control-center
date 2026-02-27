@@ -1217,4 +1217,156 @@ export const pdfService = {
             throw error;
         }
     },
+
+    /**
+     * ใบเบิกสินค้า (ลูกค้ามารับเอง) — ออเดอร์ไม่มีทริป ลูกค้ามารับที่คลัง
+     * โครงสร้าง A5 อ้างอิงจาก generateDeliveryTripForkliftSummaryPDFA5 แต่ไม่มีข้อมูลทริป/รถ
+     */
+    generateOrderPickupSlipPDF: async (
+        order: {
+            order_number?: string | null;
+            order_date: string;
+            customer_name?: string | null;
+            customer_code?: string | null;
+            store_address?: string | null;
+            store?: { customer_code?: string; customer_name?: string; address?: string };
+        },
+        itemsWithProducts: Array<{
+            quantity: number;
+            product: {
+                product_code: string;
+                product_name: string;
+                category?: string | null;
+                unit?: string | null;
+            };
+        }>
+    ) => {
+        try {
+            await ensurePdfFontsLoaded();
+
+            const storeName = order.customer_name ?? order.store?.customer_name ?? '-';
+            const storeCode = order.customer_code ?? order.store?.customer_code ?? '-';
+            const storeAddress = order.store_address ?? order.store?.address ?? null;
+
+            // ตารางสินค้า
+            const tableBody = [
+                [
+                    { text: 'รหัส', bold: true },
+                    { text: 'ชื่อสินค้า', bold: true },
+                    { text: 'หมวดหมู่', bold: true },
+                    { text: 'จำนวน', bold: true },
+                ],
+                ...itemsWithProducts.map((item) => [
+                    item.product.product_code,
+                    item.product.product_name,
+                    item.product.category ?? '-',
+                    `${item.quantity.toLocaleString()} ${item.product.unit ?? ''}`.trim(),
+                ]),
+            ];
+
+            const signatureFooter: Content = {
+                table: {
+                    widths: ['*'],
+                    body: [
+                        [
+                            {
+                                stack: [
+                                    { text: 'ลงชื่อ ____________________________', fontSize: 10, margin: [0, 6, 0, 0] as [number, number, number, number], alignment: 'center' },
+                                    { text: '(____________________)', fontSize: 9, alignment: 'center', margin: [0, 2, 0, 0] as [number, number, number, number] },
+                                    { text: 'คลัง/ผู้มอบ', fontSize: 9, alignment: 'center', margin: [0, 2, 0, 0] as [number, number, number, number] },
+                                ],
+                            },
+                        ],
+                    ],
+                },
+                layout: {
+                    hLineWidth: () => 0,
+                    vLineWidth: () => 0,
+                    paddingLeft: () => 0,
+                    paddingRight: () => 0,
+                    paddingTop: () => 0,
+                    paddingBottom: () => 0,
+                },
+                margin: [10, 0, 10, 10] as [number, number, number, number],
+            } as any;
+
+            const content: Content[] = [
+                { text: 'ใบเบิกสินค้า (ลูกค้ามารับเอง)', fontSize: 16, bold: true, alignment: 'center', margin: [0, 0, 0, 5] as [number, number, number, number] },
+                {
+                    columns: [
+                        {
+                            text: `วันที่: ${new Date(order.order_date).toLocaleDateString('th-TH', {
+                                year: 'numeric',
+                                month: 'long',
+                                day: 'numeric',
+                            })}`,
+                            width: '*',
+                        },
+                        {
+                            text: `รหัสออเดอร์: ${order.order_number ?? 'N/A'}`,
+                            width: '*',
+                            alignment: 'right',
+                        },
+                    ],
+                    fontSize: 11,
+                    margin: [0, 0, 0, 3] as [number, number, number, number],
+                },
+                {
+                    text: `ร้านค้า: ${storeCode} - ${storeName}`,
+                    fontSize: 11,
+                    margin: [0, 0, 0, 2] as [number, number, number, number],
+                },
+                ...(storeAddress
+                    ? [
+                          {
+                              text: `ที่อยู่: ${storeAddress}`,
+                              fontSize: 9,
+                              margin: [0, 0, 0, 6] as [number, number, number, number],
+                          },
+                      ]
+                    : []),
+                {
+                    text: 'รายการสินค้า',
+                    fontSize: 14,
+                    bold: true,
+                    margin: [0, 8, 0, 6] as [number, number, number, number],
+                },
+                {
+                    table: {
+                        headerRows: 1,
+                        widths: ['auto', '*', 'auto', 'auto'],
+                        body: tableBody,
+                    },
+                    layout: 'lightHorizontalLines',
+                    fontSize: 8,
+                },
+            ];
+
+            const docDefinition: TDocumentDefinitions = {
+                pageSize: 'A5',
+                pageOrientation: 'portrait',
+                pageMargins: [10, 15, 10, 70] as [number, number, number, number],
+                defaultStyle: {
+                    font: 'Sarabun',
+                    fontSize: 10,
+                },
+                content,
+                footer: (currentPage: number, pageCount: number) => {
+                    if (currentPage !== pageCount) return { text: '' };
+                    return signatureFooter;
+                },
+            };
+
+            if (!pdfMake.vfs || !pdfMake.vfs['Sarabun-Regular.ttf']) {
+                throw new Error('Fonts not loaded. VFS is not properly initialized.');
+            }
+
+            await new Promise((resolve) => setTimeout(resolve, 100));
+            const filename = `pickup-slip-${order.order_number ?? order.order_date}-${Date.now()}.pdf`;
+            pdfMake.createPdf(docDefinition).download(filename);
+        } catch (error) {
+            console.error('[pdfService] Error generating pickup slip PDF:', error);
+            throw error;
+        }
+    },
 };

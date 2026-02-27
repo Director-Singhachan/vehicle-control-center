@@ -132,6 +132,35 @@ type OrderItemInsert = Omit<OrderItem, 'id' | 'created_at' | 'updated_at' | 'dis
   fulfillment_method?: 'delivery' | 'pickup';
 };
 
+/** รายการ pickup ที่รอรับ (quantity_picked_up_at_store < quantity) พร้อม order + store + product */
+export interface PickupPendingItem {
+  id: string;
+  order_id: string;
+  product_id: string;
+  quantity: number;
+  quantity_picked_up_at_store: number;
+  quantity_remaining: number;
+  order: {
+    id: string;
+    order_number: string | null;
+    order_date: string;
+    store: {
+      id: string;
+      customer_code: string;
+      customer_name: string;
+      address: string | null;
+      branch: string | null;
+    };
+  };
+  product: {
+    id: string;
+    product_code: string;
+    product_name: string;
+    category: string | null;
+    unit: string;
+  };
+}
+
 // ========================================
 // Orders Service
 // ========================================
@@ -244,6 +273,92 @@ export const ordersService = {
       const remaining = orderIdToRemaining.get(o.id) ?? 0;
       if (remaining <= 0) return false;
       return true; // delivery_trip_id IS NULL แล้วจาก query ต้นทาง
+    });
+  },
+
+  /**
+   * ดึงรายการรอรับเอง (fulfillment_method = 'pickup') ที่ยังรับไม่ครบ
+   * ใช้สำหรับหน้ารายการรอรับเอง และพิมพ์ใบเบิก
+   */
+  async getPickupPendingItems(filters?: { branch?: string }): Promise<PickupPendingItem[]> {
+    const { data: items, error } = await supabase
+      .from('order_items')
+      .select(
+        `
+        id,
+        order_id,
+        product_id,
+        quantity,
+        quantity_picked_up_at_store,
+        order:orders(
+          id,
+          order_number,
+          order_date,
+          store_id,
+          stores(id, customer_code, customer_name, address, branch)
+        ),
+        product:products(
+          id,
+          product_code,
+          product_name,
+          category,
+          unit
+        )
+      `
+      )
+      .eq('fulfillment_method', 'pickup');
+
+    if (error) throw error;
+    if (!items?.length) return [];
+
+    // กรองเฉพาะรายการที่ยังรับไม่ครบ (quantity_picked_up_at_store < quantity)
+    const pending = items.filter((row: any) => {
+      const qty = Number(row.quantity ?? 0);
+      const pickedUp = Number(row.quantity_picked_up_at_store ?? 0);
+      if (qty - pickedUp <= 0) return false;
+
+      if (filters?.branch && filters.branch !== 'ALL') {
+        const store = row.order?.stores ?? row.order?.store;
+        const branch = store?.branch ?? null;
+        if (branch !== filters.branch) return false;
+      }
+      return true;
+    });
+
+    return pending.map((row: any) => {
+      const order = row.order;
+      const store = order?.stores ?? order?.store ?? {};
+      const product = row.product ?? {};
+      const qty = Number(row.quantity ?? 0);
+      const pickedUp = Number(row.quantity_picked_up_at_store ?? 0);
+
+      return {
+        id: row.id,
+        order_id: row.order_id,
+        product_id: row.product_id,
+        quantity: qty,
+        quantity_picked_up_at_store: pickedUp,
+        quantity_remaining: qty - pickedUp,
+        order: {
+          id: order?.id ?? row.order_id,
+          order_number: order?.order_number ?? null,
+          order_date: order?.order_date ?? '',
+          store: {
+            id: store?.id ?? '',
+            customer_code: store?.customer_code ?? '-',
+            customer_name: store?.customer_name ?? '-',
+            address: store?.address ?? null,
+            branch: store?.branch ?? null,
+          },
+        },
+        product: {
+          id: product?.id ?? row.product_id,
+          product_code: product?.product_code ?? '-',
+          product_name: product?.product_name ?? '-',
+          category: product?.category ?? null,
+          unit: product?.unit ?? '',
+        },
+      };
     });
   },
 
