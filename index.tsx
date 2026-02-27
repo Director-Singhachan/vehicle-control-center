@@ -110,6 +110,15 @@ const SubSidebarItem = ({ label, active, onClick, isCollapsed, isFlyout }: any) 
   </button>
 );
 
+const MenuSectionHeader = ({ label }: { label: string }) => (
+  <div className="px-4 py-2 mt-2 mb-1">
+    <p className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em]">
+      {label}
+    </p>
+    <div className="h-px bg-slate-100 dark:bg-slate-800 mt-1"></div>
+  </div>
+);
+
 // Main App Content (wrapped in ProtectedRoute)
 const AppContent = () => {
   const { user, profile, signOut, isAdmin, isManager, isInspector, isExecutive, isDriver, isSales, isServiceStaff, loading: authLoading, refreshProfile } = useAuth();
@@ -984,52 +993,13 @@ const AppContent = () => {
                       <p className="text-[10px] font-black text-blue-500 dark:text-blue-400 uppercase tracking-widest">เมนูฝ่ายขาย</p>
                       <div className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"></div>
                     </div>
-                    <div className="px-2 space-y-1">
+                    <div className="px-2 space-y-0.5">
+                      <MenuSectionHeader label="รายการออเดอร์" />
                       <SubSidebarItem
                         label="สร้างออเดอร์"
                         active={activeTab === 'create-order'}
                         onClick={() => {
                           setActiveTab('create-order');
-                          setIsOrdersHovered(false);
-                        }}
-                        isCollapsed={false}
-                        isFlyout={true}
-                      />
-                      <SubSidebarItem
-                        label="จัดการลูกค้า"
-                        active={activeTab === 'customers'}
-                        onClick={() => {
-                          setActiveTab('customers');
-                          setIsOrdersHovered(false);
-                        }}
-                        isCollapsed={false}
-                        isFlyout={true}
-                      />
-                      <SubSidebarItem
-                        label="จัดการสินค้า / ราคา"
-                        active={activeTab === 'products'}
-                        onClick={() => {
-                          setActiveTab('products');
-                          setIsOrdersHovered(false);
-                        }}
-                        isCollapsed={false}
-                        isFlyout={true}
-                      />
-                      <SubSidebarItem
-                        label="กำหนดราคาตามลูกค้า"
-                        active={activeTab === 'product-pricing'}
-                        onClick={() => {
-                          setActiveTab('product-pricing');
-                          setIsOrdersHovered(false);
-                        }}
-                        isCollapsed={false}
-                        isFlyout={true}
-                      />
-                      <SubSidebarItem
-                        label="ระดับลูกค้า"
-                        active={activeTab === 'customer-tiers'}
-                        onClick={() => {
-                          setActiveTab('customer-tiers');
                           setIsOrdersHovered(false);
                         }}
                         isCollapsed={false}
@@ -1055,17 +1025,61 @@ const AppContent = () => {
                         isCollapsed={false}
                         isFlyout={true}
                       />
+
                       {(isAdmin || isManager) && (
-                        <SubSidebarItem
-                          label="จัดการออเดอร์"
-                          active={activeTab === 'cleanup-test-orders'}
-                          onClick={() => {
-                            setActiveTab('cleanup-test-orders');
-                            setIsOrdersHovered(false);
-                          }}
-                          isCollapsed={false}
-                          isFlyout={true}
-                        />
+                        <>
+                          <MenuSectionHeader label="เฉพาะเจ้าหน้าที่ / Manager" />
+                          <SubSidebarItem
+                            label="จัดการออเดอร์"
+                            active={activeTab === 'cleanup-test-orders'}
+                            onClick={() => {
+                              setActiveTab('cleanup-test-orders');
+                              setIsOrdersHovered(false);
+                            }}
+                            isCollapsed={false}
+                            isFlyout={true}
+                          />
+                          <SubSidebarItem
+                            label="จัดการลูกค้า"
+                            active={activeTab === 'customers'}
+                            onClick={() => {
+                              setActiveTab('customers');
+                              setIsOrdersHovered(false);
+                            }}
+                            isCollapsed={false}
+                            isFlyout={true}
+                          />
+                          <SubSidebarItem
+                            label="จัดการสินค้า / ราคา"
+                            active={activeTab === 'products'}
+                            onClick={() => {
+                              setActiveTab('products');
+                              setIsOrdersHovered(false);
+                            }}
+                            isCollapsed={false}
+                            isFlyout={true}
+                          />
+                          <SubSidebarItem
+                            label="กำหนดราคาตามลูกค้า"
+                            active={activeTab === 'product-pricing'}
+                            onClick={() => {
+                              setActiveTab('product-pricing');
+                              setIsOrdersHovered(false);
+                            }}
+                            isCollapsed={false}
+                            isFlyout={true}
+                          />
+                          <SubSidebarItem
+                            label="ระดับลูกค้า"
+                            active={activeTab === 'customer-tiers'}
+                            onClick={() => {
+                              setActiveTab('customer-tiers');
+                              setIsOrdersHovered(false);
+                            }}
+                            isCollapsed={false}
+                            isFlyout={true}
+                          />
+                        </>
                       )}
                     </div>
                   </div>
@@ -1115,6 +1129,7 @@ const AppContent = () => {
                       <div className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"></div>
                     </div>
                     <div className="px-2 space-y-1">
+                      <MenuSectionHeader label="ข้อมูลคลังสินค้า" />
                       <SubSidebarItem
                         label="Stock Dashboard"
                         active={activeTab === 'stock-dashboard'}
@@ -1125,26 +1140,31 @@ const AppContent = () => {
                         isCollapsed={false}
                         isFlyout={true}
                       />
-                      <SubSidebarItem
-                        label="จัดการคลัง"
-                        active={activeTab === 'warehouses'}
-                        onClick={() => {
-                          setActiveTab('warehouses');
-                          setIsStockHovered(false);
-                        }}
-                        isCollapsed={false}
-                        isFlyout={true}
-                      />
-                      <SubSidebarItem
-                        label="ประวัติรับสินค้า"
-                        active={activeTab === 'inventory-receipts'}
-                        onClick={() => {
-                          setActiveTab('inventory-receipts');
-                          setIsStockHovered(false);
-                        }}
-                        isCollapsed={false}
-                        isFlyout={true}
-                      />
+                      {(isAdmin || isManager) && (
+                        <>
+                          <MenuSectionHeader label="จัดการระบบคลัง" />
+                          <SubSidebarItem
+                            label="จัดการคลัง"
+                            active={activeTab === 'warehouses'}
+                            onClick={() => {
+                              setActiveTab('warehouses');
+                              setIsStockHovered(false);
+                            }}
+                            isCollapsed={false}
+                            isFlyout={true}
+                          />
+                          <SubSidebarItem
+                            label="ประวัติรับสินค้า"
+                            active={activeTab === 'inventory-receipts'}
+                            onClick={() => {
+                              setActiveTab('inventory-receipts');
+                              setIsStockHovered(false);
+                            }}
+                            isCollapsed={false}
+                            isFlyout={true}
+                          />
+                        </>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1213,53 +1233,7 @@ const AppContent = () => {
                       <div className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"></div>
                     </div>
                     <div className="px-2 space-y-0.5">
-                      {/* Dashboard */}
-                      {!isDriver && (
-                        <SubSidebarItem
-                          label="เดชบอร์ด(ฝ่ายขนส่ง)"
-                          active={activeTab === 'dashboard'}
-                          onClick={() => {
-                            setActiveTab('dashboard');
-                            setIsLogisticsHovered(false);
-                          }}
-                          isCollapsed={false}
-                          isFlyout={true}
-                        />
-                      )}
-
-                      {/* Vehicles */}
-                      {!isDriver && (
-                        <SubSidebarItem
-                          label="ยานพาหนะ"
-                          active={activeTab === 'vehicles'}
-                          onClick={() => {
-                            setActiveTab('vehicles');
-                            setIsLogisticsHovered(false);
-                          }}
-                          isCollapsed={false}
-                          isFlyout={true}
-                        />
-                      )}
-
-                      {/* Maintenance */}
-                      <SubSidebarItem
-                        label="การซ่อมบำรุง"
-                        active={activeTab === 'maintenance'}
-                        onClick={() => {
-                          setActiveTab('maintenance');
-                          if (isDriver) {
-                            setTicketView('form');
-                          } else {
-                            setTicketView('list');
-                          }
-                          setIsLogisticsHovered(false);
-                        }}
-                        isCollapsed={false}
-                        isFlyout={true}
-                      />
-
-                      <div className="h-px bg-slate-100 dark:bg-slate-800 my-1 mx-2"></div>
-
+                      <MenuSectionHeader label="การจัดส่ง & งานขับรถ" />
                       {/* Trip Logs */}
                       <SubSidebarItem
                         label="บันทึกการใช้งานรถ"
@@ -1286,74 +1260,7 @@ const AppContent = () => {
                         isFlyout={true}
                       />
 
-                      {/* Approvals */}
-                      {(() => {
-                        const userRole = profile?.role?.toLowerCase();
-                        const hasPermission = userRole === 'admin' ||
-                          userRole === 'manager' ||
-                          userRole === 'inspector' ||
-                          userRole === 'executive' ||
-                          isAdmin || isInspector || isManager || isExecutive;
-
-                        return hasPermission && (
-                          <SubSidebarItem
-                            label="ภาพรวมการอนุมัติ"
-                            active={activeTab === 'approvals'}
-                            onClick={() => {
-                              setActiveTab('approvals');
-                              setIsLogisticsHovered(false);
-                            }}
-                            isCollapsed={false}
-                            isFlyout={true}
-                          />
-                        );
-                      })()}
-
-                      {/* Daily Summary */}
-                      {!isDriver && (
-                        <SubSidebarItem
-                          label="สรุปการใช้รถรายวัน"
-                          active={activeTab === 'daily-summary'}
-                          onClick={() => {
-                            setActiveTab('daily-summary');
-                            setIsLogisticsHovered(false);
-                          }}
-                          isCollapsed={false}
-                          isFlyout={true}
-                        />
-                      )}
-
-                      <div className="h-px bg-slate-100 dark:bg-slate-800 my-1 mx-2"></div>
-
-                      {/* Delivery Trips — เฉพาะไม่ใช่พนักงานขับ (รายการทริป/ออเดอร์) */}
-                      {!isDriver && (
-                        <>
-                          <SubSidebarItem
-                            label="ทริปส่งสินค้า"
-                            active={activeTab === 'delivery-trips'}
-                            onClick={() => {
-                              setActiveTab('delivery-trips');
-                              setDeliveryTripView('list');
-                              setSelectedDeliveryTripId(null);
-                              setIsLogisticsHovered(false);
-                            }}
-                            isCollapsed={false}
-                            isFlyout={true}
-                          />
-                          <SubSidebarItem
-                            label="ออเดอร์รอจัดส่ง"
-                            active={activeTab === 'pending-orders'}
-                            onClick={() => {
-                              setActiveTab('pending-orders');
-                              setIsLogisticsHovered(false);
-                            }}
-                            isCollapsed={false}
-                            isFlyout={true}
-                          />
-                        </>
-                      )}
-
-                      {/* จำลองจัดเรียง — ให้พนักงานขับและพนักงานบริการ (เมื่อมี role) เข้าถึงได้ */}
+                      {/* จำลองจัดเรียง */}
                       <SubSidebarItem
                         label="จำลองจัดเรียง"
                         active={activeTab === 'packing-simulation'}
@@ -1365,29 +1272,132 @@ const AppContent = () => {
                         isFlyout={true}
                       />
 
-                      {!isDriver && isAdmin && (
+                      {(isAdmin || isManager || isInspector || isExecutive) && (
                         <>
-                          <div className="h-px bg-slate-100 dark:bg-slate-800 my-1 mx-2"></div>
+                          <MenuSectionHeader label="เฉพาะเจ้าหน้าที่ / Manager" />
+                          {/* Dashboard */}
+                          {!isDriver && (
+                            <SubSidebarItem
+                              label="เดชบอร์ด(ฝ่ายขนส่ง)"
+                              active={activeTab === 'dashboard'}
+                              onClick={() => {
+                                setActiveTab('dashboard');
+                                setIsLogisticsHovered(false);
+                              }}
+                              isCollapsed={false}
+                              isFlyout={true}
+                            />
+                          )}
+
+                          {/* Vehicles */}
+                          {!isDriver && (
+                            <SubSidebarItem
+                              label="ยานพาหนะ"
+                              active={activeTab === 'vehicles'}
+                              onClick={() => {
+                                setActiveTab('vehicles');
+                                setIsLogisticsHovered(false);
+                              }}
+                              isCollapsed={false}
+                              isFlyout={true}
+                            />
+                          )}
+
+                          {/* Maintenance */}
                           <SubSidebarItem
-                            label="จัดการพนักงาน"
-                            active={activeTab === 'service-staff'}
+                            label="การซ่อมบำรุง"
+                            active={activeTab === 'maintenance'}
                             onClick={() => {
-                              setActiveTab('service-staff');
+                              setActiveTab('maintenance');
+                              if (isDriver) {
+                                setTicketView('form');
+                              } else {
+                                setTicketView('list');
+                              }
                               setIsLogisticsHovered(false);
                             }}
                             isCollapsed={false}
                             isFlyout={true}
                           />
+
+                          {/* Approvals */}
                           <SubSidebarItem
-                            label="ค่าคอมมิชชั่น"
-                            active={activeTab === 'commission' || activeTab === 'commission-rates'}
+                            label="ภาพรวมการอนุมัติ"
+                            active={activeTab === 'approvals'}
                             onClick={() => {
-                              setActiveTab('commission');
+                              setActiveTab('approvals');
                               setIsLogisticsHovered(false);
                             }}
                             isCollapsed={false}
                             isFlyout={true}
                           />
+
+                          {/* Daily Summary */}
+                          {!isDriver && (
+                            <SubSidebarItem
+                              label="สรุปการใช้รถรายวัน"
+                              active={activeTab === 'daily-summary'}
+                              onClick={() => {
+                                setActiveTab('daily-summary');
+                                setIsLogisticsHovered(false);
+                              }}
+                              isCollapsed={false}
+                              isFlyout={true}
+                            />
+                          )}
+
+                          {/* Delivery Trips — เฉพาะไม่ใช่พนักงานขับ (รายการทริป/ออเดอร์) */}
+                          {!isDriver && (
+                            <>
+                              <SubSidebarItem
+                                label="ทริปส่งสินค้า"
+                                active={activeTab === 'delivery-trips'}
+                                onClick={() => {
+                                  setActiveTab('delivery-trips');
+                                  setDeliveryTripView('list');
+                                  setSelectedDeliveryTripId(null);
+                                  setIsLogisticsHovered(false);
+                                }}
+                                isCollapsed={false}
+                                isFlyout={true}
+                              />
+                              <SubSidebarItem
+                                label="ออเดอร์รอจัดส่ง"
+                                active={activeTab === 'pending-orders'}
+                                onClick={() => {
+                                  setActiveTab('pending-orders');
+                                  setIsLogisticsHovered(false);
+                                }}
+                                isCollapsed={false}
+                                isFlyout={true}
+                              />
+                            </>
+                          )}
+
+                          {isAdmin && (
+                            <>
+                              <SubSidebarItem
+                                label="จัดการพนักงาน"
+                                active={activeTab === 'service-staff'}
+                                onClick={() => {
+                                  setActiveTab('service-staff');
+                                  setIsLogisticsHovered(false);
+                                }}
+                                isCollapsed={false}
+                                isFlyout={true}
+                              />
+                              <SubSidebarItem
+                                label="ค่าคอมมิชชั่น"
+                                active={activeTab === 'commission' || activeTab === 'commission-rates'}
+                                onClick={() => {
+                                  setActiveTab('commission');
+                                  setIsLogisticsHovered(false);
+                                }}
+                                isCollapsed={false}
+                                isFlyout={true}
+                              />
+                            </>
+                          )}
                         </>
                       )}
                     </div>

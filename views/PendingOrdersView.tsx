@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback, memo } from 'react';
-import { Package, Calendar, MapPin, DollarSign, User, Phone, Filter, X, Zap, ChevronDown, ChevronRight, Eye, Edit, Layers, List, Navigation } from 'lucide-react';
+import { Package, Calendar, MapPin, DollarSign, User, Phone, Filter, X, Zap, ChevronDown, ChevronRight, Eye, Edit, Layers, List, Navigation, Ban } from 'lucide-react';
 import { usePendingOrders } from '../hooks/useOrders';
 import { orderItemsService } from '../services/ordersService';
 import { CreateTripFromOrdersView } from './CreateTripFromOrdersView';
@@ -20,6 +20,7 @@ import { SelectedOrdersSummaryBar } from '../components/order/SelectedOrdersSumm
 import { AreaGroupedOrderList } from '../components/order/AreaGroupedOrderList';
 import { usePendingOrdersFilters } from '../hooks/usePendingOrdersFilters';
 import { usePickupUpdate } from '../hooks/usePickupUpdate';
+import { PaymentStatusBadge } from '../components/order/PaymentStatusBadge';
 
 // Memoized OrderCard component to prevent unnecessary re-renders
 interface OrderCardProps {
@@ -83,6 +84,8 @@ const OrderCard = memo(({
     return { totalPickedUp, totalDelivered, totalQty };
   }, [orderItems]);
 
+  const isShippingForbidden = order.payment_status === 'รอชำระ' || order.payment_status === 'รอชำระหนี้คงค้าง';
+
   return (
     <Card className={isSelected ? 'ring-2 ring-blue-500' : ''}>
       <div className="p-6">
@@ -91,8 +94,9 @@ const OrderCard = memo(({
           <input
             type="checkbox"
             checked={isSelected}
-            onChange={() => onToggleSelection(order.id)}
-            className="mt-1 w-5 h-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+            onChange={() => !isShippingForbidden && onToggleSelection(order.id)}
+            disabled={isShippingForbidden}
+            className={`mt-1 w-5 h-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500 ${isShippingForbidden ? 'opacity-50 cursor-not-allowed' : ''}`}
           />
 
           {/* Order Details */}
@@ -115,6 +119,17 @@ const OrderCard = memo(({
                   <span className="inline-flex items-center gap-1 mt-1 ml-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-700">
                     🏪 รับที่ร้าน {pickupSummary.totalPickedUp.toLocaleString()} ชิ้น
                   </span>
+                )}
+                {order.payment_status && (
+                  <div className="mt-2">
+                    <PaymentStatusBadge status={order.payment_status} />
+                  </div>
+                )}
+                {isShippingForbidden && (
+                  <p className="mt-2 text-xs font-bold text-red-600 dark:text-red-400 flex items-center gap-1">
+                    <Ban className="w-3 h-3" />
+                    ห้ามจัดขึ้นรถ (รอเคลียร์ยอดชำระ)
+                  </p>
                 )}
               </div>
               <div className="text-right">
