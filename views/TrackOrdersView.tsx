@@ -43,6 +43,35 @@ export function TrackOrdersView() {
   const [detailError, setDetailError] = useState<string | null>(null);
   const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
 
+  // สรุปจำนวนรวมต่อออเดอร์ (สั่งทั้งหมด / รับที่ร้าน / ส่งแล้ว / คงเหลือ)
+  const detailSummary = useMemo(() => {
+    if (!detailItems || detailItems.length === 0) return null;
+
+    let ordered = 0;
+    let pickedUp = 0;
+    let delivered = 0;
+    let remaining = 0;
+
+    for (const item of detailItems) {
+      const qty = Number(item.quantity || 0);
+      const picked = Number(item.quantity_picked_up_at_store ?? 0);
+      const deliv = Number(item.quantity_delivered ?? 0);
+      const method = (item.fulfillment_method ?? 'delivery') as string;
+
+      ordered += qty;
+      pickedUp += picked;
+      if (method === 'delivery') {
+        delivered += deliv;
+        remaining += Math.max(qty - picked - deliv, 0);
+      } else {
+        // pickup ไม่มี quantity_delivered
+        remaining += Math.max(qty - picked, 0);
+      }
+    }
+
+    return { ordered, pickedUp, delivered, remaining };
+  }, [detailItems]);
+
   const [currentPage, setCurrentPage] = useState(1);
   const [pageInput, setPageInput] = useState('');
   const itemsPerPage = 100;
@@ -562,6 +591,18 @@ export function TrackOrdersView() {
                 </div>
               </div>
             </div>
+
+            {detailSummary && (
+              <div className="p-3 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 text-sm text-blue-900 dark:text-blue-100">
+                <div className="font-semibold mb-1">สรุปจำนวนรวมทุกสินค้าในออเดอร์นี้</div>
+                <div className="flex flex-wrap gap-x-4 gap-y-1">
+                  <span>สั่งทั้งหมด {detailSummary.ordered.toLocaleString()} ชิ้น</span>
+                  <span>รับที่ร้าน {detailSummary.pickedUp.toLocaleString()} ชิ้น</span>
+                  <span>ส่งแล้ว {detailSummary.delivered.toLocaleString()} ชิ้น</span>
+                  <span>คงเหลือ {detailSummary.remaining.toLocaleString()} ชิ้น</span>
+                </div>
+              </div>
+            )}
 
             <div className="border border-gray-200 dark:border-slate-700 rounded-lg overflow-hidden">
               <table className="w-full">

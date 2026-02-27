@@ -132,7 +132,7 @@ export function PickupOrdersView() {
             : `ยืนยันรับแล้ว ${updated} รายการ`
         );
         fetchItems();
-        if (orderStatus === 'delivered') fetchHistory();
+        fetchHistory(); // รีเฟรชประวัติเสมอ — ออเดอร์ผสมจะโผล่ในประวัติเมื่อรับส่วน pickup ครบ
       }
     } catch (err: any) {
       error(err?.message || 'ยืนยันรับแล้วล้มเหลว');
@@ -225,7 +225,7 @@ export function PickupOrdersView() {
                       </p>
                       <p className="text-xs text-gray-500 dark:text-gray-500">
                         รับแล้วเมื่อ{' '}
-                        {new Date(order.updated_at || order.created_at).toLocaleDateString('th-TH', {
+                        {new Date(order.pickup_fulfilled_at || order.updated_at || order.created_at).toLocaleDateString('th-TH', {
                           year: 'numeric',
                           month: 'short',
                           day: 'numeric',
