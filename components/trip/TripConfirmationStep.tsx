@@ -288,7 +288,7 @@ export function TripConfirmationStep({
           <div className="space-y-2 max-h-64 overflow-y-auto">
             {selectedOrders.map((order) => (
               <div key={order.id} className="p-3 bg-gray-50 rounded-lg">
-                <p className="text-sm font-medium text-gray-900">{order.order_number}</p>
+                <p className="text-sm font-medium text-gray-900">{order.order_number || 'รอจัดทริป'}</p>
                 <p className="text-xs text-gray-500">{order.customer_name}</p>
               </div>
             ))}

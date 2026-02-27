@@ -1302,7 +1302,7 @@ export const DeliveryTripDetailView: React.FC<DeliveryTripDetailViewProps> = ({
                 </div>
                 <div className="flex-1 flex justify-between items-start">
                   <div>
-                    <span className="font-mono text-sm text-blue-600 dark:text-blue-400">{order.order_number}</span>
+                    <span className="font-mono text-sm text-blue-600 dark:text-blue-400">{order.order_number || 'รอจัดทริป'}</span>
                     <span className="ml-2 font-medium text-slate-900 dark:text-white">{order.customer_name}</span>
                   </div>
                   <span className="text-sm font-semibold text-slate-700 dark:text-slate-300">

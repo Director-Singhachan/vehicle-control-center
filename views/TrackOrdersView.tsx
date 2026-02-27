@@ -12,7 +12,7 @@ import { useAuth } from '../hooks/useAuth';
 
 interface Order {
   id: string;
-  order_number: string;
+  order_number: string | null;
   customer_name: string;
   customer_code: string;
   total_amount: number;
@@ -146,7 +146,16 @@ export function TrackOrdersView() {
       case 'in_delivery':
         return <Badge variant="default">กำลังจัดส่ง</Badge>;
       case 'delivered':
-        return <Badge variant="success">จัดส่งแล้ว</Badge>;
+        return (
+          <span className="inline-flex flex-wrap items-center gap-1">
+            <Badge variant="success">จัดส่งแล้ว</Badge>
+            {!deliveryTripId && (
+              <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-700">
+                รับเอง
+              </span>
+            )}
+          </span>
+        );
       case 'cancelled':
         return <Badge variant="error">ยกเลิก</Badge>;
       default:
@@ -334,7 +343,7 @@ export function TrackOrdersView() {
                   {paginatedOrders.map((order) => (
                     <tr key={order.id} className={`border-b border-gray-100 dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-700/50 ${order.status === 'partial' ? 'bg-orange-50/30 dark:bg-orange-900/10' : ''}`}>
                       <td className="py-3 px-4 font-mono text-sm text-blue-600 dark:text-blue-400">
-                        <div>{order.order_number}</div>
+                        <div>{order.order_number || <span className="text-amber-600 dark:text-amber-400">รอจัดทริป</span>}</div>
                         {order.status === 'partial' && (
                           <div className="text-xs text-orange-600 dark:text-orange-400 font-normal mt-0.5">
                             รอจัดส่งส่วนที่เหลือ
@@ -505,7 +514,7 @@ export function TrackOrdersView() {
       <Modal
         isOpen={!!detailOrder}
         onClose={closeDetail}
-        title={`รายละเอียดออเดอร์ ${detailOrder?.order_number || ''}`}
+        title={`รายละเอียดออเดอร์ ${detailOrder?.order_number || (detailOrder ? 'รอจัดทริป' : '')}`}
         size="large"
       >
         {detailLoading ? (

@@ -277,6 +277,35 @@ export const ordersService = {
   },
 
   /**
+   * สร้าง order_number สำหรับออเดอร์รับเองทั้งหมด (ที่ไม่มีทริป)
+   * เรียกเมื่อสร้างหรือยืนยันออเดอร์ที่ทุกรายการเป็น pickup
+   */
+  async ensureOrderNumberForPickupOrder(orderId: string): Promise<string | null> {
+    const { data: order, error: orderErr } = await supabase
+      .from('orders')
+      .select('order_number')
+      .eq('id', orderId)
+      .single();
+
+    if (orderErr || !order) return null;
+    if (order.order_number && !order.order_number.startsWith('TEMP-')) return order.order_number;
+
+    const { data: rpcResult, error } = await supabase.rpc('generate_order_number_for_pickup', {
+      p_order_id: orderId,
+    });
+
+    if (error) {
+      console.warn('[ordersService] generate_order_number_for_pickup failed:', error?.message);
+      return null;
+    }
+
+    const newNum = typeof rpcResult === 'string' ? rpcResult : rpcResult != null ? String(rpcResult) : null;
+    if (!newNum) return null;
+    await supabase.from('orders').update({ order_number: newNum }).eq('id', orderId);
+    return newNum;
+  },
+
+  /**
    * ดึงรายการรอรับเอง (fulfillment_method = 'pickup') ที่ยังรับไม่ครบ
    * ใช้สำหรับหน้ารายการรอรับเอง และพิมพ์ใบเบิก
    */
@@ -363,6 +392,114 @@ export const ordersService = {
   },
 
   /**
+   * ยืนยันลูกค้ามารับแล้ว — อัปเดต quantity_picked_up_at_store = quantity สำหรับ pickup items
+   * แล้วตรวจสอบว่าออเดอร์ครบทุกรายการหรือไม่ → อัปเดต status = 'delivered'
+   */
+  async markPickupItemsFulfilled(
+    orderId: string,
+    itemIds?: string[],
+    updatedBy?: string
+  ): Promise<{ updated: number; orderStatus?: string }> {
+    const { data: allItems, error: fetchError } = await supabase
+      .from('order_items')
+      .select('id, order_id, product_id, quantity, quantity_picked_up_at_store, quantity_delivered, fulfillment_method')
+      .eq('order_id', orderId);
+
+    if (fetchError) throw fetchError;
+    if (!allItems?.length) return { updated: 0 };
+
+    const pickupItems = allItems.filter((r: any) => (r.fulfillment_method ?? 'delivery') === 'pickup');
+    const toUpdate = itemIds?.length
+      ? pickupItems.filter((i: any) => itemIds.includes(i.id))
+      : pickupItems.filter((i: any) => Number(i.quantity_picked_up_at_store ?? 0) < Number(i.quantity));
+
+    if (toUpdate.length === 0) return { updated: 0 };
+
+    for (const item of toUpdate) {
+      const { error } = await supabase
+        .from('order_items')
+        .update({
+          quantity_picked_up_at_store: Number(item.quantity),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', item.id);
+
+      if (error) throw error;
+    }
+
+    const itemsAfterUpdate = allItems.map((r: any) => {
+      const matched = toUpdate.find((t: any) => t.id === r.id);
+      if (matched) {
+        return { ...r, quantity_picked_up_at_store: Number(matched.quantity) };
+      }
+      return r;
+    });
+
+    let orderStatus: string | undefined;
+    const allFulfilled = itemsAfterUpdate.every((r: any) => {
+      const qty = Number(r.quantity);
+      const pickedUp = Number(r.quantity_picked_up_at_store ?? 0);
+      const delivered = Number(r.quantity_delivered ?? 0);
+      const method = (r.fulfillment_method ?? 'delivery') as string;
+      if (method === 'pickup') return pickedUp >= qty;
+      return pickedUp + delivered >= qty;
+    });
+
+    if (allFulfilled) {
+      await this.ensureOrderNumberForPickupOrder(orderId);
+      await supabase
+        .from('orders')
+        .update({
+          status: 'delivered',
+          updated_by: updatedBy ?? null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', orderId);
+      orderStatus = 'delivered';
+    }
+
+    return { updated: toUpdate.length, orderStatus };
+  },
+
+  /**
+   * ดึงประวัติออเดอร์รับเองที่รับครบแล้ว (status = delivered, delivery_trip_id = null)
+   * สำหรับแสดงในส่วน "ประวัติที่รับแล้ว"
+   */
+  async getPickupFulfilledOrders(filters?: { branch?: string }): Promise<any[]> {
+    const { data: orders, error } = await supabase
+      .from('orders_with_details')
+      .select('*')
+      .eq('status', 'delivered')
+      .is('delivery_trip_id', null)
+      .order('updated_at', { ascending: false });
+
+    if (error) throw error;
+    if (!orders?.length) return [];
+
+    const orderIds = orders.map((o: any) => o.id);
+    const { data: items } = await supabase
+      .from('order_items')
+      .select('order_id, fulfillment_method')
+      .in('order_id', orderIds);
+
+    const orderIdToAllPickup = new Map<string, boolean>();
+    const orderIdToSomePickup = new Map<string, boolean>();
+    for (const oid of orderIds) {
+      const orderItems = (items ?? []).filter((i: any) => i.order_id === oid);
+      const allPickup = orderItems.length > 0 && orderItems.every((i: any) => (i.fulfillment_method ?? 'delivery') === 'pickup');
+      const somePickup = orderItems.some((i: any) => (i.fulfillment_method ?? 'delivery') === 'pickup');
+      orderIdToAllPickup.set(oid, allPickup);
+      orderIdToSomePickup.set(oid, somePickup);
+    }
+
+    let result = orders.filter((o: any) => orderIdToAllPickup.get(o.id));
+    if (filters?.branch && filters.branch !== 'ALL') {
+      result = result.filter((o: any) => o.branch === filters.branch);
+    }
+    return result;
+  },
+
+  /**
    * ดึงออเดอร์ตาม ID
    */
   async getById(id: string) {
@@ -392,14 +529,27 @@ export const ordersService = {
     payment_status?: string | null,
     delivery_time_slot?: string | null
   ) {
-    // สร้างออเดอร์
+    const payload: Record<string, unknown> = {
+      ...orderData,
+      payment_status: payment_status && payment_status.trim() ? payment_status.trim() : null,
+      delivery_time_slot: delivery_time_slot && delivery_time_slot.trim() ? delivery_time_slot.trim() : null,
+    };
+    Object.keys(payload).forEach((k) => {
+      if (payload[k] === undefined) delete payload[k];
+    });
+
     const { data: order, error: orderError } = await supabase
       .from('orders')
-      .insert({ ...orderData, payment_status, delivery_time_slot } as any)
+      .insert(payload as any)
       .select()
       .single();
 
     if (orderError) {
+      console.error('[ordersService.createWithItems] Insert error:', {
+        message: orderError.message,
+        code: orderError.code,
+        details: orderError.details,
+      });
       throw mapOrdersError(orderError, 'create');
     }
 
@@ -434,6 +584,17 @@ export const ordersService = {
       .insert(orderItems);
 
     if (itemsError) throw itemsError;
+
+    // ออเดอร์รับเองทั้งหมด → สร้าง order_number ทันที (ไม่ผ่านทริป)
+    const allPickup = items.every((i) => (i.fulfillment_method ?? 'delivery') === 'pickup');
+    if (allPickup) {
+      try {
+        await this.ensureOrderNumberForPickupOrder(order.id);
+        return (await supabase.from('orders').select('*').eq('id', order.id).single()).data ?? order;
+      } catch {
+        return order;
+      }
+    }
 
     return order;
   },

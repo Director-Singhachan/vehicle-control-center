@@ -190,31 +190,31 @@ getPickupPendingItems(filters?: { branch?: string }): Promise<PickupPendingItem[
 
 ---
 
-## Phase 5: หน้ารายการรอรับเอง + Flow ยืนยันรับแล้ว
+## Phase 5: หน้ารายการรอรับเอง + Flow ยืนยันรับแล้ว ✅
 
-### 5.1 View ใหม่: PickupOrdersView
+### 5.1 View ใหม่: PickupOrdersView ✅
 
-**ไฟล์:** `views/PickupOrdersView.tsx` (หรือ section ในหน้าคลังสินค้า)
+**ไฟล์:** `views/PickupOrdersView.tsx`
 
 **หน้าที่:**
 
 - แสดงออเดอร์/รายการที่ `fulfillment_method = 'pickup'` และยังรับไม่ครบ
-- รูปแบบ: grouped by order (หรือ by store ตามที่ต้องการ)
+- รูปแบบ: grouped by order
 - ปุ่มต่อออเดอร์: **พิมพ์ใบเบิก** | **ยืนยันลูกค้ามารับแล้ว**
+- Filter สาขา (HQ/SD) สำหรับ admin/manager
 
-### 5.2 Flow "ยืนยันลูกค้ามารับแล้ว"
+### 5.2 Flow "ยืนยันลูกค้ามารับแล้ว" ✅
 
-1. ผู้ใช้กด "ยืนยันลูกค้ามารับแล้ว" ที่ออเดอร์ (หรือที่รายการ)
-2. เรียก `ordersService.markPickupItemsFulfilled(orderId, itemIds?)`
-  - อัปเดต `order_items.quantity_picked_up_at_store = quantity` สำหรับรายการ pickup ที่เลือกรับครบ
-3. ตรวจสอบ order status: ถ้าทุก item ส่งครบ/รับครบ → อัปเดต `orders.status = 'delivered'`
+- `ordersService.markPickupItemsFulfilled(orderId, itemIds?, updatedBy?)`
+- อัปเดต `quantity_picked_up_at_store = quantity` สำหรับ pickup items
+- ตรวจสอบ order status → ถ้าทุก item fulfill ครบ อัปเดต `orders.status = 'delivered'`
 
-### 5.3 เพิ่ม route และเมนู
+### 5.3 เพิ่ม route และเมนู ✅
 
-**ไฟล์:** `App.tsx` หรือ router config, Sidebar
+**ไฟล์:** `index.tsx`
 
-- เพิ่ม path เช่น `/pickup-orders`
-- เมนู: "รายการรอรับเอง" หรือ "ใบเบิก (ลูกค้ามารับเอง)"
+- Tab: `pickup-orders`
+- เมนู: "รายการรอรับเอง" ใต้เมนูคลังสินค้า (Stock Dashboard)
 
 ---
 

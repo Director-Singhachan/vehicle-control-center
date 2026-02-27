@@ -65,6 +65,7 @@ const WarehouseManagementView = lazy(() => import('./views/WarehouseManagementVi
 const CustomerTiersManagementView = lazy(() => import('./views/CustomerTiersManagementView').then(m => ({ default: m.CustomerTiersManagementView })));
 const ProductTierPricingView = lazy(() => import('./views/ProductTierPricingView').then(m => ({ default: m.ProductTierPricingView })));
 const InventoryReceiptsView = lazy(() => import('./views/InventoryReceiptsView').then(m => ({ default: m.InventoryReceiptsView })));
+const PickupOrdersView = lazy(() => import('./views/PickupOrdersView').then(m => ({ default: m.PickupOrdersView })));
 const CreateOrderView = lazy(() => import('./views/CreateOrderView').then(m => ({ default: m.CreateOrderView })));
 const CustomerManagementView = lazy(() => import('./views/CustomerManagementView').then(m => ({ default: m.CustomerManagementView })));
 const PendingOrdersView = lazy(() => import('./views/PendingOrdersView').then(m => ({ default: m.PendingOrdersView })));
@@ -1100,7 +1101,7 @@ const AppContent = () => {
                 <SidebarItem
                   icon={Boxes}
                   label={isSidebarOpen ? "คลังสินค้า" : ""}
-                  active={activeTab === 'stock-dashboard' || activeTab === 'warehouses' || activeTab === 'inventory-receipts'}
+                  active={activeTab === 'stock-dashboard' || activeTab === 'warehouses' || activeTab === 'inventory-receipts' || activeTab === 'pickup-orders'}
                   onClick={() => {
                     if (activeTab !== 'stock-dashboard') {
                       setActiveTab('stock-dashboard');
@@ -1140,6 +1141,16 @@ const AppContent = () => {
                         isCollapsed={false}
                         isFlyout={true}
                       />
+                      <SubSidebarItem
+                        label="รายการรอรับเอง"
+                        active={activeTab === 'pickup-orders'}
+                        onClick={() => {
+                          setActiveTab('pickup-orders');
+                          setIsStockHovered(false);
+                        }}
+                        isCollapsed={false}
+                        isFlyout={true}
+                      />
                       {(isAdmin || isManager) && (
                         <>
                           <MenuSectionHeader label="จัดการระบบคลัง" />
@@ -1153,16 +1164,16 @@ const AppContent = () => {
                             isCollapsed={false}
                             isFlyout={true}
                           />
-                          <SubSidebarItem
-                            label="ประวัติรับสินค้า"
-                            active={activeTab === 'inventory-receipts'}
-                            onClick={() => {
-                              setActiveTab('inventory-receipts');
-                              setIsStockHovered(false);
-                            }}
-                            isCollapsed={false}
-                            isFlyout={true}
-                          />
+                      <SubSidebarItem
+                        label="ประวัติรับสินค้า"
+                        active={activeTab === 'inventory-receipts'}
+                        onClick={() => {
+                          setActiveTab('inventory-receipts');
+                          setIsStockHovered(false);
+                        }}
+                        isCollapsed={false}
+                        isFlyout={true}
+                      />
                         </>
                       )}
                     </div>
@@ -2369,6 +2380,8 @@ const AppContent = () => {
               <WarehouseManagementView />
             ) : activeTab === 'inventory-receipts' ? (
               <InventoryReceiptsView />
+            ) : activeTab === 'pickup-orders' ? (
+              <PickupOrdersView />
             ) : activeTab === 'customer-tiers' ? (
               <CustomerTiersManagementView />
             ) : activeTab === 'product-pricing' ? (
