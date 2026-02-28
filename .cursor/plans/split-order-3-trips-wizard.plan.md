@@ -46,7 +46,7 @@ isProject: true
 | ตาราง/ฟิลด์                      | บทบาท                            | ผลกระทบเมื่อออเดอร์แบ่ง 3 ทริป                                   |
 | -------------------------------- | -------------------------------- | ---------------------------------------------------------------- |
 | `orders.delivery_trip_id`        | ชี้ไปยังทริปเดียว                | ⚠️ **ปัญหาหลัก** — ออเดอร์ชี้ได้แค่ 1 ทริป                       |
-| `order_items.fulfillment_method` | `delivery` | `pickup`            | ⚠️ **ต้องกรอง pickup** ในทุกขั้นตอน split                        |
+| `order_items.fulfillment_method` | `delivery`                       | `pickup`                                                         |
 | `order_items.quantity_delivered` | ยอดส่งแล้ว (รวมทุกทริป)          | ✅ Trigger นับจาก store+product อยู่แล้ว ไม่พึ่ง delivery_trip_id |
 | `delivery_trip_stores`           | (trip_id, store_id)              | ✅ ร้านเดียวกันเข้าได้หลายทริป                                    |
 | `delivery_trip_items`            | (trip_store_id, product_id, qty) | ✅ แต่ละทริปมี qty ของตัวเอง                                      |
@@ -126,15 +126,15 @@ isProject: true
 **ไฟล์:** `hooks/useCreateTripWizard.ts`
 
 
-| การเปลี่ยนแปลง            | รายละเอียด                                                                         |
-| ------------------------- | ---------------------------------------------------------------------------------- |
-| โหมดใหม่                  | `splitIntoThreeTrips: boolean` หรือ `splitMode: 'single' | '2vehicles' | '3trips'` |
-| State                     | `selectedVehicleId` × 3 (หรือ 2 ถ้า trip1&2 คันเดียวกัน), `selectedDriverId` × 3   |
-| `itemSplitMap`            | key เดิม, value: `{ trip1Qty, trip2Qty, trip3Qty }` หรือ object ตาม mode           |
-| `getRemaining`            | คำนวณ remaining **เฉพาะ delivery items**; กรอง pickup ก่อนรวม                      |
-| `buildSplitStoresPayload` | สร้าง 3 payloads สำหรับ trip 1, 2, 3                                               |
-| `handleSubmit`            | สร้าง 3 ทริป (vehicle, driver, planned_date, stores+items ต่อเที่ยว)               |
-| Assign order              | `assignToTrip(orderIds, trip1Id)` — assign ให้ trip แรกเท่านั้น                    |
+| การเปลี่ยนแปลง            | รายละเอียด                                                                       |
+| ------------------------- | -------------------------------------------------------------------------------- |
+| โหมดใหม่                  | `splitIntoThreeTrips: boolean` หรือ `splitMode: 'single'                         |
+| State                     | `selectedVehicleId` × 3 (หรือ 2 ถ้า trip1&2 คันเดียวกัน), `selectedDriverId` × 3 |
+| `itemSplitMap`            | key เดิม, value: `{ trip1Qty, trip2Qty, trip3Qty }` หรือ object ตาม mode         |
+| `getRemaining`            | คำนวณ remaining **เฉพาะ delivery items**; กรอง pickup ก่อนรวม                    |
+| `buildSplitStoresPayload` | สร้าง 3 payloads สำหรับ trip 1, 2, 3                                             |
+| `handleSubmit`            | สร้าง 3 ทริป (vehicle, driver, planned_date, stores+items ต่อเที่ยว)             |
+| Assign order              | `assignToTrip(orderIds, trip1Id)` — assign ให้ trip แรกเท่านั้น                  |
 
 
 **ไฟล์:** `components/trip/CrewAssignmentStep.tsx`, `OrderSelectionStep.tsx`
@@ -166,13 +166,13 @@ isProject: true
 - `syncOrderToTrip` ยัง sync ไป `order.delivery_trip_id` (trip แรก) — ไม่เปลี่ยน
 - ให้แน่ใจว่า sync เฉพาะ delivery items (ทำอยู่แล้ว)
 
-### Phase 5: Cancel & Edge Cases
+### Phase 5: Cancel & Edge Cases ✅
 
-**ไฟล์:** `services/deliveryTrip/tripCrudService.ts` (หรือที่เกี่ยวข้อง)
+**ไฟล์:** `services/deliveryTrip/tripStatusService.ts`
 
-- **Cancel trip 1:** ถ้า order ชี้ trip 1 → unassign order (`delivery_trip_id = null`), reset order_number ถ้าต้องการ
-- **Cancel trip 2 หรือ 3:** ลบ/ปรับ delivery_trip_stores + delivery_trip_items ของทริปนั้น; ไม่แตะ order.delivery_trip_id
-- ตรวจว่า RPC `assign_orders_to_trip` และ unassign logic ทำงานถูกต้อง
+- **Cancel trip 1:** Logic เดิมทำงานถูกต้อง — order ชี้ trip 1 → unassign (`delivery_trip_id = null`, `order_number = null`)
+- **Cancel trip 2 หรือ 3:** Logic เดิมทำงานถูกต้อง — order ชี้ trip 1 (ไม่ชี้ trip 2/3) → ไม่พบ order → ไม่ unassign, แค่เปลี่ยน status เป็น cancelled
+- เพิ่ม JSDoc อธิบาย multi-trip cancel behavior แล้ว
 
 ### Phase 6: Testing Checklist
 
@@ -189,16 +189,16 @@ isProject: true
 ## 4. ไฟล์ที่ต้องแก้ไข (Checklist)
 
 
-| ไฟล์                                       | การดำเนินการ                              |
-| ------------------------------------------ | ----------------------------------------- |
-| `types/createTripWizard.ts`                | ขยาย ItemSplitQty, splitMode              |
-| `hooks/useCreateTripWizard.ts`             | โหมด 3 เที่ยว, state, submit, กรอง pickup |
-| `components/trip/CrewAssignmentStep.tsx`   | UI 3 เที่ยว, vehicle/driver × 3           |
-| `components/trip/OrderSelectionStep.tsx`   | คอลัมน์ Trip1/Trip2/Trip3, กรอง delivery  |
-| `components/trip/VehicleSelectionStep.tsx` | (ถ้าแยก step เลือกรถ)                     |
-| `views/CreateTripFromOrdersView.tsx`       | ส่ง props โหมด 3 เที่ยว                   |
-| `services/deliveryTrip/tripCrudService.ts` | Cancel logic สำหรับ multi-trip order      |
-| `services/orderTripSyncService.ts`         | ยืนยันกรอง pickup (มีอยู่แล้ว)            |
+| ไฟล์                                         | การดำเนินการ                                       |
+| -------------------------------------------- | -------------------------------------------------- |
+| `types/createTripWizard.ts`                  | ขยาย ItemSplitQty, splitMode                       |
+| `hooks/useCreateTripWizard.ts`               | โหมด 3 เที่ยว, state, submit, กรอง pickup          |
+| `components/trip/CrewAssignmentStep.tsx`     | UI 3 เที่ยว, vehicle/driver × 3                    |
+| `components/trip/OrderSelectionStep.tsx`     | คอลัมน์ Trip1/Trip2/Trip3, กรอง delivery           |
+| `components/trip/VehicleSelectionStep.tsx`   | (ถ้าแยก step เลือกรถ)                              |
+| `views/CreateTripFromOrdersView.tsx`         | ส่ง props โหมด 3 เที่ยว                            |
+| `services/deliveryTrip/tripStatusService.ts` | JSDoc multi-trip cancel (logic เดิมรองรับอยู่แล้ว) |
+| `services/orderTripSyncService.ts`           | ยืนยันกรอง pickup (มีอยู่แล้ว)                     |
 
 
 **ไม่ต้องแก้:**

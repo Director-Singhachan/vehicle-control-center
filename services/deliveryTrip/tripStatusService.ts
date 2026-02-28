@@ -4,6 +4,15 @@ import { tripCrudService } from './tripCrudService';
 import type { DeliveryTripWithRelations, DeliveryTripUpdate } from './types';
 
 export const tripStatusService = {
+  /**
+   * ยกเลิกทริปส่งสินค้า
+   *
+   * **Multi-trip (ออเดอร์เดียวแบ่ง 3 เที่ยว):**
+   * - ยกเลิก trip 1 (primary): ออเดอร์ที่ชี้ trip 1 จะถูก unassign (delivery_trip_id=null, order_number=null)
+   *   และ quantity_delivered จะ recalc จาก trip อื่นที่ completed แล้ว (ถ้ามี)
+   * - ยกเลิก trip 2 หรือ 3: ไม่มีออเดอร์ชี้ทริปนี้ (ออเดอร์ชี้ trip 1) จึงไม่ unassign
+   *   ทริปจะเปลี่ยน status เป็น cancelled เท่านั้น
+   */
   cancel: async (id: string, reason?: string): Promise<DeliveryTripWithRelations> => {
     console.log('[deliveryTripService] cancel called with:', { id, reason: reason ? 'provided' : 'none' });
 
