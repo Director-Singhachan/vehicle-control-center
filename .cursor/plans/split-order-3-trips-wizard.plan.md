@@ -174,7 +174,9 @@ isProject: true
 - **Cancel trip 2 หรือ 3:** Logic เดิมทำงานถูกต้อง — order ชี้ trip 1 (ไม่ชี้ trip 2/3) → ไม่พบ order → ไม่ unassign, แค่เปลี่ยน status เป็น cancelled
 - เพิ่ม JSDoc อธิบาย multi-trip cancel behavior แล้ว
 
-### Phase 6: Testing Checklist
+### Phase 6: Testing Checklist ✅
+
+**Checklist:** [split-order-3-trips-phase6-testing.md](split-order-3-trips-phase6-testing.md)
 
 - ออเดอร์ delivery ทั้งหมด แบ่ง 3 เที่ยว (รถคันเดียวกัน) → 3 ทริปสร้างได้, sequence_order 1,2,3
 - ออเดอร์ delivery แบ่ง 2 เที่ยวคันเดียวกัน + 1 เที่ยวคันอื่น → 3 ทริปถูกต้อง
