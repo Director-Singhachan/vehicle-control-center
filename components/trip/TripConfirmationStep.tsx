@@ -12,16 +12,20 @@ export interface TripConfirmationStepProps {
   storeDeliveries: { id: string }[];
   orderItemsMap: Map<string, any[]>;
   splitIntoTwoTrips: boolean;
+  splitIntoThreeTrips?: boolean;
   selectedVehicleId: string;
   selectedVehicleId2: string;
+  selectedVehicleId3?: string;
   selectedDriverId: string;
   selectedDriverId2: string;
+  selectedDriverId3?: string;
   splitValidationErrors: string[];
-  getItemsForVehicle: (vehicleNum: 1 | 2) => Array<{ product_id: string; quantity: number }>;
+  getItemsForVehicle: (tripNum: 1 | 2 | 3) => Array<{ product_id: string; quantity: number }>;
   isSubmitting: boolean;
   handleSubmit: () => void;
   capacitySummary: CapacitySummary | null;
   capacitySummary2: CapacitySummary | null;
+  capacitySummary3?: CapacitySummary | null;
   palletPackingResult: PalletPackingResult | null;
 }
 
@@ -31,27 +35,34 @@ export function TripConfirmationStep({
   storeDeliveries,
   orderItemsMap,
   splitIntoTwoTrips,
+  splitIntoThreeTrips = false,
   selectedVehicleId,
   selectedVehicleId2,
+  selectedVehicleId3 = '',
   selectedDriverId,
   selectedDriverId2,
+  selectedDriverId3 = '',
   splitValidationErrors,
   getItemsForVehicle,
   isSubmitting,
   handleSubmit,
   capacitySummary,
   capacitySummary2,
+  capacitySummary3 = null,
   palletPackingResult,
 }: TripConfirmationStepProps) {
   const hasItems = Array.from(orderItemsMap.values()).some((items: any[]) => Array.isArray(items) && items.length > 0);
   const items2Length = getItemsForVehicle(2).length;
-  const showCapacity2 = splitIntoTwoTrips && selectedVehicleId2 && items2Length > 0;
+  const items3Length = getItemsForVehicle(3).length;
+  const showCapacity2 = (splitIntoTwoTrips || splitIntoThreeTrips) && selectedVehicleId2 && items2Length > 0;
+  const showCapacity3 = splitIntoThreeTrips && selectedVehicleId3 && items3Length > 0;
   const submitDisabled =
     isSubmitting ||
     !selectedVehicleId ||
     !selectedDriverId ||
     storeDeliveries.length === 0 ||
-    (splitIntoTwoTrips && (!selectedVehicleId2 || !selectedDriverId2 || splitValidationErrors.length > 0 || items2Length === 0));
+    (splitIntoTwoTrips && (!selectedVehicleId2 || !selectedDriverId2 || splitValidationErrors.length > 0 || items2Length === 0)) ||
+    (splitIntoThreeTrips && (!selectedVehicleId2 || !selectedDriverId2 || !selectedVehicleId3 || !selectedDriverId3 || splitValidationErrors.length > 0 || items2Length === 0 || items3Length === 0));
 
   return (
     <div className="space-y-6">
@@ -103,7 +114,7 @@ export function TripConfirmationStep({
           <div className="p-6">
             <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
               <Package size={20} />
-              {splitIntoTwoTrips ? 'สรุปความจุ (คัน 1)' : 'สรุปความจุ'}
+              {splitIntoThreeTrips ? 'สรุปความจุ (เที่ยว 1)' : splitIntoTwoTrips ? 'สรุปความจุ (คัน 1)' : 'สรุปความจุ'}
             </h3>
             {!hasItems ? (
               <div className="text-center py-4 text-gray-500">
@@ -276,7 +287,59 @@ export function TripConfirmationStep({
                 </div>
               </div>
             ) : (
-              <div className="text-sm text-gray-500">เลือกรถคันที่ 2 และจัดร้านลงคัน 2 เพื่อดูความจุ</div>
+              <div className="text-sm text-gray-500">เลือกรถ{splitIntoThreeTrips ? 'เที่ยวที่ 2' : 'คันที่ 2'} และจัดร้านลง{splitIntoThreeTrips ? 'เที่ยว 2' : 'คัน 2'} เพื่อดูความจุ</div>
+            )}
+          </div>
+        </Card>
+      )}
+
+      {showCapacity3 && (
+        <Card>
+          <div className="p-6">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+              <Package size={20} />
+              สรุปความจุ (เที่ยว 3)
+            </h3>
+            {capacitySummary3?.loading ? (
+              <div className="text-center py-4 text-gray-500">กำลังคำนวณ...</div>
+            ) : capacitySummary3 ? (
+              <div className="space-y-3">
+                {capacitySummary3.errors.length > 0 && (
+                  <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+                    <div className="flex items-center gap-2 text-red-800 mb-2">
+                      <AlertCircle size={16} />
+                      <span className="font-medium">ข้อผิดพลาด:</span>
+                    </div>
+                    <ul className="list-disc list-inside text-sm text-red-700 space-y-1">
+                      {capacitySummary3.errors.map((error, idx) => (
+                        <li key={idx}>{error}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="p-3 bg-gray-50 rounded-lg">
+                    <div className="text-sm text-gray-600 mb-1">พาเลท</div>
+                    <div className="text-xl font-bold text-gray-900">
+                      {capacitySummary3.totalPallets}
+                      {capacitySummary3.vehicleMaxPallets != null && (
+                        <span className="text-sm font-normal text-gray-500"> / {capacitySummary3.vehicleMaxPallets}</span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="p-3 bg-gray-50 rounded-lg">
+                    <div className="text-sm text-gray-600 mb-1">น้ำหนัก (กก.)</div>
+                    <div className="text-xl font-bold text-gray-900">
+                      {capacitySummary3.totalWeightKg.toFixed(2)}
+                      {capacitySummary3.vehicleMaxWeightKg != null && (
+                        <span className="text-sm font-normal text-gray-500"> / {capacitySummary3.vehicleMaxWeightKg}</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="text-sm text-gray-500">เลือกรถเที่ยวที่ 3 และจัดร้านลงเที่ยว 3 เพื่อดูความจุ</div>
             )}
           </div>
         </Card>
