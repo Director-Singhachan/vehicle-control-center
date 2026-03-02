@@ -12,12 +12,13 @@ export interface OrderSelectionStepProps {
   splitKey: (orderId: string, itemId: string) => string;
   getRemaining: (item: any) => number;
   splitIntoTwoTrips: boolean;
-  itemSplitMap: Record<string, { vehicle1Qty: number; vehicle2Qty: number }>;
-  handleSplitQtyChange: (orderId: string, itemId: string, vehicle: 1 | 2, value: number, totalQty: number) => void;
+  splitIntoThreeTrips?: boolean;
+  itemSplitMap: Record<string, { vehicle1Qty: number; vehicle2Qty: number; trip1Qty?: number; trip2Qty?: number; trip3Qty?: number }>;
+  handleSplitQtyChange: (orderId: string, itemId: string, target: 1 | 2 | 3, value: number, totalQty: number) => void;
   quantityInThisTripMap: Record<string, number>;
   setQuantityInThisTripMapForKey: (key: string, value: number) => void;
   setAllQuantityInThisTripForDelivery: (orderId: string, orderItems: any[], value: 'all' | 'none') => void;
-  setAllSplitForDelivery: (orderId: string, orderItems: any[], target: 'vehicle1' | 'vehicle2' | 'half') => void;
+  setAllSplitForDelivery: (orderId: string, orderItems: any[], target: 'vehicle1' | 'vehicle2' | 'vehicle3' | 'half') => void;
   splitValidationErrors: string[];
   draggedIndex: number | null;
   handleDragStart: (index: number) => void;
@@ -34,6 +35,7 @@ export function OrderSelectionStep({
   splitKey: splitKeyFn,
   getRemaining,
   splitIntoTwoTrips,
+  splitIntoThreeTrips = false,
   itemSplitMap,
   handleSplitQtyChange,
   quantityInThisTripMap,
@@ -130,7 +132,7 @@ export function OrderSelectionStep({
 
                   {isExpanded && orderItems.length > 0 && (
                     <div className="border-t border-gray-100 px-4 pb-4">
-                      {!splitIntoTwoTrips && (
+                      {!splitIntoTwoTrips && !splitIntoThreeTrips && (
                         <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mt-3">
                           <strong>เลือกสินค้าที่นำไปส่งในทริปนี้:</strong> ตั้งคอลัมน์ &quot;นำไปส่งในทริปนี้&quot; = 0 สำหรับสินค้าที่จะจัดส่งทริปอื่น (วันอื่น/รถคันอื่น) ออเดอร์เดียวกันแยกส่งหลายทริปได้
                         </p>
@@ -140,7 +142,7 @@ export function OrderSelectionStep({
                           <tr className="text-left text-xs text-gray-500 uppercase">
                             <th className="pb-2 font-medium">สินค้า</th>
                             <th className="pb-2 font-medium text-center">สั่ง</th>
-                            {!splitIntoTwoTrips && (
+                            {!splitIntoTwoTrips && !splitIntoThreeTrips && (
                               <>
                                 <th className="pb-2 font-medium text-center">รับที่ร้าน</th>
                                 <th className="pb-2 font-medium text-center">ส่งแล้ว</th>
@@ -148,13 +150,27 @@ export function OrderSelectionStep({
                                 <th className="pb-2 font-medium text-center">นำไปส่งในทริปนี้</th>
                               </>
                             )}
-                            {splitIntoTwoTrips && (
+                            {splitIntoTwoTrips && !splitIntoThreeTrips && (
                               <>
                                 <th className="pb-2 font-medium text-center">
                                   <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-blue-100 text-blue-800">คัน 1</span>
                                 </th>
                                 <th className="pb-2 font-medium text-center">
                                   <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-100 text-emerald-800">คัน 2</span>
+                                </th>
+                                <th className="pb-2 font-medium text-center">ตรวจ</th>
+                              </>
+                            )}
+                            {splitIntoThreeTrips && (
+                              <>
+                                <th className="pb-2 font-medium text-center">
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-blue-100 text-blue-800">เที่ยว 1</span>
+                                </th>
+                                <th className="pb-2 font-medium text-center">
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-amber-100 text-amber-800">เที่ยว 2</span>
+                                </th>
+                                <th className="pb-2 font-medium text-center">
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-100 text-emerald-800">เที่ยว 3</span>
                                 </th>
                                 <th className="pb-2 font-medium text-center">ตรวจ</th>
                               </>
@@ -166,8 +182,11 @@ export function OrderSelectionStep({
                             const key = splitKeyFn(delivery.order_id, item.id);
                             const remaining = getRemaining(item);
                             const qtyInTrip = quantityInThisTripMap[key] ?? remaining;
-                            const split = itemSplitMap[key] || { vehicle1Qty: remaining, vehicle2Qty: 0 };
-                            const sumOk = Math.abs((split.vehicle1Qty + split.vehicle2Qty) - remaining) < 0.001;
+                            const split = itemSplitMap[key] || { vehicle1Qty: remaining, vehicle2Qty: 0, trip1Qty: remaining, trip2Qty: 0, trip3Qty: 0 };
+                            const sum = splitIntoThreeTrips
+                              ? ((split.trip1Qty ?? 0) + (split.trip2Qty ?? 0) + (split.trip3Qty ?? 0))
+                              : (split.vehicle1Qty + split.vehicle2Qty);
+                            const sumOk = Math.abs(sum - remaining) < 0.001;
                             return (
                               <tr key={item.id} className="border-t border-gray-50">
                                 <td className="py-2">
@@ -178,7 +197,7 @@ export function OrderSelectionStep({
                                 <td className="py-2 text-center font-semibold text-gray-700">
                                   {item.quantity}
                                 </td>
-                                {!splitIntoTwoTrips && (
+                                {!splitIntoTwoTrips && !splitIntoThreeTrips && (
                                   <>
                                     <td className="py-2 text-center text-gray-600">
                                       {Number(item.quantity_picked_up_at_store ?? 0)}
@@ -207,7 +226,7 @@ export function OrderSelectionStep({
                                     </td>
                                   </>
                                 )}
-                                {splitIntoTwoTrips && (
+                                {(splitIntoTwoTrips || splitIntoThreeTrips) && (
                                   <>
                                     <td className="py-2 text-center">
                                       <input
@@ -215,10 +234,10 @@ export function OrderSelectionStep({
                                         min={0}
                                         max={remaining}
                                         step="any"
-                                        value={split.vehicle1Qty}
+                                        value={splitIntoThreeTrips ? (split.trip1Qty ?? 0) : split.vehicle1Qty}
                                         onFocus={(e) => e.target.select()}
                                         onChange={(e) => handleSplitQtyChange(delivery.order_id, item.id, 1, parseFloat(e.target.value) || 0, remaining)}
-                                        className="w-20 px-2 py-1 text-center border border-blue-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 bg-blue-50"
+                                        className={`w-16 px-2 py-1 text-center rounded-lg text-sm focus:ring-2 ${splitIntoThreeTrips ? 'border border-blue-300 focus:ring-blue-500 bg-blue-50' : 'border border-blue-300 focus:ring-blue-500 bg-blue-50'}`}
                                       />
                                     </td>
                                     <td className="py-2 text-center">
@@ -227,17 +246,31 @@ export function OrderSelectionStep({
                                         min={0}
                                         max={remaining}
                                         step="any"
-                                        value={split.vehicle2Qty}
+                                        value={splitIntoThreeTrips ? (split.trip2Qty ?? 0) : split.vehicle2Qty}
                                         onFocus={(e) => e.target.select()}
                                         onChange={(e) => handleSplitQtyChange(delivery.order_id, item.id, 2, parseFloat(e.target.value) || 0, remaining)}
-                                        className="w-20 px-2 py-1 text-center border border-emerald-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 bg-emerald-50"
+                                        className={`w-16 px-2 py-1 text-center rounded-lg text-sm focus:ring-2 ${splitIntoThreeTrips ? 'border border-amber-300 focus:ring-amber-500 bg-amber-50' : 'border border-emerald-300 focus:ring-emerald-500 bg-emerald-50'}`}
                                       />
                                     </td>
+                                    {splitIntoThreeTrips && (
+                                      <td className="py-2 text-center">
+                                        <input
+                                          type="number"
+                                          min={0}
+                                          max={remaining}
+                                          step="any"
+                                          value={split.trip3Qty ?? 0}
+                                          onFocus={(e) => e.target.select()}
+                                          onChange={(e) => handleSplitQtyChange(delivery.order_id, item.id, 3, parseFloat(e.target.value) || 0, remaining)}
+                                          className="w-16 px-2 py-1 text-center border border-emerald-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 bg-emerald-50"
+                                        />
+                                      </td>
+                                    )}
                                     <td className="py-2 text-center">
                                       {sumOk ? (
                                         <span className="text-green-600 font-bold text-base">&#10003;</span>
                                       ) : (
-                                        <span className="text-red-600 font-bold text-base" title={`รวม ${split.vehicle1Qty + split.vehicle2Qty} ≠ คงเหลือ ${remaining}`}>&#10007;</span>
+                                        <span className="text-red-600 font-bold text-base" title={`รวม ${sum} ≠ คงเหลือ ${remaining}`}>&#10007;</span>
                                       )}
                                     </td>
                                   </>
@@ -247,7 +280,7 @@ export function OrderSelectionStep({
                           })}
                         </tbody>
                       </table>
-                      {!splitIntoTwoTrips && (
+                      {!splitIntoTwoTrips && !splitIntoThreeTrips && (
                         <div className="mt-2 flex gap-2">
                           <button
                             type="button"
@@ -265,28 +298,37 @@ export function OrderSelectionStep({
                           </button>
                         </div>
                       )}
-                      {splitIntoTwoTrips && (
-                        <div className="mt-2 flex gap-2">
+                      {(splitIntoTwoTrips || splitIntoThreeTrips) && (
+                        <div className="mt-2 flex flex-wrap gap-2">
                           <button
                             type="button"
                             onClick={() => setAllSplitForDelivery(delivery.order_id, orderItems, 'vehicle1')}
                             className="text-xs px-3 py-1 rounded border border-blue-300 text-blue-700 hover:bg-blue-50"
                           >
-                            ทั้งหมดไปคัน 1
+                            ทั้งหมดไป{splitIntoThreeTrips ? 'เที่ยว 1' : 'คัน 1'}
                           </button>
                           <button
                             type="button"
                             onClick={() => setAllSplitForDelivery(delivery.order_id, orderItems, 'vehicle2')}
-                            className="text-xs px-3 py-1 rounded border border-emerald-300 text-emerald-700 hover:bg-emerald-50"
+                            className="text-xs px-3 py-1 rounded border border-amber-300 text-amber-700 hover:bg-amber-50"
                           >
-                            ทั้งหมดไปคัน 2
+                            ทั้งหมดไป{splitIntoThreeTrips ? 'เที่ยว 2' : 'คัน 2'}
                           </button>
+                          {splitIntoThreeTrips && (
+                            <button
+                              type="button"
+                              onClick={() => setAllSplitForDelivery(delivery.order_id, orderItems, 'vehicle3')}
+                              className="text-xs px-3 py-1 rounded border border-emerald-300 text-emerald-700 hover:bg-emerald-50"
+                            >
+                              ทั้งหมดไปเที่ยว 3
+                            </button>
+                          )}
                           <button
                             type="button"
                             onClick={() => setAllSplitForDelivery(delivery.order_id, orderItems, 'half')}
                             className="text-xs px-3 py-1 rounded border border-gray-300 text-gray-700 hover:bg-gray-50"
                           >
-                            แบ่งครึ่ง
+                            {splitIntoThreeTrips ? 'แบ่งเท่าๆ' : 'แบ่งครึ่ง'}
                           </button>
                         </div>
                       )}
@@ -315,7 +357,7 @@ export function OrderSelectionStep({
           </div>
         )}
 
-        {splitIntoTwoTrips && splitValidationErrors.length > 0 && (
+        {(splitIntoTwoTrips || splitIntoThreeTrips) && splitValidationErrors.length > 0 && (
           <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg">
             <div className="flex items-center gap-2 text-red-800 mb-2">
               <AlertTriangle size={16} />

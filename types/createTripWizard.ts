@@ -15,10 +15,17 @@ export interface StoreDelivery {
   delivery_date: string | null;
 }
 
-/** การแบ่งสินค้าระดับรายการ: key = `${orderId}_${itemId}` → จำนวนที่ขึ้นแต่ละคัน */
+export type SplitMode = 'single' | '2vehicles' | '3trips';
+
+/** การแบ่งสินค้าระดับรายการ: key = `${orderId}_${itemId}` → จำนวนที่ขึ้นแต่ละคัน/เที่ยว */
 export interface ItemSplitQty {
+  /** โหมดแบ่ง 2 คัน */
   vehicle1Qty: number;
   vehicle2Qty: number;
+  /** โหมดแบ่ง 3 เที่ยว (ใช้เมื่อ splitMode = '3trips') */
+  trip1Qty?: number;
+  trip2Qty?: number;
+  trip3Qty?: number;
 }
 
 export type CapacitySummary = {

@@ -11,7 +11,8 @@ import { tripMetricsService } from '../services/tripMetricsService';
 import { useAuth } from './useAuth';
 import { useToast } from './useToast';
 import { useVehicles } from './useVehicles';
-import type { StoreDelivery, ItemSplitQty, CapacitySummary } from '../types/createTripWizard';
+import { useDeliveryTrips } from './useDeliveryTrips';
+import type { StoreDelivery, ItemSplitQty, CapacitySummary, SplitMode } from '../types/createTripWizard';
 import { splitKey } from '../types/createTripWizard';
 
 export interface UseCreateTripWizardParams {
@@ -35,9 +36,13 @@ export function useCreateTripWizard({ selectedOrders, onSuccess }: UseCreateTrip
   const [orderItemsMap, setOrderItemsMap] = useState<Map<string, any[]>>(new Map());
   const [skipStockDeduction, setSkipStockDeduction] = useState(true);
 
-  const [splitIntoTwoTrips, setSplitIntoTwoTrips] = useState(false);
+  const [splitMode, setSplitMode] = useState<SplitMode>('single');
+  const splitIntoTwoTrips = splitMode === '2vehicles';
+  const splitIntoThreeTrips = splitMode === '3trips';
   const [selectedVehicleId2, setSelectedVehicleId2] = useState('');
   const [selectedDriverId2, setSelectedDriverId2] = useState('');
+  const [selectedVehicleId3, setSelectedVehicleId3] = useState('');
+  const [selectedDriverId3, setSelectedDriverId3] = useState('');
   const [itemSplitMap, setItemSplitMap] = useState<Record<string, ItemSplitQty>>({});
   const [quantityInThisTripMap, setQuantityInThisTripMap] = useState<Record<string, number>>({});
   const [expandedStores, setExpandedStores] = useState<Set<string>>(new Set());
@@ -47,6 +52,7 @@ export function useCreateTripWizard({ selectedOrders, onSuccess }: UseCreateTrip
 
   const [capacitySummary, setCapacitySummary] = useState<CapacitySummary | null>(null);
   const [capacitySummary2, setCapacitySummary2] = useState<CapacitySummary | null>(null);
+  const [capacitySummary3, setCapacitySummary3] = useState<CapacitySummary | null>(null);
   const [palletPackingResult, setPalletPackingResult] = useState<PalletPackingResult | null>(null);
 
   const [storeDeliveries, setStoreDeliveries] = useState<StoreDelivery[]>(() =>
@@ -117,7 +123,7 @@ export function useCreateTripWizard({ selectedOrders, onSuccess }: UseCreateTrip
   ), []);
 
   useEffect(() => {
-    if (!splitIntoTwoTrips) return;
+    if (splitMode === 'single') return;
     const newMap: Record<string, ItemSplitQty> = {};
     for (const delivery of storeDeliveries) {
       const items = orderItemsMap.get(delivery.order_id) || [];
@@ -130,7 +136,11 @@ export function useCreateTripWizard({ selectedOrders, onSuccess }: UseCreateTrip
         if (remaining <= 0) continue;
         const key = splitKey(delivery.order_id, item.id);
         if (!itemSplitMap[key]) {
-          newMap[key] = { vehicle1Qty: remaining, vehicle2Qty: 0 };
+          if (splitMode === '2vehicles') {
+            newMap[key] = { vehicle1Qty: remaining, vehicle2Qty: 0 };
+          } else {
+            newMap[key] = { vehicle1Qty: 0, vehicle2Qty: 0, trip1Qty: remaining, trip2Qty: 0, trip3Qty: 0 };
+          }
         } else {
           newMap[key] = itemSplitMap[key];
         }
@@ -139,20 +149,34 @@ export function useCreateTripWizard({ selectedOrders, onSuccess }: UseCreateTrip
     if (Object.keys(newMap).length > 0) {
       setItemSplitMap(prev => ({ ...prev, ...newMap }));
     }
-  }, [splitIntoTwoTrips, storeDeliveries, orderItemsMap]);
+  }, [splitMode, storeDeliveries, orderItemsMap]);
 
-  const handleSplitQtyChange = useCallback((orderId: string, itemId: string, vehicle: 1 | 2, value: number, totalQty: number) => {
+  const handleSplitQtyChange = useCallback((orderId: string, itemId: string, target: 1 | 2 | 3, value: number, totalQty: number) => {
     const key = splitKey(orderId, itemId);
     const clamped = Math.max(0, Math.min(totalQty, value));
-    setItemSplitMap(prev => ({
-      ...prev,
-      [key]: vehicle === 1
-        ? { vehicle1Qty: clamped, vehicle2Qty: totalQty - clamped }
-        : { vehicle1Qty: totalQty - clamped, vehicle2Qty: clamped },
-    }));
-  }, []);
+    setItemSplitMap(prev => {
+      const cur = prev[key] || { vehicle1Qty: 0, vehicle2Qty: 0, trip1Qty: 0, trip2Qty: 0, trip3Qty: 0 };
+      if (splitMode === '2vehicles') {
+        return {
+          ...prev,
+          [key]: target === 1
+            ? { ...cur, vehicle1Qty: clamped, vehicle2Qty: totalQty - clamped }
+            : { ...cur, vehicle1Qty: totalQty - clamped, vehicle2Qty: clamped },
+        };
+      }
+      const rest = totalQty - clamped;
+      const half = Math.floor(rest / 2);
+      if (target === 1) {
+        return { ...prev, [key]: { ...cur, trip1Qty: clamped, trip2Qty: half, trip3Qty: rest - half } };
+      }
+      if (target === 2) {
+        return { ...prev, [key]: { ...cur, trip1Qty: half, trip2Qty: clamped, trip3Qty: rest - half } };
+      }
+      return { ...prev, [key]: { ...cur, trip1Qty: half, trip2Qty: rest - half, trip3Qty: clamped } };
+    });
+  }, [splitMode]);
 
-  const getItemsForVehicle = useCallback((vehicleNum: 1 | 2) => {
+  const getItemsForVehicle = useCallback((tripNum: 1 | 2 | 3) => {
     const items: Array<{ product_id: string; quantity: number }> = [];
     for (const delivery of storeDeliveries) {
       const orderItems = orderItemsMap.get(delivery.order_id) || [];
@@ -164,17 +188,20 @@ export function useCreateTripWizard({ selectedOrders, onSuccess }: UseCreateTrip
         );
         const key = splitKey(delivery.order_id, item.id);
         const split = itemSplitMap[key];
-        const qty = split
-          ? (vehicleNum === 1 ? split.vehicle1Qty : split.vehicle2Qty)
-          : (vehicleNum === 1 ? remaining : 0);
+        let qty = 0;
+        if (splitMode === '3trips') {
+          qty = tripNum === 1 ? (split?.trip1Qty ?? remaining) : tripNum === 2 ? (split?.trip2Qty ?? 0) : (split?.trip3Qty ?? 0);
+        } else {
+          qty = split ? (tripNum === 1 ? split.vehicle1Qty : split.vehicle2Qty) : (tripNum === 1 ? remaining : 0);
+        }
         if (qty > 0) items.push({ product_id: item.product_id, quantity: qty });
       }
     }
     return items;
-  }, [storeDeliveries, orderItemsMap, itemSplitMap]);
+  }, [storeDeliveries, orderItemsMap, itemSplitMap, splitMode]);
 
   const splitValidationErrors = useMemo(() => {
-    if (!splitIntoTwoTrips) return [];
+    if (splitMode === 'single') return [];
     const errors: string[] = [];
     for (const delivery of storeDeliveries) {
       const items = orderItemsMap.get(delivery.order_id) || [];
@@ -188,7 +215,9 @@ export function useCreateTripWizard({ selectedOrders, onSuccess }: UseCreateTrip
         const key = splitKey(delivery.order_id, item.id);
         const split = itemSplitMap[key];
         if (split) {
-          const sum = split.vehicle1Qty + split.vehicle2Qty;
+          const sum = splitMode === '2vehicles'
+            ? split.vehicle1Qty + split.vehicle2Qty
+            : (split.trip1Qty ?? 0) + (split.trip2Qty ?? 0) + (split.trip3Qty ?? 0);
           if (Math.abs(sum - remaining) > 0.001) {
             errors.push(`${delivery.store_name} - ${item.product?.product_name || item.product_name || item.product_id}: จำนวนรวม ${sum} ≠ คงเหลือ ${remaining}`);
           }
@@ -196,16 +225,17 @@ export function useCreateTripWizard({ selectedOrders, onSuccess }: UseCreateTrip
       }
     }
     return errors;
-  }, [splitIntoTwoTrips, storeDeliveries, orderItemsMap, itemSplitMap]);
+  }, [splitMode, storeDeliveries, orderItemsMap, itemSplitMap]);
 
   useEffect(() => {
     if (!selectedVehicleId || storeDeliveries.length === 0) {
       setCapacitySummary(null);
       setCapacitySummary2(null);
+      setCapacitySummary3(null);
       setPalletPackingResult(null);
       return;
     }
-    const items1 = splitIntoTwoTrips ? getItemsForVehicle(1) : (() => {
+    const items1 = (splitIntoTwoTrips || splitIntoThreeTrips) ? getItemsForVehicle(1) : (() => {
       const all: Array<{ product_id: string; quantity: number }> = [];
       for (const d of storeDeliveries) {
         for (const item of (orderItemsMap.get(d.order_id) || [])) {
@@ -217,9 +247,10 @@ export function useCreateTripWizard({ selectedOrders, onSuccess }: UseCreateTrip
       }
       return all;
     })();
-    if (items1.length === 0 && !splitIntoTwoTrips) {
+    if (items1.length === 0 && !splitIntoTwoTrips && !splitIntoThreeTrips) {
       setCapacitySummary(null);
       setCapacitySummary2(null);
+      setCapacitySummary3(null);
       setPalletPackingResult(null);
       return;
     }
@@ -240,7 +271,7 @@ export function useCreateTripWizard({ selectedOrders, onSuccess }: UseCreateTrip
       }).catch(err => {
         setCapacitySummary(prev => ({ ...prev, loading: false, errors: [err.message || 'ไม่สามารถคำนวณความจุได้'], warnings: [] } as CapacitySummary));
       });
-      if (splitIntoTwoTrips && selectedVehicleId2) {
+      if ((splitIntoTwoTrips || splitIntoThreeTrips) && selectedVehicleId2) {
         const items2 = getItemsForVehicle(2);
         if (items2.length > 0) {
           setCapacitySummary2(prev => ({ ...prev, loading: true, errors: [], warnings: [] } as CapacitySummary));
@@ -255,9 +286,24 @@ export function useCreateTripWizard({ selectedOrders, onSuccess }: UseCreateTrip
       } else {
         setCapacitySummary2(null);
       }
+      if (splitIntoThreeTrips && selectedVehicleId3) {
+        const items3 = getItemsForVehicle(3);
+        if (items3.length > 0) {
+          setCapacitySummary3(prev => ({ ...prev, loading: true, errors: [], warnings: [] } as CapacitySummary));
+          calculateTripCapacity(items3, selectedVehicleId3).then(r => {
+            setCapacitySummary3({ totalPallets: r.summary.totalPallets, totalWeightKg: r.summary.totalWeightKg, totalHeightCm: r.summary.totalHeightCm, vehicleMaxPallets: r.summary.vehicleMaxPallets, vehicleMaxWeightKg: r.summary.vehicleMaxWeightKg, vehicleMaxHeightCm: r.summary.vehicleMaxHeightCm, loading: false, errors: r.errors, warnings: r.warnings });
+          }).catch(err => {
+            setCapacitySummary3(prev => ({ ...prev, loading: false, errors: [err.message || 'ไม่สามารถคำนวณความจุได้'], warnings: [] } as CapacitySummary));
+          });
+        } else {
+          setCapacitySummary3(null);
+        }
+      } else {
+        setCapacitySummary3(null);
+      }
     }, 500);
     return () => clearTimeout(timeoutId);
-  }, [selectedVehicleId, selectedVehicleId2, storeDeliveries, orderItemsMap, splitIntoTwoTrips, itemSplitMap, quantityInThisTripMap, getItemsForVehicle, getRemaining]);
+  }, [selectedVehicleId, selectedVehicleId2, selectedVehicleId3, storeDeliveries, orderItemsMap, splitIntoTwoTrips, splitIntoThreeTrips, itemSplitMap, quantityInThisTripMap, getItemsForVehicle, getRemaining]);
 
   const branches = useMemo(() => {
     if (!vehicles || vehicles.length === 0) return [];
@@ -309,6 +355,45 @@ export function useCreateTripWizard({ selectedOrders, onSuccess }: UseCreateTrip
     fetch: fetchRecommendations,
     hasFetched: aiHasFetched,
   } = useVehicleRecommendation(recommendationInput);
+
+  // Trips already planned for the same vehicle on the same date (for "เที่ยวที่ 2, 3, ..." hint)
+  const { trips: sameVehicleDateTrips1 } = useDeliveryTrips({
+    vehicle_id: selectedVehicleId || undefined,
+    planned_date_from: tripDate || undefined,
+    planned_date_to: tripDate || undefined,
+    autoFetch: !!(selectedVehicleId && tripDate),
+    pageSize: 20,
+  });
+  const { trips: sameVehicleDateTrips2 } = useDeliveryTrips({
+    vehicle_id: selectedVehicleId2 || undefined,
+    planned_date_from: tripDate || undefined,
+    planned_date_to: tripDate || undefined,
+    autoFetch: !!((splitIntoTwoTrips || splitIntoThreeTrips) && selectedVehicleId2 && tripDate),
+    pageSize: 20,
+  });
+  const { trips: sameVehicleDateTrips3 } = useDeliveryTrips({
+    vehicle_id: selectedVehicleId3 || undefined,
+    planned_date_from: tripDate || undefined,
+    planned_date_to: tripDate || undefined,
+    autoFetch: !!(splitIntoThreeTrips && selectedVehicleId3 && tripDate),
+    pageSize: 20,
+  });
+
+  const nextTripSequence1 = useMemo(() => {
+    if (!sameVehicleDateTrips1.length) return 1;
+    const max = Math.max(0, ...sameVehicleDateTrips1.map((t: any) => t.sequence_order ?? 0));
+    return max + 1;
+  }, [sameVehicleDateTrips1]);
+  const nextTripSequence2 = useMemo(() => {
+    if (!sameVehicleDateTrips2.length) return 1;
+    const max = Math.max(0, ...sameVehicleDateTrips2.map((t: any) => t.sequence_order ?? 0));
+    return max + 1;
+  }, [sameVehicleDateTrips2]);
+  const nextTripSequence3 = useMemo(() => {
+    if (!sameVehicleDateTrips3.length) return 1;
+    const max = Math.max(0, ...sameVehicleDateTrips3.map((t: any) => t.sequence_order ?? 0));
+    return max + 1;
+  }, [sameVehicleDateTrips3]);
 
   const [selectedRecommendationVehicleId, setSelectedRecommendationVehicleId] = useState<string | null>(null);
   const [aiExtraResult, setAiExtraResult] = useState<{
@@ -540,25 +625,33 @@ export function useCreateTripWizard({ selectedOrders, onSuccess }: UseCreateTrip
     setSelectedBranch(branch);
     setSelectedVehicleId('');
     setSelectedVehicleId2('');
+    setSelectedVehicleId3('');
   }, []);
 
   const setVehicleSearchAndClear = useCallback((search: string) => {
     setVehicleSearch(search);
     setSelectedVehicleId('');
     setSelectedVehicleId2('');
+    setSelectedVehicleId3('');
   }, []);
 
-  const setSplitIntoTwoTripsWithExpanded = useCallback((checked: boolean) => {
-    setSplitIntoTwoTrips(checked);
-    if (checked) {
+  const setSplitModeWithExpanded = useCallback((mode: SplitMode) => {
+    setSplitMode(mode);
+    if (mode === '2vehicles' || mode === '3trips') {
       setExpandedStores(new Set(storeDeliveries.map(d => d.id)));
     } else {
       setSelectedVehicleId2('');
       setSelectedDriverId2('');
+      setSelectedVehicleId3('');
+      setSelectedDriverId3('');
       setCapacitySummary2(null);
+      setCapacitySummary3(null);
       setExpandedStores(new Set());
     }
   }, [storeDeliveries]);
+  const setSplitIntoTwoTripsWithExpanded = useCallback((checked: boolean) => {
+    setSplitModeWithExpanded(checked ? '2vehicles' : 'single');
+  }, [setSplitModeWithExpanded]);
 
   const handleSubmit = useCallback(async () => {
     if (!selectedVehicleId) {
@@ -587,6 +680,26 @@ export function useCreateTripWizard({ selectedOrders, onSuccess }: UseCreateTrip
         warning('คันที่ 2 ยังไม่มีสินค้า กรุณาแบ่งสินค้าไปคันที่ 2 อย่างน้อย 1 รายการ');
         return;
       }
+    }
+    if (splitIntoThreeTrips) {
+      if (!selectedVehicleId2 || !selectedDriverId2 || !selectedVehicleId3 || !selectedDriverId3) {
+        warning('เมื่อแบ่ง 3 เที่ยว กรุณาเลือกรถและพนักงานขับรถของเที่ยวที่ 2 และเที่ยวที่ 3');
+        return;
+      }
+      if (splitValidationErrors.length > 0) {
+        warning(`จำนวนสินค้าแบ่งไม่ตรง: ${splitValidationErrors[0]}`);
+        return;
+      }
+      const items2 = getItemsForVehicle(2);
+      const items3 = getItemsForVehicle(3);
+      if (items2.length === 0) {
+        warning('เที่ยวที่ 2 ยังไม่มีสินค้า กรุณาแบ่งสินค้าไปเที่ยวที่ 2 อย่างน้อย 1 รายการ');
+        return;
+      }
+      if (items3.length === 0) {
+        warning('เที่ยวที่ 3 ยังไม่มีสินค้า กรุณาแบ่งสินค้าไปเที่ยวที่ 3 อย่างน้อย 1 รายการ');
+        return;
+      }
       if (capacitySummary?.errors?.length) {
         const dp1 = palletPackingResult ? palletPackingResult.totalPallets : capacitySummary.totalPallets;
         const nonPalletErrors1 = capacitySummary.errors.filter((msg) => !msg.startsWith('จำนวนพาเลท'));
@@ -594,16 +707,24 @@ export function useCreateTripWizard({ selectedOrders, onSuccess }: UseCreateTrip
         if (capacitySummary.vehicleMaxPallets !== null && dp1 > capacitySummary.vehicleMaxPallets) {
           recalc1.push(`จำนวนพาเลทเกินความจุ: ${dp1} พาเลท (สูงสุด ${capacitySummary.vehicleMaxPallets} พาเลท)`);
         }
-        if (recalc1.length > 0) {
-          warning(`คัน 1: ${recalc1.join(', ')}`);
-          return;
+        if (recalc1.length > 0) { warning(`เที่ยว 1: ${recalc1.join(', ')}`); return; }
+      }
+      if (capacitySummary2?.errors?.length) { warning(`เที่ยว 2: ${capacitySummary2.errors.join(', ')}`); return; }
+      if (capacitySummary3?.errors?.length) { warning(`เที่ยว 3: ${capacitySummary3.errors.join(', ')}`); return; }
+    }
+    if (splitIntoTwoTrips) {
+      if (capacitySummary?.errors?.length) {
+        const dp1 = palletPackingResult ? palletPackingResult.totalPallets : capacitySummary.totalPallets;
+        const nonPalletErrors1 = capacitySummary.errors.filter((msg) => !msg.startsWith('จำนวนพาเลท'));
+        const recalc1 = [...nonPalletErrors1];
+        if (capacitySummary.vehicleMaxPallets !== null && dp1 > capacitySummary.vehicleMaxPallets) {
+          recalc1.push(`จำนวนพาเลทเกินความจุ: ${dp1} พาเลท (สูงสุด ${capacitySummary.vehicleMaxPallets} พาเลท)`);
         }
+        if (recalc1.length > 0) { warning(`คัน 1: ${recalc1.join(', ')}`); return; }
       }
-      if (capacitySummary2?.errors?.length) {
-        warning(`คัน 2: ${capacitySummary2.errors.join(', ')}`);
-        return;
-      }
-    } else {
+      if (capacitySummary2?.errors?.length) { warning(`คัน 2: ${capacitySummary2.errors.join(', ')}`); return; }
+    }
+    if (splitMode === 'single') {
       if (capacitySummary && capacitySummary.errors.length > 0) {
         const displayPallets = palletPackingResult ? palletPackingResult.totalPallets : capacitySummary.totalPallets;
         const nonPalletErrors = capacitySummary.errors.filter((msg) => !msg.startsWith('จำนวนพาเลท'));
@@ -643,7 +764,7 @@ export function useCreateTripWizard({ selectedOrders, onSuccess }: UseCreateTrip
         })
         .filter((s) => s.items.length > 0);
 
-      const buildSplitStoresPayload = (vehicleNum: 1 | 2) => {
+      const buildSplitStoresPayload = (tripNum: 1 | 2 | 3) => {
         const storesMap: Record<string, { store_id: string; sequence_order: number; items: any[] }> = {};
         for (const delivery of storeDeliveries) {
           const orderItems = orderItemsMap.get(delivery.order_id) || [];
@@ -652,7 +773,12 @@ export function useCreateTripWizard({ selectedOrders, onSuccess }: UseCreateTrip
             const pickedUp = Number(item.quantity_picked_up_at_store ?? 0);
             const key = splitKey(delivery.order_id, item.id);
             const split = itemSplitMap[key];
-            const qty = split ? (vehicleNum === 1 ? split.vehicle1Qty : split.vehicle2Qty) : (vehicleNum === 1 ? remaining : 0);
+            let qty = 0;
+            if (splitMode === '3trips') {
+              qty = tripNum === 1 ? (split?.trip1Qty ?? remaining) : tripNum === 2 ? (split?.trip2Qty ?? 0) : (split?.trip3Qty ?? 0);
+            } else {
+              qty = split ? (tripNum === 1 ? split.vehicle1Qty : split.vehicle2Qty) : (tripNum === 1 ? remaining : 0);
+            }
             if (qty > 0) {
               if (!storesMap[delivery.id]) {
                 storesMap[delivery.id] = { store_id: delivery.store_id, sequence_order: delivery.sequence, items: [] };
@@ -664,7 +790,7 @@ export function useCreateTripWizard({ selectedOrders, onSuccess }: UseCreateTrip
                 notes: item.notes ? `${item.notes} [แบ่งจากออเดอร์ ${delivery.order_number}: ${qty}/${item.quantity}]` : `[แบ่งจากออเดอร์ ${delivery.order_number}: ${qty}/${item.quantity}]`,
                 is_bonus: item.is_bonus || false,
               });
-            } else if (vehicleNum === 1 && remaining === 0 && pickedUp > 0) {
+            } else if (tripNum === 1 && remaining === 0 && pickedUp > 0) {
               if (!storesMap[delivery.id]) {
                 storesMap[delivery.id] = { store_id: delivery.store_id, sequence_order: delivery.sequence, items: [] };
               }
@@ -714,6 +840,34 @@ export function useCreateTripWizard({ selectedOrders, onSuccess }: UseCreateTrip
         if (ordersForTrip1.length > 0) await ordersService.assignToTrip(ordersForTrip1, trip1.id, user?.id!);
         if (ordersForTrip2.length > 0) await ordersService.assignToTrip(ordersForTrip2, trip2.id, user?.id!);
         success(`สร้างทริป 2 คันเรียบร้อย (ทริป 1: ${trip1.trip_number}, ทริป 2: ${trip2.trip_number})`);
+      } else if (splitIntoThreeTrips) {
+        const stores1 = buildSplitStoresPayload(1);
+        const stores2 = buildSplitStoresPayload(2);
+        const stores3 = buildSplitStoresPayload(3);
+        const trip1 = await deliveryTripService.create({
+          vehicle_id: selectedVehicleId,
+          driver_id: selectedDriverId,
+          planned_date: tripDate,
+          notes: notes ? `[เที่ยว 1] ${notes}` : '[เที่ยว 1]',
+          stores: stores1,
+        });
+        const trip2 = await deliveryTripService.create({
+          vehicle_id: selectedVehicleId2,
+          driver_id: selectedDriverId2,
+          planned_date: tripDate,
+          notes: notes ? `[เที่ยว 2] ${notes}` : '[เที่ยว 2]',
+          stores: stores2,
+        });
+        const trip3 = await deliveryTripService.create({
+          vehicle_id: selectedVehicleId3,
+          driver_id: selectedDriverId3,
+          planned_date: tripDate,
+          notes: notes ? `[เที่ยว 3] ${notes}` : '[เที่ยว 3]',
+          stores: stores3,
+        });
+        const orderIds = [...new Set(storeDeliveries.map(d => d.order_id))];
+        if (orderIds.length > 0) await ordersService.assignToTrip(orderIds, trip1.id, user?.id!);
+        success(`สร้างทริป 3 เที่ยวเรียบร้อย (${trip1.trip_number}, ${trip2.trip_number}, ${trip3.trip_number})`);
       } else {
         const stores = buildStoresPayload(storeDeliveries);
         if (stores.length === 0) {
@@ -761,9 +915,9 @@ export function useCreateTripWizard({ selectedOrders, onSuccess }: UseCreateTrip
       setIsSubmitting(false);
     }
   }, [
-    selectedVehicleId, selectedDriverId, selectedVehicleId2, selectedDriverId2,
-    storeDeliveries, orderItemsMap, splitIntoTwoTrips, itemSplitMap, quantityInThisTripMap,
-    splitValidationErrors, capacitySummary, capacitySummary2, palletPackingResult,
+    selectedVehicleId, selectedDriverId, selectedVehicleId2, selectedDriverId2, selectedVehicleId3, selectedDriverId3,
+    storeDeliveries, orderItemsMap, splitIntoTwoTrips, splitIntoThreeTrips, splitMode, itemSplitMap, quantityInThisTripMap,
+    splitValidationErrors, capacitySummary, capacitySummary2, capacitySummary3, palletPackingResult,
     getRemaining, getItemsForVehicle, user?.id, recommendationInput, aiHasFetched, aiRecommendations,
     selectedRecommendationVehicleId, onSuccess, warning, success, error,
   ]);
@@ -794,7 +948,7 @@ export function useCreateTripWizard({ selectedOrders, onSuccess }: UseCreateTrip
     });
   }, [getRemaining]);
 
-  const setAllSplitForDelivery = useCallback((orderId: string, orderItems: any[], target: 'vehicle1' | 'vehicle2' | 'half') => {
+  const setAllSplitForDelivery = useCallback((orderId: string, orderItems: any[], target: 'vehicle1' | 'vehicle2' | 'vehicle3' | 'half') => {
     setItemSplitMap(prev => {
       const next = { ...prev };
       for (const item of orderItems) {
@@ -805,13 +959,23 @@ export function useCreateTripWizard({ selectedOrders, onSuccess }: UseCreateTrip
         );
         if (rem <= 0) continue;
         const key = splitKey(orderId, item.id);
-        if (target === 'vehicle1') next[key] = { vehicle1Qty: rem, vehicle2Qty: 0 };
-        else if (target === 'vehicle2') next[key] = { vehicle1Qty: 0, vehicle2Qty: rem };
-        else next[key] = { vehicle1Qty: Math.floor(rem / 2), vehicle2Qty: rem - Math.floor(rem / 2) };
+        if (splitMode === '3trips') {
+          if (target === 'vehicle1') next[key] = { vehicle1Qty: 0, vehicle2Qty: 0, trip1Qty: rem, trip2Qty: 0, trip3Qty: 0 };
+          else if (target === 'vehicle2') next[key] = { vehicle1Qty: 0, vehicle2Qty: 0, trip1Qty: 0, trip2Qty: rem, trip3Qty: 0 };
+          else if (target === 'vehicle3') next[key] = { vehicle1Qty: 0, vehicle2Qty: 0, trip1Qty: 0, trip2Qty: 0, trip3Qty: rem };
+          else {
+            const third = Math.floor(rem / 3);
+            next[key] = { vehicle1Qty: 0, vehicle2Qty: 0, trip1Qty: third, trip2Qty: third, trip3Qty: rem - third * 2 };
+          }
+        } else {
+          if (target === 'vehicle1') next[key] = { vehicle1Qty: rem, vehicle2Qty: 0 };
+          else if (target === 'vehicle2') next[key] = { vehicle1Qty: 0, vehicle2Qty: rem };
+          else next[key] = { vehicle1Qty: Math.floor(rem / 2), vehicle2Qty: rem - Math.floor(rem / 2) };
+        }
       }
       return next;
     });
-  }, []);
+  }, [splitMode]);
 
   return {
     currentStep,
@@ -823,8 +987,11 @@ export function useCreateTripWizard({ selectedOrders, onSuccess }: UseCreateTrip
     toggleExpandedStore,
     splitKey,
     getRemaining,
+    splitMode,
     splitIntoTwoTrips,
+    splitIntoThreeTrips,
     setSplitIntoTwoTripsWithExpanded,
+    setSplitModeWithExpanded,
     itemSplitMap,
     handleSplitQtyChange,
     quantityInThisTripMap,
@@ -870,17 +1037,24 @@ export function useCreateTripWizard({ selectedOrders, onSuccess }: UseCreateTrip
     setSelectedVehicleId2,
     selectedDriverId2,
     setSelectedDriverId2,
+    selectedVehicleId3,
+    setSelectedVehicleId3,
+    selectedDriverId3,
+    setSelectedDriverId3,
     tripDate,
     setTripDate,
     notes,
     setNotes,
     skipStockDeduction,
     setSkipStockDeduction,
+    nextTripSequence1,
+    nextTripSequence2,
     // Confirmation & submit
     totals,
     selectedOrders,
     capacitySummary,
     capacitySummary2,
+    capacitySummary3,
     palletPackingResult,
     getItemsForVehicle,
     isSubmitting,

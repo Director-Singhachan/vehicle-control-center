@@ -59,7 +59,9 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
             />
             <CrewAssignmentStep
               splitIntoTwoTrips={wizard.splitIntoTwoTrips}
+              splitIntoThreeTrips={wizard.splitIntoThreeTrips}
               setSplitIntoTwoTripsWithExpanded={wizard.setSplitIntoTwoTripsWithExpanded}
+              setSplitModeWithExpanded={wizard.setSplitModeWithExpanded}
               driversLoading={wizard.driversLoading}
               selectedBranch={wizard.selectedBranch}
               filteredDrivers={wizard.filteredDrivers}
@@ -73,12 +75,19 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
               setSelectedVehicleId2={wizard.setSelectedVehicleId2}
               selectedDriverId2={wizard.selectedDriverId2}
               setSelectedDriverId2={wizard.setSelectedDriverId2}
+              selectedVehicleId3={wizard.selectedVehicleId3}
+              setSelectedVehicleId3={wizard.setSelectedVehicleId3}
+              selectedDriverId3={wizard.selectedDriverId3}
+              setSelectedDriverId3={wizard.setSelectedDriverId3}
               tripDate={wizard.tripDate}
               setTripDate={wizard.setTripDate}
               notes={wizard.notes}
               setNotes={wizard.setNotes}
               skipStockDeduction={wizard.skipStockDeduction}
               setSkipStockDeduction={wizard.setSkipStockDeduction}
+              nextTripSequence1={wizard.nextTripSequence1}
+              nextTripSequence2={wizard.nextTripSequence2}
+              nextTripSequence3={wizard.nextTripSequence3}
             />
             <OrderSelectionStep
               storeDeliveries={wizard.storeDeliveries}
@@ -88,6 +97,7 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
               splitKey={splitKey}
               getRemaining={wizard.getRemaining}
               splitIntoTwoTrips={wizard.splitIntoTwoTrips}
+              splitIntoThreeTrips={wizard.splitIntoThreeTrips}
               itemSplitMap={wizard.itemSplitMap}
               handleSplitQtyChange={wizard.handleSplitQtyChange}
               quantityInThisTripMap={wizard.quantityInThisTripMap}
@@ -109,16 +119,20 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
             storeDeliveries={wizard.storeDeliveries}
             orderItemsMap={wizard.orderItemsMap}
             splitIntoTwoTrips={wizard.splitIntoTwoTrips}
+            splitIntoThreeTrips={wizard.splitIntoThreeTrips}
             selectedVehicleId={wizard.selectedVehicleId}
             selectedVehicleId2={wizard.selectedVehicleId2}
+            selectedVehicleId3={wizard.selectedVehicleId3}
             selectedDriverId={wizard.selectedDriverId}
             selectedDriverId2={wizard.selectedDriverId2}
+            selectedDriverId3={wizard.selectedDriverId3}
             splitValidationErrors={wizard.splitValidationErrors}
             getItemsForVehicle={wizard.getItemsForVehicle}
             isSubmitting={wizard.isSubmitting}
             handleSubmit={wizard.handleSubmit}
             capacitySummary={wizard.capacitySummary}
             capacitySummary2={wizard.capacitySummary2}
+            capacitySummary3={wizard.capacitySummary3}
             palletPackingResult={wizard.palletPackingResult}
           />
         </div>
