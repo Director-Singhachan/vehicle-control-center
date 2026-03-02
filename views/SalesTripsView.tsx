@@ -4,6 +4,7 @@ import { useAuth, useToast } from '../hooks';
 import { useDeliveryTrips } from '../hooks/useDeliveryTrips';
 import { useInvoiceStatus } from '../hooks/useInvoiceStatus';
 import { deliveryTripService } from '../services/deliveryTripService';
+import { ordersService } from '../services/ordersService';
 import { tripMetricsService } from '../services/tripMetricsService';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
@@ -244,6 +245,7 @@ export function SalesTripsView() {
   const [expandedStores, setExpandedStores] = useState<Set<string>>(new Set());
   const [selectedStoreDetail, setSelectedStoreDetail] = useState<{ tripId: string; store: any } | null>(null);
   const [checkedItems, setCheckedItems] = useState<Set<string>>(new Set());
+  const [orderQuantitiesByProduct, setOrderQuantitiesByProduct] = useState<Map<string, { ordered: number; pickedUp: number }>>(new Map());
   const [viewMode, setViewMode] = useState<ViewMode>('by_trip'); // default = ดูแบบทริป (จัดกลุ่มตามทริป)
   // สำหรับ modal แบบ merged store
   const [selectedMergedStore, setSelectedMergedStore] = useState<MergedStoreEntry | null>(null);
@@ -256,6 +258,22 @@ export function SalesTripsView() {
     blocksVisible: 5,
     stepSize: 272,
   });
+
+  // โหลดยอดออเดอร์เต็ม (สั่งทั้งหมด + รับที่ร้าน) สำหรับ modal รายละเอียดสินค้า
+  useEffect(() => {
+    if (!selectedStoreDetail) {
+      setOrderQuantitiesByProduct(new Map());
+      return;
+    }
+    const tripId = selectedStoreDetail.tripId;
+    const storeId = selectedStoreDetail.store.store_id;
+    if (!tripId || !storeId) return;
+
+    ordersService
+      .getOrderQuantitiesByProductForStoreInTrip(tripId, storeId)
+      .then(setOrderQuantitiesByProduct)
+      .catch(() => setOrderQuantitiesByProduct(new Map()));
+  }, [selectedStoreDetail]);
 
   // Auto-check all items when invoice_status is 'issued'
   useEffect(() => {
@@ -956,6 +974,43 @@ export function SalesTripsView() {
                       </div>
                     </div>
 
+                    {/* Summary: สั่งทั้งหมด + รับที่ร้าน (จาก order_items จริง) */}
+                    {orderQuantitiesByProduct.size > 0 && (
+                      <div className="mb-4 p-3 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-lg">
+                        <div className="text-sm font-medium text-emerald-800 dark:text-emerald-200 mb-1">
+                          สรุปยอดออเดอร์ (จากข้อมูลออเดอร์จริง)
+                        </div>
+                        <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-emerald-700 dark:text-emerald-300">
+                          <span>
+                            สั่งทั้งหมด{' '}
+                            {new Intl.NumberFormat('th-TH').format(
+                              (() => {
+                                let total = 0;
+                                for (const v of orderQuantitiesByProduct.values()) {
+                                  total += v.ordered;
+                                }
+                                return total;
+                              })()
+                            )}{' '}
+                            ชิ้น
+                          </span>
+                          <span>
+                            รับที่ร้านแล้ว{' '}
+                            {new Intl.NumberFormat('th-TH').format(
+                              (() => {
+                                let total = 0;
+                                for (const v of orderQuantitiesByProduct.values()) {
+                                  total += v.pickedUp;
+                                }
+                                return total;
+                              })()
+                            )}{' '}
+                            ชิ้น
+                          </span>
+                        </div>
+                      </div>
+                    )}
+
                     {/* Summary Card with Progress */}
                     <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
                       <div className="flex items-center justify-between text-sm mb-2">
@@ -1082,11 +1137,18 @@ export function SalesTripsView() {
                                   {item.product?.category || '-'}
                                 </td>
                                 <td className="py-3 px-3 text-sm text-right font-semibold text-gray-900 dark:text-white">
-                                  {Math.floor(Number(item.quantity) || 0).toLocaleString('th-TH', { maximumFractionDigits: 0 })}
+                                  {(() => {
+                                    const key = `${item.product_id}_${item.is_bonus ? 'bonus' : 'normal'}`;
+                                    const ctx = orderQuantitiesByProduct.get(key);
+                                    const ordered = ctx?.ordered ?? (Math.floor(Number(item.quantity) || 0) + Math.floor(Number(item.quantity_picked_up_at_store) || 0));
+                                    return ordered.toLocaleString('th-TH', { maximumFractionDigits: 0 });
+                                  })()}
                                 </td>
                                 <td className="py-3 px-3 text-sm text-right">
                                   {(() => {
-                                    const pickedUp = Math.floor(Number(item.quantity_picked_up_at_store) || 0);
+                                    const key = `${item.product_id}_${item.is_bonus ? 'bonus' : 'normal'}`;
+                                    const ctx = orderQuantitiesByProduct.get(key);
+                                    const pickedUp = ctx?.pickedUp ?? Math.floor(Number(item.quantity_picked_up_at_store) || 0);
                                     const unit = item.product?.unit || 'ชิ้น';
                                     if (pickedUp > 0) {
                                       return (
@@ -1116,7 +1178,7 @@ export function SalesTripsView() {
                     {/* Helper Text */}
                     <div className="mt-4 p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
                       <p className="text-xs text-yellow-800 dark:text-yellow-300">
-                        <strong>💡 คำแนะนำ:</strong> ใช้รายการนี้เป็นคู่มือในการคีย์บิลในระบบอื่น จำนวนเป็น<strong>จำนวนเต็ม</strong>เท่านั้น คอลัมน์ &quot;รับที่ร้านแล้ว&quot; ระบุจำนวนที่ลูกค้ามารับไปที่หน้าร้านแล้ว — ตรวจสอบให้ครบทุกรายการก่อนกด &quot;ยืนยันการออกบิล&quot;
+                        <strong>💡 คำแนะนำ:</strong> &quot;จำนวนสั่ง&quot; = ยอดที่ลูกค้าสั่งทั้งหมด (รวมทั้งที่จัดส่งและที่รับเอง) &quot;รับที่ร้านแล้ว&quot; = จำนวนที่ลูกค้ามารับไปที่หน้าร้าน — ใช้เป็นคู่มือคีย์บิลในระบบอื่น (จำนวนเต็มเท่านั้น) ตรวจสอบให้ครบทุกรายการก่อนกด &quot;ยืนยันการออกบิล&quot;
                       </p>
                     </div>
 

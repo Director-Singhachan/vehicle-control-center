@@ -114,18 +114,52 @@ type OrderItem = {
   line_total: number | null;
   notes: string | null;
   is_bonus?: boolean;
+  fulfillment_method: 'delivery' | 'pickup'; // delivery = จัดส่ง, pickup = ลูกค้ามารับเอง
   created_at: string;
   updated_at: string;
 };
 
-type OrderItemInsert = Omit<OrderItem, 'id' | 'created_at' | 'updated_at' | 'discount_amount' | 'line_total' | 'notes'> & {
+type OrderItemInsert = Omit<OrderItem, 'id' | 'created_at' | 'updated_at' | 'discount_amount' | 'line_total' | 'notes' | 'quantity_picked_up_at_store' | 'quantity_delivered' | 'quantity_remaining' | 'fulfillment_method'> & {
   id?: string;
   created_at?: string;
   updated_at?: string;
   discount_amount?: number | null;
   line_total?: number | null;
   notes?: string | null;
+  quantity_picked_up_at_store?: number;
+  quantity_delivered?: number;
+  quantity_remaining?: number;
+  fulfillment_method?: 'delivery' | 'pickup';
 };
+
+/** รายการ pickup ที่รอรับ (quantity_picked_up_at_store < quantity) พร้อม order + store + product */
+export interface PickupPendingItem {
+  id: string;
+  order_id: string;
+  product_id: string;
+  quantity: number;
+  quantity_picked_up_at_store: number;
+  quantity_remaining: number;
+  order: {
+    id: string;
+    order_number: string | null;
+    order_date: string;
+    store: {
+      id: string;
+      customer_code: string;
+      customer_name: string;
+      address: string | null;
+      branch: string | null;
+    };
+  };
+  product: {
+    id: string;
+    product_code: string;
+    product_name: string;
+    category: string | null;
+    unit: string;
+  };
+}
 
 // ========================================
 // Orders Service
@@ -211,7 +245,7 @@ export const ordersService = {
 
     const { data: items, error: itemsError } = await supabase
       .from('order_items')
-      .select('order_id, product_id, quantity, quantity_picked_up_at_store, quantity_delivered')
+      .select('order_id, product_id, quantity, quantity_picked_up_at_store, quantity_delivered, fulfillment_method')
       .in('order_id', orderIds);
 
     if (itemsError) {
@@ -219,9 +253,13 @@ export const ordersService = {
       return [];
     }
 
-    // ออเดอร์ที่ยังไม่มีทริป (delivery_trip_id null) — ใช้เฉพาะ order_items.quantity_delivered
+    // ออเดอร์ที่ยังไม่มีทริป — remaining คำนวณเฉพาะ fulfillment_method = 'delivery'
+    // รายการ pickup ไม่นำมานับ (ลูกค้ามารับเอง ไม่ต้องจัดทริป)
     const orderIdToRemaining = new Map<string, number>();
     for (const row of items ?? []) {
+      const method = (row.fulfillment_method ?? 'delivery') as string;
+      if (method === 'pickup') continue;
+
       const pickedUp = Number(row.quantity_picked_up_at_store ?? 0);
       const delivered = Number(row.quantity_delivered ?? 0);
       const rem = Math.max(0, Number(row.quantity) - pickedUp - delivered);
@@ -236,6 +274,429 @@ export const ordersService = {
       if (remaining <= 0) return false;
       return true; // delivery_trip_id IS NULL แล้วจาก query ต้นทาง
     });
+  },
+
+  /**
+   * สร้าง order_number สำหรับออเดอร์รับเองทั้งหมด (ที่ไม่มีทริป)
+   * เรียกเมื่อสร้างหรือยืนยันออเดอร์ที่ทุกรายการเป็น pickup
+   */
+  async ensureOrderNumberForPickupOrder(orderId: string): Promise<string | null> {
+    const { data: order, error: orderErr } = await supabase
+      .from('orders')
+      .select('order_number')
+      .eq('id', orderId)
+      .single();
+
+    if (orderErr || !order) return null;
+    if (order.order_number && !order.order_number.startsWith('TEMP-')) return order.order_number;
+
+    const { data: rpcResult, error } = await supabase.rpc('generate_order_number_for_pickup', {
+      p_order_id: orderId,
+    });
+
+    if (error) {
+      console.warn('[ordersService] generate_order_number_for_pickup failed:', error?.message);
+      return null;
+    }
+
+    const newNum = typeof rpcResult === 'string' ? rpcResult : rpcResult != null ? String(rpcResult) : null;
+    if (!newNum) return null;
+    await supabase.from('orders').update({ order_number: newNum }).eq('id', orderId);
+    return newNum;
+  },
+
+  /**
+   * ดึงรายการรอรับเอง (fulfillment_method = 'pickup') ที่ยังรับไม่ครบ
+   * ใช้สำหรับหน้ารายการรอรับเอง และพิมพ์ใบเบิก
+   */
+  async getPickupPendingItems(filters?: { branch?: string }): Promise<PickupPendingItem[]> {
+    const { data: items, error } = await supabase
+      .from('order_items')
+      .select(
+        `
+        id,
+        order_id,
+        product_id,
+        quantity,
+        quantity_picked_up_at_store,
+        order:orders(
+          id,
+          order_number,
+          order_date,
+          store_id,
+          stores(id, customer_code, customer_name, address, branch)
+        ),
+        product:products(
+          id,
+          product_code,
+          product_name,
+          category,
+          unit
+        )
+      `
+      )
+      .eq('fulfillment_method', 'pickup');
+
+    if (error) throw error;
+    if (!items?.length) return [];
+
+    // กรองเฉพาะรายการที่ยังรับไม่ครบ (quantity_picked_up_at_store < quantity)
+    const pending = items.filter((row: any) => {
+      const qty = Number(row.quantity ?? 0);
+      const pickedUp = Number(row.quantity_picked_up_at_store ?? 0);
+      if (qty - pickedUp <= 0) return false;
+
+      if (filters?.branch && filters.branch !== 'ALL') {
+        const store = row.order?.stores ?? row.order?.store;
+        const branch = store?.branch ?? null;
+        if (branch !== filters.branch) return false;
+      }
+      return true;
+    });
+
+    return pending.map((row: any) => {
+      const order = row.order;
+      const store = order?.stores ?? order?.store ?? {};
+      const product = row.product ?? {};
+      const qty = Number(row.quantity ?? 0);
+      const pickedUp = Number(row.quantity_picked_up_at_store ?? 0);
+
+      return {
+        id: row.id,
+        order_id: row.order_id,
+        product_id: row.product_id,
+        quantity: qty,
+        quantity_picked_up_at_store: pickedUp,
+        quantity_remaining: qty - pickedUp,
+        order: {
+          id: order?.id ?? row.order_id,
+          order_number: order?.order_number ?? null,
+          order_date: order?.order_date ?? '',
+          store: {
+            id: store?.id ?? '',
+            customer_code: store?.customer_code ?? '-',
+            customer_name: store?.customer_name ?? '-',
+            address: store?.address ?? null,
+            branch: store?.branch ?? null,
+          },
+        },
+        product: {
+          id: product?.id ?? row.product_id,
+          product_code: product?.product_code ?? '-',
+          product_name: product?.product_name ?? '-',
+          category: product?.category ?? null,
+          unit: product?.unit ?? '',
+        },
+      };
+    });
+  },
+
+  /**
+   * ยืนยันลูกค้ามารับแล้ว — อัปเดต quantity_picked_up_at_store = quantity สำหรับ pickup items
+   * แล้วตรวจสอบว่าออเดอร์ครบทุกรายการหรือไม่ → อัปเดต status = 'delivered'
+   */
+  async markPickupItemsFulfilled(
+    orderId: string,
+    itemIds?: string[],
+    updatedBy?: string
+  ): Promise<{ updated: number; orderStatus?: string }> {
+    const { data: allItems, error: fetchError } = await supabase
+      .from('order_items')
+      .select('id, order_id, product_id, quantity, quantity_picked_up_at_store, quantity_delivered, fulfillment_method')
+      .eq('order_id', orderId);
+
+    if (fetchError) throw fetchError;
+    if (!allItems?.length) return { updated: 0 };
+
+    const pickupItems = allItems.filter((r: any) => (r.fulfillment_method ?? 'delivery') === 'pickup');
+    const toUpdate = itemIds?.length
+      ? pickupItems.filter((i: any) => itemIds.includes(i.id))
+      : pickupItems.filter((i: any) => Number(i.quantity_picked_up_at_store ?? 0) < Number(i.quantity));
+
+    if (toUpdate.length === 0) return { updated: 0 };
+
+    for (const item of toUpdate) {
+      const { error } = await supabase
+        .from('order_items')
+        .update({
+          quantity_picked_up_at_store: Number(item.quantity),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', item.id);
+
+      if (error) throw error;
+    }
+
+    const itemsAfterUpdate = allItems.map((r: any) => {
+      const matched = toUpdate.find((t: any) => t.id === r.id);
+      if (matched) {
+        return { ...r, quantity_picked_up_at_store: Number(matched.quantity) };
+      }
+      return r;
+    });
+
+    let orderStatus: string | undefined;
+    const allFulfilled = itemsAfterUpdate.every((r: any) => {
+      const qty = Number(r.quantity);
+      const pickedUp = Number(r.quantity_picked_up_at_store ?? 0);
+      const delivered = Number(r.quantity_delivered ?? 0);
+      const method = (r.fulfillment_method ?? 'delivery') as string;
+      if (method === 'pickup') return pickedUp >= qty;
+      return pickedUp + delivered >= qty;
+    });
+
+    if (allFulfilled) {
+      await this.ensureOrderNumberForPickupOrder(orderId);
+      await supabase
+        .from('orders')
+        .update({
+          status: 'delivered',
+          updated_by: updatedBy ?? null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', orderId);
+      orderStatus = 'delivered';
+    }
+
+    return { updated: toUpdate.length, orderStatus };
+  },
+
+  /**
+   * ดึงประวัติออเดอร์ที่ลูกค้ามารับส่วน pickup ครบแล้ว
+   * สำหรับแสดงในส่วน "ประวัติที่รับแล้ว"
+   * - รวมทั้งออเดอร์ทั้งหมดรับเอง และออเดอร์ผสม (delivery + pickup) ที่รับส่วน pickup ครบแล้ว
+   * - ไม่ต้องรอให้ทริปส่งครบ — แสดงทันทีเมื่อลูกค้ามารับส่วน pickup ครบแล้ว
+   */
+  async getPickupFulfilledOrders(filters?: { branch?: string }): Promise<any[]> {
+    const { data: pickupItems, error: itemsError } = await supabase
+      .from('order_items')
+      .select('order_id, product_id, quantity, quantity_picked_up_at_store, fulfillment_method, updated_at, is_bonus')
+      .eq('fulfillment_method', 'pickup');
+
+    if (itemsError) throw itemsError;
+    if (!pickupItems?.length) return [];
+
+    // หา order_id ที่ทุกรายการ pickup รับครบแล้ว (quantity_picked_up_at_store >= quantity)
+    const orderIdToPickupItems = new Map<string, typeof pickupItems>();
+    for (const row of pickupItems) {
+      const list = orderIdToPickupItems.get(row.order_id) ?? [];
+      list.push(row);
+      orderIdToPickupItems.set(row.order_id, list);
+    }
+
+    const fulfilledOrderIds: string[] = [];
+    for (const [oid, rows] of orderIdToPickupItems) {
+      const allFulfilled = rows.every(
+        (r: any) => Number(r.quantity_picked_up_at_store ?? 0) >= Number(r.quantity ?? 0)
+      );
+      if (allFulfilled) fulfilledOrderIds.push(oid);
+    }
+
+    if (fulfilledOrderIds.length === 0) return [];
+
+    const { data: orders, error: ordersError } = await supabase
+      .from('orders_with_details')
+      .select('*')
+      .in('id', fulfilledOrderIds)
+      .order('updated_at', { ascending: false });
+
+    if (ordersError) throw ordersError;
+    if (!orders?.length) return [];
+
+    let result = orders;
+    if (filters?.branch && filters.branch !== 'ALL') {
+      result = result.filter((o: any) => o.branch === filters.branch);
+    }
+
+    // โหลด product สำหรับ pickup items
+    const productIds = [...new Set(pickupItems.map((r: any) => r.product_id).filter(Boolean))];
+    const { data: products } = productIds.length
+      ? await supabase.from('products').select('id, product_code, product_name, unit').in('id', productIds)
+      : { data: [] as any[] };
+    const productMap = new Map((products ?? []).map((p: any) => [p.id, p]));
+
+    // เรียงและแนบ pickup_fulfilled_at + pickup_items สำหรับแสดง "รับแล้วเมื่อ" และรายการที่รับ
+    const orderIdToLatestPickupAt = new Map<string, string>();
+    const orderIdToItems = new Map<string, Array<{ product_code: string; product_name: string; unit: string; quantity: number; is_bonus: boolean }>>();
+    for (const [oid, rows] of orderIdToPickupItems) {
+      if (!fulfilledOrderIds.includes(oid)) continue;
+      const latest = rows.reduce((max: string, r: any) => {
+        const t = r.updated_at || '';
+        return t > max ? t : max;
+      }, '');
+      orderIdToLatestPickupAt.set(oid, latest);
+      const items = rows.map((r: any) => {
+        const p = productMap.get(r.product_id) as { product_code?: string; product_name?: string; unit?: string } | undefined;
+        return {
+          product_code: p?.product_code ?? '-',
+          product_name: p?.product_name ?? '-',
+          unit: p?.unit ?? 'ชิ้น',
+          quantity: Number(r.quantity ?? r.quantity_picked_up_at_store ?? 0),
+          is_bonus: Boolean(r.is_bonus),
+        };
+      });
+      orderIdToItems.set(oid, items);
+    }
+    result.sort((a: any, b: any) => {
+      const at = orderIdToLatestPickupAt.get(a.id) || a.updated_at || '';
+      const bt = orderIdToLatestPickupAt.get(b.id) || b.updated_at || '';
+      return bt.localeCompare(at);
+    });
+
+    return result.map((o: any) => ({
+      ...o,
+      pickup_fulfilled_at: orderIdToLatestPickupAt.get(o.id) || o.updated_at || o.created_at,
+      pickup_items: orderIdToItems.get(o.id) ?? [],
+    }));
+  },
+
+  /**
+   * ดึงยอดรวมต่อสินค้า (จาก order_items) สำหรับร้านนี้ในทริปนี้
+   * ใช้สำหรับหน้าออกบิล — แสดง "สั่งทั้งหมด" และ "รับที่ร้านแล้ว" ที่ถูกต้อง (รวม delivery + pickup)
+   */
+  async getOrderQuantitiesByProductForStoreInTrip(
+    tripId: string,
+    storeId: string
+  ): Promise<Map<string, { ordered: number; pickedUp: number }>> {
+    const { data: orders, error: ordersError } = await supabase
+      .from('orders')
+      .select('id')
+      .eq('delivery_trip_id', tripId)
+      .eq('store_id', storeId);
+
+    if (ordersError) throw ordersError;
+    if (!orders?.length) return new Map();
+
+    const orderIds = orders.map((o: any) => o.id);
+    const { data: items, error: itemsError } = await supabase
+      .from('order_items')
+      .select('product_id, quantity, quantity_picked_up_at_store, is_bonus')
+      .in('order_id', orderIds);
+
+    if (itemsError) throw itemsError;
+    if (!items?.length) return new Map();
+
+    const map = new Map<string, { ordered: number; pickedUp: number }>();
+    for (const row of items) {
+      const key = `${row.product_id}_${row.is_bonus ? 'bonus' : 'normal'}`;
+      const ordered = Number(row.quantity ?? 0);
+      const pickedUp = Number(row.quantity_picked_up_at_store ?? 0);
+      const existing = map.get(key);
+      if (existing) {
+        existing.ordered += ordered;
+        existing.pickedUp += pickedUp;
+      } else {
+        map.set(key, { ordered, pickedUp });
+      }
+    }
+    return map;
+  },
+
+  /**
+   * ดึงรายละเอียด "ลูกค้ามารับสินค้าอะไรไปเท่าไหร่" แยกรายออเดอร์/ร้าน สำหรับทริปนี้
+   * ใช้แสดงเป็นหมายเหตุในหน้ารายละเอียดทริป
+   */
+  async getPickupBreakdownByTrip(
+    tripId: string
+  ): Promise<
+    Array<{
+      store_id: string;
+      store_name: string;
+      customer_code: string;
+      order_id: string;
+      order_number: string | null;
+      items: Array<{
+        product_code: string;
+        product_name: string;
+        unit: string;
+        quantity_picked_up: number;
+        is_bonus: boolean;
+      }>;
+    }>
+  > {
+    const { data: orders, error: ordersError } = await supabase
+      .from('orders')
+      .select('id, order_number, store_id')
+      .eq('delivery_trip_id', tripId);
+
+    if (ordersError) throw ordersError;
+    if (!orders?.length) return [];
+
+    const orderIds = orders.map((o: any) => o.id);
+    const storeIds = [...new Set(orders.map((o: any) => o.store_id).filter(Boolean))];
+
+    const { data: items, error: itemsError } = await supabase
+      .from('order_items')
+      .select('order_id, product_id, quantity_picked_up_at_store, is_bonus')
+      .in('order_id', orderIds)
+      .eq('fulfillment_method', 'pickup');
+
+    if (itemsError) throw itemsError;
+    const pickupItems = (items ?? []).filter(
+      (r: any) => Number(r.quantity_picked_up_at_store ?? 0) > 0
+    );
+    if (!pickupItems.length) return [];
+
+    const productIds = [...new Set(pickupItems.map((i: any) => i.product_id).filter(Boolean))];
+    const { data: products } = productIds.length
+      ? await supabase.from('products').select('id, product_code, product_name, unit').in('id', productIds)
+      : { data: [] as any[] };
+    const productMap = new Map((products ?? []).map((p: any) => [p.id, p]));
+
+    const { data: storesData } = storeIds.length
+      ? await supabase.from('stores').select('id, customer_code, customer_name').in('id', storeIds)
+      : { data: [] as any[] };
+    const storeMap = new Map((storesData ?? []).map((s: any) => [s.id, s]));
+
+    const orderMap = new Map(orders.map((o: any) => [o.id, o]));
+    const result: Array<{
+      store_id: string;
+      store_name: string;
+      customer_code: string;
+      order_id: string;
+      order_number: string | null;
+      items: Array<{
+        product_code: string;
+        product_name: string;
+        unit: string;
+        quantity_picked_up: number;
+        is_bonus: boolean;
+      }>;
+    }> = [];
+
+    const byOrder = new Map<string, typeof pickupItems>();
+    for (const row of pickupItems) {
+      const list = byOrder.get(row.order_id) ?? [];
+      list.push(row);
+      byOrder.set(row.order_id, list);
+    }
+
+    for (const [orderId, rows] of byOrder) {
+      const order = orderMap.get(orderId) as { store_id: string; order_number?: string | null } | undefined;
+      if (!order) continue;
+      const store = storeMap.get(order.store_id) as { customer_code?: string; customer_name?: string } | undefined;
+      if (!store) continue;
+      const productItems = rows.map((r: any) => {
+        const p = productMap.get(r.product_id) as { product_code?: string; product_name?: string; unit?: string } | undefined;
+        return {
+          product_code: p?.product_code ?? '-',
+          product_name: p?.product_name ?? '-',
+          unit: p?.unit ?? 'ชิ้น',
+          quantity_picked_up: Number(r.quantity_picked_up_at_store ?? 0),
+          is_bonus: Boolean(r.is_bonus),
+        };
+      });
+      result.push({
+        store_id: order.store_id,
+        store_name: store.customer_name ?? '-',
+        customer_code: store.customer_code ?? '-',
+        order_id: orderId,
+        order_number: order.order_number ?? null,
+        items: productItems,
+      });
+    }
+
+    return result;
   },
 
   /**
@@ -263,18 +724,32 @@ export const ordersService = {
       unit_price: number;
       discount_percent?: number;
       is_bonus?: boolean;
+      fulfillment_method?: 'delivery' | 'pickup';
     }>,
     payment_status?: string | null,
     delivery_time_slot?: string | null
   ) {
-    // สร้างออเดอร์
+    const payload: Record<string, unknown> = {
+      ...orderData,
+      payment_status: payment_status && payment_status.trim() ? payment_status.trim() : null,
+      delivery_time_slot: delivery_time_slot && delivery_time_slot.trim() ? delivery_time_slot.trim() : null,
+    };
+    Object.keys(payload).forEach((k) => {
+      if (payload[k] === undefined) delete payload[k];
+    });
+
     const { data: order, error: orderError } = await supabase
       .from('orders')
-      .insert({ ...orderData, payment_status, delivery_time_slot } as any)
+      .insert(payload as any)
       .select()
       .single();
 
     if (orderError) {
+      console.error('[ordersService.createWithItems] Insert error:', {
+        message: orderError.message,
+        code: orderError.code,
+        details: orderError.details,
+      });
       throw mapOrdersError(orderError, 'create');
     }
 
@@ -293,6 +768,7 @@ export const ordersService = {
         discount_percent: item.discount_percent || 0,
         discount_amount: discountAmount,
         line_total: lineTotal,
+        fulfillment_method: item.fulfillment_method || 'delivery',
       };
 
       // เพิ่ม is_bonus ถ้ามี (รองรับกรณีที่ migration ยังไม่ได้รัน)
@@ -308,6 +784,17 @@ export const ordersService = {
       .insert(orderItems);
 
     if (itemsError) throw itemsError;
+
+    // ออเดอร์รับเองทั้งหมด → สร้าง order_number ทันที (ไม่ผ่านทริป)
+    const allPickup = items.every((i) => (i.fulfillment_method ?? 'delivery') === 'pickup');
+    if (allPickup) {
+      try {
+        await this.ensureOrderNumberForPickupOrder(order.id);
+        return (await supabase.from('orders').select('*').eq('id', order.id).single()).data ?? order;
+      } catch {
+        return order;
+      }
+    }
 
     return order;
   },

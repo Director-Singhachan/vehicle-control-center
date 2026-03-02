@@ -84,6 +84,24 @@ export const DeliveryTripDetailView: React.FC<DeliveryTripDetailViewProps> = ({
   const [postAnalysisLoading, setPostAnalysisLoading] = useState(false);
   const [postAnalysisError, setPostAnalysisError] = useState<string | null>(null);
 
+  // รายละเอียดลูกค้ามารับสินค้าที่ร้านแล้ว (สำหรับแสดงเป็นหมายเหตุในทริป)
+  const [pickupBreakdown, setPickupBreakdown] = useState<
+    Array<{
+      store_id: string;
+      store_name: string;
+      customer_code: string;
+      order_id: string;
+      order_number: string | null;
+      items: Array<{
+        product_code: string;
+        product_name: string;
+        unit: string;
+        quantity_picked_up: number;
+        is_bonus: boolean;
+      }>;
+    }>
+  >([]);
+
   // เพิ่มร้านในทริป (ออเดอร์ที่ตกหล่น)
   const [addOrderModalOpen, setAddOrderModalOpen] = useState(false);
   const [pendingOrders, setPendingOrders] = useState<any[]>([]);
@@ -137,6 +155,12 @@ export const DeliveryTripDetailView: React.FC<DeliveryTripDetailViewProps> = ({
         .finally(() => {
           setPostAnalysisLoading(false);
         });
+
+      // โหลดรายละเอียดลูกค้ามารับที่ร้าน (สำหรับหมายเหตุ)
+      ordersService
+        .getPickupBreakdownByTrip(trip.id)
+        .then(setPickupBreakdown)
+        .catch(() => setPickupBreakdown([]));
     }
   }, [trip]);
 
@@ -738,6 +762,49 @@ export const DeliveryTripDetailView: React.FC<DeliveryTripDetailViewProps> = ({
       {/* Post-Trip Analysis (AI Insight) */}
       <TripPostAnalysisPanel tripId={trip.id} tripStatus={trip.status} />
 
+      {/* หมายเหตุ: รายละเอียดลูกค้ามารับสินค้าที่ร้านแล้ว */}
+      {pickupBreakdown.length > 0 && (
+        <Card className="mb-6">
+          <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-2 flex items-center gap-2">
+            <Store size={20} className="text-amber-600 dark:text-amber-400" />
+            หมายเหตุ: รายละเอียดลูกค้ามารับสินค้าที่ร้านแล้ว
+          </h3>
+          <p className="text-sm text-slate-600 dark:text-slate-400 mb-4">
+            ลูกค้ารายต่อไปนี้มารับสินค้าที่หน้าร้านไปแล้ว — ใช้เป็นคู่มือเวลาจัดส่งหรือออกบิล
+          </p>
+          <div className="space-y-3">
+            {pickupBreakdown.map((entry) => (
+              <div
+                key={entry.order_id}
+                className="rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-900/10 p-3"
+              >
+                <div className="font-medium text-slate-900 dark:text-slate-100">
+                  {entry.customer_code} — {entry.store_name}
+                  {entry.order_number && (
+                    <span className="ml-2 text-sm font-normal text-slate-500 dark:text-slate-400">
+                      (ออเดอร์ #{entry.order_number})
+                    </span>
+                  )}
+                </div>
+                <ul className="mt-2 space-y-1 text-sm text-slate-600 dark:text-slate-400">
+                  {entry.items.map((it, idx) => (
+                    <li key={idx} className="flex items-center gap-2">
+                      • {it.product_code} — {it.product_name}: {it.quantity_picked_up.toLocaleString('th-TH')}{' '}
+                      {it.unit}
+                      {it.is_bonus && (
+                        <span className="text-xs px-1.5 py-0.5 rounded bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300">
+                          ของแถม
+                        </span>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+
       {/* Stores */}
       {trip.stores && trip.stores.length > 0 && (
         <Card className="mb-6">
@@ -1302,7 +1369,7 @@ export const DeliveryTripDetailView: React.FC<DeliveryTripDetailViewProps> = ({
                 </div>
                 <div className="flex-1 flex justify-between items-start">
                   <div>
-                    <span className="font-mono text-sm text-blue-600 dark:text-blue-400">{order.order_number}</span>
+                    <span className="font-mono text-sm text-blue-600 dark:text-blue-400">{order.order_number || 'รอจัดทริป'}</span>
                     <span className="ml-2 font-medium text-slate-900 dark:text-white">{order.customer_name}</span>
                   </div>
                   <span className="text-sm font-semibold text-slate-700 dark:text-slate-300">

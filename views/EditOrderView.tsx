@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { ShoppingCart, Plus, Trash2, Search, Check, Edit, AlertTriangle, Grid3x3, Clock, Gift } from 'lucide-react';
+import { ShoppingCart, Plus, Trash2, Search, Check, Edit, AlertTriangle, Grid3x3, Clock, Gift, Truck, Store } from 'lucide-react';
 import { useProducts, useWarehouses, useProductCategories } from '../hooks/useInventory';
 import { ordersService, orderItemsService } from '../services/ordersService';
 import { productTierPriceService } from '../services/customerTierService';
@@ -21,6 +21,7 @@ interface OrderItem {
   unit_price: number;
   discount_percent: number | '';
   is_bonus?: boolean; // ของแถม
+  fulfillment_method?: 'delivery' | 'pickup'; // วิธีรับสินค้า
 }
 
 // LocalStorage keys
@@ -138,6 +139,7 @@ export function EditOrderView({ orderId, onSave, onCancel }: EditOrderViewProps)
           unit_price: item.unit_price || 0,
           discount_percent: item.discount_percent || '',
           is_bonus: item.is_bonus || false,
+          fulfillment_method: item.fulfillment_method || 'delivery',
         }))
       );
 
@@ -519,6 +521,7 @@ export function EditOrderView({ orderId, onSave, onCancel }: EditOrderViewProps)
               unit_price: item.is_bonus ? 0 : item.unit_price, // ของแถมราคาเป็น 0
               discount_percent: Number(item.discount_percent || 0),
               is_bonus: item.is_bonus || false,
+              fulfillment_method: item.fulfillment_method || 'delivery',
             },
           });
         } else if (!item.id) {
@@ -556,6 +559,7 @@ export function EditOrderView({ orderId, onSave, onCancel }: EditOrderViewProps)
             unit_price: item.is_bonus ? 0 : item.unit_price, // ของแถมราคาเป็น 0
             discount_percent: Number(item.discount_percent || 0),
             is_bonus: item.is_bonus || false,
+            fulfillment_method: item.fulfillment_method || 'delivery',
           });
         }
       }
@@ -1000,11 +1004,12 @@ export function EditOrderView({ orderId, onSave, onCancel }: EditOrderViewProps)
                 <div className="overflow-x-auto">
                   <table className="w-full table-fixed">
                     <colgroup>
-                      <col className="w-[28%]" />
+                      <col className="w-[22%]" />
                       <col className="w-[10%]" />
-                      <col className="w-[14%]" />
-                      <col className="w-[14%]" />
-                      <col className="w-[14%]" />
+                      <col className="w-[12%]" />
+                      <col className="w-[12%]" />
+                      <col className="w-[10%]" />
+                      <col className="w-[12%]" />
                       <col className="w-[14%]" />
                       <col className="w-[6%]" />
                     </colgroup>
@@ -1016,6 +1021,7 @@ export function EditOrderView({ orderId, onSave, onCancel }: EditOrderViewProps)
                         <th className="text-center py-3 px-2 text-sm font-semibold text-gray-700 dark:text-gray-300">จำนวน</th>
                         <th className="text-center py-3 px-2 text-sm font-semibold text-gray-700 dark:text-gray-300">ส่วนลด%</th>
                         <th className="text-right py-3 px-2 text-sm font-semibold text-gray-700 dark:text-gray-300">รวม</th>
+                        <th className="text-center py-3 px-2 text-sm font-semibold text-gray-700 dark:text-gray-300">วิธีรับ</th>
                         <th className="text-center py-3 px-2 text-sm font-semibold text-gray-700 dark:text-gray-300"></th>
                       </tr>
                     </thead>
@@ -1091,6 +1097,20 @@ export function EditOrderView({ orderId, onSave, onCancel }: EditOrderViewProps)
                               ) : (
                                 <span>{new Intl.NumberFormat('th-TH').format(lineTotal)} ฿</span>
                               )}
+                            </td>
+                            <td className="py-3 px-2 text-center align-top">
+                              <select
+                                value={item.fulfillment_method || 'delivery'}
+                                onChange={(e) => {
+                                  const updated = [...orderItems];
+                                  updated[index] = { ...updated[index], fulfillment_method: e.target.value as 'delivery' | 'pickup' };
+                                  setOrderItems(updated);
+                                }}
+                                className="w-full px-1 py-1 border border-gray-300 dark:border-slate-600 rounded text-xs bg-white dark:bg-slate-800 text-gray-900 dark:text-white"
+                              >
+                                <option value="delivery">จัดส่ง</option>
+                                <option value="pickup">รับเอง</option>
+                              </select>
                             </td>
                             <td className="py-3 px-2 text-center align-top">
                               <button
@@ -1266,16 +1286,17 @@ export function EditOrderView({ orderId, onSave, onCancel }: EditOrderViewProps)
             </Card>
           )}
         </div>
-      </div>
+      </div >
 
       {/* Warning Dialog for Assigned Trip */}
-      <ConfirmDialog
+      < ConfirmDialog
         isOpen={showWarningDialog}
-        onCancel={() => setShowWarningDialog(false)}
+        onCancel={() => setShowWarningDialog(false)
+        }
         onConfirm={performUpdate}
         title="ยืนยันการแก้ไขออเดอร์"
         message={
-          <div className="space-y-2">
+          < div className="space-y-2" >
             <p className="font-semibold text-orange-600 dark:text-orange-400">
               ⚠️ ออเดอร์นี้ถูกกำหนดทริปแล้ว
             </p>
@@ -1283,12 +1304,12 @@ export function EditOrderView({ orderId, onSave, onCancel }: EditOrderViewProps)
             <p className="text-sm text-gray-600 dark:text-gray-400">
               การแก้ไขอาจส่งผลกระทบต่อทริปที่กำหนดไว้แล้ว กรุณาตรวจสอบข้อมูลให้ถูกต้อง
             </p>
-          </div>
+          </div >
         }
         confirmText="ยืนยันแก้ไข"
         cancelText="ยกเลิก"
         variant="warning"
       />
-    </PageLayout>
+    </PageLayout >
   );
 }

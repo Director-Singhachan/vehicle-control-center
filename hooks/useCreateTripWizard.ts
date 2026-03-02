@@ -95,7 +95,11 @@ export function useCreateTripWizard({ selectedOrders, onSuccess }: UseCreateTrip
       for (const order of selectedOrders) {
         try {
           const items = await orderItemsService.getByOrderId(order.id);
-          itemsMap.set(order.id, items || []);
+          // เฉพาะ fulfillment_method = 'delivery' เท่านั้น (pickup = ลูกค้ามารับเอง ไม่ต้องจัดทริป)
+          const deliveryItems = (items || []).filter(
+            (i: any) => (i.fulfillment_method ?? 'delivery') !== 'pickup'
+          );
+          itemsMap.set(order.id, deliveryItems);
         } catch (err) {
           console.error(`Failed to fetch items for order ${order.id}:`, err);
           itemsMap.set(order.id, []);

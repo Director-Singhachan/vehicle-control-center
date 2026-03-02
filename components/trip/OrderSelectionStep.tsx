@@ -89,7 +89,7 @@ export function OrderSelectionStep({
                       <div className="flex items-center gap-2 mb-1">
                         <p className="font-semibold text-gray-900 truncate">{delivery.store_name}</p>
                         <Badge variant="info" className="text-xs flex-shrink-0">
-                          {delivery.order_number}
+                          {delivery.order_number || 'รอจัดทริป'}
                         </Badge>
                       </div>
                       <div className="flex items-start gap-2 text-sm text-gray-600">

@@ -12,7 +12,7 @@ import { useAuth } from '../hooks/useAuth';
 
 interface Order {
   id: string;
-  order_number: string;
+  order_number: string | null;
   customer_name: string;
   customer_code: string;
   total_amount: number;
@@ -42,6 +42,35 @@ export function TrackOrdersView() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
   const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
+
+  // สรุปจำนวนรวมต่อออเดอร์ (สั่งทั้งหมด / รับที่ร้าน / ส่งแล้ว / คงเหลือ)
+  const detailSummary = useMemo(() => {
+    if (!detailItems || detailItems.length === 0) return null;
+
+    let ordered = 0;
+    let pickedUp = 0;
+    let delivered = 0;
+    let remaining = 0;
+
+    for (const item of detailItems) {
+      const qty = Number(item.quantity || 0);
+      const picked = Number(item.quantity_picked_up_at_store ?? 0);
+      const deliv = Number(item.quantity_delivered ?? 0);
+      const method = (item.fulfillment_method ?? 'delivery') as string;
+
+      ordered += qty;
+      pickedUp += picked;
+      if (method === 'delivery') {
+        delivered += deliv;
+        remaining += Math.max(qty - picked - deliv, 0);
+      } else {
+        // pickup ไม่มี quantity_delivered
+        remaining += Math.max(qty - picked, 0);
+      }
+    }
+
+    return { ordered, pickedUp, delivered, remaining };
+  }, [detailItems]);
 
   const [currentPage, setCurrentPage] = useState(1);
   const [pageInput, setPageInput] = useState('');
@@ -146,7 +175,16 @@ export function TrackOrdersView() {
       case 'in_delivery':
         return <Badge variant="default">กำลังจัดส่ง</Badge>;
       case 'delivered':
-        return <Badge variant="success">จัดส่งแล้ว</Badge>;
+        return (
+          <span className="inline-flex flex-wrap items-center gap-1">
+            <Badge variant="success">จัดส่งแล้ว</Badge>
+            {!deliveryTripId && (
+              <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-700">
+                รับเอง
+              </span>
+            )}
+          </span>
+        );
       case 'cancelled':
         return <Badge variant="error">ยกเลิก</Badge>;
       default:
@@ -334,7 +372,7 @@ export function TrackOrdersView() {
                   {paginatedOrders.map((order) => (
                     <tr key={order.id} className={`border-b border-gray-100 dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-700/50 ${order.status === 'partial' ? 'bg-orange-50/30 dark:bg-orange-900/10' : ''}`}>
                       <td className="py-3 px-4 font-mono text-sm text-blue-600 dark:text-blue-400">
-                        <div>{order.order_number}</div>
+                        <div>{order.order_number || <span className="text-amber-600 dark:text-amber-400">รอจัดทริป</span>}</div>
                         {order.status === 'partial' && (
                           <div className="text-xs text-orange-600 dark:text-orange-400 font-normal mt-0.5">
                             รอจัดส่งส่วนที่เหลือ
@@ -505,7 +543,7 @@ export function TrackOrdersView() {
       <Modal
         isOpen={!!detailOrder}
         onClose={closeDetail}
-        title={`รายละเอียดออเดอร์ ${detailOrder?.order_number || ''}`}
+        title={`รายละเอียดออเดอร์ ${detailOrder?.order_number || (detailOrder ? 'รอจัดทริป' : '')}`}
         size="large"
       >
         {detailLoading ? (
@@ -553,6 +591,18 @@ export function TrackOrdersView() {
                 </div>
               </div>
             </div>
+
+            {detailSummary && (
+              <div className="p-3 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 text-sm text-blue-900 dark:text-blue-100">
+                <div className="font-semibold mb-1">สรุปจำนวนรวมทุกสินค้าในออเดอร์นี้</div>
+                <div className="flex flex-wrap gap-x-4 gap-y-1">
+                  <span>สั่งทั้งหมด {detailSummary.ordered.toLocaleString()} ชิ้น</span>
+                  <span>รับที่ร้าน {detailSummary.pickedUp.toLocaleString()} ชิ้น</span>
+                  <span>ส่งแล้ว {detailSummary.delivered.toLocaleString()} ชิ้น</span>
+                  <span>คงเหลือ {detailSummary.remaining.toLocaleString()} ชิ้น</span>
+                </div>
+              </div>
+            )}
 
             <div className="border border-gray-200 dark:border-slate-700 rounded-lg overflow-hidden">
               <table className="w-full">
