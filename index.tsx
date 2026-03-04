@@ -1305,6 +1305,13 @@ const AppContent = () => {
                     isFlyout={false}
                   />
                   <SubSidebarItem
+                    label="แจ้งซ่อม / การซ่อมบำรุง"
+                    active={activeTab === 'maintenance'}
+                    onClick={() => navigateAndCloseMobile('maintenance', () => setTicketView(isDriver ? 'form' : 'list'))}
+                    isCollapsed={false}
+                    isFlyout={false}
+                  />
+                  <SubSidebarItem
                     label="จำลองจัดเรียง"
                     active={activeTab === 'packing-simulation'}
                     onClick={() => navigateAndCloseMobile('packing-simulation')}
@@ -1331,13 +1338,6 @@ const AppContent = () => {
                           isFlyout={false}
                         />
                       )}
-                      <SubSidebarItem
-                        label="การซ่อมบำรุง"
-                        active={activeTab === 'maintenance'}
-                        onClick={() => navigateAndCloseMobile('maintenance', () => setTicketView(isDriver ? 'form' : 'list'))}
-                        isCollapsed={false}
-                        isFlyout={false}
-                      />
                       <SubSidebarItem
                         label="ภาพรวมการอนุมัติ"
                         active={activeTab === 'approvals'}
@@ -1439,6 +1439,17 @@ const AppContent = () => {
                         isFlyout={true}
                       />
                       <SubSidebarItem
+                        label="แจ้งซ่อม / การซ่อมบำรุง"
+                        active={activeTab === 'maintenance'}
+                        onClick={() => {
+                          setActiveTab('maintenance');
+                          setTicketView(isDriver ? 'form' : 'list');
+                          setIsLogisticsHovered(false);
+                        }}
+                        isCollapsed={false}
+                        isFlyout={true}
+                      />
+                      <SubSidebarItem
                         label="จำลองจัดเรียง"
                         active={activeTab === 'packing-simulation'}
                         onClick={() => {
@@ -1475,21 +1486,6 @@ const AppContent = () => {
                               isFlyout={true}
                             />
                           )}
-                          <SubSidebarItem
-                            label="การซ่อมบำรุง"
-                            active={activeTab === 'maintenance'}
-                            onClick={() => {
-                              setActiveTab('maintenance');
-                              if (isDriver) {
-                                setTicketView('form');
-                              } else {
-                                setTicketView('list');
-                              }
-                              setIsLogisticsHovered(false);
-                            }}
-                            isCollapsed={false}
-                            isFlyout={true}
-                          />
                           <SubSidebarItem
                             label="ภาพรวมการอนุมัติ"
                             active={activeTab === 'approvals'}
