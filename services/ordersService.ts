@@ -266,14 +266,29 @@ export const ordersService = {
       orderIdToRemaining.set(row.order_id, (orderIdToRemaining.get(row.order_id) ?? 0) + rem);
     }
 
-    return orders.filter((o: any) => {
-      if (this.isOldOrderNumberFormat(o.order_number)) return false;
-      const orderStatus = (orderIdToStatus.get(o.id) ?? String(o.status ?? '')).toLowerCase();
-      if (orderStatus === 'delivered') return false;
-      const remaining = orderIdToRemaining.get(o.id) ?? 0;
-      if (remaining <= 0) return false;
-      return true; // delivery_trip_id IS NULL แล้วจาก query ต้นทาง
-    });
+    const orderIdToItems = new Map<string, any[]>();
+    for (const row of items ?? []) {
+      const method = (row.fulfillment_method ?? 'delivery') as string;
+      if (method === 'pickup') continue;
+      const pickedUp = Number(row.quantity_picked_up_at_store ?? 0);
+      const delivered = Number(row.quantity_delivered ?? 0);
+      const rem = Math.max(0, Number(row.quantity) - pickedUp - delivered);
+      if (rem <= 0) continue;
+      const arr = orderIdToItems.get(row.order_id) ?? [];
+      arr.push({ product_id: row.product_id, quantity: rem });
+      orderIdToItems.set(row.order_id, arr);
+    }
+
+    return orders
+      .filter((o: any) => {
+        if (this.isOldOrderNumberFormat(o.order_number)) return false;
+        const orderStatus = (orderIdToStatus.get(o.id) ?? String(o.status ?? '')).toLowerCase();
+        if (orderStatus === 'delivered') return false;
+        const remaining = orderIdToRemaining.get(o.id) ?? 0;
+        if (remaining <= 0) return false;
+        return true;
+      })
+      .map((o: any) => ({ ...o, items: orderIdToItems.get(o.id) ?? [] }));
   },
 
   /**
