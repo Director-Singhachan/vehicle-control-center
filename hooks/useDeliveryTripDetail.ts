@@ -51,6 +51,9 @@ export function useDeliveryTripDetail(tripId: string) {
   const [driverImageError, setDriverImageError] = useState(false);
   const [selectedImage, setSelectedImage] = useState<{ url: string; alt: string } | null>(null);
 
+  // Version counter — incremented after mutations to trigger data reload
+  const [dataVersion, setDataVersion] = useState(0);
+
   // Add-order-to-trip modal state
   const [addOrderModalOpen, setAddOrderModalOpen] = useState(false);
   const [pendingOrders, setPendingOrders] = useState<any[]>([]);
@@ -100,7 +103,7 @@ export function useDeliveryTripDetail(tripId: string) {
       .getPickupBreakdownByTrip(trip.id)
       .then(setPickupBreakdown)
       .catch(() => setPickupBreakdown([]));
-  }, [trip?.id]);
+  }, [trip?.id, dataVersion]);
 
   // ─── Load item change history ─────────────────────────────────────────────
   useEffect(() => {
@@ -114,7 +117,7 @@ export function useDeliveryTripDetail(tripId: string) {
         setItemChangesError(err?.message || 'ไม่สามารถโหลดประวัติการแก้ไขสินค้าได้'),
       )
       .finally(() => setItemChangesLoading(false));
-  }, [trip?.id]);
+  }, [trip?.id, dataVersion]);
 
   // ─── Load trip edit history ───────────────────────────────────────────────
   useEffect(() => {
@@ -128,7 +131,7 @@ export function useDeliveryTripDetail(tripId: string) {
         setEditHistoryError(err?.message || 'ไม่สามารถโหลดประวัติการแก้ไขข้อมูลทริปได้'),
       )
       .finally(() => setEditHistoryLoading(false));
-  }, [trip?.id]);
+  }, [trip?.id, dataVersion]);
 
   // ─── Load pending orders when add-order modal opens ──────────────────────
   useEffect(() => {
@@ -213,6 +216,7 @@ export function useDeliveryTripDetail(tripId: string) {
       const orderIds = selectedOrdersToAdd.map((o: any) => o.id);
       await ordersService.assignToTrip(orderIds, trip.id, user.id);
       setAddOrderModalOpen(false);
+      setDataVersion((v) => v + 1);
       refetch();
     } catch (err: any) {
       setAddOrderError(err?.message || 'ไม่สามารถเพิ่มร้านเข้ากับทริปได้');
