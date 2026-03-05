@@ -51,6 +51,37 @@ export const serviceStaffService = {
         return data;
     },
 
+    // Get all active service staff with branch (joined from profiles via user_id)
+    getAllActiveWithBranch: async (): Promise<(ServiceStaff & { branch: string | null })[]> => {
+        const { data: staffData, error: staffErr } = await supabase
+            .from('service_staff')
+            .select('*')
+            .eq('status', 'active')
+            .order('name', { ascending: true });
+
+        if (staffErr) {
+            console.error('[serviceStaffService] Error fetching active staff:', staffErr);
+            throw staffErr;
+        }
+
+        const list = staffData || [];
+        const userIds = list.flatMap(s => (s.user_id ? [s.user_id] : []));
+        const branchMap: Record<string, string | null> = {};
+
+        if (userIds.length > 0) {
+            const { data: profileData } = await supabase
+                .from('profiles')
+                .select('id, branch')
+                .in('id', userIds);
+            (profileData || []).forEach(p => { branchMap[p.id] = p.branch; });
+        }
+
+        return list.map(s => ({
+            ...s,
+            branch: s.user_id ? (branchMap[s.user_id] ?? null) : null,
+        }));
+    },
+
     /** รายชื่อพนักงานบริการ/คนขับที่ยังไม่มีบัญชี (สำหรับผูกบัญชีกับรายชื่อเดิม) */
     getUnlinked: async (): Promise<ServiceStaff[]> => {
         const { data, error } = await supabase
