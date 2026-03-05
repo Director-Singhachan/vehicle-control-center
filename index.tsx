@@ -255,6 +255,12 @@ const AppContent = () => {
   const [logisticsFlyoutPosition, setLogisticsFlyoutPosition] = useState({ top: 0, left: 0 });
   const [logisticsFlyoutMaxHeight, setLogisticsFlyoutMaxHeight] = useState<number>(400);
 
+  const [isHRHovered, setIsHRHovered] = useState(false);
+  const hrMenuRef = React.useRef<HTMLDivElement>(null);
+  const hrTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
+  const [hrFlyoutPosition, setHRFlyoutPosition] = useState({ top: 0, left: 0 });
+  const [hrFlyoutMaxHeight, setHRFlyoutMaxHeight] = useState<number>(400);
+
   const commissionTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
   const [flyoutPosition, setFlyoutPosition] = useState({ top: 0, left: 0 });
 
@@ -268,6 +274,7 @@ const AppContent = () => {
   const [mobileOrdersExpanded, setMobileOrdersExpanded] = useState(false);
   const [mobileStockExpanded, setMobileStockExpanded] = useState(false);
   const [mobileLogisticsExpanded, setMobileLogisticsExpanded] = useState(false);
+  const [mobileHRExpanded, setMobileHRExpanded] = useState(false);
   const [mobileSettingsExpanded, setMobileSettingsExpanded] = useState(false);
 
   const navigateAndCloseMobile = (tab: string, extra?: () => void) => {
@@ -278,6 +285,7 @@ const AppContent = () => {
       setMobileOrdersExpanded(false);
       setMobileStockExpanded(false);
       setMobileLogisticsExpanded(false);
+      setMobileHRExpanded(false);
       setMobileSettingsExpanded(false);
     }
   };
@@ -621,6 +629,45 @@ const AppContent = () => {
 
   const handleLogisticsFlyoutMouseLeave = () => {
     setIsLogisticsHovered(false);
+  };
+
+  // HR menu handlers
+  const handleHRMouseEnter = (e: React.MouseEvent) => {
+    if (isMobile) return;
+    if (hrTimeoutRef.current) {
+      clearTimeout(hrTimeoutRef.current);
+      hrTimeoutRef.current = null;
+    }
+    const rect = e.currentTarget.getBoundingClientRect();
+    const viewportHeight = window.innerHeight;
+    const margin = 16;
+    const maxFlyoutHeight = Math.min(400, Math.floor(viewportHeight * 0.75) - margin);
+    let top = rect.top;
+    if (top + maxFlyoutHeight > viewportHeight - margin) {
+      top = Math.max(margin, viewportHeight - maxFlyoutHeight - margin);
+    }
+    setHRFlyoutMaxHeight(viewportHeight - top - margin);
+    setHRFlyoutPosition({ top, left: rect.right + 8 });
+    setIsHRHovered(true);
+  };
+
+  const handleHRMouseLeave = () => {
+    if (isMobile) return;
+    hrTimeoutRef.current = setTimeout(() => {
+      setIsHRHovered(false);
+    }, 150);
+  };
+
+  const handleHRFlyoutMouseEnter = () => {
+    if (hrTimeoutRef.current) {
+      clearTimeout(hrTimeoutRef.current);
+      hrTimeoutRef.current = null;
+    }
+    setIsHRHovered(true);
+  };
+
+  const handleHRFlyoutMouseLeave = () => {
+    setIsHRHovered(false);
   };
 
   // Settings menu handlers
@@ -1268,9 +1315,6 @@ const AppContent = () => {
                     activeTab === 'daily-summary' ||
                     activeTab === 'delivery-trips' ||
                     activeTab === 'packing-simulation' ||
-                    activeTab === 'service-staff' ||
-                    activeTab === 'commission' ||
-                    activeTab === 'commission-rates' ||
                     activeTab === 'pending-orders'
                   }
                   onClick={() => {
@@ -1369,33 +1413,6 @@ const AppContent = () => {
                             label="ออเดอร์รอจัดส่ง"
                             active={activeTab === 'pending-orders'}
                             onClick={() => navigateAndCloseMobile('pending-orders')}
-                            isCollapsed={false}
-                            isFlyout={false}
-                          />
-                        </>
-                      )}
-                      {(isAdmin || isHR) && (
-                        <SubSidebarItem
-                          label="บัญชีพนักงาน"
-                          active={activeTab === 'admin-staff'}
-                          onClick={() => navigateAndCloseMobile('admin-staff')}
-                          isCollapsed={false}
-                          isFlyout={false}
-                        />
-                      )}
-                      {isAdmin && (
-                        <>
-                          <SubSidebarItem
-                            label="จัดการพนักงาน"
-                            active={activeTab === 'service-staff'}
-                            onClick={() => navigateAndCloseMobile('service-staff')}
-                            isCollapsed={false}
-                            isFlyout={false}
-                          />
-                          <SubSidebarItem
-                            label="ค่าคอมมิชชั่น"
-                            active={activeTab === 'commission' || activeTab === 'commission-rates'}
-                            onClick={() => navigateAndCloseMobile('commission')}
                             isCollapsed={false}
                             isFlyout={false}
                           />
@@ -1545,44 +1562,116 @@ const AppContent = () => {
                               />
                             </>
                           )}
-                          {(isAdmin || isHR) && (
-                            <SubSidebarItem
-                              label="บัญชีพนักงาน"
-                              active={activeTab === 'admin-staff'}
-                              onClick={() => {
-                                setActiveTab('admin-staff');
-                                setIsLogisticsHovered(false);
-                              }}
-                              isCollapsed={false}
-                              isFlyout={true}
-                            />
-                          )}
-                          {isAdmin && (
-                            <>
-                              <SubSidebarItem
-                                label="จัดการพนักงาน"
-                                active={activeTab === 'service-staff'}
-                                onClick={() => {
-                                  setActiveTab('service-staff');
-                                  setIsLogisticsHovered(false);
-                                }}
-                                isCollapsed={false}
-                                isFlyout={true}
-                              />
-                              <SubSidebarItem
-                                label="ค่าคอมมิชชั่น"
-                                active={activeTab === 'commission' || activeTab === 'commission-rates'}
-                                onClick={() => {
-                                  setActiveTab('commission');
-                                  setIsLogisticsHovered(false);
-                                }}
-                                isCollapsed={false}
-                                isFlyout={true}
-                              />
-                            </>
-                          )}
                         </>
                       )}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+
+          {/* 5. บุคคล / HR */}
+          {(isAdmin || isHR) && (
+            <>
+              <div
+                ref={hrMenuRef}
+                className="relative group/menu"
+                onMouseEnter={handleHRMouseEnter}
+                onMouseLeave={handleHRMouseLeave}
+              >
+                <SidebarItem
+                  icon={UserCog}
+                  label={isSidebarOpen ? "บุคคล / HR" : ""}
+                  active={
+                    activeTab === 'admin-staff' ||
+                    activeTab === 'service-staff' ||
+                    activeTab === 'commission' ||
+                    activeTab === 'commission-rates'
+                  }
+                  onClick={() => {
+                    if (isMobile) {
+                      setMobileHRExpanded(prev => !prev);
+                    } else {
+                      setActiveTab('admin-staff');
+                    }
+                  }}
+                  isCollapsed={!isSidebarOpen}
+                  hasSubmenu={true}
+                  isOpen={isMobile ? mobileHRExpanded : isHRHovered}
+                />
+              </div>
+
+              {/* Mobile inline submenu for HR */}
+              {isMobile && mobileHRExpanded && isSidebarOpen && (
+                <div className="pl-2 pr-1 space-y-0.5 animate-in fade-in slide-in-from-top-1 duration-150">
+                  <SubSidebarItem
+                    label="บัญชีพนักงาน"
+                    active={activeTab === 'admin-staff'}
+                    onClick={() => navigateAndCloseMobile('admin-staff')}
+                    isCollapsed={false}
+                    isFlyout={false}
+                  />
+                  <SubSidebarItem
+                    label="ทีมงานประจำรถ"
+                    active={activeTab === 'service-staff'}
+                    onClick={() => navigateAndCloseMobile('service-staff')}
+                    isCollapsed={false}
+                    isFlyout={false}
+                  />
+                  <SubSidebarItem
+                    label="ค่าคอมมิชชั่น"
+                    active={activeTab === 'commission' || activeTab === 'commission-rates'}
+                    onClick={() => navigateAndCloseMobile('commission')}
+                    isCollapsed={false}
+                    isFlyout={false}
+                  />
+                </div>
+              )}
+
+              {/* Desktop flyout submenu for HR */}
+              {!isMobile && isHRHovered && (
+                <div
+                  className="fixed z-[100]"
+                  style={{
+                    top: `${hrFlyoutPosition.top}px`,
+                    left: `${hrFlyoutPosition.left}px`,
+                  }}
+                  onMouseEnter={handleHRFlyoutMouseEnter}
+                  onMouseLeave={handleHRFlyoutMouseLeave}
+                >
+                  <div
+                    className="bg-white dark:bg-charcoal-900 border border-slate-200 dark:border-slate-700 rounded-xl shadow-2xl min-w-[220px] py-2 ring-1 ring-black/5 dark:ring-white/10 animate-in fade-in slide-in-from-left-2 duration-150 overflow-y-auto"
+                    style={{ maxHeight: hrFlyoutMaxHeight }}
+                  >
+                    <div className="px-4 pb-2 mb-2 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between">
+                      <p className="text-[10px] font-black text-pink-500 dark:text-pink-400 uppercase tracking-widest">บุคคล / HR</p>
+                      <div className="w-1.5 h-1.5 rounded-full bg-pink-500 animate-pulse"></div>
+                    </div>
+                    <div className="px-2 space-y-0.5">
+                      <MenuSectionHeader label="จัดการพนักงาน" />
+                      <SubSidebarItem
+                        label="บัญชีพนักงาน"
+                        active={activeTab === 'admin-staff'}
+                        onClick={() => { setActiveTab('admin-staff'); setIsHRHovered(false); }}
+                        isCollapsed={false}
+                        isFlyout={true}
+                      />
+                      <SubSidebarItem
+                        label="ทีมงานประจำรถ"
+                        active={activeTab === 'service-staff'}
+                        onClick={() => { setActiveTab('service-staff'); setIsHRHovered(false); }}
+                        isCollapsed={false}
+                        isFlyout={true}
+                      />
+                      <MenuSectionHeader label="ค่าตอบแทน" />
+                      <SubSidebarItem
+                        label="ค่าคอมมิชชั่น"
+                        active={activeTab === 'commission' || activeTab === 'commission-rates'}
+                        onClick={() => { setActiveTab('commission'); setIsHRHovered(false); }}
+                        isCollapsed={false}
+                        isFlyout={true}
+                      />
                     </div>
                   </div>
                 </div>
