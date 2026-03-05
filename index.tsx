@@ -1621,8 +1621,15 @@ const AppContent = () => {
                   />
                   <SubSidebarItem
                     label="ค่าคอมมิชชั่น"
-                    active={activeTab === 'commission' || activeTab === 'commission-rates'}
+                    active={activeTab === 'commission'}
                     onClick={() => navigateAndCloseMobile('commission')}
+                    isCollapsed={false}
+                    isFlyout={false}
+                  />
+                  <SubSidebarItem
+                    label="ตั้งค่าอัตราค่าคอมมิชชั่น"
+                    active={activeTab === 'commission-rates'}
+                    onClick={() => navigateAndCloseMobile('commission-rates')}
                     isCollapsed={false}
                     isFlyout={false}
                   />
@@ -1667,8 +1674,15 @@ const AppContent = () => {
                       <MenuSectionHeader label="ค่าตอบแทน" />
                       <SubSidebarItem
                         label="ค่าคอมมิชชั่น"
-                        active={activeTab === 'commission' || activeTab === 'commission-rates'}
+                        active={activeTab === 'commission'}
                         onClick={() => { setActiveTab('commission'); setIsHRHovered(false); }}
+                        isCollapsed={false}
+                        isFlyout={true}
+                      />
+                      <SubSidebarItem
+                        label="ตั้งค่าอัตราค่าคอมมิชชั่น"
+                        active={activeTab === 'commission-rates'}
+                        onClick={() => { setActiveTab('commission-rates'); setIsHRHovered(false); }}
                         isCollapsed={false}
                         isFlyout={true}
                       />
