@@ -4,10 +4,15 @@ import { Modal } from '../ui/Modal';
 import { Button } from '../ui/Button';
 import type { AppRole } from '../../types/database';
 import type { CreateStaffInput } from '../../services/adminStaffService';
+import type { Database } from '../../types/database';
+
+type ServiceStaffRow = Database['public']['Tables']['service_staff']['Row'];
 
 interface StaffCreateModalProps {
   isOpen: boolean;
   branches: string[];
+  /** รายชื่อพนักงานบริการ/คนขับที่ยังไม่มีบัญชี — สำหรับผูกบัญชีกับรายชื่อเดิม (รักษาประวัติทริป) */
+  unlinkedServiceStaff: ServiceStaffRow[];
   submitting: boolean;
   onSubmit: (input: CreateStaffInput) => void;
   onClose: () => void;
@@ -29,9 +34,12 @@ const ROLE_OPTIONS: { value: AppRole; label: string }[] = [
 const inputCls =
   'w-full px-3 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-enterprise-500';
 
+const OPERATIONAL_ROLES: AppRole[] = ['driver', 'service_staff'];
+
 export const StaffCreateModal: React.FC<StaffCreateModalProps> = ({
   isOpen,
   branches,
+  unlinkedServiceStaff = [],
   submitting,
   onSubmit,
   onClose,
@@ -40,6 +48,7 @@ export const StaffCreateModal: React.FC<StaffCreateModalProps> = ({
     employee_code: '',
     full_name: '',
     role: 'driver' as AppRole,
+    link_service_staff_id: '' as string,
     branch: '',
     department: '',
     phone: '',
@@ -51,10 +60,29 @@ export const StaffCreateModal: React.FC<StaffCreateModalProps> = ({
 
   useEffect(() => {
     if (isOpen) {
-      setForm({ employee_code: '', full_name: '', role: 'driver', branch: '', department: '', phone: '', password: '', confirm_password: '' });
+      setForm({ employee_code: '', full_name: '', role: 'driver', link_service_staff_id: '', branch: '', department: '', phone: '', password: '', confirm_password: '' });
       setErrors({});
     }
   }, [isOpen]);
+
+  const showLinkOption = OPERATIONAL_ROLES.includes(form.role) && unlinkedServiceStaff.length > 0;
+
+  const handleLinkStaffChange = (staffId: string) => {
+    if (!staffId) {
+      setForm((f) => ({ ...f, link_service_staff_id: '', employee_code: f.employee_code, full_name: f.full_name, phone: f.phone }));
+      return;
+    }
+    const staff = unlinkedServiceStaff.find((s) => s.id === staffId);
+    if (staff) {
+      setForm((f) => ({
+        ...f,
+        link_service_staff_id: staffId,
+        employee_code: staff.employee_code || f.employee_code,
+        full_name: staff.name || f.full_name,
+        phone: staff.phone || f.phone,
+      }));
+    }
+  };
 
   const validate = () => {
     const e: Record<string, string> = {};
@@ -70,7 +98,7 @@ export const StaffCreateModal: React.FC<StaffCreateModalProps> = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!validate()) return;
-    onSubmit({
+    const payload: CreateStaffInput = {
       full_name: form.full_name.trim(),
       role: form.role,
       employee_code: form.employee_code.trim(),
@@ -78,7 +106,9 @@ export const StaffCreateModal: React.FC<StaffCreateModalProps> = ({
       department: form.department.trim() || undefined,
       phone: form.phone.trim() || undefined,
       password: form.password,
-    });
+    };
+    if (form.link_service_staff_id.trim()) payload.link_service_staff_id = form.link_service_staff_id.trim();
+    onSubmit(payload);
   };
 
   const emailPreview = form.employee_code.trim() ? `${form.employee_code.trim()}@staff.local` : '—';
@@ -133,7 +163,7 @@ export const StaffCreateModal: React.FC<StaffCreateModalProps> = ({
           </label>
           <select
             value={form.role}
-            onChange={(e) => setForm((f) => ({ ...f, role: e.target.value as AppRole }))}
+            onChange={(e) => setForm((f) => ({ ...f, role: e.target.value as AppRole, link_service_staff_id: '' }))}
             className={inputCls}
           >
             {ROLE_OPTIONS.map((r) => (
@@ -143,6 +173,30 @@ export const StaffCreateModal: React.FC<StaffCreateModalProps> = ({
             ))}
           </select>
         </div>
+
+        {/* ผูกกับรายชื่อเดิม (เมื่อเลือกคนขับ/พนักงานบริการ และมีรายชื่อที่ยังไม่มีบัญชี) */}
+        {showLinkOption && (
+          <div>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+              ผูกกับรายชื่อเดิม (รักษาประวัติทริป)
+            </label>
+            <select
+              value={form.link_service_staff_id}
+              onChange={(e) => handleLinkStaffChange(e.target.value)}
+              className={inputCls}
+            >
+              <option value="">— สร้างรายชื่อใหม่ —</option>
+              {unlinkedServiceStaff.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name} {s.employee_code ? `(${s.employee_code})` : ''} {s.phone ? `· ${s.phone}` : ''}
+                </option>
+              ))}
+            </select>
+            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+              เลือกรายชื่อที่เคยสร้างใน จัดการพนักงาน แล้วจะผูกบัญชีกับรายชื่อเดิม ประวัติทริปไม่หาย
+            </p>
+          </div>
+        )}
 
         {/* Branch */}
         <div>

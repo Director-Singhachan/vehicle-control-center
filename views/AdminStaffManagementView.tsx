@@ -21,6 +21,7 @@ export const AdminStaffManagementView: React.FC = () => {
     filters,
     setFilters,
     branches,
+    unlinkedServiceStaff,
     refetch,
     modals,
     openCreate,
@@ -83,6 +84,7 @@ export const AdminStaffManagementView: React.FC = () => {
       <StaffCreateModal
         isOpen={modals.create}
         branches={branches}
+        unlinkedServiceStaff={unlinkedServiceStaff}
         submitting={submitting}
         onSubmit={handleCreate}
         onClose={closeCreate}

@@ -73,7 +73,7 @@ Deno.serve(async (req) => {
 
     // ─── create_user ────────────────────────────────────────────────────────
     if (action === 'create_user') {
-      const { full_name, role, branch, department, phone, password, employee_code: rawCode } = body;
+      const { full_name, role, branch, department, phone, password, employee_code: rawCode, link_service_staff_id } = body;
 
       if (!full_name || !role || !password) {
         return jsonError('full_name, role และ password จำเป็นต้องระบุ', 400);
@@ -84,18 +84,32 @@ Deno.serve(async (req) => {
         return jsonError('รหัสพนักงานจำเป็นต้องระบุ', 400);
       }
 
-      // ตรวจรหัสไม่ซ้ำ
-      const { data: existing } = await adminClient
+      // ตรวจรหัสไม่ซ้ำ (ใน profiles)
+      const { data: existingProfile } = await adminClient
         .from('profiles')
         .select('id')
         .eq('employee_code', employee_code)
         .limit(1)
         .maybeSingle();
-      if (existing) {
+      if (existingProfile) {
         return jsonError('รหัสพนักงานนี้มีในระบบแล้ว', 400);
       }
 
       const email = `${employee_code}${STAFF_EMAIL_DOMAIN}`;
+
+      // ถ้าส่ง link_service_staff_id มา = ผูกบัญชีกับรายชื่อเดิม (รักษาประวัติทริป)
+      const linkId = typeof link_service_staff_id === 'string' ? link_service_staff_id.trim() || null : null;
+      if (linkId && OPERATIONAL_ROLES.has(role)) {
+        const { data: existingRow, error: linkCheckErr } = await adminClient
+          .from('service_staff')
+          .select('id')
+          .eq('id', linkId)
+          .is('user_id', null)
+          .maybeSingle();
+        if (linkCheckErr || !existingRow) {
+          return jsonError('ไม่พบรายชื่อพนักงานที่เลือก หรือรายชื่อนี้ผูกบัญชีแล้ว', 400);
+        }
+      }
 
       // Create auth user
       const { data: newAuthUser, error: createErr } = await adminClient.auth.admin.createUser({
@@ -119,21 +133,36 @@ Deno.serve(async (req) => {
         employee_code,
       }, { onConflict: 'id' });
       if (profileInsertErr) {
-        // Rollback: delete auth user
         await adminClient.auth.admin.deleteUser(userId);
         throw profileInsertErr;
       }
 
-      // Auto-create service_staff record for operational roles
       if (OPERATIONAL_ROLES.has(role)) {
-        const { error: ssErr } = await adminClient.from('service_staff').insert({
-          name: full_name,
-          phone: phone || null,
-          employee_code,
-          user_id: userId,
-          status: 'active',
-        });
-        if (ssErr) console.warn('[admin-staff] Failed to create service_staff record:', ssErr.message);
+        if (linkId) {
+          // ผูกบัญชีกับรายชื่อเดิม → UPDATE (รักษาประวัติทริป)
+          const { error: ssUpdateErr } = await adminClient.from('service_staff').update({
+            user_id: userId,
+            name: full_name,
+            phone: phone || null,
+            employee_code,
+            updated_at: new Date().toISOString(),
+          }).eq('id', linkId);
+          if (ssUpdateErr) {
+            console.warn('[admin-staff] Failed to link service_staff:', ssUpdateErr.message);
+            await adminClient.auth.admin.deleteUser(userId);
+            throw ssUpdateErr;
+          }
+        } else {
+          // สร้างรายชื่อใหม่
+          const { error: ssErr } = await adminClient.from('service_staff').insert({
+            name: full_name,
+            phone: phone || null,
+            employee_code,
+            user_id: userId,
+            status: 'active',
+          });
+          if (ssErr) console.warn('[admin-staff] Failed to create service_staff record:', ssErr.message);
+        }
       }
 
       return jsonOk({ user_id: userId, employee_code, email });

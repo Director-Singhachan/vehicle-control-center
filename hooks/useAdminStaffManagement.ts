@@ -6,8 +6,12 @@ import {
   type UpdateStaffInput,
   type StaffListFilters,
 } from '../services/adminStaffService';
+import { serviceStaffService } from '../services/serviceStaffService';
+import type { Database } from '../types/database';
 import { useToast } from './useToast';
 import type { AppRole } from '../types/database';
+
+type ServiceStaffRow = Database['public']['Tables']['service_staff']['Row'];
 
 interface ModalState {
   create: boolean;
@@ -43,6 +47,9 @@ export function useAdminStaffManagement() {
     return Array.from(set).sort();
   }, [staffList]);
 
+  // ─── รายชื่อ service_staff ที่ยังไม่มีบัญชี (สำหรับผูกบัญชีกับรายชื่อเดิม) ─
+  const [unlinkedServiceStaff, setUnlinkedServiceStaff] = useState<ServiceStaffRow[]>([]);
+
   // ─── Fetch staff list ────────────────────────────────────────────────────
   const fetchStaff = useCallback(async () => {
     setListLoading(true);
@@ -61,9 +68,15 @@ export function useAdminStaffManagement() {
     fetchStaff();
   }, [fetchStaff]);
 
-  // ─── Open create modal ──────────────────────────────────────────────────
-  const openCreate = useCallback(() => {
+  // ─── Open create modal + โหลดรายชื่อที่ยังไม่มีบัญชี ─────────────────────
+  const openCreate = useCallback(async () => {
     setModals((m) => ({ ...m, create: true }));
+    try {
+      const list = await serviceStaffService.getUnlinked();
+      setUnlinkedServiceStaff(list);
+    } catch {
+      setUnlinkedServiceStaff([]);
+    }
   }, []);
 
   // ─── Create staff ────────────────────────────────────────────────────────
@@ -148,6 +161,7 @@ export function useAdminStaffManagement() {
     filters,
     setFilters,
     branches,
+    unlinkedServiceStaff,
     refetch: fetchStaff,
 
     // modals

@@ -49,5 +49,20 @@ export const serviceStaffService = {
         }
 
         return data;
-    }
+    },
+
+    /** รายชื่อพนักงานบริการ/คนขับที่ยังไม่มีบัญชี (สำหรับผูกบัญชีกับรายชื่อเดิม) */
+    getUnlinked: async (): Promise<ServiceStaff[]> => {
+        const { data, error } = await supabase
+            .from('service_staff')
+            .select('*')
+            .is('user_id', null)
+            .order('name', { ascending: true });
+
+        if (error) {
+            console.error('[serviceStaffService] Error fetching unlinked staff:', error);
+            throw error;
+        }
+        return data || [];
+    },
 };
