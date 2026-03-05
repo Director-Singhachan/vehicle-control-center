@@ -36,7 +36,7 @@ export const StaffEditModal: React.FC<StaffEditModalProps> = ({
   onSubmit,
   onClose,
 }) => {
-  const [form, setForm] = useState({ full_name: '', role: 'user' as AppRole, branch: '', department: '', phone: '' });
+  const [form, setForm] = useState({ full_name: '', role: 'user' as AppRole, branch: '', department: '', position: '', phone: '' });
 
   useEffect(() => {
     if (staff) {
@@ -45,6 +45,7 @@ export const StaffEditModal: React.FC<StaffEditModalProps> = ({
         role: staff.role,
         branch: staff.branch || '',
         department: staff.department || '',
+        position: (staff as any).position || '',
         phone: staff.phone || '',
       });
     }
@@ -59,6 +60,7 @@ export const StaffEditModal: React.FC<StaffEditModalProps> = ({
       role: form.role,
       branch: form.branch.trim() || undefined,
       department: form.department.trim() || undefined,
+      position: form.position.trim() || undefined,
       phone: form.phone.trim() || undefined,
     });
   };
@@ -135,7 +137,7 @@ export const StaffEditModal: React.FC<StaffEditModalProps> = ({
           </datalist>
         </div>
 
-        {/* Department + Phone */}
+        {/* Department + Position */}
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
@@ -150,15 +152,29 @@ export const StaffEditModal: React.FC<StaffEditModalProps> = ({
           </div>
           <div>
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
-              เบอร์โทร
+              ตำแหน่ง
             </label>
             <input
-              type="tel"
-              value={form.phone}
-              onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
+              type="text"
+              value={form.position}
+              onChange={(e) => setForm((f) => ({ ...f, position: e.target.value }))}
+              placeholder="เช่น หัวหน้าทีมขนส่ง"
               className={inputCls}
             />
           </div>
+        </div>
+
+        {/* Phone */}
+        <div>
+          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+            เบอร์โทร
+          </label>
+          <input
+            type="tel"
+            value={form.phone}
+            onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
+            className={inputCls}
+          />
         </div>
 
         {/* Actions */}

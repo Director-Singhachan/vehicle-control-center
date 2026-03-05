@@ -220,6 +220,9 @@ export const StaffListSection: React.FC<StaffListSectionProps> = ({
                 <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 hidden md:table-cell">
                   แผนก
                 </th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 hidden md:table-cell">
+                  ตำแหน่ง
+                </th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 hidden lg:table-cell">
                   เบอร์โทร
                 </th>
@@ -264,6 +267,9 @@ export const StaffListSection: React.FC<StaffListSectionProps> = ({
                     </td>
                     <td className="px-4 py-3 text-slate-600 dark:text-slate-400 hidden md:table-cell">
                       {staff.department || '—'}
+                    </td>
+                    <td className="px-4 py-3 text-slate-600 dark:text-slate-400 hidden md:table-cell">
+                      {(staff as any).position || '—'}
                     </td>
                     <td className="px-4 py-3 text-slate-600 dark:text-slate-400 hidden lg:table-cell">
                       {staff.phone || '—'}

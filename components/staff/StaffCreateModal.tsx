@@ -51,6 +51,7 @@ export const StaffCreateModal: React.FC<StaffCreateModalProps> = ({
     link_service_staff_id: '' as string,
     branch: '',
     department: '',
+    position: '',
     phone: '',
     password: '',
     confirm_password: '',
@@ -60,7 +61,7 @@ export const StaffCreateModal: React.FC<StaffCreateModalProps> = ({
 
   useEffect(() => {
     if (isOpen) {
-      setForm({ employee_code: '', full_name: '', role: 'driver', link_service_staff_id: '', branch: '', department: '', phone: '', password: '', confirm_password: '' });
+      setForm({ employee_code: '', full_name: '', role: 'driver', link_service_staff_id: '', branch: '', department: '', position: '', phone: '', password: '', confirm_password: '' });
       setErrors({});
     }
   }, [isOpen]);
@@ -104,6 +105,7 @@ export const StaffCreateModal: React.FC<StaffCreateModalProps> = ({
       employee_code: form.employee_code.trim(),
       branch: form.branch.trim() || undefined,
       department: form.department.trim() || undefined,
+      position: form.position.trim() || undefined,
       phone: form.phone.trim() || undefined,
       password: form.password,
     };
@@ -216,7 +218,7 @@ export const StaffCreateModal: React.FC<StaffCreateModalProps> = ({
           </datalist>
         </div>
 
-        {/* Department + Phone */}
+        {/* Department + Position */}
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
@@ -232,16 +234,30 @@ export const StaffCreateModal: React.FC<StaffCreateModalProps> = ({
           </div>
           <div>
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
-              เบอร์โทร
+              ตำแหน่ง
             </label>
             <input
-              type="tel"
-              value={form.phone}
-              onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
-              placeholder="0812345678"
+              type="text"
+              value={form.position}
+              onChange={(e) => setForm((f) => ({ ...f, position: e.target.value }))}
+              placeholder="เช่น หัวหน้าทีมขนส่ง, พนักงานขับรถ"
               className={inputCls}
             />
           </div>
+        </div>
+
+        {/* Phone */}
+        <div>
+          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+            เบอร์โทร
+          </label>
+          <input
+            type="tel"
+            value={form.phone}
+            onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
+            placeholder="0812345678"
+            className={inputCls}
+          />
         </div>
 
         {/* Password */}

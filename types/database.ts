@@ -45,6 +45,7 @@ export interface Database {
           branch: string | null;
           employee_code: string | null;
           department: string | null;
+          position: string | null;
           phone: string | null;
           created_at: string;
         };
@@ -57,6 +58,7 @@ export interface Database {
           branch?: string | null;
           employee_code?: string | null;
           department?: string | null;
+          position?: string | null;
           phone?: string | null;
           created_at?: string;
         };
@@ -69,6 +71,7 @@ export interface Database {
           branch?: string | null;
           employee_code?: string | null;
           department?: string | null;
+          position?: string | null;
           phone?: string | null;
           created_at?: string;
         };

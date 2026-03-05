@@ -73,7 +73,7 @@ Deno.serve(async (req) => {
 
     // ─── create_user ────────────────────────────────────────────────────────
     if (action === 'create_user') {
-      const { full_name, role, branch, department, phone, password, employee_code: rawCode, link_service_staff_id } = body;
+      const { full_name, role, branch, department, position, phone, password, employee_code: rawCode, link_service_staff_id } = body;
 
       if (!full_name || !role || !password) {
         return jsonError('full_name, role และ password จำเป็นต้องระบุ', 400);
@@ -129,6 +129,7 @@ Deno.serve(async (req) => {
         role,
         branch: branch || null,
         department: department || null,
+        position: position || null,
         phone: phone || null,
         employee_code,
       }, { onConflict: 'id' });
@@ -183,7 +184,7 @@ Deno.serve(async (req) => {
 
     // ─── update_profile ─────────────────────────────────────────────────────
     if (action === 'update_profile') {
-      const { user_id, full_name, role, branch, department, phone } = body;
+      const { user_id, full_name, role, branch, department, position, phone } = body;
       if (!user_id) return jsonError('user_id จำเป็นต้องระบุ', 400);
 
       const updates: Record<string, unknown> = {};
@@ -191,6 +192,7 @@ Deno.serve(async (req) => {
       if (role !== undefined) updates.role = role;
       if (branch !== undefined) updates.branch = branch;
       if (department !== undefined) updates.department = department;
+      if (position !== undefined) updates.position = position;
       if (phone !== undefined) updates.phone = phone;
 
       const { error } = await adminClient.from('profiles').update(updates).eq('id', user_id);

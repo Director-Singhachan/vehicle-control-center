@@ -10,6 +10,7 @@ export interface CreateStaffInput {
   employee_code: string;
   branch?: string;
   department?: string;
+  position?: string;
   phone?: string;
   password: string;
   /** ผูกบัญชีกับรายชื่อใน service_staff ที่มีอยู่แล้ว (รักษาประวัติทริป) */
@@ -21,6 +22,7 @@ export interface UpdateStaffInput {
   role?: AppRole;
   branch?: string;
   department?: string;
+  position?: string;
   phone?: string;
 }
 
