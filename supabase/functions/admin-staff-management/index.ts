@@ -57,12 +57,54 @@ Deno.serve(async (req) => {
       .single();
 
     if (profileErr || !callerProfile) return jsonError('Forbidden', 403);
-    if (callerProfile.role !== 'admin' && callerProfile.role !== 'hr') {
-      return jsonError('Forbidden: ต้องเป็น Admin หรือ HR เท่านั้น', 403);
-    }
 
     const body = await req.json();
     const { action } = body;
+
+    // ─── set_own_employee_code — accessible to any authenticated user ────────
+    if (action === 'set_own_employee_code') {
+      const { employee_code: rawCode } = body;
+      const employee_code = typeof rawCode === 'string' ? rawCode.trim() : '';
+
+      if (!employee_code) {
+        return jsonError('รหัสพนักงานจำเป็นต้องระบุ', 400);
+      }
+      if (!/^[a-zA-Z0-9]{2,20}$/.test(employee_code)) {
+        return jsonError('รหัสพนักงานต้องประกอบด้วยตัวเลขและตัวอักษรเท่านั้น (ความยาว 2–20 ตัว)', 400);
+      }
+
+      // ตรวจซ้ำ — ยกเว้นตัวเอง
+      const { data: existingProfile } = await adminClient
+        .from('profiles')
+        .select('id')
+        .eq('employee_code', employee_code)
+        .neq('id', callerUser.id)
+        .limit(1)
+        .maybeSingle();
+
+      if (existingProfile) {
+        return jsonError('รหัสพนักงานนี้มีในระบบแล้ว กรุณาเลือกรหัสอื่น', 409);
+      }
+
+      const { error: updateErr } = await adminClient
+        .from('profiles')
+        .update({ employee_code })
+        .eq('id', callerUser.id);
+      if (updateErr) throw updateErr;
+
+      // Sync service_staff ถ้าผูกบัญชีอยู่
+      await adminClient
+        .from('service_staff')
+        .update({ employee_code })
+        .eq('user_id', callerUser.id);
+
+      return jsonOk({ message: 'บันทึกรหัสพนักงานสำเร็จ', employee_code });
+    }
+
+    // ─── Actions ต่อไปนี้ต้องการสิทธิ์ Admin หรือ HR ────────────────────────
+    if (callerProfile.role !== 'admin' && callerProfile.role !== 'hr') {
+      return jsonError('Forbidden: ต้องเป็น Admin หรือ HR เท่านั้น', 403);
+    }
 
     // ─── next_employee_code ─────────────────────────────────────────────────
     if (action === 'next_employee_code') {

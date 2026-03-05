@@ -7,6 +7,7 @@ import {
   ShieldOff,
   ShieldCheck,
   RefreshCw,
+  FileSpreadsheet,
 } from 'lucide-react';
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
@@ -59,6 +60,7 @@ interface StaffListSectionProps {
   branches: string[];
   onFilterChange: (filters: StaffListFilters) => void;
   onRefetch: () => void;
+  onExport: () => void;
   onEdit: (staff: StaffProfile) => void;
   onResetPassword: (staff: StaffProfile) => void;
   onToggleStatus: (staff: StaffProfile) => void;
@@ -138,6 +140,7 @@ export const StaffListSection: React.FC<StaffListSectionProps> = ({
   branches,
   onFilterChange,
   onRefetch,
+  onExport,
   onEdit,
   onResetPassword,
   onToggleStatus,
@@ -180,6 +183,16 @@ export const StaffListSection: React.FC<StaffListSectionProps> = ({
         <Button variant="outline" size="sm" onClick={onRefetch}>
           <RefreshCw size={14} className="mr-1.5" />
           รีเฟรช
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={onExport}
+          disabled={staffList.length === 0}
+          title="Export ข้อมูลพนักงานเป็น Excel"
+        >
+          <FileSpreadsheet size={14} className="mr-1.5 text-green-600 dark:text-green-400" />
+          Export Excel
         </Button>
       </div>
 

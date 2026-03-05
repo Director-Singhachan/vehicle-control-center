@@ -181,5 +181,25 @@ export const profileService = {
     if (error) throw error;
     return data || [];
   },
+
+  // Change own login password (employee self-service)
+  changePassword: async (newPassword: string): Promise<void> => {
+    if (!newPassword || newPassword.length < 6) {
+      throw new Error('รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร');
+    }
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    if (error) throw new Error(error.message || 'เปลี่ยนรหัสผ่านไม่สำเร็จ');
+  },
+
+  // Set own employee_code via Edge Function (validates uniqueness server-side)
+  setOwnEmployeeCode: async (employee_code: string): Promise<{ employee_code: string }> => {
+    const { data, error } = await supabase.functions.invoke('admin-staff-management', {
+      body: { action: 'set_own_employee_code', employee_code },
+    });
+
+    if (error) throw new Error(error.message || 'Edge Function error');
+    if (data?.success === false) throw new Error(data.error || 'บันทึกรหัสพนักงานไม่สำเร็จ');
+    return data as { employee_code: string };
+  },
 };
 

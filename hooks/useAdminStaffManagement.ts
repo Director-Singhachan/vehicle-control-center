@@ -10,6 +10,7 @@ import { serviceStaffService } from '../services/serviceStaffService';
 import type { Database } from '../types/database';
 import { useToast } from './useToast';
 import type { AppRole } from '../types/database';
+import { excelExport } from '../utils/excelExport';
 
 type ServiceStaffRow = Database['public']['Tables']['service_staff']['Row'];
 
@@ -39,6 +40,9 @@ export function useAdminStaffManagement() {
 
   // ─── Operation loading ───────────────────────────────────────────────────
   const [submitting, setSubmitting] = useState(false);
+
+  // ─── Create modal server error (e.g. duplicate employee_code) ────────────
+  const [createError, setCreateError] = useState<string | null>(null);
 
   // ─── Unique branch list (derived from loaded staff) ─────────────────────
   const branches = useMemo(() => {
@@ -70,6 +74,7 @@ export function useAdminStaffManagement() {
 
   // ─── Open create modal + โหลดรายชื่อที่ยังไม่มีบัญชี ─────────────────────
   const openCreate = useCallback(async () => {
+    setCreateError(null);
     setModals((m) => ({ ...m, create: true }));
     try {
       const list = await serviceStaffService.getUnlinked();
@@ -83,6 +88,7 @@ export function useAdminStaffManagement() {
   const handleCreate = useCallback(
     async (input: CreateStaffInput) => {
       setSubmitting(true);
+      setCreateError(null);
       try {
         const result = await adminStaffService.createUser(input);
         success(
@@ -91,7 +97,9 @@ export function useAdminStaffManagement() {
         setModals((m) => ({ ...m, create: false }));
         fetchStaff();
       } catch (err: any) {
-        showError(err.message || 'สร้างบัญชีไม่สำเร็จ');
+        const msg = err.message || 'สร้างบัญชีไม่สำเร็จ';
+        setCreateError(msg);
+        showError(msg);
       } finally {
         setSubmitting(false);
       }
@@ -153,6 +161,32 @@ export function useAdminStaffManagement() {
     [fetchStaff, success, showError],
   );
 
+  // ─── Export to Excel ─────────────────────────────────────────────────────
+  const handleExport = useCallback(() => {
+    const ROLE_LABEL: Record<AppRole, string> = {
+      admin: 'Admin', manager: 'Manager', hr: 'HR', accounting: 'บัญชี',
+      warehouse: 'คลัง', driver: 'คนขับ', service_staff: 'บริการ',
+      sales: 'ขาย', inspector: 'ตรวจสอบ', executive: 'ผู้บริหาร', user: 'User',
+    };
+    excelExport.exportToExcel(
+      staffList,
+      [
+        { key: 'employee_code', label: 'รหัสพนักงาน', width: 16 },
+        { key: 'full_name', label: 'ชื่อ-นามสกุล', width: 28 },
+        { key: 'role', label: 'บทบาท', width: 16, format: (v: AppRole) => ROLE_LABEL[v] ?? v },
+        { key: 'branch', label: 'สาขา', width: 18, format: (v: string | null) => v || '-' },
+        { key: 'department', label: 'แผนก', width: 18, format: (v: string | null) => v || '-' },
+        { key: 'position', label: 'ตำแหน่ง', width: 22, format: (v: string | null) => v || '-' },
+        { key: 'phone', label: 'เบอร์โทร', width: 16, format: (v: string | null) => v || '-' },
+        { key: 'email', label: 'Email', width: 30 },
+        { key: 'is_banned', label: 'สถานะ', width: 12, format: (v: boolean) => v ? 'ปิดบัญชี' : 'ใช้งาน' },
+        { key: 'created_at', label: 'วันที่สร้าง', width: 20, format: excelExport.formatDate },
+      ],
+      `รายชื่อพนักงาน_${new Date().toLocaleDateString('th-TH').replace(/\//g, '-')}.xlsx`,
+      'พนักงาน',
+    );
+  }, [staffList]);
+
   return {
     // list
     staffList,
@@ -170,17 +204,19 @@ export function useAdminStaffManagement() {
     openEdit: (staff: StaffProfile) => setModals((m) => ({ ...m, edit: staff })),
     openResetPassword: (staff: StaffProfile) => setModals((m) => ({ ...m, resetPassword: staff })),
     openConfirmToggle: (staff: StaffProfile) => setModals((m) => ({ ...m, confirmToggle: staff })),
-    closeCreate: () => setModals((m) => ({ ...m, create: false })),
+    closeCreate: () => { setCreateError(null); setModals((m) => ({ ...m, create: false })); },
     closeEdit: () => setModals((m) => ({ ...m, edit: null })),
     closeResetPassword: () => setModals((m) => ({ ...m, resetPassword: null })),
     closeConfirmToggle: () => setModals((m) => ({ ...m, confirmToggle: null })),
 
     // operations
     submitting,
+    createError,
     handleCreate,
     handleEdit,
     handleResetPassword,
     handleToggleStatus,
+    handleExport,
 
     // toast
     toasts,

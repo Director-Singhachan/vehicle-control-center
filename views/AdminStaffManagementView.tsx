@@ -33,10 +33,12 @@ export const AdminStaffManagementView: React.FC = () => {
     closeResetPassword,
     closeConfirmToggle,
     submitting,
+    createError,
     handleCreate,
     handleEdit,
     handleResetPassword,
     handleToggleStatus,
+    handleExport,
     toasts,
     dismissToast,
   } = useAdminStaffManagement();
@@ -75,6 +77,7 @@ export const AdminStaffManagementView: React.FC = () => {
         branches={branches}
         onFilterChange={setFilters}
         onRefetch={refetch}
+        onExport={handleExport}
         onEdit={openEdit}
         onResetPassword={openResetPassword}
         onToggleStatus={openConfirmToggle}
@@ -86,6 +89,7 @@ export const AdminStaffManagementView: React.FC = () => {
         branches={branches}
         unlinkedServiceStaff={unlinkedServiceStaff}
         submitting={submitting}
+        serverError={createError}
         onSubmit={handleCreate}
         onClose={closeCreate}
       />

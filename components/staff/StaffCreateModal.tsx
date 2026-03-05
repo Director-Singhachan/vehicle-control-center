@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { UserPlus, Eye, EyeOff } from 'lucide-react';
+import { UserPlus, Eye, EyeOff, AlertTriangle } from 'lucide-react';
 import { Modal } from '../ui/Modal';
 import { Button } from '../ui/Button';
 import type { AppRole } from '../../types/database';
@@ -14,6 +14,8 @@ interface StaffCreateModalProps {
   /** รายชื่อพนักงานบริการ/คนขับที่ยังไม่มีบัญชี — สำหรับผูกบัญชีกับรายชื่อเดิม (รักษาประวัติทริป) */
   unlinkedServiceStaff: ServiceStaffRow[];
   submitting: boolean;
+  /** ข้อผิดพลาดจาก server เช่น รหัสพนักงานซ้ำ */
+  serverError?: string | null;
   onSubmit: (input: CreateStaffInput) => void;
   onClose: () => void;
 }
@@ -41,6 +43,7 @@ export const StaffCreateModal: React.FC<StaffCreateModalProps> = ({
   branches,
   unlinkedServiceStaff = [],
   submitting,
+  serverError,
   onSubmit,
   onClose,
 }) => {
@@ -115,9 +118,25 @@ export const StaffCreateModal: React.FC<StaffCreateModalProps> = ({
 
   const emailPreview = form.employee_code.trim() ? `${form.employee_code.trim()}@staff.local` : '—';
 
+  const isDuplicateCode = !!serverError && (
+    serverError.includes('รหัสพนักงาน') || serverError.toLowerCase().includes('duplicate')
+  );
+
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="สร้างพนักงานใหม่" size="medium">
       <form onSubmit={handleSubmit} className="space-y-4">
+        {/* Server error banner */}
+        {serverError && (
+          <div className={`flex items-start gap-3 p-3 rounded-lg border ${
+            isDuplicateCode
+              ? 'bg-amber-50 dark:bg-amber-900/20 border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-200'
+              : 'bg-red-50 dark:bg-red-900/20 border-red-300 dark:border-red-700 text-red-800 dark:text-red-200'
+          }`}>
+            <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+            <span className="text-sm font-medium">{serverError}</span>
+          </div>
+        )}
+
         {/* Employee code + Email preview */}
         <div className="grid grid-cols-2 gap-3">
           <div>
@@ -129,7 +148,7 @@ export const StaffCreateModal: React.FC<StaffCreateModalProps> = ({
               value={form.employee_code}
               onChange={(e) => setForm((f) => ({ ...f, employee_code: e.target.value }))}
               placeholder="เช่น 000001 หรือรหัสเดิม"
-              className={inputCls}
+              className={`${inputCls} ${isDuplicateCode ? 'border-amber-400 dark:border-amber-500 ring-1 ring-amber-400 dark:ring-amber-500' : ''}`}
             />
             {errors.employee_code && <p className="mt-1 text-xs text-red-500">{errors.employee_code}</p>}
           </div>
