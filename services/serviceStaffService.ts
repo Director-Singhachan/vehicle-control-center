@@ -51,8 +51,8 @@ export const serviceStaffService = {
         return data;
     },
 
-    // Get all active service staff with branch (joined from profiles via user_id)
-    getAllActiveWithBranch: async (): Promise<(ServiceStaff & { branch: string | null })[]> => {
+    // Get all active service staff with branch + staffRole (joined from profiles via user_id)
+    getAllActiveWithBranch: async (): Promise<(ServiceStaff & { branch: string | null; staffRole: string | null })[]> => {
         const { data: staffData, error: staffErr } = await supabase
             .from('service_staff')
             .select('*')
@@ -67,18 +67,23 @@ export const serviceStaffService = {
         const list = staffData || [];
         const userIds = list.flatMap(s => (s.user_id ? [s.user_id] : []));
         const branchMap: Record<string, string | null> = {};
+        const roleMap: Record<string, string | null> = {};
 
         if (userIds.length > 0) {
             const { data: profileData } = await supabase
                 .from('profiles')
-                .select('id, branch')
+                .select('id, branch, role')
                 .in('id', userIds);
-            (profileData || []).forEach(p => { branchMap[p.id] = p.branch; });
+            (profileData || []).forEach(p => {
+                branchMap[p.id] = p.branch;
+                roleMap[p.id] = p.role;
+            });
         }
 
         return list.map(s => ({
             ...s,
             branch: s.user_id ? (branchMap[s.user_id] ?? null) : null,
+            staffRole: s.user_id ? (roleMap[s.user_id] ?? null) : null,
         }));
     },
 

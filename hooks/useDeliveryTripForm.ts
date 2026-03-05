@@ -161,7 +161,7 @@ export function useDeliveryTripForm({ tripId, onSave, onCancel }: UseDeliveryTri
   const initialStoresRef = useRef<StoreWithItems[] | null>(null);
   const [vehicleDropdownPosition, setVehicleDropdownPosition] = useState<{ top: number; left: number; width: number } | null>(null);
 
-  const [availableStaff, setAvailableStaff] = useState<Array<{ id: string; name: string; employee_code?: string | null; branch?: string | null }>>([]);
+  const [availableStaff, setAvailableStaff] = useState<Array<{ id: string; name: string; employee_code?: string | null; branch?: string | null; staffRole?: string | null }>>([]);
   const [selectedHelpers, setSelectedHelpers] = useState<string[]>([]);
   const [helperSearch, setHelperSearch] = useState('');
   const [showHelperDropdown, setShowHelperDropdown] = useState(false);
@@ -361,7 +361,7 @@ export function useDeliveryTripForm({ tripId, onSave, onCancel }: UseDeliveryTri
       .finally(() => setLoadingDrivers(false));
   }, []);
   useEffect(() => {
-    serviceStaffService.getAllActiveWithBranch().then(staff => setAvailableStaff(staff.map(s => ({ id: s.id, name: s.name, employee_code: s.employee_code, branch: s.branch })))).catch(() => {});
+    serviceStaffService.getAllActiveWithBranch().then(staff => setAvailableStaff(staff.map(s => ({ id: s.id, name: s.name, employee_code: s.employee_code, branch: s.branch, staffRole: s.staffRole })))).catch(() => {});
   }, []);
   useEffect(() => {
     if (!formData.vehicle_id) { setLatestOdometer(null); return; }

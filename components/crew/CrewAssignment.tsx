@@ -1,6 +1,6 @@
 // Crew Assignment Component - Assign and manage crew for delivery trips
 import React, { useState, useEffect, useMemo } from 'react';
-import { Plus, X, Users, AlertTriangle, Check, RefreshCw, Trash2, Truck, User, AlertCircle } from 'lucide-react';
+import { Plus, X, Users, AlertTriangle, Check, RefreshCw, Trash2, Truck, User, AlertCircle, Globe } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
 import { useCrewByTrip, useCrewManagement } from '../../hooks/useCrew';
@@ -8,7 +8,7 @@ import { supabase } from '../../lib/supabase';
 import type { Database } from '../../types/database';
 
 type ServiceStaff = Database['public']['Tables']['service_staff']['Row'];
-type ServiceStaffWithBranch = ServiceStaff & { branch: string | null };
+type ServiceStaffWithBranch = ServiceStaff & { branch: string | null; staffRole: string | null };
 
 interface CrewAssignmentProps {
     tripId: string;
@@ -44,6 +44,8 @@ export const CrewAssignment: React.FC<CrewAssignmentProps> = ({
     const [loadingStaff, setLoadingStaff] = useState(false);
     const [showAddDriver, setShowAddDriver] = useState(false);
     const [showAddHelper, setShowAddHelper] = useState(false);
+    const [showAllDriver, setShowAllDriver] = useState(false);
+    const [showAllHelper, setShowAllHelper] = useState(false);
     const [selectedStaffIds, setSelectedStaffIds] = useState<string[]>([]);
     const [selectedDriverId, setSelectedDriverId] = useState<string>('');
     const [staffSearch, setStaffSearch] = useState('');
@@ -87,19 +89,27 @@ export const CrewAssignment: React.FC<CrewAssignmentProps> = ({
             if (error) throw error;
             const list = data || [];
 
-            // Resolve branch from profiles via user_id
+            // Resolve branch + staffRole from profiles via user_id
             const userIds = list.flatMap(s => (s.user_id ? [s.user_id] : []));
             const branchMap: Record<string, string | null> = {};
+            const roleMap: Record<string, string | null> = {};
             if (userIds.length > 0) {
                 const { data: profileData } = await supabase
                     .from('profiles')
-                    .select('id, branch')
+                    .select('id, branch, role')
                     .in('id', userIds);
-                (profileData || []).forEach(p => { branchMap[p.id] = p.branch; });
+                (profileData || []).forEach(p => {
+                    branchMap[p.id] = p.branch;
+                    roleMap[p.id] = p.role;
+                });
             }
 
             setAvailableStaff(
-                list.map(s => ({ ...s, branch: s.user_id ? (branchMap[s.user_id] ?? null) : null })),
+                list.map(s => ({
+                    ...s,
+                    branch: s.user_id ? (branchMap[s.user_id] ?? null) : null,
+                    staffRole: s.user_id ? (roleMap[s.user_id] ?? null) : null,
+                })),
             );
         } catch (err) {
             console.error('[CrewAssignment] Error fetching staff:', err);
@@ -186,35 +196,128 @@ export const CrewAssignment: React.FC<CrewAssignmentProps> = ({
         }
     };
 
-    // Get available staff for selection (exclude already assigned), same-branch first
-    const getAvailableStaffForSelection = () => {
+    // Base pool: exclude already-assigned staff, apply search, optional role filter
+    const getBasePool = (roleFilter?: 'driver' | 'helper') => {
         const assignedStaffIds = crew.map(c => c.staff_id);
-        let filtered = availableStaff.filter(s => !assignedStaffIds.includes(s.id));
+        let pool = availableStaff.filter(s => !assignedStaffIds.includes(s.id));
+        if (roleFilter === 'driver') {
+            // Only show: role === 'driver' or unlinked (null)
+            pool = pool.filter(s => !s.staffRole || s.staffRole === 'driver');
+        } else if (roleFilter === 'helper') {
+            // Only show: role === 'service_staff' or unlinked (null)
+            pool = pool.filter(s => !s.staffRole || s.staffRole === 'service_staff');
+        }
         if (staffSearch.trim()) {
-            const search = staffSearch.toLowerCase();
-            filtered = filtered.filter(s =>
-                s.name.toLowerCase().includes(search) ||
-                (s.employee_code || '').toLowerCase().includes(search),
+            const q = staffSearch.toLowerCase();
+            pool = pool.filter(s =>
+                s.name.toLowerCase().includes(q) ||
+                (s.employee_code || '').toLowerCase().includes(q),
             );
         }
-        // Sort: same branch first, then others
-        if (tripBranch) {
-            filtered = [
-                ...filtered.filter(s => s.branch === tripBranch),
-                ...filtered.filter(s => s.branch !== tripBranch),
-            ];
-        }
-        return filtered;
+        return pool;
     };
 
-    // Split selection list into groups for grouped rendering
-    const getStaffGroups = () => {
-        const all = getAvailableStaffForSelection();
-        if (!tripBranch) return { same: [], other: all };
-        return {
-            same: all.filter(s => s.branch === tripBranch),
-            other: all.filter(s => s.branch !== tripBranch),
-        };
+    // For swap dropdown: all staff (no role filter — swap can use anyone)
+    const getAvailableStaffForSelection = () => getBasePool();
+
+    // Render staff rows (scrollable) and footer toggle (pinned) for an Add form
+    const buildStaffListParts = (
+        selectionType: 'radio' | 'checkbox',
+        showAll: boolean,
+        setShowAll: (v: boolean) => void,
+        isSelected: (id: string) => boolean,
+        onToggle: (id: string) => void,
+        roleFilter?: 'driver' | 'helper',
+    ): { rows: React.ReactNode; footer: React.ReactNode } => {
+        const pool = getBasePool(roleFilter);
+        const hasBranchFilter = !!tripBranch;
+        const samePool = hasBranchFilter ? pool.filter(s => s.branch === tripBranch) : pool;
+        const otherPool = hasBranchFilter ? pool.filter(s => s.branch !== tripBranch) : [];
+        const visibleSame = samePool;
+        const visibleOther = hasBranchFilter && !showAll ? [] : otherPool;
+        const otherCount = otherPool.length;
+        const totalVisible = visibleSame.length + visibleOther.length;
+
+        const renderRow = (staff: ServiceStaffWithBranch) => (
+            <label
+                key={staff.id}
+                className={`flex items-center gap-2 px-3 py-2.5 cursor-pointer select-none transition-colors ${
+                    isSelected(staff.id)
+                        ? selectionType === 'radio' ? 'bg-blue-50 dark:bg-blue-900/30' : 'bg-green-50 dark:bg-green-900/20'
+                        : 'hover:bg-gray-50 dark:hover:bg-slate-800'
+                }`}
+            >
+                <input
+                    type={selectionType}
+                    name={selectionType === 'radio' ? 'driver-select' : undefined}
+                    checked={isSelected(staff.id)}
+                    onChange={() => onToggle(staff.id)}
+                    className={selectionType === 'radio' ? 'text-blue-600 cursor-pointer' : 'rounded border-gray-300 dark:border-slate-600 text-green-600 cursor-pointer'}
+                />
+                <span className="flex-1 text-gray-900 dark:text-slate-100">{staff.name}</span>
+                {staff.employee_code && (
+                    <span className="text-xs text-gray-500 dark:text-slate-400">{staff.employee_code}</span>
+                )}
+                {getStatusBadge(staff.status)}
+                {staff.branch && <BranchBadge branch={staff.branch} isSame={staff.branch === tripBranch} />}
+            </label>
+        );
+
+        const rows = (
+            <>
+                {totalVisible === 0 && (
+                    <div className="p-4 text-center text-gray-500 dark:text-slate-400 text-sm">
+                        {hasBranchFilter && !showAll && otherCount > 0
+                            ? `ไม่มีพนักงานในสาขา ${tripBranch}`
+                            : 'ไม่มีพนักงานที่พร้อมใช้งาน'}
+                    </div>
+                )}
+                {hasBranchFilter && showAll && visibleSame.length > 0 && (
+                    <div className="px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-enterprise-600 dark:text-enterprise-400 bg-enterprise-50 dark:bg-enterprise-900/20">
+                        สาขา {tripBranch} · {visibleSame.length} คน
+                    </div>
+                )}
+                {visibleSame.map(renderRow)}
+                {hasBranchFilter && showAll && visibleOther.length > 0 && (
+                    <div className="px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500 bg-slate-50 dark:bg-slate-800/60 border-t border-slate-200 dark:border-slate-700">
+                        สาขาอื่น · {visibleOther.length} คน
+                    </div>
+                )}
+                {visibleOther.map(renderRow)}
+            </>
+        );
+
+        // Footer toggle: rendered OUTSIDE the scroll area so it's always visible
+        const footer = hasBranchFilter ? (
+            <div className="border-t border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 rounded-b-lg">
+                {!showAll ? (
+                    <button
+                        type="button"
+                        onClick={() => setShowAll(true)}
+                        className="w-full px-3 py-2 flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors rounded-b-lg"
+                    >
+                        <Globe size={13} className="shrink-0" />
+                        <span>แสดงพนักงานสาขาอื่นด้วย</span>
+                        {otherCount > 0 && (
+                            <span className="ml-auto px-1.5 py-0.5 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 font-medium">
+                                +{otherCount}
+                            </span>
+                        )}
+                    </button>
+                ) : (
+                    <button
+                        type="button"
+                        onClick={() => setShowAll(false)}
+                        className="w-full px-3 py-2 flex items-center gap-2 text-xs text-enterprise-600 dark:text-enterprise-400 hover:bg-enterprise-50 dark:hover:bg-enterprise-900/20 transition-colors rounded-b-lg"
+                    >
+                        <Globe size={13} className="shrink-0" />
+                        <span>แสดงเฉพาะสาขา {tripBranch}</span>
+                    </button>
+                )}
+            </div>
+        ) : null;
+
+        return { rows, footer };
     };
 
     // Get status badge
@@ -299,7 +402,7 @@ export const CrewAssignment: React.FC<CrewAssignmentProps> = ({
                             {canModifyCrew && !hasDriver && (
                                 <Button
                                     size="sm"
-                                    onClick={() => { setShowAddDriver(!showAddDriver); setShowAddHelper(false); setStaffSearch(''); }}
+                                    onClick={() => { setShowAddDriver(!showAddDriver); setShowAddHelper(false); setStaffSearch(''); setShowAllDriver(false); }}
                                     className="flex items-center gap-1"
                                 >
                                     <Plus size={14} />
@@ -321,58 +424,29 @@ export const CrewAssignment: React.FC<CrewAssignmentProps> = ({
                                             className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 text-gray-900 dark:text-slate-100 focus:ring-2 focus:ring-blue-500"
                                         />
                                     </div>
-                                    <div className="max-h-48 overflow-y-auto border border-gray-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-900">
-                                        {loadingStaff ? (
-                                            <div className="p-4 text-center text-gray-500 dark:text-slate-400">กำลังโหลด...</div>
-                                        ) : getAvailableStaffForSelection().length === 0 ? (
-                                            <div className="p-4 text-center text-gray-500 dark:text-slate-400">ไม่มีพนักงานที่พร้อมใช้งาน</div>
-                                        ) : (() => {
-                                            const { same, other } = getStaffGroups();
-                                            const hasBoth = same.length > 0 && other.length > 0;
-                                            const renderRow = (staff: ServiceStaffWithBranch) => (
-                                                <label
-                                                    key={staff.id}
-                                                    className={`flex items-center gap-2 p-2 cursor-pointer transition-colors ${selectedDriverId === staff.id ? 'bg-blue-50 dark:bg-blue-900/30' : 'hover:bg-gray-50 dark:hover:bg-slate-800'}`}
-                                                    onClick={() => setSelectedDriverId(staff.id)}
-                                                >
-                                                    <input
-                                                        type="radio"
-                                                        name="driver"
-                                                        checked={selectedDriverId === staff.id}
-                                                        onChange={() => setSelectedDriverId(staff.id)}
-                                                        className="text-blue-600"
-                                                    />
-                                                    <span className="flex-1 text-gray-900 dark:text-slate-100">{staff.name}</span>
-                                                    {staff.employee_code && (
-                                                        <span className="text-xs text-gray-500 dark:text-slate-400">{staff.employee_code}</span>
-                                                    )}
-                                                    {getStatusBadge(staff.status)}
-                                                    {staff.branch && <BranchBadge branch={staff.branch} isSame={staff.branch === tripBranch} />}
-                                                </label>
-                                            );
-                                            return (
-                                                <>
-                                                    {hasBoth && (
-                                                        <div className="px-2 py-1 text-[10px] font-black uppercase tracking-widest text-slate-400 bg-slate-50 dark:bg-slate-800/60">
-                                                            สาขา {tripBranch} (สาขาเดียวกัน)
-                                                        </div>
-                                                    )}
-                                                    {same.map(renderRow)}
-                                                    {hasBoth && (
-                                                        <div className="px-2 py-1 text-[10px] font-black uppercase tracking-widest text-slate-400 bg-slate-50 dark:bg-slate-800/60 border-t border-slate-200 dark:border-slate-700">
-                                                            สาขาอื่น
-                                                        </div>
-                                                    )}
-                                                    {other.map(renderRow)}
-                                                </>
-                                            );
-                                        })()}
-                                    </div>
+                                    {(() => {
+                                        const { rows: driverRows, footer: driverFooter } = buildStaffListParts(
+                                            'radio', showAllDriver, setShowAllDriver,
+                                            (id) => selectedDriverId === id,
+                                            (id) => setSelectedDriverId(id),
+                                            'driver',
+                                        );
+                                        return (
+                                            <div className="border border-gray-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-900">
+                                                <div className="max-h-48 overflow-y-auto">
+                                                    {loadingStaff
+                                                        ? <div className="p-4 text-center text-gray-500 dark:text-slate-400">กำลังโหลด...</div>
+                                                        : driverRows}
+                                                </div>
+                                                {!loadingStaff && driverFooter}
+                                            </div>
+                                        );
+                                    })()}
                                     <div className="flex gap-2 justify-end mt-3">
                                         <Button
                                             size="sm"
                                             variant="outline"
-                                            onClick={() => { setShowAddDriver(false); setSelectedDriverId(''); setStaffSearch(''); }}
+                                            onClick={() => { setShowAddDriver(false); setSelectedDriverId(''); setStaffSearch(''); setShowAllDriver(false); }}
                                         >
                                             ยกเลิก
                                         </Button>
@@ -435,7 +509,7 @@ export const CrewAssignment: React.FC<CrewAssignmentProps> = ({
                             {canModifyCrew && (
                                 <Button
                                     size="sm"
-                                    onClick={() => { setShowAddHelper(!showAddHelper); setShowAddDriver(false); setStaffSearch(''); }}
+                                    onClick={() => { setShowAddHelper(!showAddHelper); setShowAddDriver(false); setStaffSearch(''); setShowAllHelper(false); }}
                                     className="flex items-center gap-1"
                                 >
                                     <Plus size={14} />
@@ -457,62 +531,31 @@ export const CrewAssignment: React.FC<CrewAssignmentProps> = ({
                                             className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 text-gray-900 dark:text-slate-100 focus:ring-2 focus:ring-blue-500"
                                         />
                                     </div>
-                                    <div className="max-h-48 overflow-y-auto border border-gray-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-900">
-                                        {loadingStaff ? (
-                                            <div className="p-4 text-center text-gray-500 dark:text-slate-400">กำลังโหลด...</div>
-                                        ) : getAvailableStaffForSelection().length === 0 ? (
-                                            <div className="p-4 text-center text-gray-500 dark:text-slate-400">ไม่มีพนักงานที่พร้อมใช้งาน</div>
-                                        ) : (() => {
-                                            const { same, other } = getStaffGroups();
-                                            const hasBoth = same.length > 0 && other.length > 0;
-                                            const renderRow = (staff: ServiceStaffWithBranch) => (
-                                                <label
-                                                    key={staff.id}
-                                                    className={`flex items-center gap-2 p-2 cursor-pointer transition-colors ${selectedStaffIds.includes(staff.id) ? 'bg-green-50 dark:bg-green-900/20' : 'hover:bg-gray-50 dark:hover:bg-slate-800'}`}
-                                                >
-                                                    <input
-                                                        type="checkbox"
-                                                        checked={selectedStaffIds.includes(staff.id)}
-                                                        onChange={(e) => {
-                                                            if (e.target.checked) {
-                                                                setSelectedStaffIds([...selectedStaffIds, staff.id]);
-                                                            } else {
-                                                                setSelectedStaffIds(selectedStaffIds.filter(id => id !== staff.id));
-                                                            }
-                                                        }}
-                                                        className="rounded border-gray-300 dark:border-slate-600 text-green-600"
-                                                    />
-                                                    <span className="flex-1 text-gray-900 dark:text-slate-100">{staff.name}</span>
-                                                    {staff.employee_code && (
-                                                        <span className="text-xs text-gray-500 dark:text-slate-400">{staff.employee_code}</span>
-                                                    )}
-                                                    {getStatusBadge(staff.status)}
-                                                    {staff.branch && <BranchBadge branch={staff.branch} isSame={staff.branch === tripBranch} />}
-                                                </label>
-                                            );
-                                            return (
-                                                <>
-                                                    {hasBoth && (
-                                                        <div className="px-2 py-1 text-[10px] font-black uppercase tracking-widest text-slate-400 bg-slate-50 dark:bg-slate-800/60">
-                                                            สาขา {tripBranch} (สาขาเดียวกัน)
-                                                        </div>
-                                                    )}
-                                                    {same.map(renderRow)}
-                                                    {hasBoth && (
-                                                        <div className="px-2 py-1 text-[10px] font-black uppercase tracking-widest text-slate-400 bg-slate-50 dark:bg-slate-800/60 border-t border-slate-200 dark:border-slate-700">
-                                                            สาขาอื่น
-                                                        </div>
-                                                    )}
-                                                    {other.map(renderRow)}
-                                                </>
-                                            );
-                                        })()}
-                                    </div>
+                                    {(() => {
+                                        const { rows: helperRows, footer: helperFooter } = buildStaffListParts(
+                                            'checkbox', showAllHelper, setShowAllHelper,
+                                            (id) => selectedStaffIds.includes(id),
+                                            (id) => setSelectedStaffIds(prev =>
+                                                prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id],
+                                            ),
+                                            'helper',
+                                        );
+                                        return (
+                                            <div className="border border-gray-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-900">
+                                                <div className="max-h-48 overflow-y-auto">
+                                                    {loadingStaff
+                                                        ? <div className="p-4 text-center text-gray-500 dark:text-slate-400">กำลังโหลด...</div>
+                                                        : helperRows}
+                                                </div>
+                                                {!loadingStaff && helperFooter}
+                                            </div>
+                                        );
+                                    })()}
                                     <div className="flex gap-2 justify-end mt-3">
                                         <Button
                                             size="sm"
                                             variant="outline"
-                                            onClick={() => { setShowAddHelper(false); setSelectedStaffIds([]); setStaffSearch(''); }}
+                                            onClick={() => { setShowAddHelper(false); setSelectedStaffIds([]); setStaffSearch(''); setShowAllHelper(false); }}
                                         >
                                             ยกเลิก
                                         </Button>
