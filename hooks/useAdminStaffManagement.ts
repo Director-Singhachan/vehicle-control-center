@@ -51,6 +51,12 @@ export function useAdminStaffManagement() {
     return Array.from(set).sort();
   }, [staffList]);
 
+  // ─── Client-side filtered list (respect branch filter) ───────────────────
+  const filteredStaffList = useMemo(() => {
+    if (!filters.branch) return staffList;
+    return staffList.filter((s) => s.branch === filters.branch);
+  }, [staffList, filters.branch]);
+
   // ─── รายชื่อ service_staff ที่ยังไม่มีบัญชี (สำหรับผูกบัญชีกับรายชื่อเดิม) ─
   const [unlinkedServiceStaff, setUnlinkedServiceStaff] = useState<ServiceStaffRow[]>([]);
 
@@ -59,7 +65,9 @@ export function useAdminStaffManagement() {
     setListLoading(true);
     setListError(null);
     try {
-      const data = await adminStaffService.getAll(filters);
+      // ดึงรายการพนักงานจากฝั่ง server ตามตัวกรองอื่น ๆ
+      // แต่ไม่ล็อค branch ที่ server เพื่อให้ dropdown สาขาแสดงครบ
+      const data = await adminStaffService.getAll({ ...filters, branch: '' });
       setStaffList(data);
     } catch (err: any) {
       setListError(err.message || 'โหลดข้อมูลพนักงานไม่สำเร็จ');
@@ -169,7 +177,7 @@ export function useAdminStaffManagement() {
       sales: 'ขาย', inspector: 'ตรวจสอบ', executive: 'ผู้บริหาร', user: 'User',
     };
     excelExport.exportToExcel(
-      staffList,
+      filteredStaffList,
       [
         { key: 'employee_code', label: 'รหัสพนักงาน', width: 16 },
         { key: 'full_name', label: 'ชื่อ-นามสกุล', width: 28 },
@@ -185,11 +193,11 @@ export function useAdminStaffManagement() {
       `รายชื่อพนักงาน_${new Date().toLocaleDateString('th-TH').replace(/\//g, '-')}.xlsx`,
       'พนักงาน',
     );
-  }, [staffList]);
+  }, [filteredStaffList]);
 
   return {
     // list
-    staffList,
+    staffList: filteredStaffList,
     listLoading,
     listError,
     filters,
