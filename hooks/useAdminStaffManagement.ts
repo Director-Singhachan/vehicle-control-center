@@ -43,9 +43,6 @@ export function useAdminStaffManagement() {
     return Array.from(set).sort();
   }, [staffList]);
 
-  // ─── Next employee code for create form ─────────────────────────────────
-  const [nextCode, setNextCode] = useState<string>('');
-
   // ─── Fetch staff list ────────────────────────────────────────────────────
   const fetchStaff = useCallback(async () => {
     setListLoading(true);
@@ -64,15 +61,9 @@ export function useAdminStaffManagement() {
     fetchStaff();
   }, [fetchStaff]);
 
-  // ─── Open create modal + prefetch next code ──────────────────────────────
-  const openCreate = useCallback(async () => {
+  // ─── Open create modal ──────────────────────────────────────────────────
+  const openCreate = useCallback(() => {
     setModals((m) => ({ ...m, create: true }));
-    try {
-      const code = await adminStaffService.getNextEmployeeCode();
-      setNextCode(code);
-    } catch {
-      setNextCode('');
-    }
   }, []);
 
   // ─── Create staff ────────────────────────────────────────────────────────
@@ -169,9 +160,6 @@ export function useAdminStaffManagement() {
     closeEdit: () => setModals((m) => ({ ...m, edit: null })),
     closeResetPassword: () => setModals((m) => ({ ...m, resetPassword: null })),
     closeConfirmToggle: () => setModals((m) => ({ ...m, confirmToggle: null })),
-
-    // next code for create form
-    nextCode,
 
     // operations
     submitting,

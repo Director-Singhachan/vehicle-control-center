@@ -7,7 +7,6 @@ import type { CreateStaffInput } from '../../services/adminStaffService';
 
 interface StaffCreateModalProps {
   isOpen: boolean;
-  nextCode: string;
   branches: string[];
   submitting: boolean;
   onSubmit: (input: CreateStaffInput) => void;
@@ -32,13 +31,13 @@ const inputCls =
 
 export const StaffCreateModal: React.FC<StaffCreateModalProps> = ({
   isOpen,
-  nextCode,
   branches,
   submitting,
   onSubmit,
   onClose,
 }) => {
   const [form, setForm] = useState({
+    employee_code: '',
     full_name: '',
     role: 'driver' as AppRole,
     branch: '',
@@ -52,13 +51,14 @@ export const StaffCreateModal: React.FC<StaffCreateModalProps> = ({
 
   useEffect(() => {
     if (isOpen) {
-      setForm({ full_name: '', role: 'driver', branch: '', department: '', phone: '', password: '', confirm_password: '' });
+      setForm({ employee_code: '', full_name: '', role: 'driver', branch: '', department: '', phone: '', password: '', confirm_password: '' });
       setErrors({});
     }
   }, [isOpen]);
 
   const validate = () => {
     const e: Record<string, string> = {};
+    if (!form.employee_code.trim()) e.employee_code = 'กรุณาระบุรหัสพนักงาน';
     if (!form.full_name.trim()) e.full_name = 'กรุณาระบุชื่อ-นามสกุล';
     if (!form.password) e.password = 'กรุณาระบุรหัสผ่าน';
     else if (form.password.length < 6) e.password = 'รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร';
@@ -73,6 +73,7 @@ export const StaffCreateModal: React.FC<StaffCreateModalProps> = ({
     onSubmit({
       full_name: form.full_name.trim(),
       role: form.role,
+      employee_code: form.employee_code.trim(),
       branch: form.branch.trim() || undefined,
       department: form.department.trim() || undefined,
       phone: form.phone.trim() || undefined,
@@ -80,26 +81,31 @@ export const StaffCreateModal: React.FC<StaffCreateModalProps> = ({
     });
   };
 
-  const emailPreview = nextCode ? `${nextCode}@staff.local` : 'กำลังโหลด...';
+  const emailPreview = form.employee_code.trim() ? `${form.employee_code.trim()}@staff.local` : '—';
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="สร้างพนักงานใหม่" size="medium">
       <form onSubmit={handleSubmit} className="space-y-4">
-        {/* Code + Email preview */}
+        {/* Employee code + Email preview */}
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">
-              รหัสพนักงาน (auto)
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+              รหัสพนักงาน <span className="text-red-500">*</span>
             </label>
-            <div className="px-3 py-2 text-sm bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-lg font-mono font-bold text-enterprise-600 dark:text-enterprise-400">
-              {nextCode || '—'}
-            </div>
+            <input
+              type="text"
+              value={form.employee_code}
+              onChange={(e) => setForm((f) => ({ ...f, employee_code: e.target.value }))}
+              placeholder="เช่น 000001 หรือรหัสเดิม"
+              className={inputCls}
+            />
+            {errors.employee_code && <p className="mt-1 text-xs text-red-500">{errors.employee_code}</p>}
           </div>
           <div>
             <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">
-              Email (auto)
+              Email (สร้างอัตโนมัติ)
             </label>
-            <div className="px-3 py-2 text-sm bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-600 dark:text-slate-400 truncate">
+            <div className="px-3 py-2 text-sm bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-600 dark:text-slate-400 truncate font-mono">
               {emailPreview}
             </div>
           </div>
@@ -148,7 +154,7 @@ export const StaffCreateModal: React.FC<StaffCreateModalProps> = ({
             list="create-branch-list"
             value={form.branch}
             onChange={(e) => setForm((f) => ({ ...f, branch: e.target.value }))}
-            placeholder="เช่น สาขากรุงเทพ, สาขาชลบุรี"
+            placeholder="เช่น สาขา HQ, สาขา SD"
             className={inputCls}
           />
           <datalist id="create-branch-list">

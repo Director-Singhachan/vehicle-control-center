@@ -31,7 +31,6 @@ export const AdminStaffManagementView: React.FC = () => {
     closeEdit,
     closeResetPassword,
     closeConfirmToggle,
-    nextCode,
     submitting,
     handleCreate,
     handleEdit,
@@ -83,7 +82,6 @@ export const AdminStaffManagementView: React.FC = () => {
       {/* ── Modals ─────────────────────────────────────────────────── */}
       <StaffCreateModal
         isOpen={modals.create}
-        nextCode={nextCode}
         branches={branches}
         submitting={submitting}
         onSubmit={handleCreate}

@@ -73,16 +73,28 @@ Deno.serve(async (req) => {
 
     // ─── create_user ────────────────────────────────────────────────────────
     if (action === 'create_user') {
-      const { full_name, role, branch, department, phone, password } = body;
+      const { full_name, role, branch, department, phone, password, employee_code: rawCode } = body;
 
       if (!full_name || !role || !password) {
         return jsonError('full_name, role และ password จำเป็นต้องระบุ', 400);
       }
 
-      // Get next employee code
-      const { data: nextCode, error: codeErr } = await adminClient.rpc('get_next_employee_code');
-      if (codeErr) throw codeErr;
-      const employee_code: string = nextCode;
+      const employee_code = typeof rawCode === 'string' ? rawCode.trim() : '';
+      if (!employee_code) {
+        return jsonError('รหัสพนักงานจำเป็นต้องระบุ', 400);
+      }
+
+      // ตรวจรหัสไม่ซ้ำ
+      const { data: existing } = await adminClient
+        .from('profiles')
+        .select('id')
+        .eq('employee_code', employee_code)
+        .limit(1)
+        .maybeSingle();
+      if (existing) {
+        return jsonError('รหัสพนักงานนี้มีในระบบแล้ว', 400);
+      }
+
       const email = `${employee_code}${STAFF_EMAIL_DOMAIN}`;
 
       // Create auth user
@@ -95,8 +107,8 @@ Deno.serve(async (req) => {
       if (createErr) throw createErr;
       const userId = newAuthUser.user!.id;
 
-      // Insert profile
-      const { error: profileInsertErr } = await adminClient.from('profiles').insert({
+      // Upsert profile (trigger อาจสร้าง row ไว้แล้ว → update แทน insert ซ้ำ)
+      const { error: profileInsertErr } = await adminClient.from('profiles').upsert({
         id: userId,
         email,
         full_name,
@@ -105,7 +117,7 @@ Deno.serve(async (req) => {
         department: department || null,
         phone: phone || null,
         employee_code,
-      });
+      }, { onConflict: 'id' });
       if (profileInsertErr) {
         // Rollback: delete auth user
         await adminClient.auth.admin.deleteUser(userId);
@@ -181,8 +193,19 @@ Deno.serve(async (req) => {
 
     return jsonError(`action "${action}" ไม่รองรับ`, 400);
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'เกิดข้อผิดพลาด';
+    const raw = err as Record<string, unknown>;
+    const message =
+      err instanceof Error
+        ? err.message
+        : typeof raw?.message === 'string'
+          ? raw.message
+          : typeof raw?.error === 'string'
+            ? raw.error
+            : typeof raw?.details === 'string'
+              ? raw.details
+              : JSON.stringify(err);
     console.error('[admin-staff-management]', message);
+    console.error('[admin-staff-management] full error:', JSON.stringify(raw));
     return jsonError(message, 500);
   }
 });

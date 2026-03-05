@@ -7,6 +7,7 @@ export type StaffProfile = Database['public']['Tables']['profiles']['Row'];
 export interface CreateStaffInput {
   full_name: string;
   role: AppRole;
+  employee_code: string;
   branch?: string;
   department?: string;
   phone?: string;
