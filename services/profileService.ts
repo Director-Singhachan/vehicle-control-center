@@ -182,11 +182,26 @@ export const profileService = {
     return data || [];
   },
 
-  // Change own login password (employee self-service)
-  changePassword: async (newPassword: string): Promise<void> => {
+  // Change own login password — requires current password for verification
+  changePassword: async (currentPassword: string, newPassword: string): Promise<void> => {
+    if (!currentPassword) throw new Error('กรุณาระบุรหัสผ่านปัจจุบัน');
     if (!newPassword || newPassword.length < 6) {
-      throw new Error('รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร');
+      throw new Error('รหัสผ่านใหม่ต้องมีอย่างน้อย 6 ตัวอักษร');
     }
+    if (currentPassword === newPassword) {
+      throw new Error('รหัสผ่านใหม่ต้องไม่ซ้ำกับรหัสผ่านเดิม');
+    }
+
+    // Re-authenticate to verify current password before allowing change
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user?.email) throw new Error('ไม่พบข้อมูลบัญชีผู้ใช้');
+
+    const { error: signInErr } = await supabase.auth.signInWithPassword({
+      email: user.email,
+      password: currentPassword,
+    });
+    if (signInErr) throw new Error('รหัสผ่านปัจจุบันไม่ถูกต้อง');
+
     const { error } = await supabase.auth.updateUser({ password: newPassword });
     if (error) throw new Error(error.message || 'เปลี่ยนรหัสผ่านไม่สำเร็จ');
   },
