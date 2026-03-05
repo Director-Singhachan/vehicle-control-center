@@ -30,6 +30,7 @@ import {
   Boxes,
   Database,
   Upload,
+  UserCog,
 } from 'lucide-react';
 // Lazy load views เพื่อลด initial bundle และให้หน้าแรกโหลดเร็วขึ้น
 const DashboardView = lazy(() => import('./views/DashboardView').then(m => ({ default: m.DashboardView })));
@@ -56,6 +57,7 @@ const DeliveryTripDetailView = lazy(() => import('./views/DeliveryTripDetailView
 const TripMetricsView = lazy(() => import('./views/TripMetricsView').then(m => ({ default: m.TripMetricsView })));
 const StoreDeliveryDetailView = lazy(() => import('./views/StoreDeliveryDetailView').then(m => ({ default: m.StoreDeliveryDetailView })));
 const ServiceStaffManagementView = lazy(() => import('./views/ServiceStaffManagementView').then(m => ({ default: m.ServiceStaffManagementView })));
+const AdminStaffManagementView = lazy(() => import('./views/AdminStaffManagementView').then(m => ({ default: m.AdminStaffManagementView })));
 const StaffVehicleUsageView = lazy(() => import('./views/StaffVehicleUsageView').then(m => ({ default: m.StaffVehicleUsageView })));
 const CommissionManagementView = lazy(() => import('./views/CommissionManagementView').then(m => ({ default: m.CommissionManagementView })));
 const CommissionRatesView = lazy(() => import('./views/CommissionRatesView').then(m => ({ default: m.CommissionRatesView })));
@@ -122,7 +124,7 @@ const MenuSectionHeader = ({ label }: { label: string }) => (
 
 // Main App Content (wrapped in ProtectedRoute)
 const AppContent = () => {
-  const { user, profile, signOut, isAdmin, isManager, isInspector, isExecutive, isDriver, isSales, isServiceStaff, loading: authLoading, refreshProfile } = useAuth();
+  const { user, profile, signOut, isAdmin, isManager, isInspector, isExecutive, isDriver, isSales, isServiceStaff, isHR, isWarehouse, loading: authLoading, refreshProfile } = useAuth();
 
   // Don't wait for profile - show UI immediately if user exists
   // Profile will load in background and update when ready
@@ -1372,6 +1374,15 @@ const AppContent = () => {
                           />
                         </>
                       )}
+                      {(isAdmin || isHR) && (
+                        <SubSidebarItem
+                          label="บัญชีพนักงาน"
+                          active={activeTab === 'admin-staff'}
+                          onClick={() => navigateAndCloseMobile('admin-staff')}
+                          isCollapsed={false}
+                          isFlyout={false}
+                        />
+                      )}
                       {isAdmin && (
                         <>
                           <SubSidebarItem
@@ -1533,6 +1544,18 @@ const AppContent = () => {
                                 isFlyout={true}
                               />
                             </>
+                          )}
+                          {(isAdmin || isHR) && (
+                            <SubSidebarItem
+                              label="บัญชีพนักงาน"
+                              active={activeTab === 'admin-staff'}
+                              onClick={() => {
+                                setActiveTab('admin-staff');
+                                setIsLogisticsHovered(false);
+                              }}
+                              isCollapsed={false}
+                              isFlyout={true}
+                            />
                           )}
                           {isAdmin && (
                             <>
@@ -2531,6 +2554,8 @@ const AppContent = () => {
                   );
                 }
               })()
+            ) : activeTab === 'admin-staff' ? (
+              <AdminStaffManagementView />
             ) : activeTab === 'service-staff' ? (
               serviceStaffView === 'usage' && selectedServiceStaffId ? (
                 <StaffVehicleUsageView
