@@ -743,12 +743,19 @@ const AppContent = () => {
   const [deliveryTripView, setDeliveryTripView] = useState<'list' | 'form' | 'detail' | 'metrics'>('list');
   const [selectedDeliveryTripId, setSelectedDeliveryTripId] = useState<string | null>(null);
   const [deliveryTripReturnContext, setDeliveryTripReturnContext] = useState<
-    'delivery-list' | 'triplogs' | 'daily-summary' | 'vehicles'
+    'delivery-list' | 'triplogs' | 'daily-summary' | 'vehicles' | 'service-staff-usage'
   >('delivery-list');
   const [storeDetailView, setStoreDetailView] = useState<'list' | 'detail'>('list');
   const [selectedStoreId, setSelectedStoreId] = useState<string | null>(null);
   const [serviceStaffView, setServiceStaffView] = useState<'list' | 'usage'>('list');
   const [selectedServiceStaffId, setSelectedServiceStaffId] = useState<string | null>(null);
+  const [serviceStaffUsageNavState, setServiceStaffUsageNavState] = useState<{
+    staffId: string;
+    from: string;
+    to: string;
+    page: number;
+    scrollY: number;
+  } | null>(null);
   const [showNotifications, setShowNotifications] = useState(false);
   const [notificationItems, setNotificationItems] = useState<TicketWithRelations[]>([]);
   const [loadingNotifications, setLoadingNotifications] = useState(false);
@@ -2614,6 +2621,9 @@ const AppContent = () => {
                         } else if (deliveryTripReturnContext === 'vehicles') {
                           setActiveTab('vehicles');
                           setVehicleView('detail');
+                        } else if (deliveryTripReturnContext === 'service-staff-usage') {
+                          setActiveTab('service-staff');
+                          setServiceStaffView('usage');
                         } else {
                           // ค่าเริ่มต้น: กลับไปหน้ารายการทริปส่งสินค้า
                           setActiveTab('delivery-trips');
@@ -2663,6 +2673,29 @@ const AppContent = () => {
               serviceStaffView === 'usage' && selectedServiceStaffId ? (
                 <StaffVehicleUsageView
                   staffId={selectedServiceStaffId}
+                  initialState={
+                    serviceStaffUsageNavState?.staffId === selectedServiceStaffId
+                      ? {
+                          from: serviceStaffUsageNavState.from,
+                          to: serviceStaffUsageNavState.to,
+                          page: serviceStaffUsageNavState.page,
+                          scrollY: serviceStaffUsageNavState.scrollY,
+                        }
+                      : undefined
+                  }
+                  onViewTrip={(tripId, state) => {
+                    setServiceStaffUsageNavState({
+                      staffId: selectedServiceStaffId,
+                      from: state.from,
+                      to: state.to,
+                      page: state.page,
+                      scrollY: state.scrollY,
+                    });
+                    setSelectedDeliveryTripId(tripId);
+                    setDeliveryTripView('detail');
+                    setDeliveryTripReturnContext('service-staff-usage');
+                    setActiveTab('delivery-trips');
+                  }}
                   onBack={() => {
                     setServiceStaffView('list');
                     setSelectedServiceStaffId(null);
