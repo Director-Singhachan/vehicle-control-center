@@ -115,7 +115,18 @@ Deno.serve(async (req) => {
 
     // ─── create_user ────────────────────────────────────────────────────────
     if (action === 'create_user') {
-      const { full_name, role, branch, department, position, phone, password, employee_code: rawCode, link_service_staff_id } = body;
+      const {
+        full_name,
+        role,
+        branch,
+        department,
+        position,
+        phone,
+        password,
+        employee_code: rawCode,
+        link_service_staff_id,
+        email: rawEmail,
+      } = body;
 
       if (!full_name || !role || !password) {
         return jsonError('full_name, role และ password จำเป็นต้องระบุ', 400);
@@ -137,7 +148,28 @@ Deno.serve(async (req) => {
         return jsonError('รหัสพนักงานนี้มีในระบบแล้ว', 400);
       }
 
-      const email = `${employee_code}${STAFF_EMAIL_DOMAIN}`;
+      let email = '';
+      if (typeof rawEmail === 'string') {
+        email = rawEmail.trim();
+      }
+      if (email) {
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(email)) {
+          return jsonError('รูปแบบ Email ไม่ถูกต้อง', 400);
+        }
+        // ตรวจ email ไม่ซ้ำ (ใน profiles)
+        const { data: existingEmail } = await adminClient
+          .from('profiles')
+          .select('id')
+          .eq('email', email)
+          .limit(1)
+          .maybeSingle();
+        if (existingEmail) {
+          return jsonError('Email นี้มีในระบบแล้ว', 400);
+        }
+      } else {
+        email = `${employee_code}${STAFF_EMAIL_DOMAIN}`;
+      }
 
       // ถ้าส่ง link_service_staff_id มา = ผูกบัญชีกับรายชื่อเดิม (รักษาประวัติทริป)
       const linkId = typeof link_service_staff_id === 'string' ? link_service_staff_id.trim() || null : null;

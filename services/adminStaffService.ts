@@ -12,6 +12,7 @@ export interface CreateStaffInput {
   department?: string;
   position?: string;
   phone?: string;
+  email?: string;
   password: string;
   /** ผูกบัญชีกับรายชื่อใน service_staff ที่มีอยู่แล้ว (รักษาประวัติทริป) */
   link_service_staff_id?: string;

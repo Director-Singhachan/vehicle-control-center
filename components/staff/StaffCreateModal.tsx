@@ -56,6 +56,7 @@ export const StaffCreateModal: React.FC<StaffCreateModalProps> = ({
     department: '',
     position: '',
     phone: '',
+    email: '',
     password: '',
     confirm_password: '',
   });
@@ -64,7 +65,19 @@ export const StaffCreateModal: React.FC<StaffCreateModalProps> = ({
 
   useEffect(() => {
     if (isOpen) {
-      setForm({ employee_code: '', full_name: '', role: 'driver', link_service_staff_id: '', branch: '', department: '', position: '', phone: '', password: '', confirm_password: '' });
+      setForm({
+        employee_code: '',
+        full_name: '',
+        role: 'driver',
+        link_service_staff_id: '',
+        branch: '',
+        department: '',
+        position: '',
+        phone: '',
+        email: '',
+        password: '',
+        confirm_password: '',
+      });
       setErrors({});
     }
   }, [isOpen]);
@@ -92,6 +105,9 @@ export const StaffCreateModal: React.FC<StaffCreateModalProps> = ({
     const e: Record<string, string> = {};
     if (!form.employee_code.trim()) e.employee_code = 'กรุณาระบุรหัสพนักงาน';
     if (!form.full_name.trim()) e.full_name = 'กรุณาระบุชื่อ-นามสกุล';
+    if (form.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) {
+      e.email = 'รูปแบบ Email ไม่ถูกต้อง';
+    }
     if (!form.password) e.password = 'กรุณาระบุรหัสผ่าน';
     else if (form.password.length < 6) e.password = 'รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร';
     if (form.password !== form.confirm_password) e.confirm_password = 'รหัสผ่านไม่ตรงกัน';
@@ -110,13 +126,16 @@ export const StaffCreateModal: React.FC<StaffCreateModalProps> = ({
       department: form.department.trim() || undefined,
       position: form.position.trim() || undefined,
       phone: form.phone.trim() || undefined,
+      email: form.email.trim() || undefined,
       password: form.password,
     };
     if (form.link_service_staff_id.trim()) payload.link_service_staff_id = form.link_service_staff_id.trim();
     onSubmit(payload);
   };
 
-  const emailPreview = form.employee_code.trim() ? `${form.employee_code.trim()}@staff.local` : '—';
+  const fallbackEmailExample = form.employee_code.trim()
+    ? `${form.employee_code.trim()}@staff.local`
+    : 'รหัสพนักงาน@staff.local';
 
   const isDuplicateCode = !!serverError && (
     serverError.includes('รหัสพนักงาน') || serverError.toLowerCase().includes('duplicate')
@@ -137,7 +156,7 @@ export const StaffCreateModal: React.FC<StaffCreateModalProps> = ({
           </div>
         )}
 
-        {/* Employee code + Email preview */}
+        {/* Employee code + Email */}
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
@@ -153,12 +172,20 @@ export const StaffCreateModal: React.FC<StaffCreateModalProps> = ({
             {errors.employee_code && <p className="mt-1 text-xs text-red-500">{errors.employee_code}</p>}
           </div>
           <div>
-            <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">
-              Email (สร้างอัตโนมัติ)
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+              Email สำหรับเข้าสู่ระบบ
             </label>
-            <div className="px-3 py-2 text-sm bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-600 dark:text-slate-400 truncate font-mono">
-              {emailPreview}
-            </div>
+            <input
+              type="email"
+              value={form.email}
+              onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
+              placeholder="เช่น user@example.com"
+              className={inputCls}
+            />
+            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+              ถ้าเว้นว่าง ระบบจะใช้ {fallbackEmailExample}
+            </p>
+            {errors.email && <p className="mt-1 text-xs text-red-500">{errors.email}</p>}
           </div>
         </div>
 

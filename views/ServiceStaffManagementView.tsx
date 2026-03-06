@@ -88,8 +88,8 @@ export const ServiceStaffManagementView: React.FC<ServiceStaffManagementViewProp
 
     return (
         <PageLayout
-            title="พนักงานขับรถและบริการ"
-            subtitle="รายชื่อทีมงานประจำรถและประวัติการปฏิบัติงาน"
+            title="ประวัติการลงปฏิบัติงาน"
+            subtitle="เลือกพนักงานเพื่อดูประวัติการลงปฏิบัติงานรายบุคคล"
         >
             {/* Search & Filter bar */}
             <div className="mb-6 flex flex-wrap items-center gap-3">
@@ -195,7 +195,7 @@ export const ServiceStaffManagementView: React.FC<ServiceStaffManagementViewProp
                                         className="flex items-center justify-center gap-1.5 flex-1"
                                     >
                                         <Route size={14} />
-                                        ดูประวัติการปฏิบัติงาน
+                                        ดูประวัติการลงปฏิบัติงาน
                                     </Button>
                                 </div>
                             </Card>

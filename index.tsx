@@ -1613,7 +1613,7 @@ const AppContent = () => {
                     isFlyout={false}
                   />
                   <SubSidebarItem
-                    label="ทีมงานประจำรถ"
+                    label="ประวัติการลงปฏิบัติงาน"
                     active={activeTab === 'service-staff'}
                     onClick={() => navigateAndCloseMobile('service-staff')}
                     isCollapsed={false}
@@ -1665,7 +1665,7 @@ const AppContent = () => {
                         isFlyout={true}
                       />
                       <SubSidebarItem
-                        label="ทีมงานประจำรถ"
+                        label="ประวัติการลงปฏิบัติงาน"
                         active={activeTab === 'service-staff'}
                         onClick={() => { setActiveTab('service-staff'); setIsHRHovered(false); }}
                         isCollapsed={false}
