@@ -805,6 +805,7 @@ export interface Database {
           employee_code: string | null;
           notes: string | null;
           user_id: string | null;
+          branch: string | null;
           created_at: string;
           updated_at: string;
           created_by: string | null;
@@ -819,6 +820,7 @@ export interface Database {
           employee_code?: string | null;
           notes?: string | null;
           user_id?: string | null;
+          branch?: string | null;
           created_at?: string;
           updated_at?: string;
           created_by?: string | null;
@@ -833,6 +835,7 @@ export interface Database {
           employee_code?: string | null;
           notes?: string | null;
           user_id?: string | null;
+          branch?: string | null;
           created_at?: string;
           updated_at?: string;
           created_by?: string | null;

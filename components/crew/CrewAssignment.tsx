@@ -8,7 +8,8 @@ import { supabase } from '../../lib/supabase';
 import type { Database } from '../../types/database';
 
 type ServiceStaff = Database['public']['Tables']['service_staff']['Row'];
-type ServiceStaffWithBranch = ServiceStaff & { branch: string | null; staffRole: string | null };
+// branch อยู่ใน ServiceStaff Row โดยตรงแล้ว — เพิ่มเฉพาะ staffRole (จาก profiles)
+type ServiceStaffWithBranch = ServiceStaff & { staffRole: string | null };
 
 interface CrewAssignmentProps {
     tripId: string;
@@ -65,7 +66,8 @@ export const CrewAssignment: React.FC<CrewAssignmentProps> = ({
     const hasDriver = !!driverCrew;
     const hasCrew = crew.length > 0;
 
-    // Fetch available staff (with branch from profiles) + trip branch
+    // Fetch available staff + trip branch
+    // branch อยู่ใน service_staff โดยตรงแล้ว — ดึง role จาก profiles เฉพาะสำหรับกรอง driver/helper
     const fetchAvailableStaff = async () => {
         try {
             setLoadingStaff(true);
@@ -79,7 +81,7 @@ export const CrewAssignment: React.FC<CrewAssignmentProps> = ({
             const branch = tripData?.branch ?? null;
             setTripBranch(branch);
 
-            // Fetch service staff
+            // Fetch service staff (branch อยู่ใน column โดยตรง)
             const { data, error } = await supabase
                 .from('service_staff')
                 .select('*')
@@ -89,17 +91,15 @@ export const CrewAssignment: React.FC<CrewAssignmentProps> = ({
             if (error) throw error;
             const list = data || [];
 
-            // Resolve branch + staffRole from profiles via user_id
+            // Resolve staffRole from profiles via user_id (ยังจำเป็นสำหรับกรอง driver vs helper)
             const userIds = list.flatMap(s => (s.user_id ? [s.user_id] : []));
-            const branchMap: Record<string, string | null> = {};
             const roleMap: Record<string, string | null> = {};
             if (userIds.length > 0) {
                 const { data: profileData } = await supabase
                     .from('profiles')
-                    .select('id, branch, role')
+                    .select('id, role')
                     .in('id', userIds);
                 (profileData || []).forEach(p => {
-                    branchMap[p.id] = p.branch;
                     roleMap[p.id] = p.role;
                 });
             }
@@ -107,7 +107,6 @@ export const CrewAssignment: React.FC<CrewAssignmentProps> = ({
             setAvailableStaff(
                 list.map(s => ({
                     ...s,
-                    branch: s.user_id ? (branchMap[s.user_id] ?? null) : null,
                     staffRole: s.user_id ? (roleMap[s.user_id] ?? null) : null,
                 })),
             );
@@ -201,11 +200,11 @@ export const CrewAssignment: React.FC<CrewAssignmentProps> = ({
         const assignedStaffIds = crew.map(c => c.staff_id);
         let pool = availableStaff.filter(s => !assignedStaffIds.includes(s.id));
         if (roleFilter === 'driver') {
-            // Only show: role === 'driver' or unlinked (null)
+            // คนขับ: เฉพาะคนขับเท่านั้น (role === 'driver' หรือยังไม่ผูก role)
             pool = pool.filter(s => !s.staffRole || s.staffRole === 'driver');
         } else if (roleFilter === 'helper') {
-            // Only show: role === 'service_staff' or unlinked (null)
-            pool = pool.filter(s => !s.staffRole || s.staffRole === 'service_staff');
+            // พนักงานบริการ: แสดงทั้งพนักงานบริการและคนขับ (บางทีเลือกคนขับอีกคนเข้าไปด้วยในส่วนบริการ)
+            pool = pool.filter(s => !s.staffRole || s.staffRole === 'service_staff' || s.staffRole === 'driver');
         }
         if (staffSearch.trim()) {
             const q = staffSearch.toLowerCase();
@@ -217,8 +216,17 @@ export const CrewAssignment: React.FC<CrewAssignmentProps> = ({
         return pool;
     };
 
-    // For swap dropdown: all staff (no role filter — swap can use anyone)
-    const getAvailableStaffForSelection = () => getBasePool();
+    // For swap dropdown: filter by role but not by staffSearch (swap uses <select> not search)
+    const getSwapPool = (roleFilter?: 'driver' | 'helper') => {
+        const assignedStaffIds = crew.map(c => c.staff_id);
+        let pool = availableStaff.filter(s => !assignedStaffIds.includes(s.id));
+        if (roleFilter === 'driver') {
+            pool = pool.filter(s => !s.staffRole || s.staffRole === 'driver');
+        } else if (roleFilter === 'helper') {
+            pool = pool.filter(s => !s.staffRole || s.staffRole === 'service_staff' || s.staffRole === 'driver');
+        }
+        return pool;
+    };
 
     // Render staff rows (scrollable) and footer toggle (pinned) for an Add form
     const buildStaffListParts = (
@@ -472,7 +480,7 @@ export const CrewAssignment: React.FC<CrewAssignmentProps> = ({
                                     replacementStaffId={replacementStaffId}
                                     removeReason={removeReason}
                                     managing={managing}
-                                    availableStaff={getAvailableStaffForSelection()}
+                                    availableStaff={getSwapPool('driver')}
                                     tripBranch={tripBranch}
                                     getStatusBadge={getStatusBadge}
                                     onSwapStart={() => { setSwapping(driverCrew.id); setRemoving(null); }}
@@ -584,7 +592,7 @@ export const CrewAssignment: React.FC<CrewAssignmentProps> = ({
                                             replacementStaffId={replacementStaffId}
                                             removeReason={removeReason}
                                             managing={managing}
-                                            availableStaff={getAvailableStaffForSelection()}
+                                            availableStaff={getSwapPool('helper')}
                                             tripBranch={tripBranch}
                                             getStatusBadge={getStatusBadge}
                                             onSwapStart={() => { setSwapping(member.id); setRemoving(null); }}

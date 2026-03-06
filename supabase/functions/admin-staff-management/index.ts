@@ -188,6 +188,7 @@ Deno.serve(async (req) => {
             name: full_name,
             phone: phone || null,
             employee_code,
+            branch: branch || null,
             updated_at: new Date().toISOString(),
           }).eq('id', linkId);
           if (ssUpdateErr) {
@@ -202,6 +203,7 @@ Deno.serve(async (req) => {
             phone: phone || null,
             employee_code,
             user_id: userId,
+            branch: branch || null,
             status: 'active',
           });
           if (ssErr) console.warn('[admin-staff] Failed to create service_staff record:', ssErr.message);
@@ -240,11 +242,15 @@ Deno.serve(async (req) => {
       const { error } = await adminClient.from('profiles').update(updates).eq('id', user_id);
       if (error) throw error;
 
-      // Sync name to service_staff if linked
-      if (full_name !== undefined) {
+      // Sync name/branch to service_staff if linked
+      const ssSync: Record<string, unknown> = {};
+      if (full_name !== undefined) { ssSync.name = full_name; ssSync.phone = phone || null; }
+      if (branch !== undefined) ssSync.branch = branch || null;
+      if (Object.keys(ssSync).length > 0) {
+        ssSync.updated_at = new Date().toISOString();
         await adminClient
           .from('service_staff')
-          .update({ name: full_name, phone: phone || null })
+          .update(ssSync)
           .eq('user_id', user_id);
       }
 

@@ -51,8 +51,8 @@ export const serviceStaffService = {
         return data;
     },
 
-    // Get all active service staff with branch + staffRole (joined from profiles via user_id)
-    getAllActiveWithBranch: async (): Promise<(ServiceStaff & { branch: string | null; staffRole: string | null })[]> => {
+    // Get all active service staff with branch (from direct column) + staffRole (from profiles)
+    getAllActiveWithBranch: async (): Promise<(ServiceStaff & { staffRole: string | null })[]> => {
         const { data: staffData, error: staffErr } = await supabase
             .from('service_staff')
             .select('*')
@@ -66,25 +66,35 @@ export const serviceStaffService = {
 
         const list = staffData || [];
         const userIds = list.flatMap(s => (s.user_id ? [s.user_id] : []));
-        const branchMap: Record<string, string | null> = {};
         const roleMap: Record<string, string | null> = {};
 
         if (userIds.length > 0) {
             const { data: profileData } = await supabase
                 .from('profiles')
-                .select('id, branch, role')
+                .select('id, role')
                 .in('id', userIds);
             (profileData || []).forEach(p => {
-                branchMap[p.id] = p.branch;
                 roleMap[p.id] = p.role;
             });
         }
 
         return list.map(s => ({
             ...s,
-            branch: s.user_id ? (branchMap[s.user_id] ?? null) : null,
             staffRole: s.user_id ? (roleMap[s.user_id] ?? null) : null,
         }));
+    },
+
+    /** อัปเดต branch ของ service_staff โดยตรง (Admin/HR เท่านั้น) */
+    updateBranch: async (id: string, branch: string | null): Promise<void> => {
+        const { error } = await supabase
+            .from('service_staff')
+            .update({ branch, updated_at: new Date().toISOString() })
+            .eq('id', id);
+
+        if (error) {
+            console.error('[serviceStaffService] Error updating branch:', error);
+            throw error;
+        }
     },
 
     /** รายชื่อพนักงานบริการ/คนขับที่ยังไม่มีบัญชี (สำหรับผูกบัญชีกับรายชื่อเดิม) */
