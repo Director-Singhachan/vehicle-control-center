@@ -251,6 +251,64 @@ Deno.serve(async (req) => {
       return jsonOk({ message: 'อัปเดตข้อมูลสำเร็จ' });
     }
 
+    // ─── migrate_email ──────────────────────────────────────────────────────
+    // เปลี่ยน email รูปแบบเก่า (เช่น @driver.local) เป็น {employee_code}@staff.local
+    // โดยไม่สร้าง user ใหม่ — ประวัติทริปยังคงอยู่
+    if (action === 'migrate_email') {
+      const { user_id, employee_code: rawCode } = body;
+      if (!user_id) return jsonError('user_id จำเป็นต้องระบุ', 400);
+
+      const employee_code = typeof rawCode === 'string' ? rawCode.trim() : '';
+      if (!employee_code) return jsonError('รหัสพนักงานจำเป็นต้องระบุ', 400);
+      if (!/^[a-zA-Z0-9]{2,20}$/.test(employee_code)) {
+        return jsonError('รหัสพนักงานต้องประกอบด้วยตัวเลขและตัวอักษรเท่านั้น (ความยาว 2–20 ตัว)', 400);
+      }
+
+      // ตรวจว่า employee_code ไม่ซ้ำกับ user อื่น
+      const { data: existingCode } = await adminClient
+        .from('profiles')
+        .select('id')
+        .eq('employee_code', employee_code)
+        .neq('id', user_id)
+        .limit(1)
+        .maybeSingle();
+      if (existingCode) return jsonError('รหัสพนักงานนี้มีในระบบแล้ว กรุณาเลือกรหัสอื่น', 409);
+
+      const newEmail = `${employee_code}${STAFF_EMAIL_DOMAIN}`;
+
+      // ตรวจว่า email ใหม่ไม่ซ้ำกับ user อื่น
+      const { data: existingEmail } = await adminClient
+        .from('profiles')
+        .select('id')
+        .eq('email', newEmail)
+        .neq('id', user_id)
+        .limit(1)
+        .maybeSingle();
+      if (existingEmail) return jsonError('Email นี้มีในระบบแล้ว', 409);
+
+      // เปลี่ยน email ใน auth
+      const { error: authUpdateErr } = await adminClient.auth.admin.updateUserById(user_id, {
+        email: newEmail,
+        email_confirm: true,
+      });
+      if (authUpdateErr) throw authUpdateErr;
+
+      // อัปเดต profiles
+      const { error: profileUpdateErr } = await adminClient
+        .from('profiles')
+        .update({ email: newEmail, employee_code })
+        .eq('id', user_id);
+      if (profileUpdateErr) throw profileUpdateErr;
+
+      // Sync service_staff ถ้าผูกบัญชีอยู่
+      await adminClient
+        .from('service_staff')
+        .update({ employee_code })
+        .eq('user_id', user_id);
+
+      return jsonOk({ message: 'ย้ายรูปแบบ Email สำเร็จ', email: newEmail, employee_code });
+    }
+
     // ─── toggle_status ──────────────────────────────────────────────────────
     if (action === 'toggle_status') {
       const { user_id, banned } = body;

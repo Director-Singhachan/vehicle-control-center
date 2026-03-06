@@ -133,6 +133,24 @@ export function useAdminStaffManagement() {
     [fetchStaff, success, showError],
   );
 
+  // ─── Migrate email (เปลี่ยนจาก @driver.local → @staff.local) ─────────────
+  const handleMigrateEmail = useCallback(
+    async (userId: string, employeeCode: string) => {
+      setSubmitting(true);
+      try {
+        const result = await adminStaffService.migrateEmail(userId, employeeCode);
+        success(`ย้าย Email สำเร็จ · รหัส ${result.employee_code} · อีเมล ${result.email}`);
+        setModals((m) => ({ ...m, edit: null }));
+        fetchStaff();
+      } catch (err: any) {
+        showError(err.message || 'ย้าย Email ไม่สำเร็จ');
+      } finally {
+        setSubmitting(false);
+      }
+    },
+    [fetchStaff, success, showError],
+  );
+
   // ─── Reset password ──────────────────────────────────────────────────────
   const handleResetPassword = useCallback(
     async (userId: string, newPassword: string) => {
@@ -222,6 +240,7 @@ export function useAdminStaffManagement() {
     createError,
     handleCreate,
     handleEdit,
+    handleMigrateEmail,
     handleResetPassword,
     handleToggleStatus,
     handleExport,

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Save } from 'lucide-react';
+import { Save, ArrowRightLeft, AlertTriangle } from 'lucide-react';
 import { Modal } from '../ui/Modal';
 import { Button } from '../ui/Button';
 import type { AppRole } from '../../types/database';
@@ -10,8 +10,13 @@ interface StaffEditModalProps {
   branches: string[];
   submitting: boolean;
   onSubmit: (userId: string, input: UpdateStaffInput) => void;
+  onMigrateEmail: (userId: string, employeeCode: string) => void;
   onClose: () => void;
 }
+
+const LEGACY_EMAIL_DOMAINS = ['@driver.local', '@sales.local', '@service.local'];
+const isLegacyEmail = (email: string | null | undefined) =>
+  !!email && LEGACY_EMAIL_DOMAINS.some((d) => email.endsWith(d));
 
 const ROLE_OPTIONS: { value: AppRole; label: string }[] = [
   { value: 'admin', label: 'Admin (ผู้ดูแลระบบ)' },
@@ -34,9 +39,12 @@ export const StaffEditModal: React.FC<StaffEditModalProps> = ({
   branches,
   submitting,
   onSubmit,
+  onMigrateEmail,
   onClose,
 }) => {
   const [form, setForm] = useState({ full_name: '', role: 'user' as AppRole, branch: '', department: '', position: '', phone: '' });
+  const [migrateCode, setMigrateCode] = useState('');
+  const [showMigrateForm, setShowMigrateForm] = useState(false);
 
   useEffect(() => {
     if (staff) {
@@ -48,6 +56,8 @@ export const StaffEditModal: React.FC<StaffEditModalProps> = ({
         position: (staff as any).position || '',
         phone: staff.phone || '',
       });
+      setMigrateCode('');
+      setShowMigrateForm(false);
     }
   }, [staff]);
 
@@ -65,9 +75,86 @@ export const StaffEditModal: React.FC<StaffEditModalProps> = ({
     });
   };
 
+  const legacy = isLegacyEmail(staff?.email);
+
+  const handleMigrateSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!staff || !migrateCode.trim()) return;
+    onMigrateEmail(staff.id, migrateCode.trim());
+  };
+
   return (
     <Modal isOpen={!!staff} onClose={onClose} title="แก้ไขข้อมูลพนักงาน" size="medium">
       <form onSubmit={handleSubmit} className="space-y-4">
+
+        {/* Legacy email migration banner */}
+        {legacy && (
+          <div className="rounded-lg border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 p-3 space-y-2">
+            <div className="flex items-start gap-2">
+              <AlertTriangle size={16} className="mt-0.5 shrink-0 text-amber-600 dark:text-amber-400" />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-amber-800 dark:text-amber-200">
+                  Email รูปแบบเก่า — ยังไม่มีรหัสพนักงาน
+                </p>
+                <p className="text-xs text-amber-700 dark:text-amber-300 mt-0.5">
+                  พนักงานนี้ใช้ email <span className="font-mono">{staff?.email}</span> ซึ่งเป็นรูปแบบเดิม
+                  กรอกรหัสพนักงานเพื่อย้ายเป็น <span className="font-mono">&lt;รหัส&gt;@staff.local</span> โดยไม่เสียประวัติทริป
+                </p>
+              </div>
+            </div>
+            {!showMigrateForm ? (
+              <button
+                type="button"
+                onClick={() => setShowMigrateForm(true)}
+                className="flex items-center gap-1.5 text-xs font-medium text-amber-700 dark:text-amber-300 hover:text-amber-900 dark:hover:text-amber-100 underline underline-offset-2"
+              >
+                <ArrowRightLeft size={13} />
+                ย้ายรูปแบบ Email
+              </button>
+            ) : (
+              <div className="flex gap-2 items-end pt-1">
+                <div className="flex-1">
+                  <label className="block text-xs font-medium text-amber-800 dark:text-amber-200 mb-1">
+                    รหัสพนักงานใหม่
+                  </label>
+                  <input
+                    type="text"
+                    value={migrateCode}
+                    onChange={(e) => setMigrateCode(e.target.value)}
+                    placeholder="เช่น 000001"
+                    maxLength={20}
+                    className="w-full px-3 py-1.5 text-sm bg-white dark:bg-slate-800 border border-amber-400 dark:border-amber-600 rounded-lg text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                  />
+                  <p className="mt-0.5 text-xs text-amber-700 dark:text-amber-400">
+                    Email ใหม่จะเป็น <span className="font-mono">{migrateCode.trim() || '...'}{migrateCode.trim() ? '@staff.local' : ''}</span>
+                  </p>
+                </div>
+                <div className="flex gap-1.5 pb-6">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => { setShowMigrateForm(false); setMigrateCode(''); }}
+                    disabled={submitting}
+                  >
+                    ยกเลิก
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={handleMigrateSubmit}
+                    isLoading={submitting}
+                    disabled={!migrateCode.trim()}
+                  >
+                    <ArrowRightLeft size={13} className="mr-1" />
+                    ย้าย Email
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Read-only info */}
         <div className="grid grid-cols-2 gap-3">
           <div>

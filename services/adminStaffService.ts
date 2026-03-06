@@ -104,6 +104,14 @@ export const adminStaffService = {
     } as Record<string, unknown>);
   },
 
+  // ─── ย้าย email รูปแบบเก่า (@driver.local) → {employee_code}@staff.local ──
+  migrateEmail: async (
+    userId: string,
+    employeeCode: string,
+  ): Promise<{ email: string; employee_code: string }> => {
+    return invokeAdminStaff('migrate_email', { user_id: userId, employee_code: employeeCode });
+  },
+
   // ─── เปิด/ปิดบัญชี ───────────────────────────────────────────────────────
   toggleStatus: async (userId: string, banned: boolean): Promise<void> => {
     await invokeAdminStaff('toggle_status', { user_id: userId, banned });

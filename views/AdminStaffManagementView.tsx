@@ -36,6 +36,7 @@ export const AdminStaffManagementView: React.FC = () => {
     createError,
     handleCreate,
     handleEdit,
+    handleMigrateEmail,
     handleResetPassword,
     handleToggleStatus,
     handleExport,
@@ -99,6 +100,7 @@ export const AdminStaffManagementView: React.FC = () => {
         branches={branches}
         submitting={submitting}
         onSubmit={handleEdit}
+        onMigrateEmail={handleMigrateEmail}
         onClose={closeEdit}
       />
 
