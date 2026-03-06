@@ -116,4 +116,16 @@ export const adminStaffService = {
   toggleStatus: async (userId: string, banned: boolean): Promise<void> => {
     await invokeAdminStaff('toggle_status', { user_id: userId, banned });
   },
+
+  // ─── ผูก / ย้ายการผูก profile ↔ service_staff ──────────────────────────
+  // ใช้เมื่อ service_staff record มี user_id อยู่แล้ว (เช่น account เก่า @driver.local)
+  relinkServiceStaff: async (
+    userId: string,
+    serviceStaffId: string,
+  ): Promise<{ previous_user_id: string | null }> => {
+    return invokeAdminStaff('relink_service_staff', {
+      user_id: userId,
+      service_staff_id: serviceStaffId,
+    });
+  },
 };

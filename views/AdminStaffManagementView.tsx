@@ -37,9 +37,13 @@ export const AdminStaffManagementView: React.FC = () => {
     handleCreate,
     handleEdit,
     handleMigrateEmail,
+    handleRelinkServiceStaff,
     handleResetPassword,
     handleToggleStatus,
     handleExport,
+    allServiceStaff,
+    linkedServiceStaff,
+    relinkLoading,
     toasts,
     dismissToast,
   } = useAdminStaffManagement();
@@ -99,8 +103,12 @@ export const AdminStaffManagementView: React.FC = () => {
         staff={modals.edit}
         branches={branches}
         submitting={submitting}
+        allServiceStaff={allServiceStaff}
+        linkedServiceStaff={linkedServiceStaff}
+        relinkLoading={relinkLoading}
         onSubmit={handleEdit}
         onMigrateEmail={handleMigrateEmail}
+        onRelink={handleRelinkServiceStaff}
         onClose={closeEdit}
       />
 

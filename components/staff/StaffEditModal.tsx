@@ -1,16 +1,25 @@
 import React, { useState, useEffect } from 'react';
-import { Save, ArrowRightLeft, AlertTriangle } from 'lucide-react';
+import { Save, ArrowRightLeft, AlertTriangle, Link2, Link2Off, RefreshCw, CheckCircle2 } from 'lucide-react';
 import { Modal } from '../ui/Modal';
 import { Button } from '../ui/Button';
 import type { AppRole } from '../../types/database';
 import type { StaffProfile, UpdateStaffInput } from '../../services/adminStaffService';
+import type { Database } from '../../types/database';
+
+type ServiceStaffRow = Database['public']['Tables']['service_staff']['Row'];
 
 interface StaffEditModalProps {
   staff: StaffProfile | null;
   branches: string[];
   submitting: boolean;
+  /** รายชื่อพนักงานทั้งหมดสำหรับ dropdown ผูก (โหลดเมื่อเปิด modal) */
+  allServiceStaff: ServiceStaffRow[];
+  /** record ที่ผูกกับ staff.id อยู่ในปัจจุบัน */
+  linkedServiceStaff: ServiceStaffRow | null;
+  relinkLoading: boolean;
   onSubmit: (userId: string, input: UpdateStaffInput) => void;
   onMigrateEmail: (userId: string, employeeCode: string) => void;
+  onRelink: (userId: string, serviceStaffId: string) => void;
   onClose: () => void;
 }
 
@@ -31,6 +40,8 @@ const ROLE_OPTIONS: { value: AppRole; label: string }[] = [
   { value: 'user', label: 'User (ผู้ใช้ทั่วไป)' },
 ];
 
+const OPERATIONAL_ROLES: AppRole[] = ['driver', 'service_staff'];
+
 const inputCls =
   'w-full px-3 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-enterprise-500';
 
@@ -38,13 +49,22 @@ export const StaffEditModal: React.FC<StaffEditModalProps> = ({
   staff,
   branches,
   submitting,
+  allServiceStaff,
+  linkedServiceStaff,
+  relinkLoading,
   onSubmit,
   onMigrateEmail,
+  onRelink,
   onClose,
 }) => {
   const [form, setForm] = useState({ full_name: '', role: 'user' as AppRole, branch: '', department: '', position: '', phone: '' });
   const [migrateCode, setMigrateCode] = useState('');
   const [showMigrateForm, setShowMigrateForm] = useState(false);
+
+  // Relink state
+  const [showRelinkSection, setShowRelinkSection] = useState(false);
+  const [selectedRelinkId, setSelectedRelinkId] = useState('');
+  const [relinkSearch, setRelinkSearch] = useState('');
 
   useEffect(() => {
     if (staff) {
@@ -58,6 +78,9 @@ export const StaffEditModal: React.FC<StaffEditModalProps> = ({
       });
       setMigrateCode('');
       setShowMigrateForm(false);
+      setShowRelinkSection(false);
+      setSelectedRelinkId('');
+      setRelinkSearch('');
     }
   }, [staff]);
 
@@ -82,6 +105,29 @@ export const StaffEditModal: React.FC<StaffEditModalProps> = ({
     if (!staff || !migrateCode.trim()) return;
     onMigrateEmail(staff.id, migrateCode.trim());
   };
+
+  const handleRelinkSubmit = () => {
+    if (!selectedRelinkId) return;
+    onRelink(staff.id, selectedRelinkId);
+  };
+
+  const isOperational = OPERATIONAL_ROLES.includes(form.role);
+
+  // Filter service_staff list for search
+  const filteredForRelink = allServiceStaff.filter(s => {
+    if (!relinkSearch) return true;
+    const q = relinkSearch.toLowerCase();
+    return (
+      (s.name || '').toLowerCase().includes(q) ||
+      (s.employee_code || '').toLowerCase().includes(q) ||
+      (s.phone || '').toLowerCase().includes(q)
+    );
+  });
+
+  // Find the currently selected record in the dropdown
+  const selectedRecord = allServiceStaff.find(s => s.id === selectedRelinkId);
+  const isRelinkingToSame = linkedServiceStaff && selectedRelinkId === linkedServiceStaff.id;
+  const willReplaceOtherUser = selectedRecord?.user_id && selectedRecord.user_id !== staff.id;
 
   return (
     <Modal isOpen={!!staff} onClose={onClose} title="แก้ไขข้อมูลพนักงาน" size="medium">
@@ -263,6 +309,103 @@ export const StaffEditModal: React.FC<StaffEditModalProps> = ({
             className={inputCls}
           />
         </div>
+
+        {/* ─── ผูกรายชื่อพนักงาน (driver / service_staff เท่านั้น) ─────────── */}
+        {isOperational && (
+          <div className="rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setShowRelinkSection(s => !s)}
+              className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors"
+            >
+              <span className="flex items-center gap-2">
+                <Link2 size={15} className="text-enterprise-500" />
+                ผูกรายชื่อพนักงาน (ประวัติทริป)
+              </span>
+              <span className="text-xs font-normal">
+                {linkedServiceStaff
+                  ? <span className="flex items-center gap-1 text-green-600 dark:text-green-400"><CheckCircle2 size={13} />ผูกแล้ว: {linkedServiceStaff.name}</span>
+                  : <span className="flex items-center gap-1 text-amber-600 dark:text-amber-400"><Link2Off size={13} />ยังไม่ผูก</span>
+                }
+              </span>
+            </button>
+
+            {showRelinkSection && (
+              <div className="px-4 pb-4 pt-2 space-y-3 border-t border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/30">
+                {/* สถานะปัจจุบัน */}
+                {linkedServiceStaff ? (
+                  <div className="flex items-start gap-2 p-2 rounded bg-green-50 dark:bg-green-900/20 text-xs text-green-800 dark:text-green-300 border border-green-200 dark:border-green-800">
+                    <CheckCircle2 size={13} className="mt-0.5 shrink-0" />
+                    <div>
+                      <span className="font-semibold">ผูกอยู่กับ:</span> {linkedServiceStaff.name}
+                      {linkedServiceStaff.employee_code && <span className="ml-1 font-mono">({linkedServiceStaff.employee_code})</span>}
+                      {linkedServiceStaff.branch && <span className="ml-1 opacity-70">· {linkedServiceStaff.branch}</span>}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-start gap-2 p-2 rounded bg-amber-50 dark:bg-amber-900/20 text-xs text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
+                    <Link2Off size={13} className="mt-0.5 shrink-0" />
+                    <span>บัญชีนี้ยังไม่ได้ผูกกับรายชื่อพนักงานใด — ประวัติทริปและค่าคอมมาจะไม่เชื่อมกัน</span>
+                  </div>
+                )}
+
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  เลือกรายชื่อที่ต้องการผูก — ระบบจะเชื่อมประวัติทริปและค่าคอมมาของรายชื่อนั้นกับบัญชีนี้
+                </p>
+
+                {/* Search */}
+                <input
+                  type="text"
+                  placeholder="ค้นหาชื่อ, รหัส, เบอร์โทร..."
+                  value={relinkSearch}
+                  onChange={(e) => setRelinkSearch(e.target.value)}
+                  className="w-full px-3 py-1.5 text-sm bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-enterprise-500"
+                />
+
+                {/* Dropdown */}
+                <select
+                  value={selectedRelinkId}
+                  onChange={(e) => setSelectedRelinkId(e.target.value)}
+                  size={Math.min(6, filteredForRelink.length + 1)}
+                  className="w-full px-2 py-1 text-sm bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-enterprise-500"
+                >
+                  <option value="">— เลือกรายชื่อ —</option>
+                  {filteredForRelink.map(s => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                      {s.employee_code ? ` (${s.employee_code})` : ''}
+                      {s.branch ? ` · ${s.branch}` : ''}
+                      {s.user_id && s.user_id !== staff.id ? ' ⚠ มีบัญชีผูกอยู่' : ''}
+                      {s.user_id === staff.id ? ' ✓ ผูกอยู่' : ''}
+                    </option>
+                  ))}
+                </select>
+
+                {/* Warning: re-linking from another user */}
+                {willReplaceOtherUser && (
+                  <div className="flex items-start gap-2 p-2 rounded bg-red-50 dark:bg-red-900/20 text-xs text-red-800 dark:text-red-300 border border-red-200 dark:border-red-800">
+                    <AlertTriangle size={13} className="mt-0.5 shrink-0" />
+                    <span>
+                      รายชื่อนี้มีบัญชีอื่นผูกอยู่แล้ว — หากยืนยัน บัญชีเดิมจะสูญเสียการเชื่อมโยงกับรายชื่อนี้
+                    </span>
+                  </div>
+                )}
+
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={handleRelinkSubmit}
+                  isLoading={relinkLoading}
+                  disabled={!selectedRelinkId || isRelinkingToSame || relinkLoading}
+                  className="w-full"
+                >
+                  <RefreshCw size={13} className="mr-1.5" />
+                  {isRelinkingToSame ? 'รายชื่อนี้ผูกอยู่แล้ว' : 'ยืนยันการผูกรายชื่อ'}
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Actions */}
         <div className="flex justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">

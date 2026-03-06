@@ -97,6 +97,35 @@ export const serviceStaffService = {
         }
     },
 
+    /** service_staff record ที่ผูกกับ userId นี้อยู่ (ถ้ามี) */
+    getLinkedByUserId: async (userId: string): Promise<ServiceStaff | null> => {
+        const { data, error } = await supabase
+            .from('service_staff')
+            .select('*')
+            .eq('user_id', userId)
+            .maybeSingle();
+
+        if (error) {
+            console.error('[serviceStaffService] Error fetching linked staff:', error);
+            throw error;
+        }
+        return data;
+    },
+
+    /** รายชื่อทั้งหมด (ใช้สำหรับ dropdown ผูกรายชื่อในหน้าจัดการบัญชี) */
+    getAllForLink: async (): Promise<ServiceStaff[]> => {
+        const { data, error } = await supabase
+            .from('service_staff')
+            .select('*')
+            .order('name', { ascending: true });
+
+        if (error) {
+            console.error('[serviceStaffService] Error fetching all for link:', error);
+            throw error;
+        }
+        return data || [];
+    },
+
     /** รายชื่อพนักงานบริการ/คนขับที่ยังไม่มีบัญชี (สำหรับผูกบัญชีกับรายชื่อเดิม) */
     getUnlinked: async (): Promise<ServiceStaff[]> => {
         const { data, error } = await supabase

@@ -14,6 +14,8 @@ import { excelExport } from '../utils/excelExport';
 
 type ServiceStaffRow = Database['public']['Tables']['service_staff']['Row'];
 
+const OPERATIONAL_ROLES: AppRole[] = ['driver', 'service_staff'];
+
 interface ModalState {
   create: boolean;
   edit: StaffProfile | null;
@@ -59,6 +61,11 @@ export function useAdminStaffManagement() {
 
   // ─── รายชื่อ service_staff ที่ยังไม่มีบัญชี (สำหรับผูกบัญชีกับรายชื่อเดิม) ─
   const [unlinkedServiceStaff, setUnlinkedServiceStaff] = useState<ServiceStaffRow[]>([]);
+
+  // ─── ข้อมูลสำหรับ relink ใน edit modal ────────────────────────────────────
+  const [allServiceStaff, setAllServiceStaff] = useState<ServiceStaffRow[]>([]);
+  const [linkedServiceStaff, setLinkedServiceStaff] = useState<ServiceStaffRow | null>(null);
+  const [relinkLoading, setRelinkLoading] = useState(false);
 
   // ─── Fetch staff list ────────────────────────────────────────────────────
   const fetchStaff = useCallback(async () => {
@@ -187,6 +194,26 @@ export function useAdminStaffManagement() {
     [fetchStaff, success, showError],
   );
 
+  // ─── Relink service_staff ─────────────────────────────────────────────────
+  const handleRelinkServiceStaff = useCallback(
+    async (userId: string, serviceStaffId: string) => {
+      setRelinkLoading(true);
+      try {
+        await adminStaffService.relinkServiceStaff(userId, serviceStaffId);
+        success('ผูกรายชื่อพนักงานสำเร็จ');
+        // อัปเดต linkedServiceStaff ใน modal
+        const linked = await serviceStaffService.getLinkedByUserId(userId);
+        setLinkedServiceStaff(linked);
+        fetchStaff();
+      } catch (err: any) {
+        showError(err.message || 'ผูกรายชื่อไม่สำเร็จ');
+      } finally {
+        setRelinkLoading(false);
+      }
+    },
+    [fetchStaff, success, showError],
+  );
+
   // ─── Export to Excel ─────────────────────────────────────────────────────
   const handleExport = useCallback(() => {
     const ROLE_LABEL: Record<AppRole, string> = {
@@ -227,7 +254,21 @@ export function useAdminStaffManagement() {
     // modals
     modals,
     openCreate,
-    openEdit: (staff: StaffProfile) => setModals((m) => ({ ...m, edit: staff })),
+    openEdit: async (staff: StaffProfile) => {
+      setModals((m) => ({ ...m, edit: staff }));
+      setLinkedServiceStaff(null);
+      setAllServiceStaff([]);
+      if (OPERATIONAL_ROLES.includes(staff.role)) {
+        try {
+          const [linked, all] = await Promise.all([
+            serviceStaffService.getLinkedByUserId(staff.id),
+            serviceStaffService.getAllForLink(),
+          ]);
+          setLinkedServiceStaff(linked);
+          setAllServiceStaff(all);
+        } catch { /* silent */ }
+      }
+    },
     openResetPassword: (staff: StaffProfile) => setModals((m) => ({ ...m, resetPassword: staff })),
     openConfirmToggle: (staff: StaffProfile) => setModals((m) => ({ ...m, confirmToggle: staff })),
     closeCreate: () => { setCreateError(null); setModals((m) => ({ ...m, create: false })); },
@@ -241,9 +282,14 @@ export function useAdminStaffManagement() {
     handleCreate,
     handleEdit,
     handleMigrateEmail,
+    handleRelinkServiceStaff,
     handleResetPassword,
     handleToggleStatus,
     handleExport,
+    // relink data
+    allServiceStaff,
+    linkedServiceStaff,
+    relinkLoading,
 
     // toast
     toasts,

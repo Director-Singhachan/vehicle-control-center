@@ -336,6 +336,54 @@ Deno.serve(async (req) => {
       return jsonOk({ message: banned ? 'ปิดบัญชีสำเร็จ' : 'เปิดบัญชีสำเร็จ' });
     }
 
+    // ─── relink_service_staff ────────────────────────────────────────────────
+    // เชื่อม / ย้ายการผูกระหว่าง profiles กับ service_staff (แม้ record นั้นจะมี user_id อยู่แล้ว)
+    if (action === 'relink_service_staff') {
+      const { user_id, service_staff_id } = body;
+      if (!user_id) return jsonError('user_id จำเป็นต้องระบุ', 400);
+      if (!service_staff_id) return jsonError('service_staff_id จำเป็นต้องระบุ', 400);
+
+      // ตรวจว่า profile มีอยู่จริงและเป็น role ที่ใช้ service_staff
+      const { data: targetProfile, error: profileErr } = await adminClient
+        .from('profiles')
+        .select('id, role, full_name, phone, employee_code, branch')
+        .eq('id', user_id)
+        .single();
+      if (profileErr || !targetProfile) return jsonError('ไม่พบ profile ที่ระบุ', 404);
+      if (!OPERATIONAL_ROLES.has(targetProfile.role)) {
+        return jsonError('สามารถผูกได้เฉพาะ role: driver หรือ service_staff เท่านั้น', 400);
+      }
+
+      // ตรวจว่า service_staff record มีอยู่จริง
+      const { data: ssRow, error: ssCheckErr } = await adminClient
+        .from('service_staff')
+        .select('id, user_id')
+        .eq('id', service_staff_id)
+        .single();
+      if (ssCheckErr || !ssRow) return jsonError('ไม่พบรายชื่อพนักงานที่ระบุ', 404);
+
+      // อัปเดต service_staff → ผูกกับ user ใหม่ + sync ข้อมูลจาก profile
+      const { error: relinkErr } = await adminClient
+        .from('service_staff')
+        .update({
+          user_id,
+          name: targetProfile.full_name || undefined,
+          phone: targetProfile.phone || null,
+          employee_code: targetProfile.employee_code || null,
+          branch: targetProfile.branch || null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', service_staff_id);
+      if (relinkErr) throw relinkErr;
+
+      return jsonOk({
+        message: 'ผูกรายชื่อพนักงานสำเร็จ',
+        service_staff_id,
+        user_id,
+        previous_user_id: ssRow.user_id,
+      });
+    }
+
     return jsonError(`action "${action}" ไม่รองรับ`, 400);
   } catch (err: unknown) {
     const raw = err as Record<string, unknown>;
