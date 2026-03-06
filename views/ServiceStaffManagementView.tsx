@@ -1,12 +1,10 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Search, Users, Phone, Route, MapPin, Check, X } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Search, Users, Phone, Route } from 'lucide-react';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Card } from '../components/ui/Card';
 import { PageLayout } from '../components/layout/PageLayout';
 import { supabase } from '../lib/supabase';
-import { serviceStaffService } from '../services/serviceStaffService';
-import { useAuth } from '../hooks';
 import type { Database } from '../types/database';
 
 type ServiceStaff = Database['public']['Tables']['service_staff']['Row'];
@@ -15,76 +13,7 @@ interface ServiceStaffManagementViewProps {
     onViewUsage?: (staffId: string) => void;
 }
 
-// Inline branch editor (Admin/HR only)
-interface BranchEditorProps {
-    staffId: string;
-    currentBranch: string | null;
-    onSaved: (newBranch: string | null) => void;
-}
-
-const BranchEditor: React.FC<BranchEditorProps> = ({ staffId, currentBranch, onSaved }) => {
-    const [editing, setEditing] = useState(false);
-    const [value, setValue] = useState(currentBranch ?? '');
-    const [saving, setSaving] = useState(false);
-    const inputRef = useRef<HTMLInputElement>(null);
-
-    const open = () => {
-        setValue(currentBranch ?? '');
-        setEditing(true);
-        setTimeout(() => inputRef.current?.focus(), 50);
-    };
-
-    const cancel = () => setEditing(false);
-
-    const save = async () => {
-        if (saving) return;
-        setSaving(true);
-        try {
-            const branch = value.trim() || null;
-            await serviceStaffService.updateBranch(staffId, branch);
-            onSaved(branch);
-            setEditing(false);
-        } catch {
-            // silent — parent will still reflect old value
-        } finally {
-            setSaving(false);
-        }
-    };
-
-    if (editing) {
-        return (
-            <div className="flex items-center gap-1 mt-0.5">
-                <input
-                    ref={inputRef}
-                    value={value}
-                    onChange={(e) => setValue(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === 'Enter') save(); if (e.key === 'Escape') cancel(); }}
-                    placeholder="เช่น SD, BKK"
-                    className="w-24 px-2 py-0.5 text-xs rounded border border-enterprise-400 dark:border-enterprise-500 bg-white dark:bg-charcoal-900 text-slate-800 dark:text-white focus:outline-none focus:ring-1 focus:ring-enterprise-500"
-                />
-                <button onClick={save} disabled={saving} className="p-0.5 text-green-600 hover:text-green-700 disabled:opacity-50">
-                    <Check size={13} />
-                </button>
-                <button onClick={cancel} className="p-0.5 text-slate-400 hover:text-slate-600">
-                    <X size={13} />
-                </button>
-            </div>
-        );
-    }
-
-    return (
-        <button
-            onClick={open}
-            className="flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400 hover:underline mt-0.5"
-        >
-            <MapPin size={11} />
-            {currentBranch ? `${currentBranch} (แก้ไข)` : 'ตั้งค่าสาขา'}
-        </button>
-    );
-};
-
 export const ServiceStaffManagementView: React.FC<ServiceStaffManagementViewProps> = ({ onViewUsage }) => {
-    const { isAdmin, isHR } = useAuth();
     const [staff, setStaff] = useState<ServiceStaff[]>([]);
     const [loading, setLoading] = useState(true);
     const [fetchError, setFetchError] = useState<string | null>(null);
@@ -137,10 +66,6 @@ export const ServiceStaffManagementView: React.FC<ServiceStaffManagementViewProp
         });
     }, [staff, search, branchFilter]);
 
-    const handleBranchSaved = (staffId: string, newBranch: string | null) => {
-        setStaff(prev => prev.map(s => s.id === staffId ? { ...s, branch: newBranch } : s));
-    };
-
     const getStatusColor = (status: string) => {
         switch (status) {
             case 'active':   return 'bg-green-100 text-green-800 dark:bg-green-900/50 dark:text-green-300';
@@ -161,25 +86,11 @@ export const ServiceStaffManagementView: React.FC<ServiceStaffManagementViewProp
         }
     };
 
-    const canManage = isAdmin || isHR;
-    const noBranchCount = staff.filter(s => !s.branch).length;
-
     return (
         <PageLayout
             title="พนักงานขับรถและบริการ"
             subtitle="รายชื่อทีมงานประจำรถและประวัติการปฏิบัติงาน"
         >
-            {/* แจ้งเตือนเมื่อมีพนักงานที่ยังไม่ได้ตั้งค่าสาขา */}
-            {canManage && noBranchCount > 0 && (
-                <div className="mb-4 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-700/50 dark:bg-amber-900/20 dark:text-amber-300">
-                    <MapPin size={16} className="mt-0.5 shrink-0" />
-                    <span>
-                        มีพนักงาน <strong>{noBranchCount} คน</strong> ที่ยังไม่ได้ตั้งค่าสาขา
-                        — กดปุ่ม &quot;ตั้งค่าสาขา&quot; ใต้ชื่อพนักงานเพื่อแก้ไข
-                    </span>
-                </div>
-            )}
-
             {/* Search & Filter bar */}
             <div className="mb-6 flex flex-wrap items-center gap-3">
                 <div className="relative flex-1 min-w-[200px] max-w-md">
@@ -243,17 +154,11 @@ export const ServiceStaffManagementView: React.FC<ServiceStaffManagementViewProp
                                                     รหัส: {s.employee_code}
                                                 </p>
                                             )}
-                                            {s.branch ? (
+                                            {s.branch && (
                                                 <p className="text-xs text-enterprise-600 dark:text-enterprise-400 font-medium">
                                                     {s.branch}
                                                 </p>
-                                            ) : canManage ? (
-                                                <BranchEditor
-                                                    staffId={s.id}
-                                                    currentBranch={s.branch}
-                                                    onSaved={(b) => handleBranchSaved(s.id, b)}
-                                                />
-                                            ) : null}
+                                            )}
                                         </div>
                                     </div>
                                     <span className={`ml-2 flex-shrink-0 px-2 py-0.5 rounded-full text-xs font-medium ${getStatusColor(s.status)}`}>
@@ -292,13 +197,6 @@ export const ServiceStaffManagementView: React.FC<ServiceStaffManagementViewProp
                                         <Route size={14} />
                                         ดูประวัติการปฏิบัติงาน
                                     </Button>
-                                    {canManage && s.branch && (
-                                        <BranchEditor
-                                            staffId={s.id}
-                                            currentBranch={s.branch}
-                                            onSaved={(b) => handleBranchSaved(s.id, b)}
-                                        />
-                                    )}
                                 </div>
                             </Card>
                         ))}
