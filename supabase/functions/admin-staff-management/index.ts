@@ -314,10 +314,18 @@ Deno.serve(async (req) => {
       const { user_id, banned } = body;
       if (!user_id || banned === undefined) return jsonError('user_id และ banned จำเป็นต้องระบุ', 400);
 
-      const { error } = await adminClient.auth.admin.updateUserById(user_id, {
+      // เปลี่ยนสถานะใน auth
+      const { error: authErr } = await adminClient.auth.admin.updateUserById(user_id, {
         ban_duration: banned ? '87600h' : 'none',
       });
-      if (error) throw error;
+      if (authErr) throw authErr;
+
+      // Sync สถานะลง profiles ให้ frontend query ได้โดยตรง
+      const { error: profileErr } = await adminClient
+        .from('profiles')
+        .update({ is_banned: banned })
+        .eq('id', user_id);
+      if (profileErr) console.warn('[admin-staff] Failed to sync is_banned to profiles:', profileErr.message);
 
       return jsonOk({ message: banned ? 'ปิดบัญชีสำเร็จ' : 'เปิดบัญชีสำเร็จ' });
     }
