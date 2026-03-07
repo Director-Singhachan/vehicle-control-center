@@ -141,8 +141,14 @@ export const tripLogService = {
         (t) => t.driver_id != null && t.driver_id !== user.id
       );
       if (tripWithDifferentDriver) {
+        const { data: driverProfile } = await supabase
+          .from('profiles')
+          .select('full_name')
+          .eq('id', tripWithDifferentDriver.driver_id)
+          .maybeSingle();
+        const driverName = (driverProfile?.full_name ?? 'ผู้ขับที่กำหนด').trim();
         throw new Error(
-          'คุณไม่ได้ถูกกำหนดให้ขับรถคันนี้ตามที่ได้จัดทริปเอาไว้'
+          `คุณไม่ได้ถูกกำหนดให้ขับรถคันนี้ตามที่ได้จัดทริปเอาไว้ (รถคันนี้กำหนดให้ ${driverName} ขับ)`
         );
       }
     }
