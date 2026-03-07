@@ -25,6 +25,8 @@ export interface UpdateStaffInput {
   department?: string;
   position?: string;
   phone?: string;
+  /** ตั้งหรือแก้รหัสพนักงาน (กรณีใช้อีเมลจริงแต่ยังไม่มีรหัส) — ส่งค่าว่างเพื่อล้าง */
+  employee_code?: string | null;
 }
 
 export interface StaffListFilters {

@@ -57,7 +57,7 @@ export const StaffEditModal: React.FC<StaffEditModalProps> = ({
   onRelink,
   onClose,
 }) => {
-  const [form, setForm] = useState({ full_name: '', role: 'user' as AppRole, branch: '', department: '', position: '', phone: '' });
+  const [form, setForm] = useState({ full_name: '', role: 'user' as AppRole, branch: '', department: '', position: '', phone: '', employee_code: '' });
   const [migrateCode, setMigrateCode] = useState('');
   const [showMigrateForm, setShowMigrateForm] = useState(false);
 
@@ -75,6 +75,7 @@ export const StaffEditModal: React.FC<StaffEditModalProps> = ({
         department: staff.department || '',
         position: (staff as any).position || '',
         phone: staff.phone || '',
+        employee_code: staff.employee_code || '',
       });
       setMigrateCode('');
       setShowMigrateForm(false);
@@ -88,14 +89,18 @@ export const StaffEditModal: React.FC<StaffEditModalProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onSubmit(staff.id, {
+    const payload: UpdateStaffInput = {
       full_name: form.full_name.trim() || undefined,
       role: form.role,
       branch: form.branch.trim() || undefined,
       department: form.department.trim() || undefined,
       position: form.position.trim() || undefined,
       phone: form.phone.trim() || undefined,
-    });
+    };
+    if (form.employee_code.trim() !== (staff?.employee_code || '')) {
+      payload.employee_code = form.employee_code.trim() || null;
+    }
+    onSubmit(staff.id, payload);
   };
 
   const legacy = isLegacyEmail(staff?.email);
@@ -201,15 +206,25 @@ export const StaffEditModal: React.FC<StaffEditModalProps> = ({
           </div>
         )}
 
-        {/* Read-only info */}
+        {/* Email (read-only) + รหัสพนักงาน (แก้ไขได้ — กรณีใช้อีเมลจริงแต่ยังไม่มีรหัส) */}
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">
               รหัสพนักงาน
             </label>
-            <div className="px-3 py-2 text-sm bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-lg font-mono font-bold text-enterprise-600 dark:text-enterprise-400">
-              {staff.employee_code || '—'}
-            </div>
+            <input
+              type="text"
+              value={form.employee_code}
+              onChange={(e) => setForm((f) => ({ ...f, employee_code: e.target.value }))}
+              placeholder="ตัวอักษรหรือตัวเลข 2–20 ตัว"
+              maxLength={20}
+              className={inputCls + ' font-mono'}
+            />
+            {!staff.employee_code && (
+              <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+                ตั้งรหัสได้ — อีเมลจะไม่เปลี่ยน
+              </p>
+            )}
           </div>
           <div>
             <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">
