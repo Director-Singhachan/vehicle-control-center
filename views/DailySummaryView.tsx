@@ -17,6 +17,7 @@ import {
 import { PageLayout } from '../components/layout/PageLayout';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
+import { getBranchLabel } from '../utils/branchLabels';
 import { dailySummaryService, type DailySummary, type DailyVehicleSummary } from '../services/dailySummaryService';
 import { tripLogService, type TripLogWithRelations } from '../services/tripLogService';
 
@@ -255,7 +256,7 @@ export const DailySummaryView: React.FC<DailySummaryViewProps> = ({ isDark = fal
               <option value="all">ทุกสาขา</option>
               {branches.map((branch) => (
                 <option key={branch} value={branch}>
-                  {branch}
+                  {getBranchLabel(branch)}
                 </option>
               ))}
             </select>

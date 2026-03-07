@@ -5,6 +5,7 @@ import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
 import { useCrewByTrip, useCrewManagement } from '../../hooks/useCrew';
 import { supabase } from '../../lib/supabase';
+import { getBranchLabel } from '../../utils/branchLabels';
 import type { Database } from '../../types/database';
 
 type ServiceStaff = Database['public']['Tables']['service_staff']['Row'];
@@ -27,7 +28,7 @@ function BranchBadge({ branch, isSame }: { branch: string; isSame: boolean }) {
                     : 'bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-400'
             }`}
         >
-            {branch}
+            {getBranchLabel(branch)}
         </span>
     );
 }

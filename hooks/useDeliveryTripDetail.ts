@@ -133,19 +133,20 @@ export function useDeliveryTripDetail(tripId: string) {
       .finally(() => setEditHistoryLoading(false));
   }, [trip?.id, dataVersion]);
 
-  // ─── Load pending orders when add-order modal opens ──────────────────────
+  // ─── Load pending orders when add-order modal opens (เฉพาะออเดอร์สาขาเดียวกับทริป) ─
   useEffect(() => {
     if (!addOrderModalOpen || !trip) return;
     setPendingOrdersLoading(true);
     setAddOrderError(null);
     setSelectedOrdersToAdd([]);
     setAddOrderReason('');
+    const branchFilter = trip.branch ?? undefined;
     ordersService
-      .getPendingOrders()
+      .getPendingOrders(branchFilter ? { branch: branchFilter } : undefined)
       .then((data) => setPendingOrders(data || []))
       .catch((err) => setAddOrderError(err?.message || 'โหลดรายการออเดอร์ไม่สำเร็จ'))
       .finally(() => setPendingOrdersLoading(false));
-  }, [addOrderModalOpen, trip?.id]);
+  }, [addOrderModalOpen, trip?.id, trip?.branch]);
 
   // ─── Filtered pending orders for modal ───────────────────────────────────
   const pendingOrdersToShow = useMemo(() => {

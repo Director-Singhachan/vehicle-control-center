@@ -1,4 +1,4 @@
-﻿// Delivery Report - Extracted from ReportsView
+// Delivery Report - Extracted from ReportsView
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import {
   Truck,
@@ -19,6 +19,7 @@ import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { excelExport } from '../../utils/excelExport';
+import { getBranchLabel } from '../../utils/branchLabels';
 import {
   useDeliverySummaryByVehicle,
   useDeliverySummaryByStore,
@@ -634,7 +635,7 @@ export const DeliveryReport: React.FC<DeliveryReportProps> = ({ startDate, endDa
                   >
                     <option value="">ทั้งหมด</option>
                     {branches.map(branch => (
-                      <option key={branch} value={branch}>{branch}</option>
+                      <option key={branch} value={branch}>{getBranchLabel(branch)}</option>
                     ))}
                   </select>
                 </div>
@@ -706,7 +707,7 @@ export const DeliveryReport: React.FC<DeliveryReportProps> = ({ startDate, endDa
                         <td className="py-3 px-4 text-slate-600 dark:text-slate-400">
                           {vehicle.make && vehicle.model ? `${vehicle.make} ${vehicle.model}` : '-'}
                         </td>
-                        <td className="py-3 px-4 text-slate-600 dark:text-slate-400">{vehicle.branch || '-'}</td>
+                        <td className="py-3 px-4 text-slate-600 dark:text-slate-400">{getBranchLabel(vehicle.branch)}</td>
                         <td className="py-3 px-4 text-right text-slate-900 dark:text-slate-100">{formatNumber(vehicle.totalTrips)}</td>
                         <td className="py-3 px-4 text-right text-slate-900 dark:text-slate-100">{formatNumber(vehicle.totalStores)}</td>
                         <td className="py-3 px-4 text-right text-slate-900 dark:text-slate-100">{formatNumber(vehicle.totalItems)}</td>
@@ -1419,7 +1420,7 @@ export const DeliveryReport: React.FC<DeliveryReportProps> = ({ startDate, endDa
       )}
     </div>
   );
-};
+};
 
 
 
