@@ -103,6 +103,7 @@ export const TripLogFormView: React.FC<TripLogFormViewProps> = ({
   const [userMismatch, setUserMismatch] = useState(false);
   const [activeDeliveryTrip, setActiveDeliveryTrip] = useState<DeliveryTripWithRelations | null>(null);
   const [loadingDeliveryTrip, setLoadingDeliveryTrip] = useState(false);
+  const [driverNotAssignedForCheckout, setDriverNotAssignedForCheckout] = useState(false);
 
   // Distance confirmation dialog state
   const [showDistanceConfirm, setShowDistanceConfirm] = useState(false);
@@ -257,6 +258,7 @@ export const TripLogFormView: React.FC<TripLogFormViewProps> = ({
     const fetchActiveDeliveryTrip = async () => {
       if (!selectedVehicleId || mode !== 'checkout') {
         setActiveDeliveryTrip(null);
+        setDriverNotAssignedForCheckout(false);
         return;
       }
 
@@ -277,10 +279,18 @@ export const TripLogFormView: React.FC<TripLogFormViewProps> = ({
         console.log('[TripLogFormView] Active trip stores:', activeTrip?.stores);
         setActiveDeliveryTrip(activeTrip);
 
+        // Check if current user is not the assigned driver for this vehicle (trip scheduled)
+        const notAssigned =
+          activeTrip?.driver_id != null &&
+          user?.id != null &&
+          activeTrip.driver_id !== user.id;
+        setDriverNotAssignedForCheckout(!!notAssigned);
+
         // Note: Auto-fill destination will be handled in separate useEffect
       } catch (err) {
         console.error('[TripLogFormView] Error fetching active delivery trip:', err);
         setActiveDeliveryTrip(null);
+        setDriverNotAssignedForCheckout(false);
       } finally {
         setLoadingDeliveryTrip(false);
       }
@@ -492,6 +502,13 @@ export const TripLogFormView: React.FC<TripLogFormViewProps> = ({
 
     try {
       if (mode === 'checkout') {
+        // Only assigned driver can log usage for vehicle with scheduled trip
+        if (driverNotAssignedForCheckout) {
+          setError('คุณไม่ได้ถูกกำหนดให้ขับรถคันนี้ตามที่ได้จัดทริปเอาไว้');
+          setSaving(false);
+          return;
+        }
+
         // Check if vehicle already has active trip
         const vehicleStatus = await tripLogService.getActiveTripsByVehicle(selectedVehicleId);
         if (vehicleStatus.length > 0) {
@@ -728,6 +745,16 @@ export const TripLogFormView: React.FC<TripLogFormViewProps> = ({
             <div className="flex items-center gap-2 text-red-800 dark:text-red-200">
               <AlertCircle size={20} />
               <span>{error}</span>
+            </div>
+          </Card>
+        )}
+
+        {/* Warning: Current user is not the assigned driver for this vehicle (trip scheduled) */}
+        {driverNotAssignedForCheckout && mode === 'checkout' && (
+          <Card className="p-4 bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800">
+            <div className="flex items-center gap-2 text-amber-800 dark:text-amber-200">
+              <AlertTriangle size={20} />
+              <span>คุณไม่ได้ถูกกำหนดให้ขับรถคันนี้ตามที่ได้จัดทริปเอาไว้</span>
             </div>
           </Card>
         )}
@@ -1487,7 +1514,7 @@ export const TripLogFormView: React.FC<TripLogFormViewProps> = ({
         <div className="flex gap-4">
           <Button
             type="submit"
-            disabled={saving || checkingOut || checkingIn || userMismatch}
+            disabled={saving || checkingOut || checkingIn || userMismatch || driverNotAssignedForCheckout}
             className="flex-1 flex items-center justify-center gap-2"
           >
             {saving || checkingOut || checkingIn ? (
