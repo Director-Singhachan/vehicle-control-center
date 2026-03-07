@@ -30,6 +30,7 @@ import {
   Boxes,
   Database,
   Upload,
+  UserCog,
 } from 'lucide-react';
 // Lazy load views เพื่อลด initial bundle และให้หน้าแรกโหลดเร็วขึ้น
 const DashboardView = lazy(() => import('./views/DashboardView').then(m => ({ default: m.DashboardView })));
@@ -56,6 +57,7 @@ const DeliveryTripDetailView = lazy(() => import('./views/DeliveryTripDetailView
 const TripMetricsView = lazy(() => import('./views/TripMetricsView').then(m => ({ default: m.TripMetricsView })));
 const StoreDeliveryDetailView = lazy(() => import('./views/StoreDeliveryDetailView').then(m => ({ default: m.StoreDeliveryDetailView })));
 const ServiceStaffManagementView = lazy(() => import('./views/ServiceStaffManagementView').then(m => ({ default: m.ServiceStaffManagementView })));
+const AdminStaffManagementView = lazy(() => import('./views/AdminStaffManagementView').then(m => ({ default: m.AdminStaffManagementView })));
 const StaffVehicleUsageView = lazy(() => import('./views/StaffVehicleUsageView').then(m => ({ default: m.StaffVehicleUsageView })));
 const CommissionManagementView = lazy(() => import('./views/CommissionManagementView').then(m => ({ default: m.CommissionManagementView })));
 const CommissionRatesView = lazy(() => import('./views/CommissionRatesView').then(m => ({ default: m.CommissionRatesView })));
@@ -122,7 +124,7 @@ const MenuSectionHeader = ({ label }: { label: string }) => (
 
 // Main App Content (wrapped in ProtectedRoute)
 const AppContent = () => {
-  const { user, profile, signOut, isAdmin, isManager, isInspector, isExecutive, isDriver, isSales, isServiceStaff, loading: authLoading, refreshProfile } = useAuth();
+  const { user, profile, signOut, isAdmin, isManager, isInspector, isExecutive, isDriver, isSales, isServiceStaff, isHR, isWarehouse, loading: authLoading, refreshProfile } = useAuth();
 
   // Don't wait for profile - show UI immediately if user exists
   // Profile will load in background and update when ready
@@ -253,6 +255,12 @@ const AppContent = () => {
   const [logisticsFlyoutPosition, setLogisticsFlyoutPosition] = useState({ top: 0, left: 0 });
   const [logisticsFlyoutMaxHeight, setLogisticsFlyoutMaxHeight] = useState<number>(400);
 
+  const [isHRHovered, setIsHRHovered] = useState(false);
+  const hrMenuRef = React.useRef<HTMLDivElement>(null);
+  const hrTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
+  const [hrFlyoutPosition, setHRFlyoutPosition] = useState({ top: 0, left: 0 });
+  const [hrFlyoutMaxHeight, setHRFlyoutMaxHeight] = useState<number>(400);
+
   const commissionTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
   const [flyoutPosition, setFlyoutPosition] = useState({ top: 0, left: 0 });
 
@@ -266,6 +274,7 @@ const AppContent = () => {
   const [mobileOrdersExpanded, setMobileOrdersExpanded] = useState(false);
   const [mobileStockExpanded, setMobileStockExpanded] = useState(false);
   const [mobileLogisticsExpanded, setMobileLogisticsExpanded] = useState(false);
+  const [mobileHRExpanded, setMobileHRExpanded] = useState(false);
   const [mobileSettingsExpanded, setMobileSettingsExpanded] = useState(false);
 
   const navigateAndCloseMobile = (tab: string, extra?: () => void) => {
@@ -276,6 +285,7 @@ const AppContent = () => {
       setMobileOrdersExpanded(false);
       setMobileStockExpanded(false);
       setMobileLogisticsExpanded(false);
+      setMobileHRExpanded(false);
       setMobileSettingsExpanded(false);
     }
   };
@@ -621,6 +631,45 @@ const AppContent = () => {
     setIsLogisticsHovered(false);
   };
 
+  // HR menu handlers
+  const handleHRMouseEnter = (e: React.MouseEvent) => {
+    if (isMobile) return;
+    if (hrTimeoutRef.current) {
+      clearTimeout(hrTimeoutRef.current);
+      hrTimeoutRef.current = null;
+    }
+    const rect = e.currentTarget.getBoundingClientRect();
+    const viewportHeight = window.innerHeight;
+    const margin = 16;
+    const maxFlyoutHeight = Math.min(400, Math.floor(viewportHeight * 0.75) - margin);
+    let top = rect.top;
+    if (top + maxFlyoutHeight > viewportHeight - margin) {
+      top = Math.max(margin, viewportHeight - maxFlyoutHeight - margin);
+    }
+    setHRFlyoutMaxHeight(viewportHeight - top - margin);
+    setHRFlyoutPosition({ top, left: rect.right + 8 });
+    setIsHRHovered(true);
+  };
+
+  const handleHRMouseLeave = () => {
+    if (isMobile) return;
+    hrTimeoutRef.current = setTimeout(() => {
+      setIsHRHovered(false);
+    }, 150);
+  };
+
+  const handleHRFlyoutMouseEnter = () => {
+    if (hrTimeoutRef.current) {
+      clearTimeout(hrTimeoutRef.current);
+      hrTimeoutRef.current = null;
+    }
+    setIsHRHovered(true);
+  };
+
+  const handleHRFlyoutMouseLeave = () => {
+    setIsHRHovered(false);
+  };
+
   // Settings menu handlers
   const handleSettingsMouseEnter = (e: React.MouseEvent) => {
     if (isMobile) return;
@@ -694,12 +743,19 @@ const AppContent = () => {
   const [deliveryTripView, setDeliveryTripView] = useState<'list' | 'form' | 'detail' | 'metrics'>('list');
   const [selectedDeliveryTripId, setSelectedDeliveryTripId] = useState<string | null>(null);
   const [deliveryTripReturnContext, setDeliveryTripReturnContext] = useState<
-    'delivery-list' | 'triplogs' | 'daily-summary' | 'vehicles'
+    'delivery-list' | 'triplogs' | 'daily-summary' | 'vehicles' | 'service-staff-usage'
   >('delivery-list');
   const [storeDetailView, setStoreDetailView] = useState<'list' | 'detail'>('list');
   const [selectedStoreId, setSelectedStoreId] = useState<string | null>(null);
   const [serviceStaffView, setServiceStaffView] = useState<'list' | 'usage'>('list');
   const [selectedServiceStaffId, setSelectedServiceStaffId] = useState<string | null>(null);
+  const [serviceStaffUsageNavState, setServiceStaffUsageNavState] = useState<{
+    staffId: string;
+    from: string;
+    to: string;
+    page: number;
+    scrollY: number;
+  } | null>(null);
   const [showNotifications, setShowNotifications] = useState(false);
   const [notificationItems, setNotificationItems] = useState<TicketWithRelations[]>([]);
   const [loadingNotifications, setLoadingNotifications] = useState(false);
@@ -1266,9 +1322,6 @@ const AppContent = () => {
                     activeTab === 'daily-summary' ||
                     activeTab === 'delivery-trips' ||
                     activeTab === 'packing-simulation' ||
-                    activeTab === 'service-staff' ||
-                    activeTab === 'commission' ||
-                    activeTab === 'commission-rates' ||
                     activeTab === 'pending-orders'
                   }
                   onClick={() => {
@@ -1367,24 +1420,6 @@ const AppContent = () => {
                             label="ออเดอร์รอจัดส่ง"
                             active={activeTab === 'pending-orders'}
                             onClick={() => navigateAndCloseMobile('pending-orders')}
-                            isCollapsed={false}
-                            isFlyout={false}
-                          />
-                        </>
-                      )}
-                      {isAdmin && (
-                        <>
-                          <SubSidebarItem
-                            label="จัดการพนักงาน"
-                            active={activeTab === 'service-staff'}
-                            onClick={() => navigateAndCloseMobile('service-staff')}
-                            isCollapsed={false}
-                            isFlyout={false}
-                          />
-                          <SubSidebarItem
-                            label="ค่าคอมมิชชั่น"
-                            active={activeTab === 'commission' || activeTab === 'commission-rates'}
-                            onClick={() => navigateAndCloseMobile('commission')}
                             isCollapsed={false}
                             isFlyout={false}
                           />
@@ -1534,32 +1569,130 @@ const AppContent = () => {
                               />
                             </>
                           )}
-                          {isAdmin && (
-                            <>
-                              <SubSidebarItem
-                                label="จัดการพนักงาน"
-                                active={activeTab === 'service-staff'}
-                                onClick={() => {
-                                  setActiveTab('service-staff');
-                                  setIsLogisticsHovered(false);
-                                }}
-                                isCollapsed={false}
-                                isFlyout={true}
-                              />
-                              <SubSidebarItem
-                                label="ค่าคอมมิชชั่น"
-                                active={activeTab === 'commission' || activeTab === 'commission-rates'}
-                                onClick={() => {
-                                  setActiveTab('commission');
-                                  setIsLogisticsHovered(false);
-                                }}
-                                isCollapsed={false}
-                                isFlyout={true}
-                              />
-                            </>
-                          )}
                         </>
                       )}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+
+          {/* 5. บุคคล / HR */}
+          {(isAdmin || isHR) && (
+            <>
+              <div
+                ref={hrMenuRef}
+                className="relative group/menu"
+                onMouseEnter={handleHRMouseEnter}
+                onMouseLeave={handleHRMouseLeave}
+              >
+                <SidebarItem
+                  icon={UserCog}
+                  label={isSidebarOpen ? "บุคคล / HR" : ""}
+                  active={
+                    activeTab === 'admin-staff' ||
+                    activeTab === 'service-staff' ||
+                    activeTab === 'commission' ||
+                    activeTab === 'commission-rates'
+                  }
+                  onClick={() => {
+                    if (isMobile) {
+                      setMobileHRExpanded(prev => !prev);
+                    } else {
+                      setActiveTab('admin-staff');
+                    }
+                  }}
+                  isCollapsed={!isSidebarOpen}
+                  hasSubmenu={true}
+                  isOpen={isMobile ? mobileHRExpanded : isHRHovered}
+                />
+              </div>
+
+              {/* Mobile inline submenu for HR */}
+              {isMobile && mobileHRExpanded && isSidebarOpen && (
+                <div className="pl-2 pr-1 space-y-0.5 animate-in fade-in slide-in-from-top-1 duration-150">
+                  <SubSidebarItem
+                    label="บัญชีพนักงาน"
+                    active={activeTab === 'admin-staff'}
+                    onClick={() => navigateAndCloseMobile('admin-staff')}
+                    isCollapsed={false}
+                    isFlyout={false}
+                  />
+                  <SubSidebarItem
+                    label="ประวัติการลงปฏิบัติงาน"
+                    active={activeTab === 'service-staff'}
+                    onClick={() => navigateAndCloseMobile('service-staff')}
+                    isCollapsed={false}
+                    isFlyout={false}
+                  />
+                  <SubSidebarItem
+                    label="ค่าคอมมิชชั่น"
+                    active={activeTab === 'commission'}
+                    onClick={() => navigateAndCloseMobile('commission')}
+                    isCollapsed={false}
+                    isFlyout={false}
+                  />
+                  <SubSidebarItem
+                    label="ตั้งค่าอัตราค่าคอมมิชชั่น"
+                    active={activeTab === 'commission-rates'}
+                    onClick={() => navigateAndCloseMobile('commission-rates')}
+                    isCollapsed={false}
+                    isFlyout={false}
+                  />
+                </div>
+              )}
+
+              {/* Desktop flyout submenu for HR */}
+              {!isMobile && isHRHovered && (
+                <div
+                  className="fixed z-[100]"
+                  style={{
+                    top: `${hrFlyoutPosition.top}px`,
+                    left: `${hrFlyoutPosition.left}px`,
+                  }}
+                  onMouseEnter={handleHRFlyoutMouseEnter}
+                  onMouseLeave={handleHRFlyoutMouseLeave}
+                >
+                  <div
+                    className="bg-white dark:bg-charcoal-900 border border-slate-200 dark:border-slate-700 rounded-xl shadow-2xl min-w-[220px] py-2 ring-1 ring-black/5 dark:ring-white/10 animate-in fade-in slide-in-from-left-2 duration-150 overflow-y-auto"
+                    style={{ maxHeight: hrFlyoutMaxHeight }}
+                  >
+                    <div className="px-4 pb-2 mb-2 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between">
+                      <p className="text-[10px] font-black text-pink-500 dark:text-pink-400 uppercase tracking-widest">บุคคล / HR</p>
+                      <div className="w-1.5 h-1.5 rounded-full bg-pink-500 animate-pulse"></div>
+                    </div>
+                    <div className="px-2 space-y-0.5">
+                      <MenuSectionHeader label="จัดการพนักงาน" />
+                      <SubSidebarItem
+                        label="บัญชีพนักงาน"
+                        active={activeTab === 'admin-staff'}
+                        onClick={() => { setActiveTab('admin-staff'); setIsHRHovered(false); }}
+                        isCollapsed={false}
+                        isFlyout={true}
+                      />
+                      <SubSidebarItem
+                        label="ประวัติการลงปฏิบัติงาน"
+                        active={activeTab === 'service-staff'}
+                        onClick={() => { setActiveTab('service-staff'); setIsHRHovered(false); }}
+                        isCollapsed={false}
+                        isFlyout={true}
+                      />
+                      <MenuSectionHeader label="ค่าตอบแทน" />
+                      <SubSidebarItem
+                        label="ค่าคอมมิชชั่น"
+                        active={activeTab === 'commission'}
+                        onClick={() => { setActiveTab('commission'); setIsHRHovered(false); }}
+                        isCollapsed={false}
+                        isFlyout={true}
+                      />
+                      <SubSidebarItem
+                        label="ตั้งค่าอัตราค่าคอมมิชชั่น"
+                        active={activeTab === 'commission-rates'}
+                        onClick={() => { setActiveTab('commission-rates'); setIsHRHovered(false); }}
+                        isCollapsed={false}
+                        isFlyout={true}
+                      />
                     </div>
                   </div>
                 </div>
@@ -2488,6 +2621,9 @@ const AppContent = () => {
                         } else if (deliveryTripReturnContext === 'vehicles') {
                           setActiveTab('vehicles');
                           setVehicleView('detail');
+                        } else if (deliveryTripReturnContext === 'service-staff-usage') {
+                          setActiveTab('service-staff');
+                          setServiceStaffView('usage');
                         } else {
                           // ค่าเริ่มต้น: กลับไปหน้ารายการทริปส่งสินค้า
                           setActiveTab('delivery-trips');
@@ -2531,10 +2667,35 @@ const AppContent = () => {
                   );
                 }
               })()
+            ) : activeTab === 'admin-staff' ? (
+              <AdminStaffManagementView />
             ) : activeTab === 'service-staff' ? (
               serviceStaffView === 'usage' && selectedServiceStaffId ? (
                 <StaffVehicleUsageView
                   staffId={selectedServiceStaffId}
+                  initialState={
+                    serviceStaffUsageNavState?.staffId === selectedServiceStaffId
+                      ? {
+                          from: serviceStaffUsageNavState.from,
+                          to: serviceStaffUsageNavState.to,
+                          page: serviceStaffUsageNavState.page,
+                          scrollY: serviceStaffUsageNavState.scrollY,
+                        }
+                      : undefined
+                  }
+                  onViewTrip={(tripId, state) => {
+                    setServiceStaffUsageNavState({
+                      staffId: selectedServiceStaffId,
+                      from: state.from,
+                      to: state.to,
+                      page: state.page,
+                      scrollY: state.scrollY,
+                    });
+                    setSelectedDeliveryTripId(tripId);
+                    setDeliveryTripView('detail');
+                    setDeliveryTripReturnContext('service-staff-usage');
+                    setActiveTab('delivery-trips');
+                  }}
                   onBack={() => {
                     setServiceStaffView('list');
                     setSelectedServiceStaffId(null);

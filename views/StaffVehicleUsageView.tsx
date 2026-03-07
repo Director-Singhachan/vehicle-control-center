@@ -15,6 +15,16 @@ import { StaffTripHistoryTable } from '../components/staff/StaffTripHistoryTable
 interface StaffVehicleUsageViewProps {
   staffId: string;
   onBack?: () => void;
+  initialState?: {
+    from?: string;
+    to?: string;
+    page?: number;
+    scrollY?: number;
+  };
+  onViewTrip?: (
+    tripId: string,
+    state: { from: string; to: string; page: number; scrollY: number }
+  ) => void;
 }
 
 const toISODate = (d: Date) => {
@@ -36,17 +46,31 @@ const toEndOfDayISO = (dateStr: string) => {
   return dt.toISOString();
 };
 
-export const StaffVehicleUsageView: React.FC<StaffVehicleUsageViewProps> = ({ staffId, onBack }) => {
+export const StaffVehicleUsageView: React.FC<StaffVehicleUsageViewProps> = ({
+  staffId,
+  onBack,
+  initialState,
+  onViewTrip,
+}) => {
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const [staffName, setStaffName] = React.useState<string>('');
 
   const [from, setFrom] = React.useState<string>(() => {
+    if (initialState?.from) return initialState.from;
     const d = new Date();
     d.setMonth(d.getMonth() - 3);
     return toISODate(d);
   });
-  const [to, setTo] = React.useState<string>(() => toISODate(new Date()));
+  const [to, setTo] = React.useState<string>(() => initialState?.to || toISODate(new Date()));
+
+  const PAGE_SIZE = 50;
+  const [page, setPage] = React.useState<number>(() => {
+    const p = initialState?.page;
+    return typeof p === 'number' && Number.isFinite(p) && p > 0 ? Math.floor(p) : 1;
+  });
+  const didInitRef = React.useRef(false);
+  const didRestoreScrollRef = React.useRef(false);
 
   const [summary, setSummary] = React.useState<StaffVehicleUsageSummary | null>(null);
   const [trips, setTrips] = React.useState<StaffVehicleUsageTripRow[]>([]);
@@ -87,6 +111,23 @@ export const StaffVehicleUsageView: React.FC<StaffVehicleUsageViewProps> = ({ st
   React.useEffect(() => {
     load();
   }, [load]);
+
+  // Reset page when filters change (but keep initial restore)
+  React.useEffect(() => {
+    if (!didInitRef.current) {
+      didInitRef.current = true;
+      return;
+    }
+    setPage(1);
+  }, [staffId, from, to]);
+
+  React.useEffect(() => {
+    if (didRestoreScrollRef.current) return;
+    const y = initialState?.scrollY;
+    if (typeof y !== 'number' || !Number.isFinite(y) || y < 0) return;
+    didRestoreScrollRef.current = true;
+    requestAnimationFrame(() => window.scrollTo({ top: y || 0, behavior: 'auto' }));
+  }, [initialState?.scrollY]);
 
   return (
     <PageLayout
@@ -148,7 +189,24 @@ export const StaffVehicleUsageView: React.FC<StaffVehicleUsageViewProps> = ({ st
       {summary && <StaffVehicleUsageCard summary={summary} />}
 
       <div className="mt-6">
-        <StaffTripHistoryTable trips={trips} />
+        <StaffTripHistoryTable
+          trips={trips}
+          page={page}
+          pageSize={PAGE_SIZE}
+          onPageChange={(next) => setPage(next)}
+          onViewTrip={
+            onViewTrip
+              ? (tripId) => {
+                  onViewTrip(tripId, {
+                    from,
+                    to,
+                    page,
+                    scrollY: window.scrollY || 0,
+                  });
+                }
+              : undefined
+          }
+        />
       </div>
     </PageLayout>
   );

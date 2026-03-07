@@ -10,7 +10,18 @@ export type Json =
   | { [key: string]: Json | undefined }
   | Json[]
 
-export type AppRole = 'user' | 'inspector' | 'manager' | 'executive' | 'admin' | 'driver' | 'sales' | 'service_staff';
+export type AppRole =
+  | 'user'
+  | 'inspector'
+  | 'manager'
+  | 'executive'
+  | 'admin'
+  | 'driver'
+  | 'sales'
+  | 'service_staff'
+  | 'hr'
+  | 'accounting'
+  | 'warehouse';
 export type UrgencyLevel = 'low' | 'medium' | 'high' | 'critical';
 export type TicketStatus =
   | 'pending'
@@ -32,6 +43,10 @@ export interface Database {
           role: AppRole;
           avatar_url: string | null;
           branch: string | null;
+          employee_code: string | null;
+          department: string | null;
+          position: string | null;
+          phone: string | null;
           created_at: string;
         };
         Insert: {
@@ -41,6 +56,10 @@ export interface Database {
           role?: AppRole;
           avatar_url?: string | null;
           branch?: string | null;
+          employee_code?: string | null;
+          department?: string | null;
+          position?: string | null;
+          phone?: string | null;
           created_at?: string;
         };
         Update: {
@@ -50,6 +69,10 @@ export interface Database {
           role?: AppRole;
           avatar_url?: string | null;
           branch?: string | null;
+          employee_code?: string | null;
+          department?: string | null;
+          position?: string | null;
+          phone?: string | null;
           created_at?: string;
         };
       };
@@ -781,6 +804,8 @@ export interface Database {
           phone: string | null;
           employee_code: string | null;
           notes: string | null;
+          user_id: string | null;
+          branch: string | null;
           created_at: string;
           updated_at: string;
           created_by: string | null;
@@ -794,6 +819,8 @@ export interface Database {
           phone?: string | null;
           employee_code?: string | null;
           notes?: string | null;
+          user_id?: string | null;
+          branch?: string | null;
           created_at?: string;
           updated_at?: string;
           created_by?: string | null;
@@ -807,6 +834,8 @@ export interface Database {
           phone?: string | null;
           employee_code?: string | null;
           notes?: string | null;
+          user_id?: string | null;
+          branch?: string | null;
           created_at?: string;
           updated_at?: string;
           created_by?: string | null;

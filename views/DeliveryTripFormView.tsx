@@ -82,6 +82,7 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
     destinations,
     handleSubmit,
     handleFormKeyDown,
+    tripBranch,
     availableStaff,
     selectedHelpers,
     setSelectedHelpers,
@@ -142,6 +143,7 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
 
         <TripCrewSection
           availableStaff={availableStaff}
+          tripBranch={tripBranch}
           selectedDriverStaffId={selectedDriverStaffId}
           setSelectedDriverStaffId={setSelectedDriverStaffId}
           driverStaffSearch={driverStaffSearch}
