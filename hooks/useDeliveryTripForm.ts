@@ -30,10 +30,21 @@ export function useDeliveryTripForm({ tripId, onSave, onCancel }: UseDeliveryTri
   const { trip, loading: loadingTrip } = useDeliveryTrip(tripId || null);
   const { vehicles, loading: loadingVehicles } = useVehicles();
 
+  const [formData, setFormData] = useState({
+    vehicle_id: '',
+    driver_id: '',
+    planned_date: new Date().toISOString().split('T')[0],
+    odometer_start: '',
+    notes: '',
+  });
+
   const [storeSearchDebounced, setStoreSearchDebounced] = useState('');
+  // กรองร้านค้าเฉพาะสาขาเดียวกับทริป (แก้ไข) หรือสาขาของรถที่เลือก (สร้างใหม่)
+  const branchForStores = trip?.branch ?? (formData.vehicle_id ? vehicles.find((v) => v.id === formData.vehicle_id)?.branch ?? undefined : undefined);
   const { stores, loading: loadingStores } = useStores({
     is_active: true,
     search: storeSearchDebounced || undefined,
+    branch: branchForStores ?? undefined,
   });
 
   const [storeCache, setStoreCache] = useState<Map<string, Store>>(new Map());
@@ -126,14 +137,6 @@ export function useDeliveryTripForm({ tripId, onSave, onCancel }: UseDeliveryTri
 
   const [drivers, setDrivers] = useState<Array<{ id: string; full_name: string }>>([]);
   const [loadingDrivers, setLoadingDrivers] = useState(false);
-
-  const [formData, setFormData] = useState({
-    vehicle_id: '',
-    driver_id: '',
-    planned_date: new Date().toISOString().split('T')[0],
-    odometer_start: '',
-    notes: '',
-  });
 
   const [selectedStores, setSelectedStores] = useState<StoreWithItems[]>([]);
   const [storeSearch, setStoreSearch] = useState('');

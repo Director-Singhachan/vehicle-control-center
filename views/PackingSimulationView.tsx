@@ -20,6 +20,7 @@ import { tripMetricsService } from '../services/tripMetricsService';
 import { PackingSimulator } from '../components/trip/PackingSimulator';
 import { useAuth } from '../hooks';
 import { supabase } from '../lib/supabase';
+import { BRANCH_FILTER_OPTIONS, getBranchLabel } from '../utils/branchLabels';
 
 // Simplified trip list item (crews ใช้กรองพนักงานบริการเฉพาะทริปที่ตัวเองอยู่)
 interface TripListItem {
@@ -44,12 +45,6 @@ const getTodayLocal = () => {
     const day = String(d.getDate()).padStart(2, '0');
     return `${y}-${m}-${day}`;
 };
-
-const BRANCH_OPTIONS: { value: string; label: string }[] = [
-    { value: 'ALL', label: 'ทุกสาขา' },
-    { value: 'HQ', label: 'สำนักงานใหญ่' },
-    { value: 'SD', label: 'สาขาสอยดาว' },
-];
 
 export const PackingSimulationView: React.FC = () => {
     const { profile, isDriver, isServiceStaff } = useAuth();
@@ -230,13 +225,13 @@ export const PackingSimulationView: React.FC = () => {
                                     onChange={e => setBranchFilter(e.target.value)}
                                     className="px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-enterprise-500 min-w-[160px]"
                                 >
-                                    {BRANCH_OPTIONS.map(opt => (
+                                    {BRANCH_FILTER_OPTIONS.map(opt => (
                                         <option key={opt.value} value={opt.value}>{opt.label}</option>
                                     ))}
                                 </select>
                                 {branchFilter !== 'ALL' && (
                                     <span className="text-xs text-slate-500 dark:text-slate-400">
-                                        แสดงเฉพาะทริปของ{branchFilter === 'HQ' ? 'สำนักงานใหญ่' : 'สอยดาว'}
+                                        แสดงเฉพาะทริปของ{getBranchLabel(branchFilter)}
                                     </span>
                                 )}
                                 <span className="text-xs text-slate-500 dark:text-slate-400">

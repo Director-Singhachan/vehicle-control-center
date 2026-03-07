@@ -9,6 +9,7 @@ import { ordersService, orderItemsService } from '../services/ordersService';
 import { Modal } from '../components/ui/Modal';
 import { EditOrderView } from './EditOrderView';
 import { useAuth } from '../hooks/useAuth';
+import { BRANCH_FILTER_OPTIONS, getBranchLabel } from '../utils/branchLabels';
 
 interface Order {
   id: string;
@@ -268,13 +269,13 @@ export function TrackOrdersView() {
                   className="w-full px-4 py-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 disabled:opacity-50 disabled:cursor-not-allowed"
                   disabled={!(profile?.role === 'admin' || profile?.role === 'manager' || profile?.role === 'inspector' || profile?.role === 'executive' || profile?.branch === 'HQ')}
                 >
-                  {(profile?.role === 'admin' || profile?.role === 'manager' || profile?.role === 'inspector' || profile?.role === 'executive' || profile?.branch === 'HQ') && (
-                    <>
-                      <option value="ALL">ทุกสาขา</option>
-                      <option value="HQ">สำนักงานใหญ่</option>
-                    </>
+                  {(profile?.role === 'admin' || profile?.role === 'manager' || profile?.role === 'inspector' || profile?.role === 'executive' || profile?.branch === 'HQ') ? (
+                    BRANCH_FILTER_OPTIONS.map((opt) => (
+                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    ))
+                  ) : (
+                    <option value="SD">{getBranchLabel('SD')}</option>
                   )}
-                  <option value="SD">สาขาสอยดาว</option>
                 </select>
               </div>
             </div>

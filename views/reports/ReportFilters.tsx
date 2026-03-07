@@ -1,5 +1,6 @@
 import React from 'react';
 import { Card } from '../../components/ui/Card';
+import { getBranchLabel } from '../../utils/branchLabels';
 import type { FilterPeriod } from '../../hooks/useReportFilters';
 
 export interface ReportFiltersProps {
@@ -87,7 +88,7 @@ export function ReportFilters({
             <option value="">ทุกสาขา</option>
             {branches.map((branch) => (
               <option key={branch} value={branch}>
-                {branch}
+                {getBranchLabel(branch)}
               </option>
             ))}
           </select>

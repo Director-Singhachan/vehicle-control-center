@@ -7,6 +7,7 @@ import { LoadingSpinner } from '../components/ui/LoadingSpinner';
 import { useToast } from '../hooks/useToast';
 import { ToastContainer } from '../components/ui/Toast';
 import { useAuth } from '../hooks/useAuth';
+import { BRANCH_ALL_LABEL, BRANCH_ALL_VALUE, getBranchLabel } from '../utils/branchLabels';
 import { ordersService, type PickupPendingItem } from '../services/ordersService';
 import { pdfService } from '../services/pdfService';
 
@@ -156,9 +157,9 @@ export function PickupOrdersView() {
               onChange={(e) => setBranchFilter(e.target.value)}
               className="px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
             >
-              <option value="ALL">ทุกสาขา</option>
-              <option value="HQ">HQ</option>
-              <option value="SD">สอยดาว</option>
+              <option value={BRANCH_ALL_VALUE}>{BRANCH_ALL_LABEL}</option>
+              <option value="HQ">{getBranchLabel('HQ')}</option>
+              <option value="SD">{getBranchLabel('SD')}</option>
             </select>
           )}
           <Button variant="outline" size="sm" onClick={tab === 'pending' ? fetchItems : fetchHistory} disabled={loading}>
@@ -237,7 +238,7 @@ export function PickupOrdersView() {
                       </div>
                       {order.branch && (
                         <span className="px-2 py-0.5 rounded-full text-xs bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-400">
-                          {order.branch}
+                          {getBranchLabel(order.branch)}
                         </span>
                       )}
                     </div>
@@ -291,7 +292,7 @@ export function PickupOrdersView() {
                       </h3>
                       {group.store.branch && (
                         <span className="px-2 py-0.5 text-xs rounded-full bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-400">
-                          {group.store.branch}
+                          {getBranchLabel(group.store.branch)}
                         </span>
                       )}
                     </div>

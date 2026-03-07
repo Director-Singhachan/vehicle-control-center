@@ -24,6 +24,7 @@ import { PageLayout } from '../components/layout/PageLayout';
 import { VehicleGroupBadge } from '../components/vehicle/VehicleGroupBadge';
 import { VehicleDocumentBadge } from '../components/vehicle/VehicleDocumentBadge';
 import { ImageModal } from '../components/ui/ImageModal';
+import { getBranchLabel } from '../utils/branchLabels';
 import type { Database } from '../types/database';
 
 type Vehicle = Database['public']['Tables']['vehicles']['Row'];
@@ -493,7 +494,7 @@ export const VehiclesView: React.FC<VehiclesViewProps> = ({
                   >
                     <option value="all">ทุกสาขา</option>
                     {branches.map(branch => (
-                      <option key={branch} value={branch}>{branch}</option>
+                      <option key={branch} value={branch}>{getBranchLabel(branch)}</option>
                     ))}
                   </select>
                 </div>

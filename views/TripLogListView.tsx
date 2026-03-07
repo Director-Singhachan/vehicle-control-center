@@ -30,6 +30,7 @@ import { Card } from '../components/ui/Card';
 import { PageLayout } from '../components/layout/PageLayout';
 import { Avatar } from '../components/ui/Avatar';
 import { useTripLogs, useVehicles, useAuth } from '../hooks';
+import { getBranchLabel } from '../utils/branchLabels';
 import { tripLogService, type TripLogWithRelations } from '../services/tripLogService';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { TripLogEditView } from './TripLogEditView';
@@ -158,7 +159,7 @@ export const TripLogListView: React.FC<TripLogListViewProps> = ({
           'เวลากลับ': trip.checkin_time ? new Date(trip.checkin_time).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) : '-',
           'ทะเบียนรถ': trip.vehicle?.plate || 'N/A',
           'ยี่ห้อ/รุ่น': `${trip.vehicle?.make || ''} ${trip.vehicle?.model || ''}`.trim(),
-          'สาขา': vehicle?.branch || 'N/A',
+          'สาขา': getBranchLabel(vehicle?.branch),
           'คนขับ': trip.driver?.full_name || 'N/A',
           'สถานะ': trip.status === 'checked_in' ? 'กลับแล้ว' : (trip.status === 'cancelled' ? 'ยกเลิก' : 'ออกไปแล้ว'),
           'ปลายทาง': trip.destination || '-',
@@ -286,7 +287,7 @@ export const TripLogListView: React.FC<TripLogListViewProps> = ({
                 <option value="">ทั้งหมด</option>
                 {branches.map((branch) => (
                   <option key={branch} value={branch}>
-                    {branch}
+                    {getBranchLabel(branch)}
                   </option>
                 ))}
               </select>

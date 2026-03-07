@@ -15,6 +15,7 @@ import {
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Card } from '../components/ui/Card';
+import { BRANCH_OPTIONS } from '../utils/branchLabels';
 import { PageLayout } from '../components/layout/PageLayout';
 
 interface VehicleFormViewProps {
@@ -369,14 +370,22 @@ export const VehicleFormView: React.FC<VehicleFormViewProps> = ({
               disabled={saving}
             />
 
-            <Input
-              label="สาขา"
-              type="text"
-              value={formData.branch}
-              onChange={(e) => handleChange('branch', e.target.value)}
-              placeholder="สาขา A"
-              disabled={saving}
-            />
+            <div>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                สาขา
+              </label>
+              <select
+                value={formData.branch}
+                onChange={(e) => handleChange('branch', e.target.value)}
+                disabled={saving}
+                className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <option value="">-- ไม่ระบุ --</option>
+                {BRANCH_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
+              </select>
+            </div>
 
             <div>
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
