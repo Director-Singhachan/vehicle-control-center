@@ -416,6 +416,50 @@ Deno.serve(async (req) => {
       });
     }
 
+    // ─── delete_user ────────────────────────────────────────────────────────
+    // Soft-delete บัญชี: ล้างข้อมูลส่วนตัว + แบนถาวร + ซ่อนจากรายการ
+    // ไม่ hard-delete เนื่องจาก ticket_approvals / tickets มี FK RESTRICT ไปยัง profiles
+    if (action === 'delete_user') {
+      if (callerProfile.role !== 'admin' && callerProfile.role !== 'hr') {
+        return jsonError('Forbidden: ต้องเป็น Admin หรือ HR เท่านั้นจึงจะลบบัญชีได้', 403);
+      }
+
+      const { user_id } = body;
+      if (!user_id) return jsonError('user_id จำเป็นต้องระบุ', 400);
+
+      // ป้องกันการลบตัวเอง
+      if (user_id === callerUser.id) {
+        return jsonError('ไม่สามารถลบบัญชีของตัวเองได้', 400);
+      }
+
+      // 1. ถอด user_id ออกจาก service_staff (รักษาประวัติทริป)
+      await adminClient
+        .from('service_staff')
+        .update({ user_id: null })
+        .eq('user_id', user_id);
+
+      // 2. Anonymize + soft-delete profile (ล้างข้อมูลส่วนตัว)
+      const deletedAt = new Date().toISOString();
+      const { error: profileErr } = await adminClient.from('profiles').update({
+        full_name: 'ผู้ใช้ที่ถูกลบ',
+        phone: null,
+        branch: null,
+        department: null,
+        position: null,
+        employee_code: null,
+        is_banned: true,
+        deleted_at: deletedAt,
+      }).eq('id', user_id);
+      if (profileErr) throw profileErr;
+
+      // 3. แบนถาวรใน auth (ป้องกัน login)
+      await adminClient.auth.admin.updateUserById(user_id, {
+        ban_duration: '876000h',
+      });
+
+      return jsonOk({ message: 'ลบบัญชีสำเร็จ' });
+    }
+
     return jsonError(`action "${action}" ไม่รองรับ`, 400);
   } catch (err: unknown) {
     const raw = err as Record<string, unknown>;

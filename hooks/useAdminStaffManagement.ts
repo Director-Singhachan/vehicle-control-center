@@ -21,6 +21,7 @@ interface ModalState {
   edit: StaffProfile | null;
   resetPassword: StaffProfile | null;
   confirmToggle: StaffProfile | null;
+  confirmDelete: StaffProfile | null;
 }
 
 export function useAdminStaffManagement() {
@@ -38,6 +39,7 @@ export function useAdminStaffManagement() {
     edit: null,
     resetPassword: null,
     confirmToggle: null,
+    confirmDelete: null,
   });
 
   // ─── Operation loading ───────────────────────────────────────────────────
@@ -194,6 +196,24 @@ export function useAdminStaffManagement() {
     [fetchStaff, success, showError],
   );
 
+  // ─── Delete user (admin only) ────────────────────────────────────────────
+  const handleDeleteUser = useCallback(
+    async (staff: StaffProfile) => {
+      setSubmitting(true);
+      try {
+        await adminStaffService.deleteUser(staff.id);
+        success(`ลบบัญชี "${staff.full_name}" ออกจากระบบแล้ว`);
+        setModals((m) => ({ ...m, confirmDelete: null }));
+        fetchStaff();
+      } catch (err: any) {
+        showError(err.message || 'ลบบัญชีไม่สำเร็จ');
+      } finally {
+        setSubmitting(false);
+      }
+    },
+    [fetchStaff, success, showError],
+  );
+
   // ─── Relink service_staff ─────────────────────────────────────────────────
   const handleRelinkServiceStaff = useCallback(
     async (userId: string, serviceStaffId: string) => {
@@ -271,10 +291,12 @@ export function useAdminStaffManagement() {
     },
     openResetPassword: (staff: StaffProfile) => setModals((m) => ({ ...m, resetPassword: staff })),
     openConfirmToggle: (staff: StaffProfile) => setModals((m) => ({ ...m, confirmToggle: staff })),
+    openConfirmDelete: (staff: StaffProfile) => setModals((m) => ({ ...m, confirmDelete: staff })),
     closeCreate: () => { setCreateError(null); setModals((m) => ({ ...m, create: false })); },
     closeEdit: () => setModals((m) => ({ ...m, edit: null })),
     closeResetPassword: () => setModals((m) => ({ ...m, resetPassword: null })),
     closeConfirmToggle: () => setModals((m) => ({ ...m, confirmToggle: null })),
+    closeConfirmDelete: () => setModals((m) => ({ ...m, confirmDelete: null })),
 
     // operations
     submitting,
@@ -285,6 +307,7 @@ export function useAdminStaffManagement() {
     handleRelinkServiceStaff,
     handleResetPassword,
     handleToggleStatus,
+    handleDeleteUser,
     handleExport,
     // relink data
     allServiceStaff,
