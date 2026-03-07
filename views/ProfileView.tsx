@@ -330,7 +330,7 @@ export const ProfileView: React.FC = () => {
               </p>
             </div>
 
-            {/* รหัสพนักงาน — แสดงอย่างเดียว ไม่ให้พนักงานแก้ไข */}
+            {/* รหัสพนักงาน — แสดงอย่างเดียว ตั้ง/แก้ไขได้เฉพาะ Admin หรือ HR */}
             <div className="pt-4 border-t border-slate-200 dark:border-slate-700">
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                 รหัสพนักงาน
@@ -342,7 +342,7 @@ export const ProfileView: React.FC = () => {
                 </span>
               </div>
               <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                แก้ไขได้เฉพาะโดยผู้ดูแลระบบหรือ HR
+                ตั้งหรือแก้ไขได้เฉพาะโดยผู้ดูแลระบบหรือ HR
               </p>
             </div>
           </div>

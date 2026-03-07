@@ -28,10 +28,12 @@ export const AdminStaffManagementView: React.FC = () => {
     openEdit,
     openResetPassword,
     openConfirmToggle,
+    openConfirmDelete,
     closeCreate,
     closeEdit,
     closeResetPassword,
     closeConfirmToggle,
+    closeConfirmDelete,
     submitting,
     createError,
     handleCreate,
@@ -40,6 +42,7 @@ export const AdminStaffManagementView: React.FC = () => {
     handleRelinkServiceStaff,
     handleResetPassword,
     handleToggleStatus,
+    handleDeleteUser,
     handleExport,
     allServiceStaff,
     linkedServiceStaff,
@@ -86,6 +89,7 @@ export const AdminStaffManagementView: React.FC = () => {
         onEdit={openEdit}
         onResetPassword={openResetPassword}
         onToggleStatus={openConfirmToggle}
+        onDeleteUser={isAdmin || isHR ? openConfirmDelete : undefined}
       />
 
       {/* ── Modals ─────────────────────────────────────────────────── */}
@@ -131,10 +135,20 @@ export const AdminStaffManagementView: React.FC = () => {
             ? 'พนักงานจะสามารถ login เข้าระบบได้อีกครั้ง'
             : 'พนักงานจะไม่สามารถ login เข้าระบบได้จนกว่าจะเปิดบัญชีอีกครั้ง'
         }
-        confirmLabel={(modals.confirmToggle as any)?.is_banned ? 'เปิดบัญชี' : 'ปิดบัญชี'}
-        variant={(modals.confirmToggle as any)?.is_banned ? 'primary' : 'danger'}
+        confirmText={(modals.confirmToggle as any)?.is_banned ? 'เปิดบัญชี' : 'ปิดบัญชี'}
+        variant={(modals.confirmToggle as any)?.is_banned ? 'info' : 'danger'}
         onConfirm={() => modals.confirmToggle && handleToggleStatus(modals.confirmToggle)}
         onCancel={closeConfirmToggle}
+      />
+
+      <ConfirmDialog
+        isOpen={!!modals.confirmDelete}
+        title={`ลบบัญชี "${modals.confirmDelete?.full_name}"?`}
+        message={`การดำเนินการนี้ไม่สามารถย้อนกลับได้\nบัญชีและข้อมูล login จะถูกลบออกจากระบบถาวร\nประวัติทริปและข้อมูลการทำงานยังคงอยู่`}
+        confirmText="ลบบัญชีถาวร"
+        variant="danger"
+        onConfirm={() => modals.confirmDelete && handleDeleteUser(modals.confirmDelete)}
+        onCancel={closeConfirmDelete}
       />
 
       <ToastContainer toasts={toasts} onDismiss={dismissToast} />

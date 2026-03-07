@@ -10,6 +10,7 @@ import {
   FileSpreadsheet,
   Users,
   UserX,
+  Trash2,
 } from 'lucide-react';
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
@@ -66,6 +67,7 @@ interface StaffListSectionProps {
   onEdit: (staff: StaffProfile) => void;
   onResetPassword: (staff: StaffProfile) => void;
   onToggleStatus: (staff: StaffProfile) => void;
+  onDeleteUser?: (staff: StaffProfile) => void;
 }
 
 function ActionMenu({
@@ -73,11 +75,13 @@ function ActionMenu({
   onEdit,
   onResetPassword,
   onToggleStatus,
+  onDelete,
 }: {
   staff: StaffProfile;
   onEdit: () => void;
   onResetPassword: () => void;
   onToggleStatus: () => void;
+  onDelete?: () => void;
 }) {
   const [open, setOpen] = React.useState(false);
   const ref = React.useRef<HTMLDivElement>(null);
@@ -128,6 +132,18 @@ function ActionMenu({
             {isBanned ? <ShieldCheck size={14} /> : <ShieldOff size={14} />}
             {isBanned ? 'เปิดบัญชี' : 'ปิดบัญชี'}
           </button>
+          {onDelete && (
+            <>
+              <div className="border-t border-slate-100 dark:border-slate-700 my-1" />
+              <button
+                onClick={() => { onDelete(); setOpen(false); }}
+                className="flex items-center gap-2 w-full px-4 py-2.5 text-sm text-red-700 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20"
+              >
+                <Trash2 size={14} />
+                ลบบัญชีออกจากระบบ
+              </button>
+            </>
+          )}
         </div>
       )}
     </div>
@@ -139,12 +155,14 @@ function StaffTable({
   onEdit,
   onResetPassword,
   onToggleStatus,
+  onDeleteUser,
   showBannedStyle,
 }: {
   list: StaffProfile[];
   onEdit: (s: StaffProfile) => void;
   onResetPassword: (s: StaffProfile) => void;
   onToggleStatus: (s: StaffProfile) => void;
+  onDeleteUser?: (s: StaffProfile) => void;
   showBannedStyle?: boolean;
 }) {
   if (list.length === 0) {
@@ -241,6 +259,7 @@ function StaffTable({
                     onEdit={() => onEdit(staff)}
                     onResetPassword={() => onResetPassword(staff)}
                     onToggleStatus={() => onToggleStatus(staff)}
+                    onDelete={onDeleteUser ? () => onDeleteUser(staff) : undefined}
                   />
                 </td>
               </tr>
@@ -264,6 +283,7 @@ export const StaffListSection: React.FC<StaffListSectionProps> = ({
   onEdit,
   onResetPassword,
   onToggleStatus,
+  onDeleteUser,
 }) => {
   const [tab, setTab] = React.useState<'active' | 'banned'>('active');
 
@@ -390,6 +410,7 @@ export const StaffListSection: React.FC<StaffListSectionProps> = ({
             onEdit={onEdit}
             onResetPassword={onResetPassword}
             onToggleStatus={onToggleStatus}
+            onDeleteUser={onDeleteUser}
             showBannedStyle={tab === 'banned'}
           />
           <div className="px-4 py-3 border-t border-slate-100 dark:border-slate-800 text-xs text-slate-400 dark:text-slate-500">

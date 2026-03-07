@@ -61,8 +61,11 @@ Deno.serve(async (req) => {
     const body = await req.json();
     const { action } = body;
 
-    // ─── set_own_employee_code — accessible to any authenticated user ────────
+    // ─── set_own_employee_code — ใช้ได้เฉพาะ Admin/HR (นโยบาย: ให้เฉพาะ Admin/HR ตั้งรหัส) ───
     if (action === 'set_own_employee_code') {
+      if (callerProfile.role !== 'admin' && callerProfile.role !== 'hr') {
+        return jsonError('Forbidden: ตั้งรหัสพนักงานได้เฉพาะ Admin หรือ HR เท่านั้น', 403);
+      }
       const { employee_code: rawCode } = body;
       const employee_code = typeof rawCode === 'string' ? rawCode.trim() : '';
 
@@ -73,7 +76,6 @@ Deno.serve(async (req) => {
         return jsonError('รหัสพนักงานต้องประกอบด้วยตัวเลขและตัวอักษรเท่านั้น (ความยาว 2–20 ตัว)', 400);
       }
 
-      // ตรวจซ้ำ — ยกเว้นตัวเอง
       const { data: existingProfile } = await adminClient
         .from('profiles')
         .select('id')
@@ -92,7 +94,6 @@ Deno.serve(async (req) => {
         .eq('id', callerUser.id);
       if (updateErr) throw updateErr;
 
-      // Sync service_staff ถ้าผูกบัญชีอยู่
       await adminClient
         .from('service_staff')
         .update({ employee_code })
@@ -260,7 +261,7 @@ Deno.serve(async (req) => {
 
     // ─── update_profile ─────────────────────────────────────────────────────
     if (action === 'update_profile') {
-      const { user_id, full_name, role, branch, department, position, phone } = body;
+      const { user_id, full_name, role, branch, department, position, phone, employee_code: rawEmployeeCode } = body;
       if (!user_id) return jsonError('user_id จำเป็นต้องระบุ', 400);
 
       const updates: Record<string, unknown> = {};
@@ -271,13 +272,37 @@ Deno.serve(async (req) => {
       if (position !== undefined) updates.position = position;
       if (phone !== undefined) updates.phone = phone;
 
+      // รองรับการตั้ง/แก้รหัสพนักงานโดย Admin (กรณีใช้อีเมลจริงแต่ยังไม่มีรหัส)
+      if (rawEmployeeCode !== undefined) {
+        const employee_code = typeof rawEmployeeCode === 'string' ? rawEmployeeCode.trim() : '';
+        if (employee_code !== '') {
+          if (!/^[a-zA-Z0-9]{2,20}$/.test(employee_code)) {
+            return jsonError('รหัสพนักงานต้องเป็นตัวอักษรหรือตัวเลข 2–20 ตัวเท่านั้น', 400);
+          }
+          const { data: existingProfile } = await adminClient
+            .from('profiles')
+            .select('id')
+            .eq('employee_code', employee_code)
+            .neq('id', user_id)
+            .limit(1)
+            .maybeSingle();
+          if (existingProfile) {
+            return jsonError('รหัสพนักงานนี้มีในระบบแล้ว กรุณาเลือกรหัสอื่น', 409);
+          }
+          updates.employee_code = employee_code;
+        } else {
+          updates.employee_code = null;
+        }
+      }
+
       const { error } = await adminClient.from('profiles').update(updates).eq('id', user_id);
       if (error) throw error;
 
-      // Sync name/branch to service_staff if linked
+      // Sync name/branch/employee_code to service_staff if linked
       const ssSync: Record<string, unknown> = {};
-      if (full_name !== undefined) { ssSync.name = full_name; ssSync.phone = phone || null; }
+      if (full_name !== undefined) { ssSync.name = full_name; ssSync.phone = phone ?? null; }
       if (branch !== undefined) ssSync.branch = branch || null;
+      if (updates.employee_code !== undefined) ssSync.employee_code = updates.employee_code;
       if (Object.keys(ssSync).length > 0) {
         ssSync.updated_at = new Date().toISOString();
         await adminClient
@@ -414,6 +439,50 @@ Deno.serve(async (req) => {
         user_id,
         previous_user_id: ssRow.user_id,
       });
+    }
+
+    // ─── delete_user ────────────────────────────────────────────────────────
+    // Soft-delete บัญชี: ล้างข้อมูลส่วนตัว + แบนถาวร + ซ่อนจากรายการ
+    // ไม่ hard-delete เนื่องจาก ticket_approvals / tickets มี FK RESTRICT ไปยัง profiles
+    if (action === 'delete_user') {
+      if (callerProfile.role !== 'admin' && callerProfile.role !== 'hr') {
+        return jsonError('Forbidden: ต้องเป็น Admin หรือ HR เท่านั้นจึงจะลบบัญชีได้', 403);
+      }
+
+      const { user_id } = body;
+      if (!user_id) return jsonError('user_id จำเป็นต้องระบุ', 400);
+
+      // ป้องกันการลบตัวเอง
+      if (user_id === callerUser.id) {
+        return jsonError('ไม่สามารถลบบัญชีของตัวเองได้', 400);
+      }
+
+      // 1. ถอด user_id ออกจาก service_staff (รักษาประวัติทริป)
+      await adminClient
+        .from('service_staff')
+        .update({ user_id: null })
+        .eq('user_id', user_id);
+
+      // 2. Anonymize + soft-delete profile (ล้างข้อมูลส่วนตัว)
+      const deletedAt = new Date().toISOString();
+      const { error: profileErr } = await adminClient.from('profiles').update({
+        full_name: 'ผู้ใช้ที่ถูกลบ',
+        phone: null,
+        branch: null,
+        department: null,
+        position: null,
+        employee_code: null,
+        is_banned: true,
+        deleted_at: deletedAt,
+      }).eq('id', user_id);
+      if (profileErr) throw profileErr;
+
+      // 3. แบนถาวรใน auth (ป้องกัน login)
+      await adminClient.auth.admin.updateUserById(user_id, {
+        ban_duration: '876000h',
+      });
+
+      return jsonOk({ message: 'ลบบัญชีสำเร็จ' });
     }
 
     return jsonError(`action "${action}" ไม่รองรับ`, 400);
