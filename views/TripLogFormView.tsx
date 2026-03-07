@@ -504,7 +504,12 @@ export const TripLogFormView: React.FC<TripLogFormViewProps> = ({
       if (mode === 'checkout') {
         // Only assigned driver can log usage for vehicle with scheduled trip
         if (driverNotAssignedForCheckout) {
-          setError('คุณไม่ได้ถูกกำหนดให้ขับรถคันนี้ตามที่ได้จัดทริปเอาไว้');
+          const driverName = activeDeliveryTrip?.driver?.full_name;
+          setError(
+            driverName
+              ? `คุณไม่ได้ถูกกำหนดให้ขับรถคันนี้ตามที่ได้จัดทริปเอาไว้ (รถคันนี้กำหนดให้ ${driverName} ขับ)`
+              : 'คุณไม่ได้ถูกกำหนดให้ขับรถคันนี้ตามที่ได้จัดทริปเอาไว้'
+          );
           setSaving(false);
           return;
         }
@@ -752,9 +757,16 @@ export const TripLogFormView: React.FC<TripLogFormViewProps> = ({
         {/* Warning: Current user is not the assigned driver for this vehicle (trip scheduled) */}
         {driverNotAssignedForCheckout && mode === 'checkout' && (
           <Card className="p-4 bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800">
-            <div className="flex items-center gap-2 text-amber-800 dark:text-amber-200">
-              <AlertTriangle size={20} />
-              <span>คุณไม่ได้ถูกกำหนดให้ขับรถคันนี้ตามที่ได้จัดทริปเอาไว้</span>
+            <div className="flex items-start gap-2 text-amber-800 dark:text-amber-200">
+              <AlertTriangle size={20} className="shrink-0 mt-0.5" />
+              <div className="space-y-1">
+                <span className="block">คุณไม่ได้ถูกกำหนดให้ขับรถคันนี้ตามที่ได้จัดทริปเอาไว้</span>
+                {activeDeliveryTrip?.driver?.full_name && (
+                  <span className="block text-sm font-medium">
+                    รถคันนี้กำหนดให้ {activeDeliveryTrip.driver.full_name} ขับ
+                  </span>
+                )}
+              </div>
             </div>
           </Card>
         )}
