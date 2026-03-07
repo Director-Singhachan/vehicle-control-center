@@ -11,14 +11,10 @@ import { Avatar } from '../components/ui/Avatar';
 
 export const ProfileView: React.FC = () => {
   const { user, profile, signOut, refreshProfile, loading } = useAuth();
-  const [isEditing, setIsEditing] = useState(false);
-  const [fullName, setFullName] = useState(profile?.full_name || '');
-  const [email, setEmail] = useState(profile?.email || user?.email || '');
-  const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
 
-  // Login password change
+  // Login password change (ไม่แก้ไข — ใช้ได้ตามเดิม)
   const [isChangingPassword, setIsChangingPassword] = useState(false);
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -30,49 +26,11 @@ export const ProfileView: React.FC = () => {
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const [passwordSuccess, setPasswordSuccess] = useState(false);
 
-  // Employee code self-edit
-  const [employeeCode, setEmployeeCode] = useState(profile?.employee_code || '');
-  const [isEditingCode, setIsEditingCode] = useState(false);
-  const [savingCode, setSavingCode] = useState(false);
-  const [codeError, setCodeError] = useState<string | null>(null);
-  const [codeSuccess, setCodeSuccess] = useState(false);
-
   // Avatar upload states
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  // Update local state when profile changes
-  useEffect(() => {
-    if (profile) {
-      setFullName(profile.full_name || '');
-      setEmail(profile.email || user?.email || '');
-      setEmployeeCode(profile.employee_code || '');
-    }
-  }, [profile, user]);
-
-  const handleSave = async () => {
-    setSaving(true);
-    setError(null);
-    setSuccess(false);
-
-    try {
-      await profileService.updateCurrent({
-        full_name: fullName || null,
-      });
-      setSuccess(true);
-      setIsEditing(false);
-      refreshProfile();
-
-      // Clear success message after 3 seconds
-      setTimeout(() => setSuccess(false), 3000);
-    } catch (err: any) {
-      setError(err.message || 'เกิดข้อผิดพลาดในการบันทึกข้อมูล');
-    } finally {
-      setSaving(false);
-    }
-  };
 
   // ─── Password strength helpers ──────────────────────────────────────────
   const pwdRules = {
@@ -127,32 +85,6 @@ export const ProfileView: React.FC = () => {
     setShowNewPassword(false);
     setShowConfirmPassword(false);
     setPasswordError(null);
-  };
-
-  const handleSaveEmployeeCode = async () => {
-    const trimmed = employeeCode.trim();
-    if (!trimmed) {
-      setCodeError('กรุณาระบุรหัสพนักงาน');
-      return;
-    }
-    if (!/^[a-zA-Z0-9]{2,20}$/.test(trimmed)) {
-      setCodeError('รหัสต้องประกอบด้วยตัวเลขและตัวอักษรเท่านั้น (ความยาว 2–20 ตัว)');
-      return;
-    }
-    setSavingCode(true);
-    setCodeError(null);
-    setCodeSuccess(false);
-    try {
-      await profileService.setOwnEmployeeCode(trimmed);
-      setCodeSuccess(true);
-      setIsEditingCode(false);
-      refreshProfile();
-      setTimeout(() => setCodeSuccess(false), 4000);
-    } catch (err: any) {
-      setCodeError(err.message || 'บันทึกรหัสพนักงานไม่สำเร็จ');
-    } finally {
-      setSavingCode(false);
-    }
   };
 
   const handleSignOut = async () => {
@@ -268,20 +200,13 @@ export const ProfileView: React.FC = () => {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Profile Card */}
         <Card className="lg:col-span-2 p-6">
-          <div className="flex items-center justify-between mb-6">
+          <div className="mb-6">
             <h2 className="text-xl font-semibold text-slate-900 dark:text-white">
               ข้อมูลส่วนตัว
             </h2>
-            {!isEditing && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setIsEditing(true)}
-              >
-                <Edit2 className="w-4 h-4 mr-2" />
-                แก้ไข
-              </Button>
-            )}
+            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+              ทุกบทบาทแก้ไขได้เฉพาะรูปโปรไฟล์ — ชื่อ-นามสกุล และรหัสพนักงานกำหนดโดยผู้ดูแลระบบ/HR
+            </p>
           </div>
 
           {/* Avatar Upload Section */}
@@ -381,7 +306,7 @@ export const ProfileView: React.FC = () => {
               </label>
               <Input
                 type="email"
-                value={email}
+                value={profile?.email || user?.email || ''}
                 disabled
                 className="bg-slate-50 dark:bg-slate-800"
               />
@@ -396,101 +321,29 @@ export const ProfileView: React.FC = () => {
               </label>
               <Input
                 type="text"
-                value={fullName}
-                onChange={(e) => setFullName(e.target.value)}
-                disabled={!isEditing}
-                placeholder="กรุณากรอกชื่อ-นามสกุล"
+                value={profile?.full_name || ''}
+                disabled
+                className="bg-slate-50 dark:bg-slate-800"
               />
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                แก้ไขได้เฉพาะโดยผู้ดูแลระบบหรือ HR
+              </p>
             </div>
 
-            {isEditing && (
-              <div className="flex gap-3 pt-4">
-                <Button onClick={handleSave} disabled={saving} isLoading={saving}>
-                  <Save className="w-4 h-4 mr-2" />
-                  บันทึก
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    setIsEditing(false);
-                    setFullName(profile?.full_name || '');
-                    setError(null);
-                    setSuccess(false);
-                  }}
-                  disabled={saving}
-                >
-                  ยกเลิก
-                </Button>
-              </div>
-            )}
-
-            {/* ── Employee Code ─────────────────────────────────────────── */}
+            {/* รหัสพนักงาน — แสดงอย่างเดียว ไม่ให้พนักงานแก้ไข */}
             <div className="pt-4 border-t border-slate-200 dark:border-slate-700">
-              <div className="flex items-center justify-between mb-2">
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
-                  รหัสพนักงาน
-                </label>
-                {!isEditingCode && (
-                  <Button variant="outline" size="sm" onClick={() => { setIsEditingCode(true); setCodeError(null); setCodeSuccess(false); }}>
-                    <Edit2 className="w-3.5 h-3.5 mr-1.5" />
-                    {profile?.employee_code ? 'เปลี่ยนรหัส' : 'ตั้งรหัส'}
-                  </Button>
-                )}
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                รหัสพนักงาน
+              </label>
+              <div className="flex items-center gap-2 px-3 py-2 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-lg">
+                <Hash className="w-4 h-4 text-slate-400 shrink-0" />
+                <span className={`text-sm font-mono font-bold ${profile?.employee_code ? 'text-enterprise-600 dark:text-enterprise-400' : 'text-slate-400 dark:text-slate-500'}`}>
+                  {profile?.employee_code || 'ยังไม่ได้ตั้งรหัส'}
+                </span>
               </div>
-
-              {codeSuccess && (
-                <div className="flex items-center gap-2 p-3 mb-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
-                  <CheckCircle2 className="w-4 h-4 text-green-600 dark:text-green-400 shrink-0" />
-                  <p className="text-sm text-green-800 dark:text-green-200">บันทึกรหัสพนักงานสำเร็จ</p>
-                </div>
-              )}
-
-              {codeError && (
-                <div className="flex items-start gap-2 p-3 mb-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
-                  <AlertCircle className="w-4 h-4 text-red-600 dark:text-red-400 shrink-0 mt-0.5" />
-                  <p className="text-sm text-red-800 dark:text-red-200">{codeError}</p>
-                </div>
-              )}
-
-              {isEditingCode ? (
-                <div className="space-y-3">
-                  <div className="relative">
-                    <Hash className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                    <input
-                      type="text"
-                      value={employeeCode}
-                      onChange={(e) => setEmployeeCode(e.target.value.replace(/[^a-zA-Z0-9]/g, ''))}
-                      placeholder="เช่น 000123 หรือ EMP001"
-                      maxLength={20}
-                      className="w-full pl-9 pr-3 py-2 text-sm font-mono bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-enterprise-500"
-                    />
-                  </div>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">
-                    รหัสพนักงานต้องเป็นตัวเลขหรือตัวอักษรภาษาอังกฤษเท่านั้น ความยาว 2–20 ตัว
-                  </p>
-                  <div className="flex gap-2">
-                    <Button onClick={handleSaveEmployeeCode} disabled={savingCode} isLoading={savingCode} size="sm">
-                      <Save className="w-3.5 h-3.5 mr-1.5" />
-                      บันทึกรหัส
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => { setIsEditingCode(false); setEmployeeCode(profile?.employee_code || ''); setCodeError(null); }}
-                      disabled={savingCode}
-                    >
-                      ยกเลิก
-                    </Button>
-                  </div>
-                </div>
-              ) : (
-                <div className="flex items-center gap-2 px-3 py-2 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-lg">
-                  <Hash className="w-4 h-4 text-slate-400 shrink-0" />
-                  <span className={`text-sm font-mono font-bold ${profile?.employee_code ? 'text-enterprise-600 dark:text-enterprise-400' : 'text-slate-400 dark:text-slate-500'}`}>
-                    {profile?.employee_code || 'ยังไม่ได้ตั้งรหัส'}
-                  </span>
-                </div>
-              )}
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                แก้ไขได้เฉพาะโดยผู้ดูแลระบบหรือ HR
+              </p>
             </div>
           </div>
         </Card>
