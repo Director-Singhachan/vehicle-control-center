@@ -1,6 +1,10 @@
 // Trip CRUD service - getAll, getById, create, update, delete, updatePickedUpQuantity, changeVehicle
 import { supabase } from '../../lib/supabase';
 import { withRetry } from '../../lib/retry';
+import {
+  recalculateCompletedTripCommission,
+  resolveCrewAssignmentStartAt,
+} from './crewCommissionUtils';
 import type {
   DeliveryTripWithRelations,
   DeliveryTripStoreWithDetails,
@@ -787,6 +791,8 @@ export const tripCrudService = {
     const changeReason = data.change_reason;
     const editReason = data.edit_reason;
     let itemChangesOccurred = false;
+    let crewChangesOccurred = false;
+    const effectiveTripStatus = data.status ?? currentTrip.status;
 
     // Update trip basic info (exclude stores/change_reason/edit_reason - they are not columns)
     // Create updateData without relation fields to avoid PGRST204 error
@@ -906,12 +912,13 @@ export const tripCrudService = {
 
       // Add new helpers
       if (helpersToAdd.length > 0) {
+        const helperAssignmentStartAt = await resolveCrewAssignmentStartAt(id, effectiveTripStatus);
         const crewData = helpersToAdd.map(staffId => ({
           delivery_trip_id: id,
           staff_id: staffId,
           role: 'helper' as const,
           status: 'active' as const,
-          start_at: new Date().toISOString(),
+          start_at: helperAssignmentStartAt,
           created_by: user.id,
           updated_by: user.id,
         }));
@@ -926,6 +933,7 @@ export const tripCrudService = {
           // But log the error for debugging
         } else {
           console.log('[tripCrudService] Successfully added helpers:', helpersToAdd);
+          crewChangesOccurred = true;
         }
       }
 
@@ -948,6 +956,7 @@ export const tripCrudService = {
           // Don't throw - allow trip update to continue
         } else {
           console.log('[tripCrudService] Successfully removed helpers:', helpersToRemove);
+          crewChangesOccurred = true;
         }
       }
     }
@@ -969,6 +978,9 @@ export const tripCrudService = {
         if (currentDriverCrew && currentDriverCrew.staff_id !== data.driver_staff_id) {
           // Swap driver: mark old as replaced, add new
           const now = new Date().toISOString();
+          const nextDriverStartAt = effectiveTripStatus === 'completed'
+            ? await resolveCrewAssignmentStartAt(id, effectiveTripStatus)
+            : now;
           await supabase
             .from('delivery_trip_crews')
             .update({
@@ -987,12 +999,14 @@ export const tripCrudService = {
               staff_id: data.driver_staff_id,
               role: 'driver',
               status: 'active',
-              start_at: now,
+              start_at: nextDriverStartAt,
               created_by: user.id,
               updated_by: user.id,
             });
+          crewChangesOccurred = true;
         } else if (!currentDriverCrew) {
           // No driver crew yet, add new one
+          const driverAssignmentStartAt = await resolveCrewAssignmentStartAt(id, effectiveTripStatus);
           await supabase
             .from('delivery_trip_crews')
             .insert({
@@ -1000,10 +1014,11 @@ export const tripCrudService = {
               staff_id: data.driver_staff_id,
               role: 'driver',
               status: 'active',
-              start_at: new Date().toISOString(),
+              start_at: driverAssignmentStartAt,
               created_by: user.id,
               updated_by: user.id,
             });
+          crewChangesOccurred = true;
         }
         // If same driver, do nothing
       } catch (driverCrewError) {
@@ -1373,6 +1388,10 @@ export const tripCrudService = {
           // ไม่ throw ต่อ เพื่อไม่ให้กระทบ UX การแก้ไขทริป
         }
       }
+    }
+
+    if (crewChangesOccurred) {
+      await recalculateCompletedTripCommission(id, 'trip_crew_update', effectiveTripStatus);
     }
 
     // Return updated trip
