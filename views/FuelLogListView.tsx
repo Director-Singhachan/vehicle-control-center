@@ -27,6 +27,7 @@ import { ImageModal } from '../components/ui/ImageModal';
 import { useFuelLogs, useFuelStats, useVehicles, useVehicleEfficiencyComparison } from '../hooks';
 import { useVehicleFuelComparison, useFuelTrend } from '../hooks/useReports';
 import type { Database } from '../types/database';
+import { getBranchLabel } from '../utils/branchLabels';
 import { fuelService } from '../services/fuelService';
 import { FuelLogEditView } from './FuelLogEditView';
 import { excelExport } from '../utils/excelExport';
@@ -209,7 +210,7 @@ export const FuelLogListView: React.FC<FuelLogListViewProps> = ({
       const exportData = data.map(record => ({
         ...record,
         plate: record.vehicle?.plate || 'N/A',
-        branch: record.vehicle?.branch || '-',
+        branch: getBranchLabel(record.vehicle?.branch),
         full_name: record.user?.full_name || 'N/A',
       }));
 
@@ -570,7 +571,7 @@ export const FuelLogListView: React.FC<FuelLogListViewProps> = ({
                             const vehicleData = vehicles.find(v => v.id === vehicle.vehicle_id);
                             return vehicleData?.branch ? (
                               <span className="inline-flex items-center px-2 py-1 bg-enterprise-100 dark:bg-enterprise-900 text-enterprise-700 dark:text-enterprise-300 rounded text-xs font-medium">
-                                {vehicleData.branch}
+                                {getBranchLabel(vehicleData.branch)}
                               </span>
                             ) : (
                               <span className="text-slate-400 dark:text-slate-500 text-sm">-</span>
@@ -631,7 +632,7 @@ export const FuelLogListView: React.FC<FuelLogListViewProps> = ({
                 <option value="">ทั้งหมด</option>
                 {branches.map((branch) => (
                   <option key={branch} value={branch}>
-                    {branch}
+                    {getBranchLabel(branch)}
                   </option>
                 ))}
               </select>
@@ -778,7 +779,7 @@ export const FuelLogListView: React.FC<FuelLogListViewProps> = ({
                               {vehicle?.branch || (record as any).vehicle?.branch ? (
                                 <span className="inline-flex items-center gap-1">
                                   <span className="px-2 py-0.5 bg-enterprise-100 dark:bg-enterprise-900 text-enterprise-700 dark:text-enterprise-300 rounded text-xs font-medium">
-                                    {vehicle?.branch || (record as any).vehicle?.branch}
+                                    {getBranchLabel(vehicle?.branch || (record as any).vehicle?.branch)}
                                   </span>
                                   <span>•</span>
                                 </span>

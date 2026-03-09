@@ -1,6 +1,7 @@
 import React from 'react';
 import { Truck, Search, Building2 } from 'lucide-react';
 import { Card } from '../ui/Card';
+import { getBranchLabel } from '../../utils/branchLabels';
 import { VehicleRecommendationPanel } from './VehicleRecommendationPanel';
 
 export interface VehicleSelectionStepProps {
@@ -87,7 +88,7 @@ export function VehicleSelectionStep({
                 <option value="">ทุกสาขา</option>
                 {branches.map((branch) => (
                   <option key={branch} value={branch}>
-                    {branch}
+                    {getBranchLabel(branch)}
                   </option>
                 ))}
               </select>

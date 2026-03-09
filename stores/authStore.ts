@@ -22,6 +22,9 @@ interface AuthState {
   isDriver: boolean;
   isSales: boolean;
   isServiceStaff: boolean;
+  isHR: boolean;
+  isAccounting: boolean;
+  isWarehouse: boolean;
   isReadOnly: boolean;
 
   // Actions
@@ -53,6 +56,9 @@ export const useAuthStore = create<AuthState>()(
       isDriver: false,
       isSales: false,
       isServiceStaff: false,
+      isHR: false,
+      isAccounting: false,
+      isWarehouse: false,
       isReadOnly: false,
 
       setUser: (user) => set({ user }),
@@ -66,6 +72,9 @@ export const useAuthStore = create<AuthState>()(
           isDriver: profile?.role === 'driver',
           isSales: profile?.role === 'sales',
           isServiceStaff: profile?.role === 'service_staff',
+          isHR: profile?.role === 'hr',
+          isAccounting: profile?.role === 'accounting',
+          isWarehouse: profile?.role === 'warehouse',
           isReadOnly: profile?.role === 'user',
         });
       },
@@ -89,6 +98,9 @@ export const useAuthStore = create<AuthState>()(
             isDriver: profile.role === 'driver',
             isSales: profile.role === 'sales',
             isServiceStaff: profile.role === 'service_staff',
+            isHR: profile.role === 'hr',
+            isAccounting: profile.role === 'accounting',
+            isWarehouse: profile.role === 'warehouse',
             isReadOnly: profile.role === 'user',
           });
           console.log('[Auth] Using cached data, verifying session in background...');
@@ -220,7 +232,10 @@ export const useAuthStore = create<AuthState>()(
             isDriver: false,
             isSales: false,
             isServiceStaff: false,
-            isReadOnly: false
+            isHR: false,
+            isAccounting: false,
+            isWarehouse: false,
+            isReadOnly: false,
           });
         } finally {
           set({ loading: false });
@@ -255,6 +270,9 @@ export const useAuthStore = create<AuthState>()(
         isDriver: state.isDriver,
         isSales: state.isSales,
         isServiceStaff: state.isServiceStaff,
+        isHR: state.isHR,
+        isAccounting: state.isAccounting,
+        isWarehouse: state.isWarehouse,
         isReadOnly: state.isReadOnly,
       }),
     }

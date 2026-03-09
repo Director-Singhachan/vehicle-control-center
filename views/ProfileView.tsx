@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../hooks';
 import { profileService } from '../services/profileService';
-import { User, Mail, Shield, LogOut, Save, Edit2, AlertCircle, Camera, Trash2, Upload } from 'lucide-react';
+import { User, Shield, LogOut, Save, Edit2, AlertCircle, Camera, Trash2, Upload, Hash, CheckCircle2, KeyRound, Eye, EyeOff, Lock, Check, X } from 'lucide-react';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Card } from '../components/ui/Card';
@@ -11,12 +11,20 @@ import { Avatar } from '../components/ui/Avatar';
 
 export const ProfileView: React.FC = () => {
   const { user, profile, signOut, refreshProfile, loading } = useAuth();
-  const [isEditing, setIsEditing] = useState(false);
-  const [fullName, setFullName] = useState(profile?.full_name || '');
-  const [email, setEmail] = useState(profile?.email || user?.email || '');
-  const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+
+  // Login password change (ไม่แก้ไข — ใช้ได้ตามเดิม)
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [savingPassword, setSavingPassword] = useState(false);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [passwordSuccess, setPasswordSuccess] = useState(false);
 
   // Avatar upload states
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
@@ -24,34 +32,59 @@ export const ProfileView: React.FC = () => {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Update local state when profile changes
-  useEffect(() => {
-    if (profile) {
-      setFullName(profile.full_name || '');
-      setEmail(profile.email || user?.email || '');
-    }
-  }, [profile, user]);
+  // ─── Password strength helpers ──────────────────────────────────────────
+  const pwdRules = {
+    minLen: newPassword.length >= 8,
+    hasUpper: /[A-Z]/.test(newPassword),
+    hasNumber: /[0-9]/.test(newPassword),
+    hasSpecial: /[^A-Za-z0-9]/.test(newPassword),
+    notSameAsCurrent: newPassword !== currentPassword || !newPassword,
+  };
+  const pwdScore = Object.values(pwdRules).filter(Boolean).length;
+  const pwdStrength =
+    newPassword.length === 0 ? null
+    : pwdScore <= 2 ? { label: 'อ่อน', color: 'bg-red-500', textColor: 'text-red-600 dark:text-red-400', bars: 1 }
+    : pwdScore === 3 ? { label: 'ปานกลาง', color: 'bg-amber-400', textColor: 'text-amber-600 dark:text-amber-400', bars: 2 }
+    : pwdScore === 4 ? { label: 'ดี', color: 'bg-blue-500', textColor: 'text-blue-600 dark:text-blue-400', bars: 3 }
+    : { label: 'แข็งแกร่ง', color: 'bg-green-500', textColor: 'text-green-600 dark:text-green-400', bars: 4 };
 
-  const handleSave = async () => {
-    setSaving(true);
-    setError(null);
-    setSuccess(false);
+  const handleChangePassword = async () => {
+    setPasswordError(null);
+    if (!currentPassword) { setPasswordError('กรุณาระบุรหัสผ่านปัจจุบัน'); return; }
+    if (!newPassword) { setPasswordError('กรุณาระบุรหัสผ่านใหม่'); return; }
+    if (newPassword.length < 6) { setPasswordError('รหัสผ่านใหม่ต้องมีอย่างน้อย 6 ตัวอักษร'); return; }
+    if (newPassword === currentPassword) { setPasswordError('รหัสผ่านใหม่ต้องไม่ซ้ำกับรหัสผ่านเดิม'); return; }
+    if (newPassword !== confirmPassword) { setPasswordError('รหัสผ่านใหม่และยืนยันรหัสผ่านไม่ตรงกัน'); return; }
 
+    setSavingPassword(true);
+    setPasswordSuccess(false);
     try {
-      await profileService.updateCurrent({
-        full_name: fullName || null,
-      });
-      setSuccess(true);
-      setIsEditing(false);
-      refreshProfile();
-
-      // Clear success message after 3 seconds
-      setTimeout(() => setSuccess(false), 3000);
+      await profileService.changePassword(currentPassword, newPassword);
+      setPasswordSuccess(true);
+      setIsChangingPassword(false);
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+      setShowCurrentPassword(false);
+      setShowNewPassword(false);
+      setShowConfirmPassword(false);
+      setTimeout(() => setPasswordSuccess(false), 5000);
     } catch (err: any) {
-      setError(err.message || 'เกิดข้อผิดพลาดในการบันทึกข้อมูล');
+      setPasswordError(err.message || 'เปลี่ยนรหัสผ่านไม่สำเร็จ');
     } finally {
-      setSaving(false);
+      setSavingPassword(false);
     }
+  };
+
+  const handleCancelChangePassword = () => {
+    setIsChangingPassword(false);
+    setCurrentPassword('');
+    setNewPassword('');
+    setConfirmPassword('');
+    setShowCurrentPassword(false);
+    setShowNewPassword(false);
+    setShowConfirmPassword(false);
+    setPasswordError(null);
   };
 
   const handleSignOut = async () => {
@@ -167,20 +200,13 @@ export const ProfileView: React.FC = () => {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Profile Card */}
         <Card className="lg:col-span-2 p-6">
-          <div className="flex items-center justify-between mb-6">
+          <div className="mb-6">
             <h2 className="text-xl font-semibold text-slate-900 dark:text-white">
               ข้อมูลส่วนตัว
             </h2>
-            {!isEditing && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setIsEditing(true)}
-              >
-                <Edit2 className="w-4 h-4 mr-2" />
-                แก้ไข
-              </Button>
-            )}
+            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+              ทุกบทบาทแก้ไขได้เฉพาะรูปโปรไฟล์ — ชื่อ-นามสกุล และรหัสพนักงานกำหนดโดยผู้ดูแลระบบ/HR
+            </p>
           </div>
 
           {/* Avatar Upload Section */}
@@ -280,7 +306,7 @@ export const ProfileView: React.FC = () => {
               </label>
               <Input
                 type="email"
-                value={email}
+                value={profile?.email || user?.email || ''}
                 disabled
                 className="bg-slate-50 dark:bg-slate-800"
               />
@@ -295,33 +321,30 @@ export const ProfileView: React.FC = () => {
               </label>
               <Input
                 type="text"
-                value={fullName}
-                onChange={(e) => setFullName(e.target.value)}
-                disabled={!isEditing}
-                placeholder="กรุณากรอกชื่อ-นามสกุล"
+                value={profile?.full_name || ''}
+                disabled
+                className="bg-slate-50 dark:bg-slate-800"
               />
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                แก้ไขได้เฉพาะโดยผู้ดูแลระบบหรือ HR
+              </p>
             </div>
 
-            {isEditing && (
-              <div className="flex gap-3 pt-4">
-                <Button onClick={handleSave} disabled={saving} isLoading={saving}>
-                  <Save className="w-4 h-4 mr-2" />
-                  บันทึก
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    setIsEditing(false);
-                    setFullName(profile?.full_name || '');
-                    setError(null);
-                    setSuccess(false);
-                  }}
-                  disabled={saving}
-                >
-                  ยกเลิก
-                </Button>
+            {/* รหัสพนักงาน — แสดงอย่างเดียว ตั้ง/แก้ไขได้เฉพาะ Admin หรือ HR */}
+            <div className="pt-4 border-t border-slate-200 dark:border-slate-700">
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                รหัสพนักงาน
+              </label>
+              <div className="flex items-center gap-2 px-3 py-2 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-lg">
+                <Hash className="w-4 h-4 text-slate-400 shrink-0" />
+                <span className={`text-sm font-mono font-bold ${profile?.employee_code ? 'text-enterprise-600 dark:text-enterprise-400' : 'text-slate-400 dark:text-slate-500'}`}>
+                  {profile?.employee_code || 'ยังไม่ได้ตั้งรหัส'}
+                </span>
               </div>
-            )}
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                ตั้งหรือแก้ไขได้เฉพาะโดยผู้ดูแลระบบหรือ HR
+              </p>
+            </div>
           </div>
         </Card>
 
@@ -354,6 +377,195 @@ export const ProfileView: React.FC = () => {
                   {profile?.role ? roleLabels[profile.role] || profile.role : 'ไม่ระบุ'}
                 </p>
               </div>
+            </div>
+
+            {/* ── Change Password ──────────────────────────────────── */}
+            <div className="pt-4 border-t border-slate-200 dark:border-slate-700">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <KeyRound className="w-4 h-4 text-slate-500 dark:text-slate-400" />
+                  <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                    รหัสผ่าน Login
+                  </span>
+                </div>
+                {!isChangingPassword && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => { setIsChangingPassword(true); setPasswordError(null); setPasswordSuccess(false); }}
+                  >
+                    <Edit2 className="w-3.5 h-3.5 mr-1.5" />
+                    เปลี่ยน
+                  </Button>
+                )}
+              </div>
+
+              {passwordSuccess && (
+                <div className="flex items-center gap-2 p-3 mb-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
+                  <CheckCircle2 className="w-4 h-4 text-green-600 dark:text-green-400 shrink-0" />
+                  <p className="text-sm text-green-800 dark:text-green-200">เปลี่ยนรหัสผ่านสำเร็จ</p>
+                </div>
+              )}
+
+              {isChangingPassword ? (
+                <div className="space-y-3">
+                  {passwordError && (
+                    <div className="flex items-start gap-2 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+                      <AlertCircle className="w-4 h-4 text-red-500 dark:text-red-400 shrink-0 mt-0.5" />
+                      <p className="text-xs text-red-700 dark:text-red-300">{passwordError}</p>
+                    </div>
+                  )}
+
+                  {/* Current password — required for employee self-service */}
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">
+                      รหัสผ่านปัจจุบัน <span className="text-red-500">*</span>
+                    </label>
+                    <div className="relative">
+                      <Lock className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+                      <input
+                        type={showCurrentPassword ? 'text' : 'password'}
+                        value={currentPassword}
+                        onChange={(e) => setCurrentPassword(e.target.value)}
+                        placeholder="รหัสผ่านที่ใช้ login อยู่ตอนนี้"
+                        autoComplete="current-password"
+                        className="w-full pl-8 pr-10 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-enterprise-500"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowCurrentPassword((v) => !v)}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
+                        tabIndex={-1}
+                      >
+                        {showCurrentPassword ? <EyeOff size={15} /> : <Eye size={15} />}
+                      </button>
+                    </div>
+                    <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+                      ต้องยืนยันรหัสเดิมก่อนจึงจะเปลี่ยนได้
+                    </p>
+                  </div>
+
+                  {/* New password */}
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">
+                      รหัสผ่านใหม่ <span className="text-red-500">*</span>
+                    </label>
+                    <div className="relative">
+                      <input
+                        type={showNewPassword ? 'text' : 'password'}
+                        value={newPassword}
+                        onChange={(e) => setNewPassword(e.target.value)}
+                        placeholder="อย่างน้อย 6 ตัวอักษร"
+                        autoComplete="new-password"
+                        className="w-full px-3 py-2 pr-10 text-sm bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-enterprise-500"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowNewPassword((v) => !v)}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
+                        tabIndex={-1}
+                      >
+                        {showNewPassword ? <EyeOff size={15} /> : <Eye size={15} />}
+                      </button>
+                    </div>
+
+                    {/* Strength bar */}
+                    {pwdStrength && (
+                      <div className="mt-2 space-y-1.5">
+                        <div className="flex items-center gap-2">
+                          <div className="flex gap-1 flex-1">
+                            {[1, 2, 3, 4].map((n) => (
+                              <div
+                                key={n}
+                                className={`h-1.5 flex-1 rounded-full transition-colors duration-300 ${
+                                  n <= pwdStrength.bars ? pwdStrength.color : 'bg-slate-200 dark:bg-slate-700'
+                                }`}
+                              />
+                            ))}
+                          </div>
+                          <span className={`text-xs font-medium ${pwdStrength.textColor}`}>
+                            {pwdStrength.label}
+                          </span>
+                        </div>
+
+                        {/* Checklist */}
+                        <div className="grid grid-cols-2 gap-x-3 gap-y-0.5">
+                          {[
+                            { rule: pwdRules.minLen, label: 'อย่างน้อย 8 ตัว' },
+                            { rule: pwdRules.hasUpper, label: 'ตัวพิมพ์ใหญ่ A-Z' },
+                            { rule: pwdRules.hasNumber, label: 'ตัวเลข 0-9' },
+                            { rule: pwdRules.hasSpecial, label: 'อักขระพิเศษ !@#' },
+                            { rule: pwdRules.notSameAsCurrent, label: 'ไม่ซ้ำรหัสเดิม' },
+                          ].map(({ rule, label }) => (
+                            <div key={label} className="flex items-center gap-1">
+                              {rule
+                                ? <Check size={11} className="text-green-500 shrink-0" />
+                                : <X size={11} className="text-slate-300 dark:text-slate-600 shrink-0" />
+                              }
+                              <span className={`text-xs ${rule ? 'text-green-600 dark:text-green-400' : 'text-slate-400 dark:text-slate-500'}`}>
+                                {label}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Confirm password */}
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">
+                      ยืนยันรหัสผ่านใหม่ <span className="text-red-500">*</span>
+                    </label>
+                    <div className="relative">
+                      <input
+                        type={showConfirmPassword ? 'text' : 'password'}
+                        value={confirmPassword}
+                        onChange={(e) => setConfirmPassword(e.target.value)}
+                        placeholder="กรอกรหัสผ่านอีกครั้ง"
+                        autoComplete="new-password"
+                        className={`w-full px-3 py-2 pr-10 text-sm bg-white dark:bg-slate-800 border rounded-lg text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-enterprise-500 ${
+                          confirmPassword && confirmPassword !== newPassword
+                            ? 'border-red-400 dark:border-red-500'
+                            : confirmPassword && confirmPassword === newPassword
+                              ? 'border-green-400 dark:border-green-500'
+                              : 'border-slate-300 dark:border-slate-600'
+                        }`}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowConfirmPassword((v) => !v)}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
+                        tabIndex={-1}
+                      >
+                        {showConfirmPassword ? <EyeOff size={15} /> : <Eye size={15} />}
+                      </button>
+                    </div>
+                    {confirmPassword && confirmPassword !== newPassword && (
+                      <p className="mt-1 text-xs text-red-500">รหัสผ่านไม่ตรงกัน</p>
+                    )}
+                    {confirmPassword && confirmPassword === newPassword && newPassword.length >= 6 && (
+                      <p className="mt-1 text-xs text-green-600 dark:text-green-400 flex items-center gap-1">
+                        <Check size={11} /> รหัสผ่านตรงกัน
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="flex gap-2 pt-1">
+                    <Button onClick={handleChangePassword} disabled={savingPassword} isLoading={savingPassword} size="sm">
+                      <Save className="w-3.5 h-3.5 mr-1.5" />
+                      บันทึก
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={handleCancelChangePassword} disabled={savingPassword}>
+                      ยกเลิก
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-xs text-slate-400 dark:text-slate-500">
+                  ••••••••••  (ไม่แสดงรหัสผ่านเพื่อความปลอดภัย)
+                </p>
+              )}
             </div>
 
             <div className="pt-4 border-t border-slate-200 dark:border-slate-700">

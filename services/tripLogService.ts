@@ -127,6 +127,33 @@ export const tripLogService = {
     }
 
     // ========================================
+    // Validation: Only assigned driver can log usage for this vehicle when trip is scheduled
+    // ========================================
+    const { data: scheduledTripsForVehicle } = await supabase
+      .from('delivery_trips')
+      .select('id, trip_number, driver_id')
+      .eq('vehicle_id', data.vehicle_id)
+      .eq('planned_date', checkoutDate)
+      .in('status', ['planned', 'in_progress']);
+
+    if (scheduledTripsForVehicle && scheduledTripsForVehicle.length > 0) {
+      const tripWithDifferentDriver = scheduledTripsForVehicle.find(
+        (t) => t.driver_id != null && t.driver_id !== user.id
+      );
+      if (tripWithDifferentDriver) {
+        const { data: driverProfile } = await supabase
+          .from('profiles')
+          .select('full_name')
+          .eq('id', tripWithDifferentDriver.driver_id)
+          .maybeSingle();
+        const driverName = (driverProfile?.full_name ?? 'ผู้ขับที่กำหนด').trim();
+        throw new Error(
+          `คุณไม่ได้ถูกกำหนดให้ขับรถคันนี้ตามที่ได้จัดทริปเอาไว้ (รถคันนี้กำหนดให้ ${driverName} ขับ)`
+        );
+      }
+    }
+
+    // ========================================
     // Find delivery trip and validate
     // ========================================
     // Match by vehicle_id AND planned_date to ensure correct trip

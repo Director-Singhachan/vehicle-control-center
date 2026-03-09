@@ -36,6 +36,7 @@ import { ApprovalDialog } from '../components/ApprovalDialog';
 import { ApprovalHistory } from '../components/ApprovalHistory';
 import { ApprovalStatusBadge } from '../components/ApprovalStatusBadge';
 import { useApprovalHistory } from '../hooks/useApprovalHistory';
+import { getBranchLabel } from '../utils/branchLabels';
 import type { Database } from '../types/database';
 
 type TicketStatus = Database['public']['Tables']['tickets']['Row']['status'];
@@ -1150,7 +1151,7 @@ export const TicketDetailView: React.FC<TicketDetailViewProps> = ({
                     </label>
                     <p className="text-sm text-slate-900 dark:text-white flex items-center gap-1">
                       <Building2 className="w-3 h-3" />
-                      {(ticket as any).branch}
+                      {getBranchLabel((ticket as any).branch)}
                     </p>
                   </div>
                 )}

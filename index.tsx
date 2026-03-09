@@ -30,6 +30,7 @@ import {
   Boxes,
   Database,
   Upload,
+  UserCog,
 } from 'lucide-react';
 // Lazy load views เพื่อลด initial bundle และให้หน้าแรกโหลดเร็วขึ้น
 const DashboardView = lazy(() => import('./views/DashboardView').then(m => ({ default: m.DashboardView })));
@@ -56,6 +57,7 @@ const DeliveryTripDetailView = lazy(() => import('./views/DeliveryTripDetailView
 const TripMetricsView = lazy(() => import('./views/TripMetricsView').then(m => ({ default: m.TripMetricsView })));
 const StoreDeliveryDetailView = lazy(() => import('./views/StoreDeliveryDetailView').then(m => ({ default: m.StoreDeliveryDetailView })));
 const ServiceStaffManagementView = lazy(() => import('./views/ServiceStaffManagementView').then(m => ({ default: m.ServiceStaffManagementView })));
+const AdminStaffManagementView = lazy(() => import('./views/AdminStaffManagementView').then(m => ({ default: m.AdminStaffManagementView })));
 const StaffVehicleUsageView = lazy(() => import('./views/StaffVehicleUsageView').then(m => ({ default: m.StaffVehicleUsageView })));
 const CommissionManagementView = lazy(() => import('./views/CommissionManagementView').then(m => ({ default: m.CommissionManagementView })));
 const CommissionRatesView = lazy(() => import('./views/CommissionRatesView').then(m => ({ default: m.CommissionRatesView })));
@@ -123,7 +125,7 @@ const MenuSectionHeader = ({ label }: { label: string }) => (
 
 // Main App Content (wrapped in ProtectedRoute)
 const AppContent = () => {
-  const { user, profile, signOut, isAdmin, isManager, isInspector, isExecutive, isDriver, isSales, isServiceStaff, loading: authLoading, refreshProfile } = useAuth();
+  const { user, profile, signOut, isAdmin, isManager, isInspector, isExecutive, isDriver, isSales, isServiceStaff, isHR, isWarehouse, loading: authLoading, refreshProfile } = useAuth();
 
   // Don't wait for profile - show UI immediately if user exists
   // Profile will load in background and update when ready
@@ -254,6 +256,12 @@ const AppContent = () => {
   const [logisticsFlyoutPosition, setLogisticsFlyoutPosition] = useState({ top: 0, left: 0 });
   const [logisticsFlyoutMaxHeight, setLogisticsFlyoutMaxHeight] = useState<number>(400);
 
+  const [isHRHovered, setIsHRHovered] = useState(false);
+  const hrMenuRef = React.useRef<HTMLDivElement>(null);
+  const hrTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
+  const [hrFlyoutPosition, setHRFlyoutPosition] = useState({ top: 0, left: 0 });
+  const [hrFlyoutMaxHeight, setHRFlyoutMaxHeight] = useState<number>(400);
+
   const commissionTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
   const [flyoutPosition, setFlyoutPosition] = useState({ top: 0, left: 0 });
 
@@ -263,6 +271,26 @@ const AppContent = () => {
   const settingsTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
   const [settingsFlyoutPosition, setSettingsFlyoutPosition] = useState({ top: 0, left: 0 });
 
+  // Mobile inline submenu expansion states
+  const [mobileOrdersExpanded, setMobileOrdersExpanded] = useState(false);
+  const [mobileStockExpanded, setMobileStockExpanded] = useState(false);
+  const [mobileLogisticsExpanded, setMobileLogisticsExpanded] = useState(false);
+  const [mobileHRExpanded, setMobileHRExpanded] = useState(false);
+  const [mobileSettingsExpanded, setMobileSettingsExpanded] = useState(false);
+
+  const navigateAndCloseMobile = (tab: string, extra?: () => void) => {
+    setActiveTab(tab);
+    extra?.();
+    if (isMobile) {
+      setSidebarOpen(false);
+      setMobileOrdersExpanded(false);
+      setMobileStockExpanded(false);
+      setMobileLogisticsExpanded(false);
+      setMobileHRExpanded(false);
+      setMobileSettingsExpanded(false);
+    }
+  };
+
   // Import menu handlers
   const [isImportHovered, setIsImportHovered] = useState(false);
   const importMenuRef = React.useRef<HTMLDivElement>(null);
@@ -270,6 +298,7 @@ const AppContent = () => {
   const [importFlyoutPosition, setImportFlyoutPosition] = useState({ top: 0, left: 0 });
 
   const handleImportMouseEnter = (e: React.MouseEvent) => {
+    if (isMobile) return;
     if (importTimeoutRef.current) {
       clearTimeout(importTimeoutRef.current);
       importTimeoutRef.current = null;
@@ -295,6 +324,7 @@ const AppContent = () => {
   };
 
   const handleImportMouseLeave = () => {
+    if (isMobile) return;
     importTimeoutRef.current = setTimeout(() => {
       setIsImportHovered(false);
     }, 150);
@@ -416,6 +446,7 @@ const AppContent = () => {
   const ordersTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
 
   const handleOrdersMouseEnter = (e: React.MouseEvent) => {
+    if (isMobile) return;
     if (ordersTimeoutRef.current) {
       clearTimeout(ordersTimeoutRef.current);
       ordersTimeoutRef.current = null;
@@ -446,6 +477,7 @@ const AppContent = () => {
   };
 
   const handleOrdersMouseLeave = () => {
+    if (isMobile) return;
     ordersTimeoutRef.current = setTimeout(() => {
       setIsOrdersHovered(false);
     }, 150);
@@ -468,6 +500,7 @@ const AppContent = () => {
   const stockTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
 
   const handleStockMouseEnter = (e: React.MouseEvent) => {
+    if (isMobile) return;
     if (stockTimeoutRef.current) {
       clearTimeout(stockTimeoutRef.current);
       stockTimeoutRef.current = null;
@@ -491,6 +524,7 @@ const AppContent = () => {
   };
 
   const handleStockMouseLeave = () => {
+    if (isMobile) return;
     stockTimeoutRef.current = setTimeout(() => {
       setIsStockHovered(false);
     }, 150);
@@ -555,6 +589,7 @@ const AppContent = () => {
 
   // Logistics menu handlers
   const handleLogisticsMouseEnter = (e: React.MouseEvent) => {
+    if (isMobile) return;
     if (logisticsTimeoutRef.current) {
       clearTimeout(logisticsTimeoutRef.current);
       logisticsTimeoutRef.current = null;
@@ -563,7 +598,6 @@ const AppContent = () => {
     const rect = e.currentTarget.getBoundingClientRect();
     const viewportHeight = window.innerHeight;
     const margin = 16;
-    // บนมือถือใช้ความสูงไม่เกิน 85% ของจอ แล้ว clamp ตำแหน่งให้ flyout อยู่ภายใน viewport ทั้งหมด
     const maxFlyoutHeight = Math.min(560, Math.floor(viewportHeight * 0.85) - margin);
     let top = rect.top;
     if (top + maxFlyoutHeight > viewportHeight - margin) {
@@ -580,6 +614,7 @@ const AppContent = () => {
   };
 
   const handleLogisticsMouseLeave = () => {
+    if (isMobile) return;
     logisticsTimeoutRef.current = setTimeout(() => {
       setIsLogisticsHovered(false);
     }, 150);
@@ -597,8 +632,48 @@ const AppContent = () => {
     setIsLogisticsHovered(false);
   };
 
+  // HR menu handlers
+  const handleHRMouseEnter = (e: React.MouseEvent) => {
+    if (isMobile) return;
+    if (hrTimeoutRef.current) {
+      clearTimeout(hrTimeoutRef.current);
+      hrTimeoutRef.current = null;
+    }
+    const rect = e.currentTarget.getBoundingClientRect();
+    const viewportHeight = window.innerHeight;
+    const margin = 16;
+    const maxFlyoutHeight = Math.min(400, Math.floor(viewportHeight * 0.75) - margin);
+    let top = rect.top;
+    if (top + maxFlyoutHeight > viewportHeight - margin) {
+      top = Math.max(margin, viewportHeight - maxFlyoutHeight - margin);
+    }
+    setHRFlyoutMaxHeight(viewportHeight - top - margin);
+    setHRFlyoutPosition({ top, left: rect.right + 8 });
+    setIsHRHovered(true);
+  };
+
+  const handleHRMouseLeave = () => {
+    if (isMobile) return;
+    hrTimeoutRef.current = setTimeout(() => {
+      setIsHRHovered(false);
+    }, 150);
+  };
+
+  const handleHRFlyoutMouseEnter = () => {
+    if (hrTimeoutRef.current) {
+      clearTimeout(hrTimeoutRef.current);
+      hrTimeoutRef.current = null;
+    }
+    setIsHRHovered(true);
+  };
+
+  const handleHRFlyoutMouseLeave = () => {
+    setIsHRHovered(false);
+  };
+
   // Settings menu handlers
   const handleSettingsMouseEnter = (e: React.MouseEvent) => {
+    if (isMobile) return;
     if (settingsTimeoutRef.current) {
       clearTimeout(settingsTimeoutRef.current);
       settingsTimeoutRef.current = null;
@@ -606,12 +681,10 @@ const AppContent = () => {
 
     const rect = e.currentTarget.getBoundingClientRect();
     const viewportHeight = window.innerHeight;
-    const flyoutEstimatedHeight = 250; // Estimated height of flyout menu
+    const flyoutEstimatedHeight = 250;
 
-    // Check if flyout will overflow bottom of viewport
     let topPosition = rect.top;
     if (rect.top + flyoutEstimatedHeight > viewportHeight) {
-      // Position flyout so it ends at the bottom with some margin
       topPosition = Math.max(10, viewportHeight - flyoutEstimatedHeight - 10);
     }
 
@@ -623,6 +696,7 @@ const AppContent = () => {
   };
 
   const handleSettingsMouseLeave = () => {
+    if (isMobile) return;
     settingsTimeoutRef.current = setTimeout(() => {
       setIsSettingsHovered(false);
     }, 150);
@@ -670,12 +744,19 @@ const AppContent = () => {
   const [deliveryTripView, setDeliveryTripView] = useState<'list' | 'form' | 'detail' | 'metrics'>('list');
   const [selectedDeliveryTripId, setSelectedDeliveryTripId] = useState<string | null>(null);
   const [deliveryTripReturnContext, setDeliveryTripReturnContext] = useState<
-    'delivery-list' | 'triplogs' | 'daily-summary' | 'vehicles'
+    'delivery-list' | 'triplogs' | 'daily-summary' | 'vehicles' | 'service-staff-usage'
   >('delivery-list');
   const [storeDetailView, setStoreDetailView] = useState<'list' | 'detail'>('list');
   const [selectedStoreId, setSelectedStoreId] = useState<string | null>(null);
   const [serviceStaffView, setServiceStaffView] = useState<'list' | 'usage'>('list');
   const [selectedServiceStaffId, setSelectedServiceStaffId] = useState<string | null>(null);
+  const [serviceStaffUsageNavState, setServiceStaffUsageNavState] = useState<{
+    staffId: string;
+    from: string;
+    to: string;
+    page: number;
+    scrollY: number;
+  } | null>(null);
   const [showNotifications, setShowNotifications] = useState(false);
   const [notificationItems, setNotificationItems] = useState<TicketWithRelations[]>([]);
   const [loadingNotifications, setLoadingNotifications] = useState(false);
@@ -940,7 +1021,7 @@ const AppContent = () => {
               icon={FileText}
               label={isSidebarOpen ? "รายงาน" : ""}
               active={activeTab === 'reports'}
-              onClick={() => setActiveTab('reports')}
+              onClick={() => navigateAndCloseMobile('reports')}
               isCollapsed={!isSidebarOpen}
             />
           )}
@@ -969,18 +1050,38 @@ const AppContent = () => {
                     activeTab === 'cleanup-test-orders'
                   }
                   onClick={() => {
-                    if (activeTab !== 'create-order') {
+                    if (isMobile) {
+                      setMobileOrdersExpanded(prev => !prev);
+                    } else if (activeTab !== 'create-order') {
                       setActiveTab('create-order');
                     }
                   }}
                   isCollapsed={!isSidebarOpen}
                   hasSubmenu={true}
-                  isOpen={isOrdersHovered}
+                  isOpen={isMobile ? mobileOrdersExpanded : isOrdersHovered}
                 />
               </div>
 
-              {/* Flyout Submenu for Orders */}
-              {isOrdersHovered && (
+              {/* Mobile inline submenu for Orders */}
+              {isMobile && mobileOrdersExpanded && isSidebarOpen && (
+                <div className="pl-2 pr-1 space-y-0.5 animate-in fade-in slide-in-from-top-1 duration-150">
+                  <SubSidebarItem label="สร้างออเดอร์" active={activeTab === 'create-order'} onClick={() => navigateAndCloseMobile('create-order')} isCollapsed={false} isFlyout={false} />
+                  <SubSidebarItem label="ติดตามออเดอร์" active={activeTab === 'track-orders'} onClick={() => navigateAndCloseMobile('track-orders')} isCollapsed={false} isFlyout={false} />
+                  <SubSidebarItem label="ออกใบแจ้งหนี้" active={activeTab === 'sales-trips'} onClick={() => navigateAndCloseMobile('sales-trips')} isCollapsed={false} isFlyout={false} />
+                  {(isAdmin || isManager) && (
+                    <>
+                      <SubSidebarItem label="จัดการออเดอร์" active={activeTab === 'cleanup-test-orders'} onClick={() => navigateAndCloseMobile('cleanup-test-orders')} isCollapsed={false} isFlyout={false} />
+                      <SubSidebarItem label="จัดการลูกค้า" active={activeTab === 'customers'} onClick={() => navigateAndCloseMobile('customers')} isCollapsed={false} isFlyout={false} />
+                      <SubSidebarItem label="จัดการสินค้า / ราคา" active={activeTab === 'products'} onClick={() => navigateAndCloseMobile('products')} isCollapsed={false} isFlyout={false} />
+                      <SubSidebarItem label="กำหนดราคาตามลูกค้า" active={activeTab === 'product-pricing'} onClick={() => navigateAndCloseMobile('product-pricing')} isCollapsed={false} isFlyout={false} />
+                      <SubSidebarItem label="ระดับลูกค้า" active={activeTab === 'customer-tiers'} onClick={() => navigateAndCloseMobile('customer-tiers')} isCollapsed={false} isFlyout={false} />
+                    </>
+                  )}
+                </div>
+              )}
+
+              {/* Desktop flyout submenu for Orders */}
+              {!isMobile && isOrdersHovered && (
                 <div
                   className="fixed z-[100]"
                   style={{
@@ -1104,18 +1205,34 @@ const AppContent = () => {
                   label={isSidebarOpen ? "คลังสินค้า" : ""}
                   active={activeTab === 'stock-dashboard' || activeTab === 'warehouses' || activeTab === 'inventory-receipts' || activeTab === 'pickup-orders'}
                   onClick={() => {
-                    if (activeTab !== 'stock-dashboard') {
+                    if (isMobile) {
+                      setMobileStockExpanded(prev => !prev);
+                    } else if (activeTab !== 'stock-dashboard') {
                       setActiveTab('stock-dashboard');
                     }
                   }}
                   isCollapsed={!isSidebarOpen}
                   hasSubmenu={true}
-                  isOpen={isStockHovered}
+                  isOpen={isMobile ? mobileStockExpanded : isStockHovered}
                 />
               </div>
 
-              {/* Flyout Submenu for Stock */}
-              {isStockHovered && (
+              {/* Mobile inline submenu for Stock */}
+              {isMobile && mobileStockExpanded && isSidebarOpen && (
+                <div className="pl-2 pr-1 space-y-0.5 animate-in fade-in slide-in-from-top-1 duration-150">
+                  <SubSidebarItem label="Stock Dashboard" active={activeTab === 'stock-dashboard'} onClick={() => navigateAndCloseMobile('stock-dashboard')} isCollapsed={false} isFlyout={false} />
+                  <SubSidebarItem label="รายการรอรับเอง" active={activeTab === 'pickup-orders'} onClick={() => navigateAndCloseMobile('pickup-orders')} isCollapsed={false} isFlyout={false} />
+                  {(isAdmin || isManager) && (
+                    <>
+                      <SubSidebarItem label="จัดการคลัง" active={activeTab === 'warehouses'} onClick={() => navigateAndCloseMobile('warehouses')} isCollapsed={false} isFlyout={false} />
+                      <SubSidebarItem label="ประวัติรับสินค้า" active={activeTab === 'inventory-receipts'} onClick={() => navigateAndCloseMobile('inventory-receipts')} isCollapsed={false} isFlyout={false} />
+                    </>
+                  )}
+                </div>
+              )}
+
+              {/* Desktop flyout submenu for Stock */}
+              {!isMobile && isStockHovered && (
                 <div
                   className="fixed z-[100]"
                   style={{
@@ -1206,13 +1323,12 @@ const AppContent = () => {
                     activeTab === 'daily-summary' ||
                     activeTab === 'delivery-trips' ||
                     activeTab === 'packing-simulation' ||
-                    activeTab === 'service-staff' ||
-                    activeTab === 'commission' ||
-                    activeTab === 'commission-rates' ||
                     activeTab === 'pending-orders'
                   }
                   onClick={() => {
-                    if (isDriver) {
+                    if (isMobile) {
+                      setMobileLogisticsExpanded(prev => !prev);
+                    } else if (isDriver) {
                       setActiveTab('triplogs');
                       setTripLogView('form');
                     } else {
@@ -1221,12 +1337,102 @@ const AppContent = () => {
                   }}
                   isCollapsed={!isSidebarOpen}
                   hasSubmenu={true}
-                  isOpen={isLogisticsHovered}
+                  isOpen={isMobile ? mobileLogisticsExpanded : isLogisticsHovered}
                 />
               </div>
 
-              {/* Flyout Submenu for Logistics */}
-              {isLogisticsHovered && (
+              {/* Mobile inline submenu for Logistics */}
+              {isMobile && mobileLogisticsExpanded && isSidebarOpen && (
+                <div className="pl-2 pr-1 space-y-0.5 animate-in fade-in slide-in-from-top-1 duration-150">
+                  <SubSidebarItem
+                    label="บันทึกการใช้งานรถ"
+                    active={activeTab === 'triplogs'}
+                    onClick={() => navigateAndCloseMobile('triplogs', () => setTripLogView(isDriver ? 'form' : 'list'))}
+                    isCollapsed={false}
+                    isFlyout={false}
+                  />
+                  <SubSidebarItem
+                    label="บันทึกการเติมน้ำมัน"
+                    active={activeTab === 'fuellogs'}
+                    onClick={() => navigateAndCloseMobile('fuellogs', () => setFuelLogView(isDriver ? 'form' : 'list'))}
+                    isCollapsed={false}
+                    isFlyout={false}
+                  />
+                  <SubSidebarItem
+                    label="แจ้งซ่อม / การซ่อมบำรุง"
+                    active={activeTab === 'maintenance'}
+                    onClick={() => navigateAndCloseMobile('maintenance', () => setTicketView(isDriver ? 'form' : 'list'))}
+                    isCollapsed={false}
+                    isFlyout={false}
+                  />
+                  <SubSidebarItem
+                    label="จำลองจัดเรียง"
+                    active={activeTab === 'packing-simulation'}
+                    onClick={() => navigateAndCloseMobile('packing-simulation')}
+                    isCollapsed={false}
+                    isFlyout={false}
+                  />
+                  {(isAdmin || isManager || isInspector || isExecutive) && (
+                    <>
+                      {!isDriver && (
+                        <SubSidebarItem
+                          label="เดชบอร์ด(ฝ่ายขนส่ง)"
+                          active={activeTab === 'dashboard'}
+                          onClick={() => navigateAndCloseMobile('dashboard')}
+                          isCollapsed={false}
+                          isFlyout={false}
+                        />
+                      )}
+                      {!isDriver && (
+                        <SubSidebarItem
+                          label="ยานพาหนะ"
+                          active={activeTab === 'vehicles'}
+                          onClick={() => navigateAndCloseMobile('vehicles')}
+                          isCollapsed={false}
+                          isFlyout={false}
+                        />
+                      )}
+                      <SubSidebarItem
+                        label="ภาพรวมการอนุมัติ"
+                        active={activeTab === 'approvals'}
+                        onClick={() => navigateAndCloseMobile('approvals')}
+                        isCollapsed={false}
+                        isFlyout={false}
+                      />
+                      {!isDriver && (
+                        <SubSidebarItem
+                          label="สรุปการใช้รถรายวัน"
+                          active={activeTab === 'daily-summary'}
+                          onClick={() => navigateAndCloseMobile('daily-summary')}
+                          isCollapsed={false}
+                          isFlyout={false}
+                        />
+                      )}
+                      {!isDriver && (
+                        <>
+                          <SubSidebarItem
+                            label="ทริปส่งสินค้า"
+                            active={activeTab === 'delivery-trips'}
+                            onClick={() => navigateAndCloseMobile('delivery-trips', () => { setDeliveryTripView('list'); setSelectedDeliveryTripId(null); })}
+                            isCollapsed={false}
+                            isFlyout={false}
+                          />
+                          <SubSidebarItem
+                            label="ออเดอร์รอจัดส่ง"
+                            active={activeTab === 'pending-orders'}
+                            onClick={() => navigateAndCloseMobile('pending-orders')}
+                            isCollapsed={false}
+                            isFlyout={false}
+                          />
+                        </>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+
+              {/* Desktop flyout submenu for Logistics */}
+              {!isMobile && isLogisticsHovered && (
                 <div
                   className="fixed z-[100]"
                   style={{
@@ -1532,7 +1738,7 @@ const AppContent = () => {
               icon={Database}
               label={isSidebarOpen ? "เมนูหลังบ้าน (DB)" : ""}
               active={activeTab === 'db-explorer'}
-              onClick={() => setActiveTab('db-explorer')}
+              onClick={() => navigateAndCloseMobile('db-explorer')}
               isCollapsed={!isSidebarOpen}
             />
           )}
@@ -1549,16 +1755,49 @@ const AppContent = () => {
                 label={isSidebarOpen ? "ตั้งค่า" : ""}
                 active={activeTab === 'profile' || activeTab === 'rls-test' || activeTab === 'settings'}
                 onClick={() => {
-                  // No-op or handle specific click action if needed
+                  if (isMobile) {
+                    setMobileSettingsExpanded(prev => !prev);
+                  }
                 }}
                 isCollapsed={!isSidebarOpen}
                 hasSubmenu={true}
-                isOpen={isSettingsHovered}
+                isOpen={isMobile ? mobileSettingsExpanded : isSettingsHovered}
               />
             </div>
 
-            {/* Flyout Submenu - Rendered using Portal (fixed position) */}
-            {isSettingsHovered && (
+            {/* Mobile inline submenu for Settings */}
+            {isMobile && mobileSettingsExpanded && isSidebarOpen && (
+              <div className="pl-2 pr-1 space-y-0.5 animate-in fade-in slide-in-from-top-1 duration-150">
+                <SubSidebarItem
+                  label="โปรไฟล์"
+                  active={activeTab === 'profile'}
+                  onClick={() => navigateAndCloseMobile('profile')}
+                  isCollapsed={false}
+                  isFlyout={false}
+                />
+                {(isAdmin || isManager) && (
+                  <SubSidebarItem
+                    label="ทดสอบ RLS"
+                    active={activeTab === 'rls-test'}
+                    onClick={() => navigateAndCloseMobile('rls-test')}
+                    isCollapsed={false}
+                    isFlyout={false}
+                  />
+                )}
+                {(!isDriver || isAdmin || isManager || isInspector || isExecutive) && (
+                  <SubSidebarItem
+                    label="ตั้งค่าแจ้งเตือน"
+                    active={activeTab === 'settings'}
+                    onClick={() => navigateAndCloseMobile('settings')}
+                    isCollapsed={false}
+                    isFlyout={false}
+                  />
+                )}
+              </div>
+            )}
+
+            {/* Desktop flyout submenu for Settings */}
+            {!isMobile && isSettingsHovered && (
               <div
                 className="fixed z-[100]"
                 style={{
@@ -1596,7 +1835,6 @@ const AppContent = () => {
                         isFlyout={true}
                       />
                     )}
-                    {/* ซ่อนเมนูตั้งค่าแจ้งเตือนสำหรับพนักงานขับรถ */}
                     {(!isDriver || isAdmin || isManager || isInspector || isExecutive) && (
                       <SubSidebarItem
                         label="ตั้งค่าแจ้งเตือน"
@@ -2322,6 +2560,9 @@ const AppContent = () => {
                         } else if (deliveryTripReturnContext === 'vehicles') {
                           setActiveTab('vehicles');
                           setVehicleView('detail');
+                        } else if (deliveryTripReturnContext === 'service-staff-usage') {
+                          setActiveTab('service-staff');
+                          setServiceStaffView('usage');
                         } else {
                           // ค่าเริ่มต้น: กลับไปหน้ารายการทริปส่งสินค้า
                           setActiveTab('delivery-trips');
@@ -2365,10 +2606,35 @@ const AppContent = () => {
                   );
                 }
               })()
+            ) : activeTab === 'admin-staff' ? (
+              <AdminStaffManagementView />
             ) : activeTab === 'service-staff' ? (
               serviceStaffView === 'usage' && selectedServiceStaffId ? (
                 <StaffVehicleUsageView
                   staffId={selectedServiceStaffId}
+                  initialState={
+                    serviceStaffUsageNavState?.staffId === selectedServiceStaffId
+                      ? {
+                        from: serviceStaffUsageNavState.from,
+                        to: serviceStaffUsageNavState.to,
+                        page: serviceStaffUsageNavState.page,
+                        scrollY: serviceStaffUsageNavState.scrollY,
+                      }
+                      : undefined
+                  }
+                  onViewTrip={(tripId, state) => {
+                    setServiceStaffUsageNavState({
+                      staffId: selectedServiceStaffId,
+                      from: state.from,
+                      to: state.to,
+                      page: state.page,
+                      scrollY: state.scrollY,
+                    });
+                    setSelectedDeliveryTripId(tripId);
+                    setDeliveryTripView('detail');
+                    setDeliveryTripReturnContext('service-staff-usage');
+                    setActiveTab('delivery-trips');
+                  }}
                   onBack={() => {
                     setServiceStaffView('list');
                     setSelectedServiceStaffId(null);
