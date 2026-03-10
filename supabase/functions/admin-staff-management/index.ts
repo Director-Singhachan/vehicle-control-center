@@ -118,6 +118,7 @@ Deno.serve(async (req) => {
     if (action === 'create_user') {
       const {
         full_name,
+        name_prefix,
         role,
         branch,
         department,
@@ -201,6 +202,7 @@ Deno.serve(async (req) => {
         id: userId,
         email,
         full_name,
+        name_prefix: name_prefix || null,
         role,
         branch: branch || null,
         department: department || null,
@@ -219,6 +221,7 @@ Deno.serve(async (req) => {
           const { error: ssUpdateErr } = await adminClient.from('service_staff').update({
             user_id: userId,
             name: full_name,
+            name_prefix: name_prefix || null,
             phone: phone || null,
             employee_code,
             branch: branch || null,
@@ -233,6 +236,7 @@ Deno.serve(async (req) => {
           // สร้างรายชื่อใหม่
           const { error: ssErr } = await adminClient.from('service_staff').insert({
             name: full_name,
+            name_prefix: name_prefix || null,
             phone: phone || null,
             employee_code,
             user_id: userId,
@@ -261,11 +265,12 @@ Deno.serve(async (req) => {
 
     // ─── update_profile ─────────────────────────────────────────────────────
     if (action === 'update_profile') {
-      const { user_id, full_name, role, branch, department, position, phone, employee_code: rawEmployeeCode } = body;
+      const { user_id, full_name, name_prefix, role, branch, department, position, phone, employee_code: rawEmployeeCode } = body;
       if (!user_id) return jsonError('user_id จำเป็นต้องระบุ', 400);
 
       const updates: Record<string, unknown> = {};
       if (full_name !== undefined) updates.full_name = full_name;
+      if (name_prefix !== undefined) updates.name_prefix = name_prefix || null;
       if (role !== undefined) updates.role = role;
       if (branch !== undefined) updates.branch = branch;
       if (department !== undefined) updates.department = department;
@@ -298,9 +303,10 @@ Deno.serve(async (req) => {
       const { error } = await adminClient.from('profiles').update(updates).eq('id', user_id);
       if (error) throw error;
 
-      // Sync name/branch/employee_code to service_staff if linked
+      // Sync name/name_prefix/branch/employee_code to service_staff if linked
       const ssSync: Record<string, unknown> = {};
       if (full_name !== undefined) { ssSync.name = full_name; ssSync.phone = phone ?? null; }
+      if (name_prefix !== undefined) ssSync.name_prefix = name_prefix || null;
       if (branch !== undefined) ssSync.branch = branch || null;
       if (updates.employee_code !== undefined) ssSync.employee_code = updates.employee_code;
       if (Object.keys(ssSync).length > 0) {

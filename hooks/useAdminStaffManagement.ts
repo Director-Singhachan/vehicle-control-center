@@ -245,6 +245,7 @@ export function useAdminStaffManagement() {
       filteredStaffList,
       [
         { key: 'employee_code', label: 'รหัสพนักงาน', width: 16 },
+        { key: 'name_prefix', label: 'คำนำหน้า', width: 12 },
         { key: 'full_name', label: 'ชื่อ-นามสกุล', width: 28 },
         { key: 'role', label: 'บทบาท', width: 16, format: (v: AppRole) => ROLE_LABEL[v] ?? v },
         { key: 'branch', label: 'สาขา', width: 18, format: (v: string | null) => v || '-' },

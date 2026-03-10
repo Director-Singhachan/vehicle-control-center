@@ -42,6 +42,8 @@ const ROLE_OPTIONS: { value: AppRole; label: string }[] = [
 
 const OPERATIONAL_ROLES: AppRole[] = ['driver', 'service_staff'];
 
+const NAME_PREFIX_OPTIONS = ['', 'นาย', 'นาง', 'นางสาว'];
+
 const inputCls =
   'w-full px-3 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-enterprise-500';
 
@@ -57,7 +59,7 @@ export const StaffEditModal: React.FC<StaffEditModalProps> = ({
   onRelink,
   onClose,
 }) => {
-  const [form, setForm] = useState({ full_name: '', role: 'user' as AppRole, branch: '', department: '', position: '', phone: '', employee_code: '' });
+  const [form, setForm] = useState({ name_prefix: '', full_name: '', role: 'user' as AppRole, branch: '', department: '', position: '', phone: '', employee_code: '' });
   const [migrateCode, setMigrateCode] = useState('');
   const [showMigrateForm, setShowMigrateForm] = useState(false);
 
@@ -69,6 +71,7 @@ export const StaffEditModal: React.FC<StaffEditModalProps> = ({
   useEffect(() => {
     if (staff) {
       setForm({
+        name_prefix: staff.name_prefix || '',
         full_name: staff.full_name || '',
         role: staff.role,
         branch: staff.branch || '',
@@ -97,6 +100,10 @@ export const StaffEditModal: React.FC<StaffEditModalProps> = ({
       position: form.position.trim() || undefined,
       phone: form.phone.trim() || undefined,
     };
+    // ส่ง name_prefix เฉพาะเมื่อมีค่าจาก server หรือผู้ใช้เลือกแล้ว (ไม่ส่ง null ไปทับค่าที่มีอยู่)
+    if (staff?.name_prefix !== undefined || form.name_prefix !== '') {
+      payload.name_prefix = form.name_prefix || null;
+    }
     if (form.employee_code.trim() !== (staff?.employee_code || '')) {
       payload.employee_code = form.employee_code.trim() || null;
     }
@@ -236,17 +243,28 @@ export const StaffEditModal: React.FC<StaffEditModalProps> = ({
           </div>
         </div>
 
-        {/* Full name */}
+        {/* คำนำหน้า + ชื่อ-นามสกุล */}
         <div>
           <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
             ชื่อ-นามสกุล
           </label>
-          <input
-            type="text"
-            value={form.full_name}
-            onChange={(e) => setForm((f) => ({ ...f, full_name: e.target.value }))}
-            className={inputCls}
-          />
+          <div className="flex gap-2">
+            <select
+              value={form.name_prefix}
+              onChange={(e) => setForm((f) => ({ ...f, name_prefix: e.target.value }))}
+              className={`${inputCls} w-36 flex-shrink-0`}
+            >
+              {NAME_PREFIX_OPTIONS.map((p) => (
+                <option key={p} value={p}>{p || '— คำนำหน้า —'}</option>
+              ))}
+            </select>
+            <input
+              type="text"
+              value={form.full_name}
+              onChange={(e) => setForm((f) => ({ ...f, full_name: e.target.value }))}
+              className={inputCls}
+            />
+          </div>
         </div>
 
         {/* Role */}
