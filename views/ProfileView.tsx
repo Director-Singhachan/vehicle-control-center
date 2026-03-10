@@ -182,7 +182,7 @@ export const ProfileView: React.FC = () => {
   };
 
   const roleLabels: Record<string, string> = {
-    user: 'ผู้ใช้',
+    user: 'ผู้ใช้ทั่วไป',
     inspector: 'ผู้ตรวจสอบ',
     manager: 'ผู้จัดการ',
     executive: 'ผู้บริหาร',
@@ -190,6 +190,9 @@ export const ProfileView: React.FC = () => {
     sales: 'ฝ่ายขาย',
     driver: 'พนักงานขับรถ',
     service_staff: 'พนักงานบริการ',
+    hr: 'บุคคล',
+    accounting: 'บัญชี',
+    warehouse: 'คลังสินค้า',
   };
 
   return (

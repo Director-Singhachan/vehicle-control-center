@@ -181,6 +181,9 @@ function StaffTable({
             <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 whitespace-nowrap">
               รหัส
             </th>
+            <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 whitespace-nowrap">
+              คำนำหน้า
+            </th>
             <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 dark:text-slate-400">
               ชื่อ-นามสกุล
             </th>
@@ -223,6 +226,9 @@ function StaffTable({
                   }`}>
                     {staff.employee_code || '—'}
                   </span>
+                </td>
+                <td className="px-4 py-3 text-slate-600 dark:text-slate-400 whitespace-nowrap">
+                  {staff.name_prefix || '—'}
                 </td>
                 <td className="px-4 py-3">
                   <div className={`font-medium ${

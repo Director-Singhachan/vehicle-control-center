@@ -6,6 +6,7 @@ export type StaffProfile = Database['public']['Tables']['profiles']['Row'];
 
 export interface CreateStaffInput {
   full_name: string;
+  name_prefix?: string;
   role: AppRole;
   employee_code: string;
   branch?: string;
@@ -20,6 +21,7 @@ export interface CreateStaffInput {
 
 export interface UpdateStaffInput {
   full_name?: string;
+  name_prefix?: string | null;
   role?: AppRole;
   branch?: string;
   department?: string;

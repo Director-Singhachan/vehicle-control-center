@@ -40,6 +40,7 @@ export interface Database {
           id: string;
           email: string | null;
           full_name: string | null;
+          name_prefix: string | null;
           role: AppRole;
           avatar_url: string | null;
           branch: string | null;
@@ -53,6 +54,7 @@ export interface Database {
           id: string;
           email?: string | null;
           full_name?: string | null;
+          name_prefix?: string | null;
           role?: AppRole;
           avatar_url?: string | null;
           branch?: string | null;
@@ -66,6 +68,7 @@ export interface Database {
           id?: string;
           email?: string | null;
           full_name?: string | null;
+          name_prefix?: string | null;
           role?: AppRole;
           avatar_url?: string | null;
           branch?: string | null;
@@ -799,6 +802,7 @@ export interface Database {
         Row: {
           id: string;
           name: string;
+          name_prefix: string | null;
           status: 'active' | 'sick' | 'leave' | 'inactive';
           default_team: string | null;
           phone: string | null;
@@ -814,6 +818,7 @@ export interface Database {
         Insert: {
           id?: string;
           name: string;
+          name_prefix?: string | null;
           status?: 'active' | 'sick' | 'leave' | 'inactive';
           default_team?: string | null;
           phone?: string | null;
@@ -829,6 +834,7 @@ export interface Database {
         Update: {
           id?: string;
           name?: string;
+          name_prefix?: string | null;
           status?: 'active' | 'sick' | 'leave' | 'inactive';
           default_team?: string | null;
           phone?: string | null;

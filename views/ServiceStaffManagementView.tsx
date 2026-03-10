@@ -146,6 +146,9 @@ export const ServiceStaffManagementView: React.FC<ServiceStaffManagementViewProp
                                 <div className="flex items-start justify-between mb-3">
                                     <div className="flex-1 min-w-0">
                                         <h3 className="font-semibold text-base truncate text-slate-900 dark:text-white">
+                                            {s.name_prefix && (
+                                                <span className="text-slate-400 dark:text-slate-500 font-normal">{s.name_prefix} </span>
+                                            )}
                                             {s.name}
                                         </h3>
                                         <div className="flex flex-wrap items-center gap-x-3 mt-0.5">

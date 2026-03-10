@@ -38,6 +38,8 @@ const inputCls =
 
 const OPERATIONAL_ROLES: AppRole[] = ['driver', 'service_staff'];
 
+const NAME_PREFIX_OPTIONS = ['', 'นาย', 'นาง', 'นางสาว'];
+
 export const StaffCreateModal: React.FC<StaffCreateModalProps> = ({
   isOpen,
   branches,
@@ -49,6 +51,7 @@ export const StaffCreateModal: React.FC<StaffCreateModalProps> = ({
 }) => {
   const [form, setForm] = useState({
     employee_code: '',
+    name_prefix: '',
     full_name: '',
     role: 'driver' as AppRole,
     link_service_staff_id: '' as string,
@@ -67,6 +70,7 @@ export const StaffCreateModal: React.FC<StaffCreateModalProps> = ({
     if (isOpen) {
       setForm({
         employee_code: '',
+        name_prefix: '',
         full_name: '',
         role: 'driver',
         link_service_staff_id: '',
@@ -120,6 +124,7 @@ export const StaffCreateModal: React.FC<StaffCreateModalProps> = ({
     if (!validate()) return;
     const payload: CreateStaffInput = {
       full_name: form.full_name.trim(),
+      name_prefix: form.name_prefix || undefined,
       role: form.role,
       employee_code: form.employee_code.trim(),
       branch: form.branch.trim() || undefined,
@@ -189,18 +194,29 @@ export const StaffCreateModal: React.FC<StaffCreateModalProps> = ({
           </div>
         </div>
 
-        {/* Full name */}
+        {/* คำนำหน้า + ชื่อ-นามสกุล */}
         <div>
           <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
             ชื่อ-นามสกุล <span className="text-red-500">*</span>
           </label>
-          <input
-            type="text"
-            value={form.full_name}
-            onChange={(e) => setForm((f) => ({ ...f, full_name: e.target.value }))}
-            placeholder="เช่น สมชาย ใจดี"
-            className={inputCls}
-          />
+          <div className="flex gap-2">
+            <select
+              value={form.name_prefix}
+              onChange={(e) => setForm((f) => ({ ...f, name_prefix: e.target.value }))}
+              className={`${inputCls} w-36 flex-shrink-0`}
+            >
+              {NAME_PREFIX_OPTIONS.map((p) => (
+                <option key={p} value={p}>{p || '— คำนำหน้า —'}</option>
+              ))}
+            </select>
+            <input
+              type="text"
+              value={form.full_name}
+              onChange={(e) => setForm((f) => ({ ...f, full_name: e.target.value }))}
+              placeholder="เช่น สมชาย ใจดี"
+              className={inputCls}
+            />
+          </div>
           {errors.full_name && <p className="mt-1 text-xs text-red-500">{errors.full_name}</p>}
         </div>
 
