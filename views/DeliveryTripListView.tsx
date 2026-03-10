@@ -483,6 +483,7 @@ export const DeliveryTripListView: React.FC<DeliveryTripListViewProps> = ({
                     const helperCrews = crews.filter(c => c.role === 'helper');
                     const hasCrew = crews.length > 0;
                     const hasDriver = !!driverCrew;
+                    const hasHelpers = helperCrews.length > 0;
 
                     if (!hasCrew && trip.status !== 'cancelled') {
                       return (
@@ -504,8 +505,14 @@ export const DeliveryTripListView: React.FC<DeliveryTripListViewProps> = ({
                               ? `${driverCrew?.staff?.name || 'คนขับ'}`
                               : <span className="text-amber-600 dark:text-amber-400">ยังไม่มีคนขับ</span>
                             }
-                            {helperCrews.length > 0 && (
+                            {hasHelpers ? (
                               <span className="text-slate-400"> + {helperCrews.length} พนักงานบริการ</span>
+                            ) : (
+                              hasDriver && (
+                                <span className="ml-1 text-amber-600 dark:text-amber-400">
+                                  (ยังไม่ได้จัดพนักงานบริการ)
+                                </span>
+                              )
                             )}
                           </span>
                         </div>
