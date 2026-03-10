@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback, memo } from 'react';
-import { Package, Calendar, MapPin, DollarSign, User, Phone, Filter, X, Zap, ChevronDown, ChevronRight, Eye, Edit, Layers, List, Navigation, Ban } from 'lucide-react';
+import { Package, Calendar, MapPin, DollarSign, User, Phone, Filter, X, Zap, ChevronDown, ChevronRight, Eye, Edit, Layers, List, Navigation, Ban, LayoutTemplate } from 'lucide-react';
 import { usePendingOrders } from '../hooks/useOrders';
 import { orderItemsService } from '../services/ordersService';
 import { CreateTripFromOrdersView } from './CreateTripFromOrdersView';
@@ -322,6 +322,7 @@ export function PendingOrdersView() {
   const [orderItems, setOrderItems] = useState<Map<string, any[]>>(new Map());
   const [showProductsSummaryModal, setShowProductsSummaryModal] = useState(false);
   const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
+  const [overviewMode, setOverviewMode] = useState(false);
 
   const { savingPickupItemId, pendingPickupValues, handleUpdatePickup } = usePickupUpdate({
     setOrderItems,
@@ -669,6 +670,19 @@ export function PendingOrdersView() {
               <Zap className="w-4 h-4" />
               สร้างทริปด่วน
             </Button>
+
+            {/* Toggle Two-Pane Overview Mode */}
+            <Button
+              onClick={() => setOverviewMode((prev) => !prev)}
+              variant="outline"
+              className={`flex items-center gap-2 ${overviewMode
+                ? 'border-indigo-500 text-indigo-700 bg-indigo-50 dark:bg-indigo-900/30 dark:text-indigo-300'
+                : 'border-gray-300 text-gray-700 dark:text-gray-200'
+                }`}
+            >
+              <LayoutTemplate className="w-4 h-4" />
+              โหมดสองหน้าจอ
+            </Button>
           </div>
 
         </div>
@@ -717,283 +731,388 @@ export function PendingOrdersView() {
           </Card>
         </div>
 
-        {/* Quick District Filter Chips */}
-        {groupByArea && availableDistricts.length > 1 && (
-          <div className="mb-4">
-            <div className="flex items-center gap-2 mb-2 px-1">
-              <MapPin className="w-4 h-4 text-indigo-500" />
-              <span className="text-sm font-medium text-gray-700 dark:text-gray-300">กรองตามอำเภอ:</span>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {/* ALL chip */}
-              <button
-                onClick={resetDistrictFilter}
-                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium border transition-all ${districtFilter === 'ALL'
-                  ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
-                  : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:border-indigo-400 hover:text-indigo-600 dark:hover:text-indigo-400'
-                  }`}
-              >
-                ทั้งหมด
-                <span className={`text-xs px-1.5 py-0.5 rounded-full ${districtFilter === 'ALL'
-                  ? 'bg-white/20 text-white'
-                  : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400'
-                  }`}>
-                  {filteredOrders.length}
-                </span>
-              </button>
-
-              {/* District chips */}
-              {availableDistricts.map(d => (
-                <button
-                  key={d.key}
-                  onClick={() => handleSetDistrictFilter(d.key)}
-                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium border transition-all ${districtFilter === d.key
-                    ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
-                    : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:border-indigo-400 hover:text-indigo-600 dark:hover:text-indigo-400'
-                    }`}
-                >
-                  📍 {d.key}
-                  <span className={`text-xs px-1.5 py-0.5 rounded-full ${districtFilter === d.key
-                    ? 'bg-white/20 text-white'
-                    : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400'
-                    }`}>
-                    {d.count}
-                  </span>
-                </button>
-              ))}
-            </div>
-
-            {/* Sub-district chips */}
-            {districtFilter !== 'ALL' && availableSubDistricts.length > 1 && (
-              <div className="mt-3 ml-4 pl-4 border-l-2 border-indigo-200 dark:border-indigo-700">
-                <div className="flex items-center gap-2 mb-2 px-1">
-                  <Navigation className="w-3.5 h-3.5 text-teal-500" />
-                  <span className="text-xs font-medium text-gray-600 dark:text-gray-400">ตำบลใน {districtFilter}:</span>
+        {/* Main content layout: optional overview panel + detail list */}
+        <div className={`grid gap-6 ${overviewMode ? 'xl:grid-cols-[360px,1fr]' : ''}`}>
+          {/* Left: Overview by district/area/store (only in overview mode and when grouped by area) */}
+          {overviewMode && groupByArea && groupedOrders && (
+            <div className="space-y-3">
+              <Card>
+                <div className="p-4">
+                  <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-2 flex items-center gap-2">
+                    <MapPin className="w-4 h-4 text-indigo-500" />
+                    ภาพรวมร้านค้าตามเขต
+                  </h3>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    ดูจำนวนร้านและมูลค่าออเดอร์ของแต่ละเขต/พื้นที่ในมุมมองเดียว เหมาะสำหรับเปิดไว้หน้าจอที่ 1
+                  </p>
                 </div>
-                <div className="flex flex-wrap gap-1.5">
-                  {/* ALL sub-districts chip */}
+              </Card>
+
+              <div className="space-y-3 max-h-[calc(100vh-320px)] xl:max-h-[calc(100vh-260px)] overflow-auto pr-1">
+                {groupedOrders.map((district: any) => (
+                  <Card key={district.districtKey} className="overflow-hidden">
+                    <div className="border-b border-gray-100 dark:border-gray-700 bg-indigo-50/70 dark:bg-indigo-900/30 px-4 py-2.5 flex items-center gap-2">
+                      <MapPin className="w-4 h-4 text-indigo-600 dark:text-indigo-300" />
+                      <div className="flex-1">
+                        <div className="text-sm font-semibold text-indigo-900 dark:text-indigo-100">
+                          {district.districtKey}
+                        </div>
+                        <div className="text-[11px] text-indigo-700/80 dark:text-indigo-200/80">
+                          {district.totalOrders} ออเดอร์
+                        </div>
+                      </div>
+                      <Badge variant="info" className="text-[11px]">
+                        เขต
+                      </Badge>
+                    </div>
+
+                    <div className="p-3 space-y-2">
+                      {Array.from(district.areas.entries())
+                        .sort(([, a]: any, [, b]: any) => b.length - a.length)
+                        .map(([areaKey, areaOrders]: [string, any[]]) => {
+                          const uniqueStores = Array.from(
+                            new Set(areaOrders.map((o) => `${o.customer_code || ''}::${o.customer_name || ''}`))
+                          ).slice(0, 12);
+
+                          const totalAmount = areaOrders.reduce(
+                            (s, o) => s + (o.total_amount || 0),
+                            0
+                          );
+
+                          return (
+                            <button
+                              key={areaKey}
+                              type="button"
+                              className="w-full text-left rounded-lg border border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-800/60 px-3 py-2.5 hover:border-indigo-300 hover:bg-indigo-50/60 dark:hover:border-indigo-500 dark:hover:bg-indigo-900/40 transition-colors"
+                              onClick={() => selectGroupOrders(areaOrders)}
+                            >
+                              <div className="flex items-center justify-between gap-2 mb-1">
+                                <div className="text-xs font-semibold text-gray-800 dark:text-gray-200">
+                                  {areaKey}
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <span className="text-[11px] text-gray-500 dark:text-gray-400">
+                                    {areaOrders.length} ออเดอร์
+                                  </span>
+                                  <span className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-300">
+                                    ฿{totalAmount.toLocaleString()}
+                                  </span>
+                                </div>
+                              </div>
+                              <div className="flex flex-wrap gap-1 mt-1">
+                                {uniqueStores.map((storeKey) => {
+                                  const [code, name] = storeKey.split('::');
+                                  return (
+                                    <span
+                                      key={storeKey}
+                                      className="inline-flex items-center px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-700 text-[11px] text-gray-700 dark:text-gray-200"
+                                    >
+                                      {code && (
+                                        <span className="font-mono text-[10px] text-gray-500 dark:text-gray-400 mr-1">
+                                          {code}
+                                        </span>
+                                      )}
+                                      <span>{name || 'ไม่ระบุร้าน'}</span>
+                                    </span>
+                                  );
+                                })}
+                                {areaOrders.length > uniqueStores.length && (
+                                  <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-indigo-100/70 dark:bg-indigo-800/60 text-[10px] text-indigo-700 dark:text-indigo-200">
+                                    +{areaOrders.length - uniqueStores.length} รายการ
+                                  </span>
+                                )}
+                              </div>
+                            </button>
+                          );
+                        })}
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Right: Filters + Orders list (main working area) */}
+          <div>
+            {/* Quick District Filter Chips */}
+            {groupByArea && availableDistricts.length > 1 && (
+              <div className="mb-4">
+                <div className="flex items-center gap-2 mb-2 px-1">
+                  <MapPin className="w-4 h-4 text-indigo-500" />
+                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">กรองตามอำเภอ:</span>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {/* ALL chip */}
                   <button
-                    onClick={() => handleSetSubDistrictFilter('ALL')}
-                    className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium border transition-all ${subDistrictFilter === 'ALL'
-                      ? 'bg-teal-600 text-white border-teal-600 shadow-sm'
-                      : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-600 hover:border-teal-400 hover:text-teal-600 dark:hover:text-teal-400'
+                    onClick={resetDistrictFilter}
+                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium border transition-all ${districtFilter === 'ALL'
+                      ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
+                      : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:border-indigo-400 hover:text-indigo-600 dark:hover:text-indigo-400'
                       }`}
                   >
-                    ทุกตำบล
-                    <span className={`text-xs px-1 py-0 rounded-full ${subDistrictFilter === 'ALL'
+                    ทั้งหมด
+                    <span className={`text-xs px-1.5 py-0.5 rounded-full ${districtFilter === 'ALL'
                       ? 'bg-white/20 text-white'
-                      : 'bg-gray-100 dark:bg-gray-700 text-gray-400'
+                      : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400'
                       }`}>
-                      {availableSubDistricts.reduce((s, d) => s + d.count, 0)}
+                      {filteredOrders.length}
                     </span>
                   </button>
 
-                  {availableSubDistricts.map(sd => {
-                    const label = sd.key.includes(' / ') ? sd.key.split(' / ')[1] : sd.key;
-                    return (
+                  {/* District chips */}
+                  {availableDistricts.map(d => (
+                    <button
+                      key={d.key}
+                      onClick={() => handleSetDistrictFilter(d.key)}
+                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium border transition-all ${districtFilter === d.key
+                        ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
+                        : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:border-indigo-400 hover:text-indigo-600 dark:hover:text-indigo-400'
+                        }`}
+                    >
+                      📍 {d.key}
+                      <span className={`text-xs px-1.5 py-0.5 rounded-full ${districtFilter === d.key
+                        ? 'bg-white/20 text-white'
+                        : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400'
+                        }`}>
+                        {d.count}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+
+                {/* Sub-district chips */}
+                {districtFilter !== 'ALL' && availableSubDistricts.length > 1 && (
+                  <div className="mt-3 ml-4 pl-4 border-l-2 border-indigo-200 dark:border-indigo-700">
+                    <div className="flex items-center gap-2 mb-2 px-1">
+                      <Navigation className="w-3.5 h-3.5 text-teal-500" />
+                      <span className="text-xs font-medium text-gray-600 dark:text-gray-400">ตำบลใน {districtFilter}:</span>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {/* ALL sub-districts chip */}
                       <button
-                        key={sd.key}
-                        onClick={() => handleSetSubDistrictFilter(sd.key)}
-                        className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium border transition-all ${subDistrictFilter === sd.key
+                        onClick={() => handleSetSubDistrictFilter('ALL')}
+                        className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium border transition-all ${subDistrictFilter === 'ALL'
                           ? 'bg-teal-600 text-white border-teal-600 shadow-sm'
                           : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-600 hover:border-teal-400 hover:text-teal-600 dark:hover:text-teal-400'
                           }`}
                       >
-                        {label}
-                        <span className={`text-xs px-1 py-0 rounded-full ${subDistrictFilter === sd.key
+                        ทุกตำบล
+                        <span className={`text-xs px-1 py-0 rounded-full ${subDistrictFilter === 'ALL'
                           ? 'bg-white/20 text-white'
                           : 'bg-gray-100 dark:bg-gray-700 text-gray-400'
                           }`}>
-                          {sd.count}
+                          {availableSubDistricts.reduce((s, d) => s + d.count, 0)}
                         </span>
                       </button>
-                    );
-                  })}
-                </div>
+
+                      {availableSubDistricts.map(sd => {
+                        const label = sd.key.includes(' / ') ? sd.key.split(' / ')[1] : sd.key;
+                        return (
+                          <button
+                            key={sd.key}
+                            onClick={() => handleSetSubDistrictFilter(sd.key)}
+                            className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium border transition-all ${subDistrictFilter === sd.key
+                              ? 'bg-teal-600 text-white border-teal-600 shadow-sm'
+                              : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-600 hover:border-teal-400 hover:text-teal-600 dark:hover:text-teal-400'
+                              }`}
+                          >
+                            {label}
+                            <span className={`text-xs px-1 py-0 rounded-full ${subDistrictFilter === sd.key
+                              ? 'bg-white/20 text-white'
+                              : 'bg-gray-100 dark:bg-gray-700 text-gray-400'
+                              }`}>
+                              {sd.count}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
-          </div>
-        )}
 
-        {/* Orders List */}
-        {filteredOrders.length === 0 ? (
-          <Card>
-            <div className="p-12 text-center text-gray-500 dark:text-gray-400">
-              <Package className="w-16 h-16 mx-auto mb-4 opacity-30" />
-              <p className="text-lg font-medium">ไม่มีออเดอร์ที่รอจัดทริป</p>
-              <p className="text-sm mt-2">ออเดอร์ทั้งหมดถูกจัดเข้าทริปแล้ว</p>
-            </div>
-          </Card>
-        ) : (
-          <div className="space-y-6">
-            {/* Selected Orders Section (Compact View) */}
-            {selectedOrderObjects.length > 0 && (
-              <div>
-                <div className="flex items-center justify-between mb-3 px-2">
-                  <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2">
-                    <div className="w-2 h-2 bg-blue-600 rounded-full animate-pulse"></div>
-                    ออเดอร์ที่เลือกแล้ว ({selectedOrderObjects.length})
-                  </h3>
+            {/* Orders List */}
+            {filteredOrders.length === 0 ? (
+              <Card>
+                <div className="p-12 text-center text-gray-500 dark:text-gray-400">
+                  <Package className="w-16 h-16 mx-auto mb-4 opacity-30" />
+                  <p className="text-lg font-medium">ไม่มีออเดอร์ที่รอจัดทริป</p>
+                  <p className="text-sm mt-2">ออเดอร์ทั้งหมดถูกจัดเข้าทริปแล้ว</p>
                 </div>
-                <div className="space-y-2">
-                  {selectedOrderObjects.map((order: any) => (
-                    <Card key={order.id} className="bg-blue-50 border-blue-200">
-                      <div className="p-4">
-                        <div className="flex items-center gap-4">
-                          <input
-                            type="checkbox"
-                            checked={true}
-                            onChange={() => toggleOrderSelection(order.id)}
-                            className="w-5 h-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                          />
-                          <div className="flex-1 grid grid-cols-4 gap-4 items-center">
-                            <div>
-                              <div className="font-mono text-sm font-semibold text-blue-700">
-                                {order.order_number || (
-                                  <span className="text-amber-600 dark:text-amber-400 font-normal">รอจัดทริป</span>
-                                )}
-                              </div>
-                              <div className="text-xs text-gray-500">
-                                {new Date(order.order_date).toLocaleDateString('th-TH', {
-                                  day: 'numeric',
-                                  month: 'short',
-                                })}
-                              </div>
-                              {order.delivery_date && (
-                                <div className="flex items-center gap-1 mt-1">
-                                  <Calendar className="w-3 h-3 text-orange-600" />
-                                  <span className="text-xs font-medium text-orange-600">
-                                    นัดส่ง: {new Date(order.delivery_date).toLocaleDateString('th-TH', {
+              </Card>
+            ) : (
+              <div className="space-y-6">
+                {/* Selected Orders Section (Compact View) */}
+                {selectedOrderObjects.length > 0 && (
+                  <div>
+                    <div className="flex items-center justify-between mb-3 px-2">
+                      <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2">
+                        <div className="w-2 h-2 bg-blue-600 rounded-full animate-pulse"></div>
+                        ออเดอร์ที่เลือกแล้ว ({selectedOrderObjects.length})
+                      </h3>
+                    </div>
+                    <div className="space-y-2">
+                      {selectedOrderObjects.map((order: any) => (
+                        <Card key={order.id} className="bg-blue-50 border-blue-200">
+                          <div className="p-4">
+                            <div className="flex items-center gap-4">
+                              <input
+                                type="checkbox"
+                                checked={true}
+                                onChange={() => toggleOrderSelection(order.id)}
+                                className="w-5 h-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                              />
+                              <div className="flex-1 grid grid-cols-4 gap-4 items-center">
+                                <div>
+                                  <div className="font-mono text-sm font-semibold text-blue-700">
+                                    {order.order_number || (
+                                      <span className="text-amber-600 dark:text-amber-400 font-normal">รอจัดทริป</span>
+                                    )}
+                                  </div>
+                                  <div className="text-xs text-gray-500">
+                                    {new Date(order.order_date).toLocaleDateString('th-TH', {
                                       day: 'numeric',
                                       month: 'short',
                                     })}
-                                  </span>
+                                  </div>
+                                  {order.delivery_date && (
+                                    <div className="flex items-center gap-1 mt-1">
+                                      <Calendar className="w-3 h-3 text-orange-600" />
+                                      <span className="text-xs font-medium text-orange-600">
+                                        นัดส่ง: {new Date(order.delivery_date).toLocaleDateString('th-TH', {
+                                          day: 'numeric',
+                                          month: 'short',
+                                        })}
+                                      </span>
+                                    </div>
+                                  )}
                                 </div>
-                              )}
-                            </div>
-                            <div>
-                              <div className="font-medium text-blue-900 dark:text-blue-100">{order.customer_name}</div>
-                              <div className="text-xs text-blue-700 dark:text-blue-300">{order.customer_code}</div>
-                            </div>
-                            <div className="text-right">
-                              <div className="font-bold text-blue-600">
-                                ฿{order.total_amount.toLocaleString()}
+                                <div>
+                                  <div className="font-medium text-blue-900 dark:text-blue-100">{order.customer_name}</div>
+                                  <div className="text-xs text-blue-700 dark:text-blue-300">{order.customer_code}</div>
+                                </div>
+                                <div className="text-right">
+                                  <div className="font-bold text-blue-600">
+                                    ฿{order.total_amount.toLocaleString()}
+                                  </div>
+                                </div>
+                                <div className="text-right">
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => toggleOrderDetails(order.id)}
+                                    className="text-xs"
+                                  >
+                                    {expandedOrders.has(order.id) ? (
+                                      <>
+                                        <ChevronDown className="w-3 h-3" />
+                                        ซ่อน
+                                      </>
+                                    ) : (
+                                      <>
+                                        <ChevronRight className="w-3 h-3" />
+                                        ดู
+                                      </>
+                                    )}
+                                  </Button>
+                                </div>
                               </div>
                             </div>
-                            <div className="text-right">
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => toggleOrderDetails(order.id)}
-                                className="text-xs"
-                              >
-                                {expandedOrders.has(order.id) ? (
-                                  <>
-                                    <ChevronDown className="w-3 h-3" />
-                                    ซ่อน
-                                  </>
-                                ) : (
-                                  <>
-                                    <ChevronRight className="w-3 h-3" />
-                                    ดู
-                                  </>
-                                )}
-                              </Button>
-                            </div>
+
+                            {/* Order Items (Expandable) */}
+                            {expandedOrders.has(order.id) && (
+                              <div className="mt-4 pt-4 border-t border-blue-200">
+                                <h4 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                                  <Package className="w-4 h-4 text-blue-600" />
+                                  รายการสินค้า
+                                </h4>
+                                <OrderItemsTable
+                                  items={orderItems.get(order.id) || []}
+                                  onUpdatePickup={handleUpdatePickup}
+                                  savingPickupItemId={savingPickupItemId}
+                                  pendingPickupValues={pendingPickupValues}
+                                  showHint={true}
+                                  containerClassName="bg-white"
+                                  isLoading={!orderItems.get(order.id)}
+                                />
+                              </div>
+                            )}
                           </div>
-                        </div>
+                        </Card>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
-                        {/* Order Items (Expandable) */}
-                        {expandedOrders.has(order.id) && (
-                          <div className="mt-4 pt-4 border-t border-blue-200">
-                            <h4 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
-                              <Package className="w-4 h-4 text-blue-600" />
-                              รายการสินค้า
-                            </h4>
-                            <OrderItemsTable
-                              items={orderItems.get(order.id) || []}
-                              onUpdatePickup={handleUpdatePickup}
-                              savingPickupItemId={savingPickupItemId}
-                              pendingPickupValues={pendingPickupValues}
-                              showHint={true}
-                              containerClassName="bg-white"
-                              isLoading={!orderItems.get(order.id)}
-                            />
-                          </div>
-                        )}
-                      </div>
-                    </Card>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* All Orders Section */}
-            <div>
-              <div className="flex items-center justify-between mb-3 px-2">
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2">
-                  ออเดอร์ทั้งหมด ({filteredOrders.length})
-                </h3>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={selectedOrders.size === filteredOrders.length && filteredOrders.length > 0}
-                    onChange={(e) => {
-                      if (e.target.checked) {
-                        selectAll();
-                      } else {
-                        clearSelection();
-                      }
-                    }}
-                    className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                  />
-                  <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                    เลือกทั้งหมด
-                  </label>
-                </div>
-              </div>
-
-              {/* Grouped View by Area */}
-              {groupByArea && groupedOrders ? (
-                <AreaGroupedOrderList
-                  groupedOrders={groupedOrders}
-                  selectedOrders={selectedOrders}
-                  expandedOrders={expandedOrders}
-                  collapsedGroups={collapsedGroups}
-                  orderItems={orderItems}
-                  savingPickupItemId={savingPickupItemId}
-                  pendingPickupValues={pendingPickupValues}
-                  onToggleSelection={toggleOrderSelection}
-                  onToggleDetails={toggleOrderDetails}
-                  onEdit={handleEditOrder}
-                  onUpdatePickup={handleUpdatePickup}
-                  onToggleGroupCollapse={toggleGroupCollapse}
-                  onSelectGroupOrders={selectGroupOrders}
-                  renderOrderCard={renderOrderCard}
-                />
-              ) : (
-                /* Flat View (default) */
+                {/* All Orders Section */}
                 <div>
-                  {filteredOrders.map((order: any) => (
-                    <OrderCard
-                      key={order.id}
-                      order={order}
-                      isSelected={selectedOrders.has(order.id)}
-                      isExpanded={expandedOrders.has(order.id)}
-                      orderItems={orderItems.get(order.id) || []}
+                  <div className="flex items-center justify-between mb-3 px-2">
+                    <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2">
+                      ออเดอร์ทั้งหมด ({filteredOrders.length})
+                    </h3>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={selectedOrders.size === filteredOrders.length && filteredOrders.length > 0}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            selectAll();
+                          } else {
+                            clearSelection();
+                          }
+                        }}
+                        className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                      />
+                      <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                        เลือกทั้งหมด
+                      </label>
+                    </div>
+                  </div>
+
+                  {/* Grouped View by Area */}
+                  {groupByArea && groupedOrders ? (
+                    <AreaGroupedOrderList
+                      groupedOrders={groupedOrders}
+                      selectedOrders={selectedOrders}
+                      expandedOrders={expandedOrders}
+                      collapsedGroups={collapsedGroups}
+                      orderItems={orderItems}
+                      savingPickupItemId={savingPickupItemId}
+                      pendingPickupValues={pendingPickupValues}
                       onToggleSelection={toggleOrderSelection}
                       onToggleDetails={toggleOrderDetails}
                       onEdit={handleEditOrder}
                       onUpdatePickup={handleUpdatePickup}
-                      savingPickupItemId={savingPickupItemId}
-                      pendingPickupValues={pendingPickupValues}
+                      onToggleGroupCollapse={toggleGroupCollapse}
+                      onSelectGroupOrders={selectGroupOrders}
+                      renderOrderCard={renderOrderCard}
                     />
-                  ))}
+                  ) : (
+                    /* Flat View (default) */
+                    <div>
+                      {filteredOrders.map((order: any) => (
+                        <OrderCard
+                          key={order.id}
+                          order={order}
+                          isSelected={selectedOrders.has(order.id)}
+                          isExpanded={expandedOrders.has(order.id)}
+                          orderItems={orderItems.get(order.id) || []}
+                          onToggleSelection={toggleOrderSelection}
+                          onToggleDetails={toggleOrderDetails}
+                          onEdit={handleEditOrder}
+                          onUpdatePickup={handleUpdatePickup}
+                          savingPickupItemId={savingPickupItemId}
+                          pendingPickupValues={pendingPickupValues}
+                        />
+                      ))}
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
+              </div>
+            )}
           </div>
-        )}
+        </div>
 
         {/* Products Summary Modal */}
         <ProductsSummaryModal
