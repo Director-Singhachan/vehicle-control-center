@@ -708,27 +708,40 @@ export function PendingOrdersView() {
           </Card>
         </div>
 
-        {/* Main content layout: optional overview panel + detail list */}
-        <div className={`grid gap-6 ${overviewMode ? 'xl:grid-cols-[360px,1fr]' : ''}`}>
+        {/* Main content layout: overview panel + detail list */}
+        <div className={`grid gap-6 ${overviewMode ? 'xl:grid-cols-[420px,1fr]' : ''}`}>
           {/* Left: Overview by district/area/store (only in overview mode and when grouped by area) */}
           {overviewMode && groupByArea && groupedOrders && (
-            <div className="space-y-3">
+            <div className="space-y-4">
               <Card>
-                <div className="p-4">
-                  <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-2 flex items-center gap-2">
-                    <MapPin className="w-4 h-4 text-indigo-500" />
-                    ภาพรวมร้านค้าตามเขต
-                  </h3>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">
-                    ดูจำนวนร้านและมูลค่าออเดอร์ของแต่ละเขต/พื้นที่ในมุมมองเดียว เหมาะสำหรับเปิดไว้หน้าจอที่ 1
-                  </p>
+                <div className="p-4 pb-3 border-b border-indigo-100/60 dark:border-indigo-800/60 flex items-center justify-between gap-3">
+                  <div>
+                    <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2">
+                      <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-indigo-100 dark:bg-indigo-800/60">
+                        <MapPin className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-300" />
+                      </span>
+                      ภาพรวมร้านค้าตามเขต
+                    </h3>
+                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                      สรุปจำนวนออเดอร์ มูลค่า และรายชื่อร้านในแต่ละเขต/พื้นที่ คลิกเพื่อเลือกทั้งกลุ่มได้ทันที
+                    </p>
+                  </div>
+                  <div className="text-right text-xs text-gray-500 dark:text-gray-400">
+                    <div>ทั้งหมด {filteredOrders.length} ออเดอร์</div>
+                    <div className="mt-0.5">
+                      ฿{new Intl.NumberFormat('th-TH', { notation: 'compact', compactDisplay: 'short' }).format(filteredOrdersTotal)}
+                    </div>
+                  </div>
+                </div>
+                <div className="px-4 py-2 text-[11px] text-gray-500 dark:text-gray-400 bg-indigo-50/40 dark:bg-indigo-900/30 rounded-b-xl">
+                  เคล็ดลับ: ใช้ panel นี้บนจอที่ 1 เพื่อวางแผนเส้นทาง แล้วใช้จอที่ 2 สำหรับสร้างทริปจริง
                 </div>
               </Card>
 
-              <div className="space-y-3 max-h-[calc(100vh-320px)] xl:max-h-[calc(100vh-260px)] overflow-auto pr-1">
+              <div className="space-y-3 max-h-[calc(100vh-320px)] xl:max-h-[calc(100vh-260px)] overflow-auto pr-1.5 custom-scrollbar-thin">
                 {groupedOrders.map((district: any) => (
-                  <Card key={district.districtKey} className="overflow-hidden">
-                    <div className="border-b border-gray-100 dark:border-gray-700 bg-indigo-50/70 dark:bg-indigo-900/30 px-4 py-2.5 flex items-center gap-2">
+                  <Card key={district.districtKey} className="overflow-hidden shadow-sm dark:shadow-none">
+                    <div className="border-b border-gray-100 dark:border-gray-700 bg-indigo-50/80 dark:bg-indigo-900/40 px-4 py-2.5 flex items-center gap-2">
                       <MapPin className="w-4 h-4 text-indigo-600 dark:text-indigo-300" />
                       <div className="flex-1">
                         <div className="text-sm font-semibold text-indigo-900 dark:text-indigo-100">
@@ -743,7 +756,7 @@ export function PendingOrdersView() {
                       </Badge>
                     </div>
 
-                    <div className="p-3 space-y-2">
+                    <div className="p-3 space-y-2.5 bg-white dark:bg-charcoal-900/40">
                       {Array.from(district.areas.entries())
                         .sort(([, a]: any, [, b]: any) => b.length - a.length)
                         .map(([areaKey, areaOrders]: [string, any[]]) => {
@@ -760,41 +773,50 @@ export function PendingOrdersView() {
                             <button
                               key={areaKey}
                               type="button"
-                              className="w-full text-left rounded-lg border border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-800/60 px-3 py-2.5 hover:border-indigo-300 hover:bg-indigo-50/60 dark:hover:border-indigo-500 dark:hover:bg-indigo-900/40 transition-colors"
+                              className="w-full text-left rounded-lg border border-gray-100 dark:border-gray-700 bg-gray-50/80 dark:bg-gray-800/60 px-3 py-2.5 hover:border-indigo-300 hover:bg-indigo-50/70 dark:hover:border-indigo-500 dark:hover:bg-indigo-900/40 transition-colors"
                               onClick={() => selectGroupOrders(areaOrders)}
                             >
-                              <div className="flex items-center justify-between gap-2 mb-1">
-                                <div className="text-xs font-semibold text-gray-800 dark:text-gray-200">
-                                  {areaKey}
+                              <div className="flex items-start justify-between gap-2 mb-1.5">
+                                <div className="flex flex-col gap-0.5 min-w-0">
+                                  <div className="text-xs font-semibold text-gray-800 dark:text-gray-200 truncate">
+                                    {areaKey}
+                                  </div>
+                                  <div className="text-[11px] text-gray-500 dark:text-gray-400 flex items-center gap-2">
+                                    <span>{areaOrders.length} ออเดอร์</span>
+                                    <span className="inline-flex items-center px-1.5 py-0.5 rounded-full bg-white/70 dark:bg-gray-900/60 border border-indigo-100/80 dark:border-indigo-700/60 text-[10px] text-indigo-700 dark:text-indigo-300 font-medium">
+                                      ฿{totalAmount.toLocaleString()}
+                                    </span>
+                                  </div>
                                 </div>
-                                <div className="flex items-center gap-2">
-                                  <span className="text-[11px] text-gray-500 dark:text-gray-400">
-                                    {areaOrders.length} ออเดอร์
-                                  </span>
-                                  <span className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-300">
-                                    ฿{totalAmount.toLocaleString()}
-                                  </span>
-                                </div>
+                                <span className="mt-0.5 inline-flex h-5 items-center rounded-full bg-indigo-100/80 dark:bg-indigo-800/70 px-2 text-[10px] font-medium text-indigo-700 dark:text-indigo-100 whitespace-nowrap">
+                                  เลือกทั้งกลุ่ม
+                                </span>
                               </div>
-                              <div className="flex flex-wrap gap-1 mt-1">
+                              {/* รายชื่อร้าน: แสดงทีละร้านต่อหนึ่งบรรทัดให้อ่านง่าย */}
+                              <div className="mt-1.5 space-y-1.5">
                                 {uniqueStores.map((storeKey) => {
                                   const [code, name] = storeKey.split('::');
                                   return (
                                     <span
                                       key={storeKey}
-                                      className="inline-flex items-center px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-700 text-[11px] text-gray-700 dark:text-gray-200"
+                                      className="flex items-center justify-between px-2.5 py-1 rounded-md bg-white/90 dark:bg-gray-700 text-[11px] text-gray-700 dark:text-gray-200 border border-gray-100/80 dark:border-gray-600"
                                     >
-                                      {code && (
-                                        <span className="font-mono text-[10px] text-gray-500 dark:text-gray-400 mr-1">
-                                          {code}
-                                        </span>
-                                      )}
-                                      <span>{name || 'ไม่ระบุร้าน'}</span>
+                                      <div className="flex items-center gap-1.5 min-w-0">
+                                        {code && (
+                                          <span className="font-mono text-[10px] text-gray-500 dark:text-gray-400">
+                                            {code}
+                                          </span>
+                                        )}
+                                        <span className="truncate">{name || 'ไม่ระบุร้าน'}</span>
+                                      </div>
+                                      <span className="ml-2 shrink-0 text-[10px] text-gray-400 dark:text-gray-300">
+                                        ร้าน
+                                      </span>
                                     </span>
                                   );
                                 })}
                                 {areaOrders.length > uniqueStores.length && (
-                                  <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-indigo-100/70 dark:bg-indigo-800/60 text-[10px] text-indigo-700 dark:text-indigo-200">
+                                  <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-indigo-100/80 dark:bg-indigo-800/80 text-[10px] text-indigo-700 dark:text-indigo-50 border border-indigo-200/80 dark:border-indigo-700/80">
                                     +{areaOrders.length - uniqueStores.length} รายการ
                                   </span>
                                 )}
