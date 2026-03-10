@@ -314,7 +314,17 @@ export const ordersService = {
 
     const { data: items, error: itemsError } = await supabase
       .from('order_items')
-      .select('order_id, product_id, quantity, quantity_picked_up_at_store, quantity_delivered, fulfillment_method')
+      .select(`
+        id,
+        order_id,
+        product_id,
+        quantity,
+        quantity_picked_up_at_store,
+        quantity_delivered,
+        fulfillment_method,
+        notes,
+        product:products(product_name, product_code, unit)
+      `)
       .in('order_id', orderIds);
 
     if (itemsError) throw itemsError;
@@ -323,7 +333,12 @@ export const ordersService = {
       const orderItems = (items ?? []).filter((i: any) => i.order_id === order.id);
       return {
         ...order,
-        items: orderItems,
+        items: orderItems.map((i: any) => ({
+          ...i,
+          product_name: i.product?.product_name || 'ไม่ระบุชื่อสินค้า',
+          product_code: i.product?.product_code || '-',
+          unit_name: i.product?.unit || 'หน่วย'
+        })),
         total_items: orderItems.length,
         isAwaitingDispatch: true
       };

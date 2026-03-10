@@ -82,9 +82,9 @@ export const SplitOrderView: React.FC = () => {
     };
 
     const filteredOrders = orders.filter(order =>
-        order.order_number?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        order.customer_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        order.store_name?.toLowerCase().includes(searchTerm.toLowerCase())
+        (order.order_number?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
+        (order.customer_name?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
+        (order.store_name?.toLowerCase() || '').includes(searchTerm.toLowerCase())
     );
 
     return (
