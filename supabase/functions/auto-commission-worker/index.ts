@@ -40,6 +40,15 @@ type CrewMemberRow = {
   } | null;
 };
 
+type AggregatedCrewCommission = {
+  staffId: string;
+  staffName: string;
+  role: 'driver' | 'helper' | 'mixed';
+  workDurationHours: number;
+  workPercentage: number;
+  commissionAmount: number;
+};
+
 Deno.serve(async (req) => {
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
@@ -327,6 +336,40 @@ Deno.serve(async (req) => {
       };
     });
 
+    // รวมพนักงานคนเดิมที่อาจมีหลาย record ในทริปเดียวให้เหลือ 1 commission log ต่อ staff
+    const aggregatedCrewMap = new Map<string, AggregatedCrewCommission>();
+
+    for (const crew of crewCommissions) {
+      const existing = aggregatedCrewMap.get(crew.staffId);
+
+      if (!existing) {
+        aggregatedCrewMap.set(crew.staffId, {
+          staffId: crew.staffId,
+          staffName: crew.staffName,
+          role: crew.role,
+          workDurationHours: crew.workDurationHours,
+          workPercentage: crew.workPercentage,
+          commissionAmount: crew.commissionAmount,
+        });
+        continue;
+      }
+
+      aggregatedCrewMap.set(crew.staffId, {
+        ...existing,
+        role: existing.role === crew.role ? existing.role : 'mixed',
+        workDurationHours: existing.workDurationHours + crew.workDurationHours,
+        workPercentage: existing.workPercentage + crew.workPercentage,
+        commissionAmount: existing.commissionAmount + crew.commissionAmount,
+      });
+    }
+
+    const aggregatedCrewCommissions = Array.from(aggregatedCrewMap.values()).map((crew) => ({
+      ...crew,
+      workDurationHours: Math.round(crew.workDurationHours * 100) / 100,
+      workPercentage: Math.round(crew.workPercentage * 100) / 100,
+      commissionAmount: Math.round(crew.commissionAmount * 100) / 100,
+    }));
+
     // Step 5: Delete existing logs for this trip (idempotent & support recalculation)
     const { error: deleteError } = await supabase
       .from('commission_logs')
@@ -342,7 +385,7 @@ Deno.serve(async (req) => {
     }
 
     // Step 6: Insert new logs
-    const logEntries = crewCommissions.map((crew) => ({
+    const logEntries = aggregatedCrewCommissions.map((crew) => ({
       delivery_trip_id: tripId,
       staff_id: crew.staffId,
       total_items_delivered: totalItemsDelivered,
@@ -369,7 +412,7 @@ Deno.serve(async (req) => {
 
     console.log('[auto-commission-worker] Commission calculated & saved successfully', {
       tripId,
-      crewCount: crewCommissions.length,
+      crewCount: aggregatedCrewCommissions.length,
       totalItemsDelivered,
       totalCommission,
     });
@@ -380,7 +423,7 @@ Deno.serve(async (req) => {
         tripId,
         totalItemsDelivered,
         totalCommission,
-        crewCount: crewCommissions.length,
+        crewCount: aggregatedCrewCommissions.length,
       }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
     );

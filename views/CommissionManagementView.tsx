@@ -121,15 +121,20 @@ export const CommissionManagementView: React.FC = () => {
     };
 
     // Handle single trip calculate
-    const handleSingleCalculate = async (tripId: string) => {
+    const handleSingleCalculate = async (tripId: string, isRecalculate: boolean = false) => {
         resetBatch();
         const result = await batchCalculate([tripId]);
         if (result?.success) {
-            showNotify('คำนวณค่าคอมมิชชั่นสำเร็จ', 'success');
+            showNotify(isRecalculate ? 'คำนวณค่าคอมมิชชั่นใหม่สำเร็จ' : 'คำนวณค่าคอมมิชชั่นสำเร็จ', 'success');
             refreshStaff();
             refreshTrips();
         } else {
-            showNotify('คำนวณล้มเหลว ตรวจสอบข้อมูลพนักงานและสินค้า', 'error');
+            showNotify(
+                isRecalculate
+                    ? 'คำนวณค่าคอมมิชชั่นใหม่ล้มเหลว ตรวจสอบข้อมูลพนักงานและสินค้า'
+                    : 'คำนวณล้มเหลว ตรวจสอบข้อมูลพนักงานและสินค้า',
+                'error'
+            );
         }
     };
 
@@ -764,16 +769,21 @@ export const CommissionManagementView: React.FC = () => {
                                             )}
                                         </button>
 
-                                        {/* Calculate button for pending trips */}
-                                        {isPending && !noCrew && (
+                                        {/* Calculate / Recalculate button */}
+                                        {!noCrew && (
                                             <Button
                                                 size="sm"
-                                                onClick={() => handleSingleCalculate(trip.trip_id)}
+                                                onClick={() => handleSingleCalculate(trip.trip_id, trip.has_commission)}
                                                 disabled={batchLoading}
-                                                className="flex-shrink-0 rounded-lg bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-1.5 px-4"
+                                                variant={trip.has_commission ? 'outline' : 'default'}
+                                                className={`flex-shrink-0 rounded-lg flex items-center gap-1.5 px-4 ${
+                                                    trip.has_commission
+                                                        ? 'border-blue-200 text-blue-700 hover:bg-blue-50 dark:border-blue-700 dark:text-blue-300 dark:hover:bg-blue-900/20'
+                                                        : 'bg-blue-600 hover:bg-blue-700 text-white'
+                                                }`}
                                             >
                                                 <Calculator size={14} />
-                                                คำนวณ
+                                                {trip.has_commission ? 'คำนวณใหม่' : 'คำนวณ'}
                                             </Button>
                                         )}
                                     </div>

@@ -1,6 +1,11 @@
 // Crew Service - Business logic for crew management and commission calculation
+import { FunctionsHttpError } from '@supabase/functions-js';
 import { supabase } from '../lib/supabase';
 import type { Database } from '../types/database';
+import {
+    recalculateCompletedTripCommission,
+    resolveCrewAssignmentStartAt,
+} from './deliveryTrip/crewCommissionUtils';
 
 type ServiceStaff = Database['public']['Tables']['service_staff']['Row'];
 type DeliveryTripCrew = Database['public']['Tables']['delivery_trip_crews']['Row'];
@@ -120,12 +125,14 @@ export const crewService = {
         }
 
         // Batch insert crew assignments
+        const assignmentStartAt = await resolveCrewAssignmentStartAt(tripId, trip.status);
+
         const crewAssignments = staffIds.map(staffId => ({
             delivery_trip_id: tripId,
             staff_id: staffId,
             role,
             status: 'active' as const,
-            start_at: new Date().toISOString(),
+            start_at: assignmentStartAt,
             created_by: user.id,
             updated_by: user.id,
         }));
@@ -145,6 +152,8 @@ export const crewService = {
 
             throw insertError;
         }
+
+        await recalculateCompletedTripCommission(tripId, 'crew_assignment', trip.status);
 
         // Fetch full details with staff information
         const crewIds = (insertedCrews || []).map(c => c.id);
@@ -276,6 +285,8 @@ export const crewService = {
             throw new Error('Failed to create new crew assignment. Changes have been rolled back.');
         }
 
+        await recalculateCompletedTripCommission(tripId, 'crew_swap');
+
         // Return the new assignment with full details
         const [newCrewDetails] = await crewService.getCrewDetailsByIds([newAssignment.id]);
         return newCrewDetails;
@@ -332,6 +343,8 @@ export const crewService = {
             console.error('[crewService] Error removing crew member:', updateError);
             throw new Error('Failed to remove crew member');
         }
+
+        await recalculateCompletedTripCommission(tripId, 'crew_removal');
     },
 
     /**
@@ -768,12 +781,31 @@ export const crewService = {
      * This is safer as it runs with service role and can bypass RLS issues
      */
     calculateCommissionViaFunction: async (tripId: string): Promise<{ success: boolean; reason?: string; message?: string }> => {
-        const { data, error } = await supabase.functions.invoke('auto-commission-worker', {
-            body: { trip_id: tripId, source: 'manual_recalculate' }
-        });
+        let data: any = null;
+        let error: any = null;
+
+        try {
+            const response = await supabase.functions.invoke('auto-commission-worker', {
+                body: { trip_id: tripId, source: 'manual_recalculate' }
+            });
+            data = response.data;
+            error = response.error;
+        } catch (err) {
+            error = err;
+        }
 
         if (error) {
             console.error('[crewService] Error invoking auto-commission-worker:', error);
+
+            if (error instanceof FunctionsHttpError) {
+                try {
+                    const details = await error.context.json();
+                    throw new Error(details?.message || details?.error || 'Edge Function returned a non-2xx status code');
+                } catch {
+                    throw new Error('Edge Function returned a non-2xx status code');
+                }
+            }
+
             throw error;
         }
 
