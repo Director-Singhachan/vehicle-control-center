@@ -204,6 +204,13 @@ export const TripOverviewSection: React.FC<TripOverviewSectionProps> = ({
       : null;
   const historyCount = editHistory.length + itemChanges.length;
 
+  const hasDriverCrew = staffDistribution.some((s: any) => s.staff_role === 'driver');
+  const hasHelperCrew = staffDistribution.some((s: any) => s.staff_role === 'helper');
+  const showServiceStaffWarning =
+    trip.status !== 'cancelled' &&
+    (trip.driver || hasDriverCrew) &&
+    !hasHelperCrew;
+
   return (
     <div className="space-y-6 animate-fade-in">
       {/* ── Basic Info Card ─────────────────────────────────────────── */}
@@ -317,6 +324,23 @@ export const TripOverviewSection: React.FC<TripOverviewSectionProps> = ({
           )}
         </div>
       </Card>
+
+      {showServiceStaffWarning && (
+        <div className="p-4 rounded-xl border border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-900/20 flex items-start gap-3">
+          <AlertCircle
+            size={20}
+            className="text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5"
+          />
+          <div>
+            <p className="text-sm font-medium text-amber-800 dark:text-amber-200">
+              ทริปนี้ยังไม่ได้จัดพนักงานบริการ
+            </p>
+            <p className="text-xs text-amber-700 dark:text-amber-300 mt-1">
+              ตอนนี้มีเพียงคนขับในทริป กรุณาเพิ่มรายชื่อพนักงานบริการในแท็บ &quot;พนักงาน&quot; เพื่อให้ระบบคำนวณค่าคอมมิชชั่นได้ถูกต้อง
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* ── Stat Cards ──────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
