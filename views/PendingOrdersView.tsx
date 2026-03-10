@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback, memo } from 'react';
-import { Package, Calendar, MapPin, DollarSign, User, Phone, Filter, X, Zap, ChevronDown, ChevronRight, Eye, Edit, Layers, List, Navigation, Ban, LayoutTemplate } from 'lucide-react';
+import { Package, Calendar, MapPin, DollarSign, User, Phone, Filter, X, Zap, ChevronDown, ChevronRight, Eye, Edit, Navigation, Ban } from 'lucide-react';
 import { usePendingOrders } from '../hooks/useOrders';
 import { orderItemsService } from '../services/ordersService';
 import { CreateTripFromOrdersView } from './CreateTripFromOrdersView';
@@ -309,7 +309,6 @@ export function PendingOrdersView() {
     availableSubDistricts,
     groupedOrders,
     toggleGroupCollapse,
-    toggleGroupByArea,
     handleSetDistrictFilter,
     handleSetSubDistrictFilter,
     resetDistrictFilter,
@@ -322,7 +321,8 @@ export function PendingOrdersView() {
   const [orderItems, setOrderItems] = useState<Map<string, any[]>>(new Map());
   const [showProductsSummaryModal, setShowProductsSummaryModal] = useState(false);
   const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
-  const [overviewMode, setOverviewMode] = useState(false);
+  // เริ่มต้นให้โหมดสองหน้าจอเปิดอยู่ เพื่อให้เห็นภาพรวมเขต/ร้านทันที
+  const [overviewMode, setOverviewMode] = useState(true);
 
   const { savingPickupItemId, pendingPickupValues, handleUpdatePickup } = usePickupUpdate({
     setOrderItems,
@@ -651,16 +651,6 @@ export function PendingOrdersView() {
               รีเฟรช
             </Button>
 
-            {/* Toggle Group by Area */}
-            <Button
-              onClick={toggleGroupByArea}
-              variant={groupByArea ? 'primary' : 'outline'}
-              className={`flex items-center gap-2 ${groupByArea ? 'bg-indigo-600 hover:bg-indigo-700 text-white' : 'border-indigo-300 text-indigo-600 hover:bg-indigo-50'}`}
-            >
-              {groupByArea ? <Layers className="w-4 h-4" /> : <List className="w-4 h-4" />}
-              {groupByArea ? 'จัดกลุ่มตามพื้นที่' : 'จัดกลุ่มตามพื้นที่'}
-            </Button>
-
             {/* Quick Create Button */}
             <Button
               onClick={() => setShowQuickCreate(true)}
@@ -669,19 +659,6 @@ export function PendingOrdersView() {
             >
               <Zap className="w-4 h-4" />
               สร้างทริปด่วน
-            </Button>
-
-            {/* Toggle Two-Pane Overview Mode */}
-            <Button
-              onClick={() => setOverviewMode((prev) => !prev)}
-              variant="outline"
-              className={`flex items-center gap-2 ${overviewMode
-                ? 'border-indigo-500 text-indigo-700 bg-indigo-50 dark:bg-indigo-900/30 dark:text-indigo-300'
-                : 'border-gray-300 text-gray-700 dark:text-gray-200'
-                }`}
-            >
-              <LayoutTemplate className="w-4 h-4" />
-              โหมดสองหน้าจอ
             </Button>
           </div>
 
