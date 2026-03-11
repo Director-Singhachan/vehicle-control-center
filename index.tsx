@@ -1091,52 +1091,46 @@ const AppContent = () => {
                   onMouseEnter={handleOrdersFlyoutMouseEnter}
                   onMouseLeave={handleOrdersFlyoutMouseLeave}
                 >
-                  <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-xl shadow-2xl dark:shadow-black/50 py-2 ring-1 ring-black/5 dark:ring-white/10 animate-in fade-in slide-in-from-left-2 duration-150 max-h-[70vh] overflow-y-auto"
-                    style={{ width: 'fit-content', minWidth: (isAdmin || isManager) ? '500px' : '260px' }}>
+                  <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-xl shadow-2xl dark:shadow-black/50 min-w-[220px] py-2 ring-1 ring-black/5 dark:ring-white/10 animate-in fade-in slide-in-from-left-2 duration-150 max-h-[70vh] overflow-y-auto">
                     <div className="px-4 pb-2 mb-2 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between">
                       <p className="text-[10px] font-black text-blue-500 dark:text-blue-400 uppercase tracking-widest">เมนูฝ่ายขาย</p>
                       <div className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"></div>
                     </div>
-                    
-                    <div className="flex divide-x divide-slate-100 dark:divide-slate-800">
-                      {/* Column 1: รายการออเดอร์ */}
-                      <div className="flex-1 px-2 space-y-0.5 min-w-[240px]">
-                        <MenuSectionHeader label="รายการออเดอร์" />
-                        <SubSidebarItem
-                          label="สร้างออเดอร์"
-                          active={activeTab === 'create-order'}
-                          onClick={() => {
-                            setActiveTab('create-order');
-                            setIsOrdersHovered(false);
-                          }}
-                          isCollapsed={false}
-                          isFlyout={true}
-                        />
-                        <SubSidebarItem
-                          label="ติดตามออเดอร์"
-                          active={activeTab === 'track-orders'}
-                          onClick={() => {
-                            setActiveTab('track-orders');
-                            setIsOrdersHovered(false);
-                          }}
-                          isCollapsed={false}
-                          isFlyout={true}
-                        />
-                        <SubSidebarItem
-                          label="ออกใบแจ้งหนี้"
-                          active={activeTab === 'sales-trips'}
-                          onClick={() => {
-                            setActiveTab('sales-trips');
-                            setIsOrdersHovered(false);
-                          }}
-                          isCollapsed={false}
-                          isFlyout={true}
-                        />
-                      </div>
+                    <div className="px-2 space-y-0.5">
+                      <MenuSectionHeader label="รายการออเดอร์" />
+                      <SubSidebarItem
+                        label="สร้างออเดอร์"
+                        active={activeTab === 'create-order'}
+                        onClick={() => {
+                          setActiveTab('create-order');
+                          setIsOrdersHovered(false);
+                        }}
+                        isCollapsed={false}
+                        isFlyout={true}
+                      />
+                      <SubSidebarItem
+                        label="ติดตามออเดอร์"
+                        active={activeTab === 'track-orders'}
+                        onClick={() => {
+                          setActiveTab('track-orders');
+                          setIsOrdersHovered(false);
+                        }}
+                        isCollapsed={false}
+                        isFlyout={true}
+                      />
+                      <SubSidebarItem
+                        label="ออกใบแจ้งหนี้"
+                        active={activeTab === 'sales-trips'}
+                        onClick={() => {
+                          setActiveTab('sales-trips');
+                          setIsOrdersHovered(false);
+                        }}
+                        isCollapsed={false}
+                        isFlyout={true}
+                      />
 
-                      {/* Column 2: จัดการระบบ (Admin/Manager) */}
                       {(isAdmin || isManager) && (
-                        <div className="flex-1 px-2 space-y-0.5 min-w-[240px]">
+                        <>
                           <MenuSectionHeader label="เฉพาะเจ้าหน้าที่ / Manager" />
                           <SubSidebarItem
                             label="จัดการออเดอร์"
@@ -1188,7 +1182,7 @@ const AppContent = () => {
                             isCollapsed={false}
                             isFlyout={true}
                           />
-                        </div>
+                        </>
                       )}
                     </div>
                   </div>
@@ -1248,42 +1242,35 @@ const AppContent = () => {
                   onMouseEnter={handleStockFlyoutMouseEnter}
                   onMouseLeave={handleStockFlyoutMouseLeave}
                 >
-                  <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-xl shadow-2xl dark:shadow-black/50 py-2 ring-1 ring-black/5 dark:ring-white/10 animate-in fade-in slide-in-from-left-2 duration-150"
-                    style={{ width: 'fit-content', minWidth: (isAdmin || isManager) ? '500px' : '260px' }}>
+                  <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-xl shadow-2xl dark:shadow-black/50 min-w-[220px] py-2 overflow-hidden ring-1 ring-black/5 dark:ring-white/10 animate-in fade-in slide-in-from-left-2 duration-150">
                     <div className="px-4 pb-2 mb-2 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between">
                       <p className="text-[10px] font-black text-blue-500 dark:text-blue-400 uppercase tracking-widest">เมนูคลังสินค้า</p>
                       <div className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"></div>
                     </div>
-
-                    <div className="flex divide-x divide-slate-100 dark:divide-slate-800">
-                      {/* Column 1: ข้อมูลคลังสินค้า */}
-                      <div className="flex-1 px-2 space-y-1 min-w-[240px]">
-                        <MenuSectionHeader label="ข้อมูลคลังสินค้า" />
-                        <SubSidebarItem
-                          label="Stock Dashboard"
-                          active={activeTab === 'stock-dashboard'}
-                          onClick={() => {
-                            setActiveTab('stock-dashboard');
-                            setIsStockHovered(false);
-                          }}
-                          isCollapsed={false}
-                          isFlyout={true}
-                        />
-                        <SubSidebarItem
-                          label="รายการรอรับเอง"
-                          active={activeTab === 'pickup-orders'}
-                          onClick={() => {
-                            setActiveTab('pickup-orders');
-                            setIsStockHovered(false);
-                          }}
-                          isCollapsed={false}
-                          isFlyout={true}
-                        />
-                      </div>
-
-                      {/* Column 2: จัดการระบบคลัง */}
+                    <div className="px-2 space-y-1">
+                      <MenuSectionHeader label="ข้อมูลคลังสินค้า" />
+                      <SubSidebarItem
+                        label="Stock Dashboard"
+                        active={activeTab === 'stock-dashboard'}
+                        onClick={() => {
+                          setActiveTab('stock-dashboard');
+                          setIsStockHovered(false);
+                        }}
+                        isCollapsed={false}
+                        isFlyout={true}
+                      />
+                      <SubSidebarItem
+                        label="รายการรอรับเอง"
+                        active={activeTab === 'pickup-orders'}
+                        onClick={() => {
+                          setActiveTab('pickup-orders');
+                          setIsStockHovered(false);
+                        }}
+                        isCollapsed={false}
+                        isFlyout={true}
+                      />
                       {(isAdmin || isManager) && (
-                        <div className="flex-1 px-2 space-y-1 min-w-[240px]">
+                        <>
                           <MenuSectionHeader label="จัดการระบบคลัง" />
                           <SubSidebarItem
                             label="จัดการคลัง"
@@ -1305,7 +1292,7 @@ const AppContent = () => {
                             isCollapsed={false}
                             isFlyout={true}
                           />
-                        </div>
+                        </>
                       )}
                     </div>
                   </div>
@@ -1652,7 +1639,8 @@ const AppContent = () => {
             </>
           )}
 
-          {/* 5. บุคคล / HR */}
+          {/* 5. 
+           */}
           {(isAdmin || isHR) && (
             <>
               <div
@@ -1732,8 +1720,8 @@ const AppContent = () => {
                     className="bg-white dark:bg-charcoal-900 border border-slate-200 dark:border-slate-700 rounded-xl shadow-2xl min-w-[220px] py-2 ring-1 ring-black/5 dark:ring-white/10 animate-in fade-in slide-in-from-left-2 duration-150 overflow-y-auto"
                     style={{ maxHeight: hrFlyoutMaxHeight }}
                   >
-                    <div className="px-4 pb-2 mb-2 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between"> 
-                      <p className="text-[10px] font-black text-pink-500 dark:text-pink-400 uppercase tracking-widest">บุคคล / HR</p>  
+                    <div className="px-4 pb-2 mb-2 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between">
+                      <p className="text-[10px] font-black text-pink-500 dark:text-pink-400 uppercase tracking-widest">บุคคล / HR</p>
                       <div className="w-1.5 h-1.5 rounded-full bg-pink-500 animate-pulse"></div>
                     </div>
                     <div className="px-2 space-y-0.5">
