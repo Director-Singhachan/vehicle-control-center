@@ -19,7 +19,8 @@ export function usePendingOrdersFilters({ orders, profile }: UsePendingOrdersFil
     });
 
     // ── Group-by-Area State ──
-    const [groupByArea, setGroupByArea] = useState(false);
+    // เริ่มต้นให้จัดกลุ่มตามพื้นที่เป็นค่าเริ่มต้น เพื่อให้หน้าออเดอร์รอจัดทริปเห็นภาพตามเขตได้ทันที
+    const [groupByArea, setGroupByArea] = useState(true);
     const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
     const [districtFilter, setDistrictFilter] = useState<string>('ALL');
     const [subDistrictFilter, setSubDistrictFilter] = useState<string>('ALL');
