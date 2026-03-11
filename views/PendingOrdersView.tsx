@@ -769,11 +769,20 @@ export function PendingOrdersView() {
                             0
                           );
 
+                          const allSelected = areaOrders.every(o => selectedOrders.has(o.id));
+                          const someSelected = !allSelected && areaOrders.some(o => selectedOrders.has(o.id));
+
                           return (
                             <button
                               key={areaKey}
                               type="button"
-                              className="w-full text-left rounded-lg border border-gray-100 dark:border-gray-700 bg-gray-50/80 dark:bg-gray-800/60 px-3 py-2.5 hover:border-indigo-300 hover:bg-indigo-50/70 dark:hover:border-indigo-500 dark:hover:bg-indigo-900/40 transition-colors"
+                              className={`w-full text-left rounded-lg border px-3 py-2.5 transition-colors ${
+                                allSelected
+                                  ? 'border-emerald-500 bg-emerald-50/90 dark:border-emerald-400 dark:bg-emerald-900/40'
+                                  : someSelected
+                                    ? 'border-indigo-300 bg-indigo-50/80 dark:border-indigo-400 dark:bg-indigo-900/40'
+                                    : 'border-gray-100 dark:border-gray-700 bg-gray-50/80 dark:bg-gray-800/60 hover:border-indigo-300 hover:bg-indigo-50/70 dark:hover:border-indigo-500 dark:hover:bg-indigo-900/40'
+                              }`}
                               onClick={() => selectGroupOrders(areaOrders)}
                             >
                               <div className="flex items-start justify-between gap-2 mb-1.5">
@@ -788,8 +797,16 @@ export function PendingOrdersView() {
                                     </span>
                                   </div>
                                 </div>
-                                <span className="mt-0.5 inline-flex h-5 items-center rounded-full bg-indigo-100/80 dark:bg-indigo-800/70 px-2 text-[10px] font-medium text-indigo-700 dark:text-indigo-100 whitespace-nowrap">
-                                  เลือกทั้งกลุ่ม
+                                <span
+                                  className={`mt-0.5 inline-flex h-5 items-center rounded-full px-2 text-[10px] font-medium whitespace-nowrap ${
+                                    allSelected
+                                      ? 'bg-emerald-500 text-white'
+                                      : someSelected
+                                        ? 'bg-indigo-500 text-white'
+                                        : 'bg-indigo-100/80 dark:bg-indigo-800/70 text-indigo-700 dark:text-indigo-100'
+                                  }`}
+                                >
+                                  {allSelected ? 'เลือกทั้งกลุ่มแล้ว' : someSelected ? 'เลือกบางส่วน' : 'เลือกทั้งกลุ่ม'}
                                 </span>
                               </div>
                               {/* รายชื่อร้าน: แสดงทีละร้านต่อหนึ่งบรรทัดให้อ่านง่าย */}
