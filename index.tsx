@@ -2064,7 +2064,7 @@ const AppContent = () => {
                     if (authLoading && !profile && !user) {
                       return 'กำลังโหลด...';
                     }
-                    // If we have profile, show role
+                    // If we have profile, show localized role label
                     if (profile?.role) {
                       return profile.role === 'admin' ? 'ผู้ดูแลระบบ' :
                         profile.role === 'manager' ? 'ผู้จัดการ' :
@@ -2073,7 +2073,11 @@ const AppContent = () => {
                               profile.role === 'driver' ? 'พนักงานขับรถ' :
                                 profile.role === 'sales' ? 'ฝ่ายขาย' :
                                   profile.role === 'service_staff' ? 'พนักงานบริการ' :
-                                    'ผู้ใช้';
+                                    profile.role === 'hr' ? 'บุคคล' :
+                                      profile.role === 'accounting' ? 'บัญชี' :
+                                        profile.role === 'warehouse' ? 'คลังสินค้า' :
+                                          profile.role === 'user' ? 'ผู้ใช้ทั่วไป' :
+                                            'ผู้ใช้ทั่วไป';
                     }
                     // If we have user but no profile AND not loading anymore, show default
                     if (user && !profile && !authLoading) {

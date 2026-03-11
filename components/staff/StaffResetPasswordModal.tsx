@@ -60,7 +60,7 @@ export const StaffResetPasswordModal: React.FC<StaffResetPasswordModalProps> = (
           </div>
           <div className="min-w-0">
             <div className="font-semibold text-slate-900 dark:text-slate-100 text-sm truncate">
-              {staff.full_name || '—'}
+              {[staff.name_prefix, staff.full_name].filter(Boolean).join(' ') || '—'}
             </div>
             <div className="text-xs text-slate-500 dark:text-slate-400">
               รหัส {staff.employee_code || '—'} · {staff.email}
