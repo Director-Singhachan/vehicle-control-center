@@ -1,5 +1,5 @@
-import React, { useState, useMemo, useEffect } from 'react';
-import { Package, Search, Clock, CheckCircle, Eye, Edit, ChevronLeft, ChevronRight, Building2, ShoppingBag } from 'lucide-react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import { Package, Search, Clock, CheckCircle, Eye, Edit, ChevronLeft, ChevronRight, Building2, ShoppingBag, RefreshCw } from 'lucide-react';
 import { PageLayout } from '../components/ui/PageLayout';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
@@ -77,18 +77,9 @@ export function TrackOrdersView() {
   const [pageInput, setPageInput] = useState('');
   const itemsPerPage = 100;
 
-  React.useEffect(() => {
-    loadOrders();
-  }, []);
-
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [searchTerm, statusFilter, branchFilter]);
-
-  const loadOrders = async () => {
+  const loadOrders = useCallback(async () => {
     try {
       setLoading(true);
-      // Get all orders (not just pending)
       const data = await ordersService.getAll();
       setOrders(data);
     } catch (error) {
@@ -96,7 +87,24 @@ export function TrackOrdersView() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    loadOrders();
+  }, [loadOrders]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, statusFilter, branchFilter]);
+
+  // โหลดข้อมูลใหม่เมื่อผู้ใช้กลับมาที่แท็บ/หน้านี้ (หลังลงเลขไมล์ขากลับหรือปิดทริปแล้ว)
+  useEffect(() => {
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') loadOrders();
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', onVisibilityChange);
+  }, [loadOrders]);
 
   const filteredOrders = useMemo(() => {
     return orders.filter((order) => {
@@ -176,15 +184,12 @@ export function TrackOrdersView() {
       case 'in_delivery':
         return <Badge variant="default">กำลังจัดส่ง</Badge>;
       case 'delivered':
-        return (
-          <span className="inline-flex flex-wrap items-center gap-1">
-            <Badge variant="success">จัดส่งแล้ว</Badge>
-            {!deliveryTripId && (
-              <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-700">
-                รับเอง
-              </span>
-            )}
+        return !deliveryTripId ? (
+          <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300 border border-green-200 dark:border-green-700">
+            ✓ จัดส่งสำเร็จ มารับเอง
           </span>
+        ) : (
+          <Badge variant="success">จัดส่งแล้ว</Badge>
         );
       case 'cancelled':
         return <Badge variant="error">ยกเลิก</Badge>;
@@ -291,11 +296,24 @@ export function TrackOrdersView() {
                 <option value="pending">รอจัดทริป</option>
                 <option value="partial">ส่งบางส่วน</option>
                 <option value="assigned">กำหนดทริปแล้ว</option>
-                <option value="in_transit">กำลังจัดส่ง</option>
+                <option value="in_delivery">กำลังจัดส่ง</option>
                 <option value="delivered">จัดส่งแล้ว</option>
                 <option value="cancelled">ยกเลิก</option>
               </select>
             </div>
+
+            {/* รีเฟรช — หลังลงเลขไมล์ขากลับ/ปิดทริป ให้กดเพื่ออัปเดตสถานะออเดอร์ */}
+            <Button
+              type="button"
+              variant="outline"
+              size="default"
+              onClick={() => loadOrders()}
+              disabled={loading}
+              className="flex items-center gap-2 shrink-0"
+            >
+              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+              รีเฟรช
+            </Button>
           </div>
         </div>
       </Card>

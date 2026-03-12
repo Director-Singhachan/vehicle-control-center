@@ -634,11 +634,13 @@ export const tripLogService = {
             // Don't throw - continue with notification
           }
 
-          // ซิงค์ quantity_delivered ใน order_items (ส่งแล้ว/คงเหลือ) — แก้ระยะยาว ไม่ต้องพึ่งแค่ DB trigger
+          // ซิงค์ quantity_delivered + orders.status เพื่อให้หน้าติดตามออเดอร์แสดงสถานะถูกต้อง
           try {
             await deliveryTripService.syncQuantityDeliveredForCompletedTrip(deliveryTrip.id);
-          } catch (syncErr) {
-            console.warn('[tripLogService] Sync quantity_delivered failed (non-blocking):', syncErr);
+          } catch (syncErr: unknown) {
+            const msg = syncErr instanceof Error ? syncErr.message : String(syncErr);
+            const code = syncErr && typeof (syncErr as any).code === 'string' ? (syncErr as any).code : undefined;
+            console.error('[tripLogService] Sync order status after trip complete failed. Track Orders page may not update. Error:', msg, code ? `code=${code}` : '');
           }
 
           // Trigger auto commission calculation for this delivery trip (fire-and-forget)
