@@ -19,6 +19,7 @@ export interface UploadedOrder {
   doc_no: string;
   time: string;
   customer_name: string;
+  customer_code?: string;
   store_id?: string;
   doc_type: string;
   status: string;
@@ -74,11 +75,24 @@ export const orderUploadService = {
 
             // If Document Date is present, it's a Header row
             if (docDate !== undefined && docDate !== null && String(docDate).trim() !== '') {
+               let rawCustomerName = String(getCell(row, 'ชื่อลูกหนี้') || '').trim();
+               let tempCustomerCode: string | undefined = undefined;
+               
+               if (rawCustomerName) {
+                 const lastOpenParen = rawCustomerName.lastIndexOf('(');
+                 const lastCloseParen = rawCustomerName.lastIndexOf(')');
+                 if (lastOpenParen !== -1 && lastCloseParen !== -1 && lastCloseParen > lastOpenParen) {
+                     tempCustomerCode = rawCustomerName.substring(lastOpenParen + 1, lastCloseParen).trim();
+                     rawCustomerName = rawCustomerName.substring(0, lastOpenParen).trim();
+                 }
+               }
+
                currentHeaderRow = {
                  order_date: docDate instanceof Date ? docDate.toISOString().split('T')[0] : String(docDate),
                  doc_no: docNo,
                  time: getCell(row, 'เวลา'),
-                 customer_name: getCell(row, 'ชื่อลูกหนี้'),
+                 customer_name: rawCustomerName,
+                 customer_code: tempCustomerCode,
                  doc_type: getCell(row, 'ประเภทรายการ'),
                  status: getCell(row, 'สถานะ'),
                  tax_exempt: Number(getCell(row, 'มูลค่ายกเว้นภาษี')) || 0,
@@ -188,11 +202,15 @@ export const orderUploadService = {
         // Find store
         if (stores) {
             const rawName = normalize(order.customer_name);
-            const matchedStore = stores.find(s => normalize(s.customer_name) === rawName || s.customer_code === order.customer_name);
+            const matchedStore = stores.find(s => 
+                (order.customer_code && s.customer_code === order.customer_code) || 
+                normalize(s.customer_name) === rawName || 
+                s.customer_code === order.customer_name
+            );
             if (matchedStore) {
                validatedOrder.store_id = matchedStore.id;
             } else {
-               validatedOrder.error = `ไม่พบข้อมูลร้านค้า: ${order.customer_name}`;
+               validatedOrder.error = `ไม่พบข้อมูลร้านค้า: ${order.customer_name}${order.customer_code ? ` (${order.customer_code})` : ''}`;
             }
         } else {
             validatedOrder.error = 'ไม่สามารถดึงข้อมูลร้านค้าเพื่อตรวจสอบได้';
