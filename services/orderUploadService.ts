@@ -162,20 +162,23 @@ export const orderUploadService = {
   async validateOrders(orders: UploadedOrder[]): Promise<UploadedOrder[]> {
     if (orders.length === 0) return orders;
 
-    // 1. Gather all unique customer names
-    const customerNames = [...new Set(orders.map(o => o.customer_name).filter(Boolean))];
+    // 1. Gather all unique customer codes for filtering
+    const uniqueCustomerCodes = [...new Set(orders.map(o => o.customer_code).filter(Boolean))] as string[];
     
-    // Fetch stores matching exactly or closely (we will try ilike or exact)
+    // Fetch ONLY stores that match the codes from Excel
+    // This bypasses the 1000-row limit issue
     const { data: stores, error: storesError } = await supabase
        .from('stores')
-       .select('id, customer_name, customer_code') as { data: any[] | null, error: any };
+       .select('id, customer_name, customer_code')
+       .in('customer_code', uniqueCustomerCodes) as { data: any[] | null, error: any };
        
     if (storesError) {
         console.error('Error fetching stores for validation:', storesError);
     }
     
-    // Normalize string for comparison
-    const normalize = (str: string) => str.replace(/\s+/g, '').toLowerCase();
+    // Normalize string for comparison (Lowercase, remove all spaces, remove non-alphanumeric if needed)
+    const normalize = (str: string | null | undefined) => (str || '').replace(/\s+/g, '').toLowerCase();
+    const normalizeCode = (c: string | null | undefined) => (c || '').trim().toUpperCase();
     
     // 2. Gather all unique product codes
     const productCodes = new Set<string>();
@@ -201,16 +204,15 @@ export const orderUploadService = {
         
         // Find store
         if (stores) {
-            const rawName = normalize(order.customer_name);
-            const matchedStore = stores.find(s => 
-                (order.customer_code && s.customer_code === order.customer_code) || 
-                normalize(s.customer_name) === rawName || 
-                s.customer_code === order.customer_name
-            );
+            const searchCode = normalizeCode(order.customer_code);
+            
+            // Strictly Match by Code only as per user request
+            const matchedStore = searchCode ? stores.find(s => normalizeCode(s.customer_code) === searchCode) : undefined;
+
             if (matchedStore) {
                validatedOrder.store_id = matchedStore.id;
             } else {
-               validatedOrder.error = `ไม่พบข้อมูลร้านค้า: ${order.customer_name}${order.customer_code ? ` (${order.customer_code})` : ''}`;
+               validatedOrder.error = `ไม่พบรหัสร้านค้า "${order.customer_code || '-'}" ในระบบ (ตรวจสอบจากวงเล็บสุดท้ายในชื่อ)`;
             }
         } else {
             validatedOrder.error = 'ไม่สามารถดึงข้อมูลร้านค้าเพื่อตรวจสอบได้';
