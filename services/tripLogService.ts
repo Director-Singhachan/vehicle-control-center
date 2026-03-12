@@ -256,6 +256,27 @@ export const tripLogService = {
           // Don't throw - continue with notification
         } else {
           console.log('[tripLogService] Updated delivery trip to in_progress:', deliveryTripId);
+
+          // เมื่อทริปเริ่มต้น (in_progress) ให้เปลี่ยนสถานะออเดอร์ในทริปนั้นเป็น "กำลังจัดส่ง"
+          // เพื่อให้หน้าติดตามออเดอร์แสดงเป็น "กำลังจัดส่ง" ทันทีที่รถออกไป
+          try {
+            const { error: ordersUpdateError } = await supabase
+              .from('orders')
+              .update({
+                status: 'in_delivery',
+                updated_at: new Date().toISOString(),
+              })
+              .eq('delivery_trip_id', deliveryTripId)
+              .in('status', ['assigned', 'confirmed', 'pending', 'partial']);
+
+            if (ordersUpdateError) {
+              console.error('[tripLogService] Error updating orders to in_delivery on trip start:', ordersUpdateError);
+            } else {
+              console.log('[tripLogService] Updated orders to in_delivery for trip:', deliveryTripId);
+            }
+          } catch (ordersUpdateErr) {
+            console.error('[tripLogService] Unexpected error while setting orders to in_delivery:', ordersUpdateErr);
+          }
         }
       } catch (deliveryTripError) {
         console.error('[tripLogService] Error updating delivery trip:', deliveryTripError);
