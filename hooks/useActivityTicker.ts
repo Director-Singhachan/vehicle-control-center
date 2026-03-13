@@ -4,7 +4,7 @@ import { ordersService } from '../services/ordersService';
 
 export interface ActivityTickerItem {
     id: string;
-    type: 'pending_orders' | 'active_trip' | 'order_assigned';
+    type: 'pending_order' | 'active_trip' | 'order_assigned';
     label: string;
     branch?: string | null;
     color: 'amber' | 'blue' | 'green';
@@ -13,7 +13,6 @@ export interface ActivityTickerItem {
 interface UseActivityTickerOptions {
     branch?: string | null;
     isHighLevel?: boolean; // admin/manager/inspector/executive
-    pendingBillingCount?: number;
 }
 
 export function useActivityTicker({ branch, isHighLevel }: UseActivityTickerOptions) {
@@ -26,34 +25,32 @@ export function useActivityTicker({ branch, isHighLevel }: UseActivityTickerOpti
         try {
             const results: ActivityTickerItem[] = [];
 
-            // 1. ออเดอร์รอจัดทริป
+            // 1. ออเดอร์รอจัดทริป — แสดงเป็นรายชื่อร้าน
             const branchFilter = shouldFilterBranch ? branch! : undefined;
             const pendingOrders = await ordersService.getPendingOrders(
                 branchFilter ? { branch: branchFilter } : undefined
             );
 
             if (pendingOrders.length > 0) {
-                // Group by branch if high level
-                if (isHighLevel) {
-                    const byBranch = new Map<string, number>();
-                    pendingOrders.forEach((o: any) => {
-                        const b = o.branch || 'N/A';
-                        byBranch.set(b, (byBranch.get(b) || 0) + 1);
-                    });
-                    byBranch.forEach((count, b) => {
-                        results.push({
-                            id: `pending-orders-${b}`,
-                            type: 'pending_orders',
-                            label: `${count} ออเดอร์รอจัดทริป`,
-                            branch: b,
-                            color: 'amber',
-                        });
-                    });
-                } else {
+                // แสดงแต่ละร้านแยก เช่น "ร้านธานี รอจัดทริป"
+                pendingOrders.slice(0, 8).forEach((o: any) => {
+                    const storeName = o.customer_name || o.order_number || 'ไม่ระบุ';
                     results.push({
-                        id: 'pending-orders',
-                        type: 'pending_orders',
-                        label: `${pendingOrders.length} ออเดอร์รอจัดทริป`,
+                        id: `pending-${o.id}`,
+                        type: 'pending_order',
+                        label: `${storeName} รอจัดทริป`,
+                        branch: o.branch,
+                        color: 'amber',
+                    });
+                });
+
+                // ถ้ามีมากกว่า 8 ร้าน แสดงสรุปเพิ่ม
+                if (pendingOrders.length > 8) {
+                    const remaining = pendingOrders.length - 8;
+                    results.push({
+                        id: 'pending-more',
+                        type: 'pending_order',
+                        label: `อีก ${remaining} ร้านรอจัดทริป`,
                         color: 'amber',
                     });
                 }
@@ -67,11 +64,14 @@ export function useActivityTicker({ branch, isHighLevel }: UseActivityTickerOpti
           trip_number,
           branch,
           vehicle:vehicles!delivery_trips_vehicle_id_fkey(plate),
-          delivery_trip_stores(id)
+          delivery_trip_stores(
+            id,
+            store:stores(customer_name)
+          )
         `)
                 .eq('status', 'in_progress')
                 .order('updated_at', { ascending: false })
-                .limit(10);
+                .limit(5);
 
             if (shouldFilterBranch) {
                 activeTripsQuery = activeTripsQuery.eq('branch', branch!);
@@ -95,7 +95,7 @@ export function useActivityTicker({ branch, isHighLevel }: UseActivityTickerOpti
                 });
             }
 
-            // 3. ออเดอร์ที่เพิ่งจัดทริปวันนี้
+            // 3. ออเดอร์ที่เพิ่งจัดทริปวันนี้ — แสดงเป็นชื่อร้าน
             const today = new Date();
             today.setHours(0, 0, 0, 0);
             const todayISO = today.toISOString();
@@ -107,12 +107,13 @@ export function useActivityTicker({ branch, isHighLevel }: UseActivityTickerOpti
           order_number,
           branch,
           delivery_trip_id,
+          store:stores!orders_store_id_fkey(customer_name),
           delivery_trips!orders_delivery_trip_id_fkey(trip_number)
         `)
                 .not('delivery_trip_id', 'is', null)
                 .gte('updated_at', todayISO)
                 .order('updated_at', { ascending: false })
-                .limit(10);
+                .limit(8);
 
             if (shouldFilterBranch) {
                 assignedQuery = assignedQuery.eq('branch', branch!);
@@ -122,13 +123,13 @@ export function useActivityTicker({ branch, isHighLevel }: UseActivityTickerOpti
 
             if (assignedOrders && assignedOrders.length > 0) {
                 assignedOrders.forEach((order: any) => {
-                    const orderNum = order.order_number || `ออเดอร์ #${order.id?.slice(0, 6)}`;
+                    const storeName = (order.store as any)?.customer_name || order.order_number || 'ไม่ระบุ';
                     const tripNum = (order.delivery_trips as any)?.trip_number || '';
 
                     results.push({
                         id: `assigned-${order.id}`,
                         type: 'order_assigned',
-                        label: `${orderNum} จัดทริปแล้ว${tripNum ? ` → ${tripNum}` : ''}`,
+                        label: `${storeName} ได้รับการจัดทริปแล้ว${tripNum ? ` (${tripNum})` : ''}`,
                         branch: order.branch,
                         color: 'green',
                     });

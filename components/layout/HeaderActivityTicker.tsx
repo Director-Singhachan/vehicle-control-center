@@ -9,7 +9,7 @@ interface HeaderActivityTickerProps {
 }
 
 const iconMap = {
-    pending_orders: Clock,
+    pending_order: Clock,
     active_trip: Truck,
     order_assigned: CheckCircle2,
 };
