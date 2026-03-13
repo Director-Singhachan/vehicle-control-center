@@ -183,16 +183,12 @@ export const tripStatusService = {
   },
 
   syncQuantityDeliveredForCompletedTrip: async (tripId: string): Promise<void> => {
-    try {
-      const { error } = await supabase.rpc('backfill_quantity_delivered_for_trip', { p_trip_id: tripId });
-      if (error) {
-        console.error('[deliveryTripService] syncQuantityDeliveredForCompletedTrip error:', { tripId, error: error.message, code: error.code });
-        return;
-      }
-      console.log('[deliveryTripService] Synced quantity_delivered for completed trip:', tripId);
-    } catch (e) {
-      console.error('[deliveryTripService] syncQuantityDeliveredForCompletedTrip exception:', tripId, e);
+    const { error } = await supabase.rpc('backfill_quantity_delivered_for_trip', { p_trip_id: tripId });
+    if (error) {
+      console.error('[deliveryTripService] syncQuantityDeliveredForCompletedTrip error:', { tripId, error: error.message, code: error.code });
+      throw error;
     }
+    console.log('[deliveryTripService] Synced quantity_delivered and order status for completed trip:', tripId);
   },
 
   async syncStatusWithTripLogs(this: { syncQuantityDeliveredForCompletedTrip: (tripId: string) => Promise<void> }): Promise<{

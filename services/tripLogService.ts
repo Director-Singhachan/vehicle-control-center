@@ -256,6 +256,27 @@ export const tripLogService = {
           // Don't throw - continue with notification
         } else {
           console.log('[tripLogService] Updated delivery trip to in_progress:', deliveryTripId);
+
+          // เมื่อทริปเริ่มต้น (in_progress) ให้เปลี่ยนสถานะออเดอร์ในทริปนั้นเป็น "กำลังจัดส่ง"
+          // เพื่อให้หน้าติดตามออเดอร์แสดงเป็น "กำลังจัดส่ง" ทันทีที่รถออกไป
+          try {
+            const { error: ordersUpdateError } = await supabase
+              .from('orders')
+              .update({
+                status: 'in_delivery',
+                updated_at: new Date().toISOString(),
+              })
+              .eq('delivery_trip_id', deliveryTripId)
+              .in('status', ['assigned', 'confirmed', 'pending', 'partial']);
+
+            if (ordersUpdateError) {
+              console.error('[tripLogService] Error updating orders to in_delivery on trip start:', ordersUpdateError);
+            } else {
+              console.log('[tripLogService] Updated orders to in_delivery for trip:', deliveryTripId);
+            }
+          } catch (ordersUpdateErr) {
+            console.error('[tripLogService] Unexpected error while setting orders to in_delivery:', ordersUpdateErr);
+          }
         }
       } catch (deliveryTripError) {
         console.error('[tripLogService] Error updating delivery trip:', deliveryTripError);
@@ -634,11 +655,13 @@ export const tripLogService = {
             // Don't throw - continue with notification
           }
 
-          // ซิงค์ quantity_delivered ใน order_items (ส่งแล้ว/คงเหลือ) — แก้ระยะยาว ไม่ต้องพึ่งแค่ DB trigger
+          // ซิงค์ quantity_delivered + orders.status เพื่อให้หน้าติดตามออเดอร์แสดงสถานะถูกต้อง
           try {
             await deliveryTripService.syncQuantityDeliveredForCompletedTrip(deliveryTrip.id);
-          } catch (syncErr) {
-            console.warn('[tripLogService] Sync quantity_delivered failed (non-blocking):', syncErr);
+          } catch (syncErr: unknown) {
+            const msg = syncErr instanceof Error ? syncErr.message : String(syncErr);
+            const code = syncErr && typeof (syncErr as any).code === 'string' ? (syncErr as any).code : undefined;
+            console.error('[tripLogService] Sync order status after trip complete failed. Track Orders page may not update. Error:', msg, code ? `code=${code}` : '');
           }
 
           // Trigger auto commission calculation for this delivery trip (fire-and-forget)
