@@ -12,6 +12,7 @@ import { ToastContainer } from '../components/ui/Toast';
 import { useAuth, useToast } from '../hooks';
 import { supabase } from '../lib/supabase';
 import { PaymentStatusBadge, PaymentStatus } from '../components/order/PaymentStatusBadge';
+import { OrderUploadModal } from '../components/order/OrderUploadModal';
 
 interface OrderItem {
   product_id: string;
@@ -52,6 +53,9 @@ export function CreateOrderView() {
   const [paymentStatus, setPaymentStatus] = useState<PaymentStatus | ''>('');
 
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [fulfillmentMode, setFulfillmentMode] = useState<FulfillmentMode>('delivery');
+
+  const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
 
   // Filter warehouses based on user branch
   const filteredWarehouses = useMemo(() => {
@@ -471,7 +475,19 @@ export function CreateOrderView() {
   return (
     <>
       <ToastContainer toasts={toasts} onDismiss={dismissToast} />
-      <PageLayout title="สร้างออเดอร์ใหม่">
+      <PageLayout
+        title="สร้างออเดอร์ใหม่"
+        actions={
+          <Button
+            onClick={() => setIsUploadModalOpen(true)}
+            variant="outline"
+            className="flex items-center gap-2 bg-white text-blue-600 border-blue-200 hover:bg-blue-50 dark:bg-slate-800 dark:text-blue-400 dark:border-slate-700 dark:hover:bg-slate-700"
+          >
+            <Grid3x3 className="w-4 h-4" />
+            อัพโหลดใบขาย
+          </Button>
+        }
+      >
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Left: Store & Products Selection */}
           <div className="lg:col-span-2 space-y-6">
@@ -1145,6 +1161,15 @@ export function CreateOrderView() {
           </div>
         </div>
       </PageLayout>
+
+      <OrderUploadModal
+        isOpen={isUploadModalOpen}
+        onClose={() => setIsUploadModalOpen(false)}
+        onSuccess={() => {
+          // TODO: Refresh orders list or redirect
+        }}
+        selectedWarehouse={selectedWarehouse}
+      />
     </>
   );
 }
