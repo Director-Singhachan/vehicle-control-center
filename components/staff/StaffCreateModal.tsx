@@ -151,11 +151,10 @@ export const StaffCreateModal: React.FC<StaffCreateModalProps> = ({
       <form onSubmit={handleSubmit} className="space-y-4">
         {/* Server error banner */}
         {serverError && (
-          <div className={`flex items-start gap-3 p-3 rounded-lg border ${
-            isDuplicateCode
-              ? 'bg-amber-50 dark:bg-amber-900/20 border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-200'
-              : 'bg-red-50 dark:bg-red-900/20 border-red-300 dark:border-red-700 text-red-800 dark:text-red-200'
-          }`}>
+          <div className={`flex items-start gap-3 p-3 rounded-lg border ${isDuplicateCode
+            ? 'bg-amber-50 dark:bg-amber-900/20 border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-200'
+            : 'bg-red-50 dark:bg-red-900/20 border-red-300 dark:border-red-700 text-red-800 dark:text-red-200'
+            }`}>
             <AlertTriangle size={16} className="mt-0.5 shrink-0" />
             <span className="text-sm font-medium">{serverError}</span>
           </div>
@@ -203,7 +202,8 @@ export const StaffCreateModal: React.FC<StaffCreateModalProps> = ({
             <select
               value={form.name_prefix}
               onChange={(e) => setForm((f) => ({ ...f, name_prefix: e.target.value }))}
-              className={`${inputCls} w-36 flex-shrink-0`}
+              style={{ width: '9rem', flexShrink: 0 }}
+              className="px-3 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-enterprise-500"
             >
               {NAME_PREFIX_OPTIONS.map((p) => (
                 <option key={p} value={p}>{p || '— คำนำหน้า —'}</option>
@@ -214,7 +214,7 @@ export const StaffCreateModal: React.FC<StaffCreateModalProps> = ({
               value={form.full_name}
               onChange={(e) => setForm((f) => ({ ...f, full_name: e.target.value }))}
               placeholder="เช่น สมชาย ใจดี"
-              className={inputCls}
+              className={`${inputCls} flex-1 min-w-0`}
             />
           </div>
           {errors.full_name && <p className="mt-1 text-xs text-red-500">{errors.full_name}</p>}
