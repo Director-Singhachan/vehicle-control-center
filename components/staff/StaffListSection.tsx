@@ -1,4 +1,5 @@
 import React from 'react';
+import ReactDOM from 'react-dom';
 import {
   Search,
   UserCog,
@@ -84,68 +85,100 @@ function ActionMenu({
   onDelete?: () => void;
 }) {
   const [open, setOpen] = React.useState(false);
-  const ref = React.useRef<HTMLDivElement>(null);
+  const [menuPos, setMenuPos] = React.useState({ top: 0, right: 0 });
+  const btnRef = React.useRef<HTMLButtonElement>(null);
+  const menuRef = React.useRef<HTMLDivElement>(null);
 
   React.useEffect(() => {
     const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      if (
+        menuRef.current && !menuRef.current.contains(e.target as Node) &&
+        btnRef.current && !btnRef.current.contains(e.target as Node)
+      ) {
+        setOpen(false);
+      }
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
+  const handleOpen = () => {
+    if (!btnRef.current) return;
+    const rect = btnRef.current.getBoundingClientRect();
+    const menuHeight = 180; // ประมาณความสูง dropdown
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const shouldFlip = spaceBelow < menuHeight + 8;
+    setMenuPos({
+      top: shouldFlip ? rect.top - menuHeight - 4 : rect.bottom + 4,
+      right: window.innerWidth - rect.right,
+    });
+    setOpen((o) => !o);
+  };
+
   const isBanned = (staff as any).is_banned;
 
-  return (
-    <div ref={ref} className="relative">
+  const menuContent = open ? ReactDOM.createPortal(
+    <div
+      ref={menuRef}
+      style={{
+        position: 'fixed',
+        top: menuPos.top,
+        right: menuPos.right,
+        zIndex: 9999,
+      }}
+      className="w-48 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-lg py-1"
+    >
       <button
-        onClick={() => setOpen((o) => !o)}
+        onClick={() => { onEdit(); setOpen(false); }}
+        className="flex items-center gap-2 w-full px-4 py-2.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50"
+      >
+        <UserCog size={14} />
+        แก้ไขข้อมูล
+      </button>
+      <button
+        onClick={() => { onResetPassword(); setOpen(false); }}
+        className="flex items-center gap-2 w-full px-4 py-2.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50"
+      >
+        <KeyRound size={14} />
+        รีเซ็ตรหัสผ่าน
+      </button>
+      <div className="border-t border-slate-100 dark:border-slate-700 my-1" />
+      <button
+        onClick={() => { onToggleStatus(); setOpen(false); }}
+        className={`flex items-center gap-2 w-full px-4 py-2.5 text-sm hover:bg-slate-50 dark:hover:bg-slate-700/50 ${isBanned
+          ? 'text-green-600 dark:text-green-400'
+          : 'text-red-600 dark:text-red-400'
+          }`}
+      >
+        {isBanned ? <ShieldCheck size={14} /> : <ShieldOff size={14} />}
+        {isBanned ? 'เปิดบัญชี' : 'ปิดบัญชี'}
+      </button>
+      {onDelete && (
+        <>
+          <div className="border-t border-slate-100 dark:border-slate-700 my-1" />
+          <button
+            onClick={() => { onDelete(); setOpen(false); }}
+            className="flex items-center gap-2 w-full px-4 py-2.5 text-sm text-red-700 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20"
+          >
+            <Trash2 size={14} />
+            ลบบัญชีออกจากระบบ
+          </button>
+        </>
+      )}
+    </div>,
+    document.body
+  ) : null;
+
+  return (
+    <div className="relative">
+      <button
+        ref={btnRef}
+        onClick={handleOpen}
         className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:text-slate-200 dark:hover:bg-slate-700 transition-colors"
       >
         <MoreVertical size={16} />
       </button>
-      {open && (
-        <div className="absolute right-0 top-8 z-50 w-48 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-lg py-1">
-          <button
-            onClick={() => { onEdit(); setOpen(false); }}
-            className="flex items-center gap-2 w-full px-4 py-2.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50"
-          >
-            <UserCog size={14} />
-            แก้ไขข้อมูล
-          </button>
-          <button
-            onClick={() => { onResetPassword(); setOpen(false); }}
-            className="flex items-center gap-2 w-full px-4 py-2.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50"
-          >
-            <KeyRound size={14} />
-            รีเซ็ตรหัสผ่าน
-          </button>
-          <div className="border-t border-slate-100 dark:border-slate-700 my-1" />
-          <button
-            onClick={() => { onToggleStatus(); setOpen(false); }}
-            className={`flex items-center gap-2 w-full px-4 py-2.5 text-sm hover:bg-slate-50 dark:hover:bg-slate-700/50 ${
-              isBanned
-                ? 'text-green-600 dark:text-green-400'
-                : 'text-red-600 dark:text-red-400'
-            }`}
-          >
-            {isBanned ? <ShieldCheck size={14} /> : <ShieldOff size={14} />}
-            {isBanned ? 'เปิดบัญชี' : 'ปิดบัญชี'}
-          </button>
-          {onDelete && (
-            <>
-              <div className="border-t border-slate-100 dark:border-slate-700 my-1" />
-              <button
-                onClick={() => { onDelete(); setOpen(false); }}
-                className="flex items-center gap-2 w-full px-4 py-2.5 text-sm text-red-700 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20"
-              >
-                <Trash2 size={14} />
-                ลบบัญชีออกจากระบบ
-              </button>
-            </>
-          )}
-        </div>
-      )}
+      {menuContent}
     </div>
   );
 }
@@ -212,18 +245,16 @@ function StaffTable({
             return (
               <tr
                 key={staff.id}
-                className={`transition-colors ${
-                  showBannedStyle
-                    ? 'bg-slate-50/60 dark:bg-slate-800/20 hover:bg-slate-100/60 dark:hover:bg-slate-800/40'
-                    : 'hover:bg-slate-50 dark:hover:bg-slate-800/30'
-                }`}
+                className={`transition-colors ${showBannedStyle
+                  ? 'bg-slate-50/60 dark:bg-slate-800/20 hover:bg-slate-100/60 dark:hover:bg-slate-800/40'
+                  : 'hover:bg-slate-50 dark:hover:bg-slate-800/30'
+                  }`}
               >
                 <td className="px-4 py-3">
-                  <span className={`font-mono text-xs font-bold ${
-                    showBannedStyle
-                      ? 'text-slate-400 dark:text-slate-500'
-                      : 'text-enterprise-600 dark:text-enterprise-400'
-                  }`}>
+                  <span className={`font-mono text-xs font-bold ${showBannedStyle
+                    ? 'text-slate-400 dark:text-slate-500'
+                    : 'text-enterprise-600 dark:text-enterprise-400'
+                    }`}>
                     {staff.employee_code || '—'}
                   </span>
                 </td>
@@ -231,9 +262,8 @@ function StaffTable({
                   {staff.name_prefix || '—'}
                 </td>
                 <td className="px-4 py-3">
-                  <div className={`font-medium ${
-                    showBannedStyle ? 'text-slate-400 dark:text-slate-500 line-through' : 'text-slate-900 dark:text-slate-100'
-                  }`}>
+                  <div className={`font-medium ${showBannedStyle ? 'text-slate-400 dark:text-slate-500 line-through' : 'text-slate-900 dark:text-slate-100'
+                    }`}>
                     {staff.full_name || '—'}
                   </div>
                   <div className="text-xs text-slate-400 dark:text-slate-500">
@@ -241,9 +271,8 @@ function StaffTable({
                   </div>
                 </td>
                 <td className="px-4 py-3">
-                  <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                    showBannedStyle ? 'bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500' : roleCls
-                  }`}>
+                  <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${showBannedStyle ? 'bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500' : roleCls
+                    }`}>
                     {ROLE_LABEL[staff.role] ?? staff.role}
                   </span>
                 </td>
@@ -303,38 +332,34 @@ export const StaffListSection: React.FC<StaffListSectionProps> = ({
       <div className="flex items-center gap-1 px-4 pt-4 border-b border-slate-100 dark:border-slate-800">
         <button
           onClick={() => setTab('active')}
-          className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium rounded-t-lg transition-colors border-b-2 -mb-px ${
-            tab === 'active'
-              ? 'border-enterprise-500 text-enterprise-600 dark:text-enterprise-400 bg-white dark:bg-charcoal-900'
-              : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'
-          }`}
+          className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium rounded-t-lg transition-colors border-b-2 -mb-px ${tab === 'active'
+            ? 'border-enterprise-500 text-enterprise-600 dark:text-enterprise-400 bg-white dark:bg-charcoal-900'
+            : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'
+            }`}
         >
           <Users size={15} />
           บัญชีที่ใช้งาน
-          <span className={`px-1.5 py-0.5 rounded-full text-xs font-bold ${
-            tab === 'active'
-              ? 'bg-enterprise-100 text-enterprise-700 dark:bg-enterprise-900/40 dark:text-enterprise-300'
-              : 'bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-400'
-          }`}>
+          <span className={`px-1.5 py-0.5 rounded-full text-xs font-bold ${tab === 'active'
+            ? 'bg-enterprise-100 text-enterprise-700 dark:bg-enterprise-900/40 dark:text-enterprise-300'
+            : 'bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-400'
+            }`}>
             {activeList.length}
           </span>
         </button>
         <button
           onClick={() => setTab('banned')}
-          className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium rounded-t-lg transition-colors border-b-2 -mb-px ${
-            tab === 'banned'
-              ? 'border-red-500 text-red-600 dark:text-red-400 bg-white dark:bg-charcoal-900'
-              : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'
-          }`}
+          className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium rounded-t-lg transition-colors border-b-2 -mb-px ${tab === 'banned'
+            ? 'border-red-500 text-red-600 dark:text-red-400 bg-white dark:bg-charcoal-900'
+            : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'
+            }`}
         >
           <UserX size={15} />
           บัญชีที่ปิดแล้ว
           {bannedList.length > 0 && (
-            <span className={`px-1.5 py-0.5 rounded-full text-xs font-bold ${
-              tab === 'banned'
-                ? 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300'
-                : 'bg-red-50 text-red-500 dark:bg-red-900/20 dark:text-red-400'
-            }`}>
+            <span className={`px-1.5 py-0.5 rounded-full text-xs font-bold ${tab === 'banned'
+              ? 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300'
+              : 'bg-red-50 text-red-500 dark:bg-red-900/20 dark:text-red-400'
+              }`}>
               {bannedList.length}
             </span>
           )}
