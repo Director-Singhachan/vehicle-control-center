@@ -11,7 +11,6 @@ import {
   Bell,
   Sun,
   Moon,
-  Search,
   LogOut,
   User,
   Shield,
@@ -83,6 +82,8 @@ import { ticketService, type TicketWithRelations } from './services/ticketServic
 import { prefetchService } from './services/prefetchService';
 import { Avatar } from './components/ui/Avatar';
 import { ConfirmDialog } from './components/ui/ConfirmDialog';
+import { useActivityTicker } from './hooks/useActivityTicker';
+import { HeaderActivityTicker } from './components/layout/HeaderActivityTicker';
 
 const SidebarItem = ({ icon: Icon, label, active, onClick, onMouseEnter, isCollapsed, hasSubmenu, isOpen }: any) => (
   <button
@@ -761,6 +762,13 @@ const AppContent = () => {
   const [loadingNotifications, setLoadingNotifications] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
+  // Activity ticker for the top bar
+  const isHighLevel = isAdmin || isManager || isInspector || isExecutive;
+  const { items: tickerItems, loading: tickerLoading } = useActivityTicker({
+    branch: profile?.branch,
+    isHighLevel,
+  });
+
   // Redirect drivers to trip log form page when they login (like maintenance form)
   // Drivers can access: triplogs, fuellogs, maintenance, packing-simulation, profile, settings
   useEffect(() => {
@@ -1281,16 +1289,16 @@ const AppContent = () => {
                             isCollapsed={false}
                             isFlyout={true}
                           />
-                      <SubSidebarItem
-                        label="ประวัติรับสินค้า"
-                        active={activeTab === 'inventory-receipts'}
-                        onClick={() => {
-                          setActiveTab('inventory-receipts');
-                          setIsStockHovered(false);
-                        }}
-                        isCollapsed={false}
-                        isFlyout={true}
-                      />
+                          <SubSidebarItem
+                            label="ประวัติรับสินค้า"
+                            active={activeTab === 'inventory-receipts'}
+                            onClick={() => {
+                              setActiveTab('inventory-receipts');
+                              setIsStockHovered(false);
+                            }}
+                            isCollapsed={false}
+                            isFlyout={true}
+                          />
                         </>
                       )}
                     </div>
@@ -1932,18 +1940,15 @@ const AppContent = () => {
 
         {/* Top Header */}
         <header className="h-16 bg-white/80 dark:bg-charcoal-900/80 backdrop-blur-md border-b border-slate-200 dark:border-slate-800/50 flex items-center justify-between px-6 sticky top-0 z-10">
-          <div className="flex items-center">
-            <button onClick={() => setSidebarOpen(!isSidebarOpen)} className="p-2 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400">
+          <div className="flex items-center flex-1 min-w-0">
+            <button onClick={() => setSidebarOpen(!isSidebarOpen)} className="p-2 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400 flex-shrink-0">
               <Menu size={20} />
             </button>
-            <div className="ml-4 hidden md:flex items-center bg-slate-100 dark:bg-slate-800 rounded-full px-4 py-1.5 border border-transparent focus-within:border-enterprise-500 dark:focus-within:border-neon-blue transition-colors">
-              <Search size={16} className="text-slate-400" />
-              <input
-                type="text"
-                placeholder="ค้นหายานพาหนะ..."
-                className="bg-transparent border-none outline-none text-sm ml-2 w-64 text-slate-700 dark:text-slate-200 placeholder-slate-400"
-              />
-            </div>
+            <HeaderActivityTicker
+              items={tickerItems}
+              loading={tickerLoading}
+              showBranchTag={isHighLevel}
+            />
           </div>
 
           <div className="flex items-center space-x-4 relative">
@@ -2680,11 +2685,11 @@ const AppContent = () => {
                   initialState={
                     serviceStaffUsageNavState?.staffId === selectedServiceStaffId
                       ? {
-                          from: serviceStaffUsageNavState.from,
-                          to: serviceStaffUsageNavState.to,
-                          page: serviceStaffUsageNavState.page,
-                          scrollY: serviceStaffUsageNavState.scrollY,
-                        }
+                        from: serviceStaffUsageNavState.from,
+                        to: serviceStaffUsageNavState.to,
+                        page: serviceStaffUsageNavState.page,
+                        scrollY: serviceStaffUsageNavState.scrollY,
+                      }
                       : undefined
                   }
                   onViewTrip={(tripId, state) => {
