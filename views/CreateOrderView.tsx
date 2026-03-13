@@ -55,7 +55,7 @@ export function CreateOrderView() {
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [fulfillmentMode, setFulfillmentMode] = useState<FulfillmentMode>('delivery');
-  
+
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
 
   // Filter warehouses based on user branch
@@ -503,10 +503,10 @@ export function CreateOrderView() {
   return (
     <>
       <ToastContainer toasts={toasts} onDismiss={dismissToast} />
-      <PageLayout 
+      <PageLayout
         title="สร้างออเดอร์ใหม่"
         actions={
-          <Button 
+          <Button
             onClick={() => setIsUploadModalOpen(true)}
             variant="outline"
             className="flex items-center gap-2 bg-white text-blue-600 border-blue-200 hover:bg-blue-50 dark:bg-slate-800 dark:text-blue-400 dark:border-slate-700 dark:hover:bg-slate-700"
@@ -646,19 +646,19 @@ export function CreateOrderView() {
                       type="button"
                       onClick={() => setFulfillmentMode(opt.value)}
                       className={`p-4 rounded-xl border-2 transition-all text-left ${fulfillmentMode === opt.value
-                          ? opt.activeClasses
-                          : 'border-gray-200 dark:border-slate-700 hover:border-gray-300 dark:hover:border-slate-600'
+                        ? opt.activeClasses
+                        : 'border-gray-200 dark:border-slate-700 hover:border-gray-300 dark:hover:border-slate-600'
                         }`}
                     >
                       <div className="flex items-center gap-3">
                         <opt.icon className={`w-5 h-5 ${fulfillmentMode === opt.value
-                            ? opt.iconClasses
-                            : 'text-gray-400 dark:text-gray-500'
+                          ? opt.iconClasses
+                          : 'text-gray-400 dark:text-gray-500'
                           }`} />
                         <div>
                           <p className={`font-semibold text-sm ${fulfillmentMode === opt.value
-                              ? 'text-gray-900 dark:text-white'
-                              : 'text-gray-700 dark:text-gray-300'
+                            ? 'text-gray-900 dark:text-white'
+                            : 'text-gray-700 dark:text-gray-300'
                             }`}>{opt.label}</p>
                           <p className="text-xs text-gray-500 dark:text-gray-400">{opt.desc}</p>
                         </div>
@@ -1084,11 +1084,10 @@ export function CreateOrderView() {
                                           return updated;
                                         });
                                       }}
-                                      className={`px-2 py-1 text-[11px] font-medium ${
-                                        (item.fulfillment_method || 'delivery') === 'delivery'
+                                      className={`px-2 py-1 text-[11px] font-medium ${(item.fulfillment_method || 'delivery') === 'delivery'
                                           ? 'bg-blue-600 text-white'
                                           : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-slate-700'
-                                      }`}
+                                        }`}
                                     >
                                       จัดส่ง
                                     </button>
@@ -1124,11 +1123,10 @@ export function CreateOrderView() {
                                           return updated;
                                         });
                                       }}
-                                      className={`px-2 py-1 text-[11px] font-medium ${
-                                        item.fulfillment_method === 'pickup'
+                                      className={`px-2 py-1 text-[11px] font-medium ${item.fulfillment_method === 'pickup'
                                           ? 'bg-emerald-600 text-white'
                                           : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-slate-700'
-                                      }`}
+                                        }`}
                                     >
                                       รับเอง
                                     </button>
@@ -1341,12 +1339,12 @@ export function CreateOrderView() {
           </div>
         </div>
       </PageLayout>
-      
-      <OrderUploadModal 
+
+      <OrderUploadModal
         isOpen={isUploadModalOpen}
         onClose={() => setIsUploadModalOpen(false)}
         onSuccess={() => {
-            // TODO: Refresh orders list or redirect
+          // TODO: Refresh orders list or redirect
         }}
         selectedWarehouse={selectedWarehouse}
       />
