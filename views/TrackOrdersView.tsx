@@ -1,5 +1,5 @@
-import React, { useState, useMemo, useEffect } from 'react';
-import { Package, Search, Clock, CheckCircle, Eye, Edit, ChevronLeft, ChevronRight, Building2, ShoppingBag } from 'lucide-react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import { Package, Search, Clock, CheckCircle, Eye, Edit, ChevronLeft, ChevronRight, Building2, ShoppingBag, RefreshCw } from 'lucide-react';
 import { PageLayout } from '../components/ui/PageLayout';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
@@ -10,6 +10,7 @@ import { Modal } from '../components/ui/Modal';
 import { EditOrderView } from './EditOrderView';
 import { useAuth } from '../hooks/useAuth';
 import { BRANCH_FILTER_OPTIONS, getBranchLabel } from '../utils/branchLabels';
+import { supabase } from '../lib/supabase';
 
 interface Order {
   id: string;
@@ -23,6 +24,7 @@ interface Order {
   delivery_date?: string | null;
   branch?: string | null;
   delivery_trip_id?: string | null;
+  trip_status?: 'planned' | 'in_progress' | 'completed' | 'cancelled' | null;
 }
 
 export function TrackOrdersView() {
@@ -77,18 +79,9 @@ export function TrackOrdersView() {
   const [pageInput, setPageInput] = useState('');
   const itemsPerPage = 100;
 
-  React.useEffect(() => {
-    loadOrders();
-  }, []);
-
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [searchTerm, statusFilter, branchFilter]);
-
-  const loadOrders = async () => {
+  const loadOrders = useCallback(async () => {
     try {
       setLoading(true);
-      // Get all orders (not just pending)
       const data = await ordersService.getAll();
       setOrders(data);
     } catch (error) {
@@ -96,10 +89,91 @@ export function TrackOrdersView() {
     } finally {
       setLoading(false);
     }
+  }, []);
+
+  useEffect(() => {
+    loadOrders();
+  }, [loadOrders]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, statusFilter, branchFilter]);
+
+  // สถานะที่ใช้แสดงผลบน UI (คำนวณจาก orders.status + trip_status + delivery_trip_id)
+  const getEffectiveStatus = (order: Order): string => {
+    const baseStatus = (order.status || '').toLowerCase();
+    const tripStatus = order.trip_status || null;
+    const hasTrip = !!order.delivery_trip_id;
+
+    // ยกเลิก = จบนัด
+    if (baseStatus === 'cancelled') return 'cancelled';
+
+    // ถ้ายังไม่ได้ผูกทริป
+    if (!hasTrip) {
+      if (baseStatus === 'delivered' || baseStatus === 'partial') return baseStatus;
+      // pending/confirmed/assigned ที่ไม่มีทริป → รอจัดทริป
+      return 'pending';
+    }
+
+    // มีทริปแล้ว → ใช้สถานะทริปเป็นหลักในการบอก "กำหนดทริปแล้ว / กำลังจัดส่ง / ส่งเสร็จแล้ว"
+    switch (tripStatus) {
+      case 'planned':
+        return 'assigned';
+      case 'in_progress':
+        return 'in_delivery';
+      case 'completed':
+        // ถ้า DB คำนวณ delivered/partial ไว้แล้ว ให้ใช้ผลนั้น
+        if (baseStatus === 'delivered' || baseStatus === 'partial') return baseStatus;
+        // กันกรณี trigger/RPC พลาด แต่ทริปถูกปิดแล้ว → ถือว่าส่งเสร็จ
+        return 'delivered';
+      case 'cancelled':
+        // ทริปถูกยกเลิก แต่ order ยังผูกทริปไว้ → ให้กลับไปมองเป็น "รอจัดทริป"
+        return 'pending';
+      default:
+        // ไม่รู้สถานะทริป → ถ้า DB มีสถานะที่รู้จักให้ใช้ต่อ, ไม่งั้นถือว่ารอจัดทริป
+        if (['pending', 'confirmed', 'assigned', 'in_delivery', 'delivered', 'partial'].includes(baseStatus)) {
+          return baseStatus;
+        }
+        return 'pending';
+    }
   };
+
+  // Subscribe realtime changes on orders so Track Orders auto-refreshes
+  useEffect(() => {
+    const channel = supabase
+      .channel('track-orders-orders')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'orders',
+        },
+        () => {
+          // Reload full list so aggregate stats + filters stay consistent
+          loadOrders();
+        },
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [loadOrders]);
+
+  // โหลดข้อมูลใหม่เมื่อผู้ใช้กลับมาที่แท็บ/หน้านี้ (หลังลงเลขไมล์ขากลับหรือปิดทริปแล้ว)
+  useEffect(() => {
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') loadOrders();
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', onVisibilityChange);
+  }, [loadOrders]);
 
   const filteredOrders = useMemo(() => {
     return orders.filter((order) => {
+      const uiStatus = getEffectiveStatus(order);
+
       // Search filter
       if (searchTerm) {
         const search = searchTerm.toLowerCase();
@@ -115,17 +189,16 @@ export function TrackOrdersView() {
       // Status filter
       if (statusFilter !== 'all') {
         if (statusFilter === 'assigned') {
-          // สำหรับ 'assigned' ต้องตรวจสอบทั้ง status และ delivery_trip_id
-          if (order.status !== 'assigned' || !order.delivery_trip_id) {
+          // "กำหนดทริปแล้ว" = มีทริปแล้ว แต่ยังไม่ออกไปส่ง
+          if (uiStatus !== 'assigned') {
             return false;
           }
         } else if (statusFilter === 'pending') {
-          // สำหรับ 'pending' รวมถึงออเดอร์ที่ status เป็น 'assigned' แต่ไม่มี delivery_trip_id (ลบทริปแล้ว)
-          if (order.status !== 'pending' && order.status !== 'confirmed' && !(order.status === 'assigned' && !order.delivery_trip_id)) {
+          if (uiStatus !== 'pending') {
             return false;
           }
         } else {
-          if (order.status !== statusFilter) {
+          if (uiStatus !== statusFilter) {
             return false;
           }
         }
@@ -152,7 +225,7 @@ export function TrackOrdersView() {
   const endIndex = Math.min(offset + itemsPerPage, filteredOrders.length);
 
   const getStatusBadge = (order: Order) => {
-    const status = order.status;
+    const status = getEffectiveStatus(order);
     const deliveryTripId = order.delivery_trip_id;
     
     // ถ้า delivery_trip_id เป็น null แล้ว ไม่ควรแสดง "กำหนดทริปแล้ว" แม้ว่า status จะเป็น 'assigned' ก็ตาม
@@ -163,7 +236,6 @@ export function TrackOrdersView() {
     
     switch (status) {
       case 'pending':
-      case 'confirmed':
         return <Badge variant="warning">รอจัดทริป</Badge>;
       case 'partial':
         return (
@@ -176,15 +248,12 @@ export function TrackOrdersView() {
       case 'in_delivery':
         return <Badge variant="default">กำลังจัดส่ง</Badge>;
       case 'delivered':
-        return (
-          <span className="inline-flex flex-wrap items-center gap-1">
-            <Badge variant="success">จัดส่งแล้ว</Badge>
-            {!deliveryTripId && (
-              <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-700">
-                รับเอง
-              </span>
-            )}
+        return !deliveryTripId ? (
+          <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300 border border-green-200 dark:border-green-700">
+            ✓ จัดส่งสำเร็จ มารับเอง
           </span>
+        ) : (
+          <Badge variant="success">จัดส่งแล้ว</Badge>
         );
       case 'cancelled':
         return <Badge variant="error">ยกเลิก</Badge>;
@@ -196,11 +265,11 @@ export function TrackOrdersView() {
   const stats = useMemo(() => {
     return {
       total: filteredOrders.length,
-      pending: filteredOrders.filter((o) => o.status === 'pending' || o.status === 'confirmed' || (o.status === 'assigned' && !o.delivery_trip_id)).length,
-      partial: filteredOrders.filter((o) => o.status === 'partial').length,
-      assigned: filteredOrders.filter((o) => o.status === 'assigned' && o.delivery_trip_id).length,
-      in_delivery: filteredOrders.filter((o) => o.status === 'in_delivery').length,
-      delivered: filteredOrders.filter((o) => o.status === 'delivered').length,
+      pending: filteredOrders.filter((o) => getEffectiveStatus(o) === 'pending').length,
+      partial: filteredOrders.filter((o) => getEffectiveStatus(o) === 'partial').length,
+      assigned: filteredOrders.filter((o) => getEffectiveStatus(o) === 'assigned').length,
+      in_delivery: filteredOrders.filter((o) => getEffectiveStatus(o) === 'in_delivery').length,
+      delivered: filteredOrders.filter((o) => getEffectiveStatus(o) === 'delivered').length,
     };
   }, [filteredOrders]);
 
@@ -291,11 +360,24 @@ export function TrackOrdersView() {
                 <option value="pending">รอจัดทริป</option>
                 <option value="partial">ส่งบางส่วน</option>
                 <option value="assigned">กำหนดทริปแล้ว</option>
-                <option value="in_transit">กำลังจัดส่ง</option>
+                <option value="in_delivery">กำลังจัดส่ง</option>
                 <option value="delivered">จัดส่งแล้ว</option>
                 <option value="cancelled">ยกเลิก</option>
               </select>
             </div>
+
+            {/* รีเฟรช — หลังลงเลขไมล์ขากลับ/ปิดทริป ให้กดเพื่ออัปเดตสถานะออเดอร์ */}
+            <Button
+              type="button"
+              variant="outline"
+              size="default"
+              onClick={() => loadOrders()}
+              disabled={loading}
+              className="flex items-center gap-2 shrink-0"
+            >
+              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+              รีเฟรช
+            </Button>
           </div>
         </div>
       </Card>
@@ -371,10 +453,10 @@ export function TrackOrdersView() {
                 </thead>
                 <tbody>
                   {paginatedOrders.map((order) => (
-                    <tr key={order.id} className={`border-b border-gray-100 dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-700/50 ${order.status === 'partial' ? 'bg-orange-50/30 dark:bg-orange-900/10' : ''}`}>
+                    <tr key={order.id} className={`border-b border-gray-100 dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-700/50 ${getEffectiveStatus(order) === 'partial' ? 'bg-orange-50/30 dark:bg-orange-900/10' : ''}`}>
                       <td className="py-3 px-4 font-mono text-sm text-blue-600 dark:text-blue-400">
                         <div>{order.order_number || <span className="text-amber-600 dark:text-amber-400">รอจัดทริป</span>}</div>
-                        {order.status === 'partial' && (
+                        {getEffectiveStatus(order) === 'partial' && (
                           <div className="text-xs text-orange-600 dark:text-orange-400 font-normal mt-0.5">
                             รอจัดส่งส่วนที่เหลือ
                           </div>
@@ -412,7 +494,7 @@ export function TrackOrdersView() {
                             <Eye className="w-4 h-4 mr-1" />
                             ดู
                           </Button>
-                          {(order.status === 'pending' || order.status === 'confirmed' || order.status === 'assigned') && (
+                          {(['pending', 'confirmed', 'assigned'] as string[]).includes(getEffectiveStatus(order)) && (
                             <Button
                               size="sm"
                               variant="outline"
@@ -564,7 +646,7 @@ export function TrackOrdersView() {
                 <div className="text-sm text-gray-500 dark:text-gray-400">{detailOrder.customer_code}</div>
               </div>
               <div className="flex items-center gap-3 flex-wrap">
-                {getStatusBadge(detailOrder.status)}
+              {getStatusBadge(detailOrder)}
                 <div className="text-sm text-gray-600 dark:text-gray-400 space-y-1">
                   <div>
                     วันที่สร้าง:{' '}
