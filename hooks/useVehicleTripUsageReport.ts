@@ -5,6 +5,8 @@ import {
   vehicleTripUsageService,
   type VehicleTripDailySummary,
   type VehicleProductSummaryItem,
+  type VehicleCostSummary,
+  type VehicleMonthlySummary,
 } from '../services/vehicleTripUsageService';
 
 interface UseVehicleTripUsageReportParams {
@@ -20,6 +22,8 @@ export const useVehicleTripUsageReport = ({
 }: UseVehicleTripUsageReportParams) => {
   const [dailySummaries, setDailySummaries] = useState<VehicleTripDailySummary[]>([]);
   const [productSummary, setProductSummary] = useState<VehicleProductSummaryItem[]>([]);
+  const [costSummary, setCostSummary] = useState<VehicleCostSummary | null>(null);
+  const [monthlySummaries, setMonthlySummaries] = useState<VehicleMonthlySummary[]>([]);
   const [loading, setLoading] = useState(false);
   const [productSummaryLoading, setProductSummaryLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -28,6 +32,8 @@ export const useVehicleTripUsageReport = ({
     if (!vehicleId || !startDate || !endDate) {
       setDailySummaries([]);
       setProductSummary([]);
+      setCostSummary(null);
+      setMonthlySummaries([]);
       return;
     }
 
@@ -35,17 +41,27 @@ export const useVehicleTripUsageReport = ({
     setProductSummaryLoading(true);
     setError(null);
     setProductSummary([]);
+    setCostSummary(null);
+    setMonthlySummaries([]);
 
     const options = { vehicleId, startDate, endDate };
 
     try {
-      // โหลดสรุปรายวันก่อน ให้ผู้ใช้เห็นตารางเร็ว
-      const dailyResult = await vehicleTripUsageService.getVehicleDailyUsage(options);
+      // โหลดสรุปรายวัน + ต้นทุน + รายเดือน พร้อมกัน
+      const [dailyResult, costResult, monthlyResult] = await Promise.all([
+        vehicleTripUsageService.getVehicleDailyUsage(options),
+        vehicleTripUsageService.getVehicleCostSummary(options),
+        vehicleTripUsageService.getVehicleMonthlySummary(options),
+      ]);
       setDailySummaries(dailyResult);
+      setCostSummary(costResult);
+      setMonthlySummaries(monthlyResult);
     } catch (err) {
       console.error('[useVehicleTripUsageReport] Error fetching data:', err);
       setError(err instanceof Error ? err.message : 'เกิดข้อผิดพลาดในการโหลดข้อมูล');
       setDailySummaries([]);
+      setCostSummary(null);
+      setMonthlySummaries([]);
       setProductSummaryLoading(false);
       return;
     } finally {
@@ -71,6 +87,8 @@ export const useVehicleTripUsageReport = ({
   return {
     dailySummaries,
     productSummary,
+    costSummary,
+    monthlySummaries,
     loading,
     productSummaryLoading,
     error,

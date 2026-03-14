@@ -14,6 +14,9 @@ import {
   Package,
   Users,
   X,
+  DollarSign,
+  Droplet,
+  TrendingUp,
 } from 'lucide-react';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
@@ -22,6 +25,7 @@ import { useVehicleTripUsageReport } from '../../hooks/useVehicleTripUsageReport
 import { TripProductSummarySection } from '../../components/trip/TripProductSummarySection';
 import { TripStaffItemDistributionSection } from '../../components/trip/TripStaffItemDistributionSection';
 import { ProductSummaryChart } from '../../components/trip/ProductSummaryChart';
+import { MonthlyCostChart } from '../../components/trip/MonthlyCostChart';
 import type { VehicleTripDailySummary, VehicleTripDetail } from '../../services/vehicleTripUsageService';
 
 interface VehicleTripUsageReportProps {
@@ -58,6 +62,12 @@ function formatThaiTime(isoStr: string | null) {
     minute: '2-digit',
     timeZone: 'Asia/Bangkok',
   });
+}
+
+function formatMonthThai(monthStr: string) {
+  const [y, m] = monthStr.split('-').map(Number);
+  const d = new Date(y, m - 1, 1);
+  return d.toLocaleDateString('th-TH', { month: 'long', year: 'numeric' });
 }
 
 type DetailTab = 'products' | 'staff';
@@ -279,13 +289,14 @@ export const VehicleTripUsageReport: React.FC<VehicleTripUsageReportProps> = ({
   const [dailyTablePage, setDailyTablePage] = useState(1);
   const [dailyTablePerPage, setDailyTablePerPage] = useState(20);
   const [showProductTable, setShowProductTable] = useState(false);
+  const [viewMode, setViewMode] = useState<'daily' | 'monthly'>('daily');
 
-  const { dailySummaries, productSummary, loading, productSummaryLoading, error, refetch } =
+  const { dailySummaries, productSummary, costSummary, monthlySummaries, loading, productSummaryLoading, error, refetch } =
     useVehicleTripUsageReport({
-    vehicleId: searchedVehicleId,
-    startDate: searchedStart,
-    endDate: searchedEnd,
-  });
+      vehicleId: searchedVehicleId,
+      startDate: searchedStart,
+      endDate: searchedEnd,
+    });
 
   const handleSearch = () => {
     if (!selectedVehicleId) return;
@@ -320,7 +331,19 @@ export const VehicleTripUsageReport: React.FC<VehicleTripUsageReportProps> = ({
   // Aggregate stats
   const totalTrips = useMemo(() => dailySummaries.reduce((s, d) => s + d.trip_count, 0), [dailySummaries]);
   const totalDistance = useMemo(() => dailySummaries.reduce((s, d) => s + d.total_distance_km, 0), [dailySummaries]);
+  const totalPieces = useMemo(
+    () => productSummary.reduce((s, p) => s + p.total_quantity, 0),
+    [productSummary]
+  );
   const activeDays = dailySummaries.length;
+
+  // ตัวชี้ความคุ้มค่า (ต้นทุนต่อทริป/กม./ชิ้น)
+  const costPerTrip =
+    costSummary && totalTrips > 0 ? costSummary.total_cost / totalTrips : null;
+  const costPerKm =
+    costSummary && totalDistance > 0 ? costSummary.total_cost / totalDistance : null;
+  const costPerPiece =
+    costSummary && totalPieces > 0 ? costSummary.total_cost / totalPieces : null;
 
   const selectedVehicle = vehicles.find((v) => v.id === searchedVehicleId);
 
@@ -420,52 +443,166 @@ export const VehicleTripUsageReport: React.FC<VehicleTripUsageReportProps> = ({
       {/* Results */}
       {!loading && searchedVehicleId && (
         <>
-          {/* Summary Cards */}
-          {dailySummaries.length > 0 && (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <Card className="p-5">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-slate-500 dark:text-slate-400 mb-1">ทริปทั้งหมด</p>
-                    <p className="text-3xl font-bold text-slate-900 dark:text-white">{totalTrips}</p>
-                    <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">ในช่วงที่เลือก</p>
-                  </div>
-                  <div className="p-3 bg-enterprise-100 dark:bg-enterprise-900/30 rounded-lg">
-                    <Route className="text-enterprise-600 dark:text-enterprise-400" size={22} />
-                  </div>
-                </div>
-              </Card>
-              <Card className="p-5">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-slate-500 dark:text-slate-400 mb-1">ระยะทางรวม</p>
-                    <p className="text-3xl font-bold text-slate-900 dark:text-white">
-                      {totalDistance.toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 1 })}
-                    </p>
-                    <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">กิโลเมตร</p>
-                  </div>
-                  <div className="p-3 bg-blue-100 dark:bg-blue-900/30 rounded-lg">
-                    <Truck className="text-blue-600 dark:text-blue-400" size={22} />
-                  </div>
-                </div>
-              </Card>
-              <Card className="p-5">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-slate-500 dark:text-slate-400 mb-1">วันที่มีการใช้รถ</p>
-                    <p className="text-3xl font-bold text-slate-900 dark:text-white">{activeDays}</p>
-                    <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">วัน</p>
-                  </div>
-                  <div className="p-3 bg-green-100 dark:bg-green-900/30 rounded-lg">
-                    <Calendar className="text-green-600 dark:text-green-400" size={22} />
-                  </div>
-                </div>
-              </Card>
+          {/* View mode: ช่วงวันที่ | รายเดือน */}
+          {(dailySummaries.length > 0 || monthlySummaries.length > 0) && (
+            <div className="flex gap-2 border-b border-slate-200 dark:border-slate-700 pb-2">
+              <button
+                type="button"
+                onClick={() => setViewMode('daily')}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  viewMode === 'daily'
+                    ? 'bg-enterprise-600 text-white dark:bg-enterprise-500'
+                    : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
+                }`}
+              >
+                ช่วงวันที่
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode('monthly')}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  viewMode === 'monthly'
+                    ? 'bg-enterprise-600 text-white dark:bg-enterprise-500'
+                    : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
+                }`}
+              >
+                รายเดือน
+              </button>
             </div>
           )}
 
-          {/* สรุปสินค้าที่บรรทุก: กราฟอยู่บนสุด รายการตารางซ่อนไว้กดดู */}
-          {(productSummaryLoading || productSummary.length > 0) && (
+          {/* Summary Cards — แสดงเมื่อโหมดรายวัน และมีข้อมูลรายวัน */}
+          {viewMode === 'daily' && dailySummaries.length > 0 && (
+            <>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <Card className="p-5">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm text-slate-500 dark:text-slate-400 mb-1">ทริปทั้งหมด</p>
+                      <p className="text-3xl font-bold text-slate-900 dark:text-white">{totalTrips}</p>
+                      <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">ในช่วงที่เลือก</p>
+                    </div>
+                    <div className="p-3 bg-enterprise-100 dark:bg-enterprise-900/30 rounded-lg">
+                      <Route className="text-enterprise-600 dark:text-enterprise-400" size={22} />
+                    </div>
+                  </div>
+                </Card>
+                <Card className="p-5">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm text-slate-500 dark:text-slate-400 mb-1">ระยะทางรวม</p>
+                      <p className="text-3xl font-bold text-slate-900 dark:text-white">
+                        {totalDistance.toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 1 })}
+                      </p>
+                      <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">กิโลเมตร</p>
+                    </div>
+                    <div className="p-3 bg-blue-100 dark:bg-blue-900/30 rounded-lg">
+                      <Truck className="text-blue-600 dark:text-blue-400" size={22} />
+                    </div>
+                  </div>
+                </Card>
+                <Card className="p-5">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm text-slate-500 dark:text-slate-400 mb-1">วันที่มีการใช้รถ</p>
+                      <p className="text-3xl font-bold text-slate-900 dark:text-white">{activeDays}</p>
+                      <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">วัน</p>
+                    </div>
+                    <div className="p-3 bg-green-100 dark:bg-green-900/30 rounded-lg">
+                      <Calendar className="text-green-600 dark:text-green-400" size={22} />
+                    </div>
+                  </div>
+                </Card>
+              </div>
+
+              {/* ต้นทุน: ค่าน้ำมัน, ค่าคอม, ต้นทุนรวม */}
+              {costSummary && (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <Card className="p-5">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm text-slate-500 dark:text-slate-400 mb-1">ค่าน้ำมันรวม</p>
+                        <p className="text-2xl font-bold text-slate-900 dark:text-white">
+                          ฿{costSummary.fuel_cost.toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                        </p>
+                        <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">ในช่วงที่เลือก</p>
+                      </div>
+                      <div className="p-3 bg-amber-100 dark:bg-amber-900/30 rounded-lg">
+                        <Droplet className="text-amber-600 dark:text-amber-400" size={22} />
+                      </div>
+                    </div>
+                  </Card>
+                  <Card className="p-5">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm text-slate-500 dark:text-slate-400 mb-1">ค่าคอมรวม</p>
+                        <p className="text-2xl font-bold text-slate-900 dark:text-white">
+                          ฿{costSummary.commission_cost.toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                        </p>
+                        <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">ในช่วงที่เลือก</p>
+                      </div>
+                      <div className="p-3 bg-violet-100 dark:bg-violet-900/30 rounded-lg">
+                        <Users className="text-violet-600 dark:text-violet-400" size={22} />
+                      </div>
+                    </div>
+                  </Card>
+                  <Card className="p-5">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm text-slate-500 dark:text-slate-400 mb-1">ต้นทุนรวม</p>
+                        <p className="text-2xl font-bold text-slate-900 dark:text-white">
+                          ฿{costSummary.total_cost.toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                        </p>
+                        <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">น้ำมัน + ค่าคอม</p>
+                      </div>
+                      <div className="p-3 bg-slate-100 dark:bg-slate-700/50 rounded-lg">
+                        <DollarSign className="text-slate-600 dark:text-slate-300" size={22} />
+                      </div>
+                    </div>
+                  </Card>
+                </div>
+              )}
+
+              {/* ตัวชี้ความคุ้มค่า */}
+              {costSummary && costSummary.total_cost > 0 && (totalTrips > 0 || totalDistance > 0 || totalPieces > 0) && (
+                <Card className="p-5">
+                  <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-3 flex items-center gap-2">
+                    <TrendingUp size={18} className="text-enterprise-600 dark:text-enterprise-400" />
+                    ตัวชี้ความคุ้มค่า
+                  </h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    {costPerTrip !== null && (
+                      <div>
+                        <p className="text-xs text-slate-500 dark:text-slate-400">ต้นทุนต่อทริป</p>
+                        <p className="text-lg font-semibold text-slate-900 dark:text-white">
+                          ฿{costPerTrip.toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 2 })} <span className="text-slate-500 dark:text-slate-400 text-sm font-normal">/ ทริป</span>
+                        </p>
+                      </div>
+                    )}
+                    {costPerKm !== null && (
+                      <div>
+                        <p className="text-xs text-slate-500 dark:text-slate-400">ต้นทุนต่อกม.</p>
+                        <p className="text-lg font-semibold text-slate-900 dark:text-white">
+                          ฿{costPerKm.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} <span className="text-slate-500 dark:text-slate-400 text-sm font-normal">/ กม.</span>
+                        </p>
+                      </div>
+                    )}
+                    {costPerPiece !== null && (
+                      <div>
+                        <p className="text-xs text-slate-500 dark:text-slate-400">ต้นทุนต่อชิ้นส่ง</p>
+                        <p className="text-lg font-semibold text-slate-900 dark:text-white">
+                          ฿{costPerPiece.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} <span className="text-slate-500 dark:text-slate-400 text-sm font-normal">/ ชิ้น</span>
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </Card>
+              )}
+            </>
+          )}
+
+          {/* สรุปสินค้าที่บรรทุก — แสดงเฉพาะโหมดรายวัน */}
+          {viewMode === 'daily' && (productSummaryLoading || productSummary.length > 0) && (
             <Card>
               <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-700">
                 <h3 className="text-base font-semibold text-slate-900 dark:text-white flex items-center gap-2 flex-wrap">
@@ -591,8 +728,109 @@ export const VehicleTripUsageReport: React.FC<VehicleTripUsageReportProps> = ({
             </Card>
           )}
 
-          {/* Daily Table — แบ่งหน้าและจัดระเบียบ */}
-          {dailySummaries.length > 0 ? (
+          {/* โหมดรายเดือน: กราฟต้นทุน + ตารางสรุปรายเดือน */}
+          {viewMode === 'monthly' && monthlySummaries.length > 0 && (
+            <>
+              <Card>
+                <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-700">
+                  <h3 className="text-base font-semibold text-slate-900 dark:text-white">
+                    ต้นทุนรายเดือน
+                    {selectedVehicle && (
+                      <span className="ml-2 text-sm font-normal text-slate-500 dark:text-slate-400">
+                        — {selectedVehicle.plate}
+                      </span>
+                    )}
+                  </h3>
+                  <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
+                    ค่าน้ำมัน + ค่าคอม แยกตามเดือน
+                  </p>
+                </div>
+                <div className="px-6 py-4">
+                  <MonthlyCostChart data={monthlySummaries} isDark={isDark} />
+                </div>
+              </Card>
+              <Card>
+                <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-700">
+                  <h3 className="text-base font-semibold text-slate-900 dark:text-white">
+                    สรุปรายเดือน
+                    {selectedVehicle && (
+                      <span className="ml-2 text-sm font-normal text-slate-500 dark:text-slate-400">
+                        — {selectedVehicle.plate}
+                      </span>
+                    )}
+                  </h3>
+                  <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
+                    จำนวนทริป, ระยะทาง, ต้นทุน แยกตามเดือน
+                  </p>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[520px]">
+                    <thead className="bg-slate-50 dark:bg-slate-800/95 border-b border-slate-200 dark:border-slate-700">
+                      <tr>
+                        <th className="text-left py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300 whitespace-nowrap">
+                          เดือน
+                        </th>
+                        <th className="text-right py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300 whitespace-nowrap">
+                          จำนวนทริป
+                        </th>
+                        <th className="text-right py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300 whitespace-nowrap">
+                          ระยะทาง (กม.)
+                        </th>
+                        <th className="text-right py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300 whitespace-nowrap">
+                          ค่าน้ำมัน (บาท)
+                        </th>
+                        <th className="text-right py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300 whitespace-nowrap">
+                          ค่าคอม (บาท)
+                        </th>
+                        <th className="text-right py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300 whitespace-nowrap">
+                          ต้นทุนรวม (บาท)
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {monthlySummaries.map((row, index) => (
+                        <tr
+                          key={row.month}
+                          className={`border-b border-slate-100 dark:border-slate-800 ${
+                            index % 2 === 0
+                              ? 'bg-white dark:bg-slate-900'
+                              : 'bg-slate-50/50 dark:bg-slate-900/50'
+                          }`}
+                        >
+                          <td className="py-3 px-4 text-slate-900 dark:text-slate-100 font-medium whitespace-nowrap">
+                            {formatMonthThai(row.month)}
+                          </td>
+                          <td className="py-3 px-4 text-right text-slate-900 dark:text-slate-100 tabular-nums">
+                            {row.trip_count}
+                          </td>
+                          <td className="py-3 px-4 text-right text-slate-900 dark:text-slate-100 tabular-nums">
+                            {row.total_distance_km > 0
+                              ? row.total_distance_km.toLocaleString('th-TH', {
+                                  minimumFractionDigits: 0,
+                                  maximumFractionDigits: 1,
+                                })
+                              : '-'}
+                          </td>
+                          <td className="py-3 px-4 text-right text-slate-900 dark:text-slate-100 tabular-nums">
+                            ฿{row.fuel_cost.toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                          </td>
+                          <td className="py-3 px-4 text-right text-slate-900 dark:text-slate-100 tabular-nums">
+                            ฿{row.commission_cost.toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                          </td>
+                          <td className="py-3 px-4 text-right text-slate-900 dark:text-slate-100 font-semibold tabular-nums">
+                            ฿{row.total_cost.toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </Card>
+            </>
+          )}
+
+          {/* Daily Table — แสดงเฉพาะโหมดรายวัน */}
+          {viewMode === 'daily' && dailySummaries.length > 0 ? (
             <Card>
               <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-700">
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -734,6 +972,18 @@ export const VehicleTripUsageReport: React.FC<VehicleTripUsageReportProps> = ({
                   </div>
                 </div>
               )}
+            </Card>
+          ) : viewMode === 'monthly' && monthlySummaries.length === 0 ? (
+            <Card>
+              <div className="flex flex-col items-center justify-center py-14 text-slate-500 dark:text-slate-400">
+                <Calendar size={48} className="mb-3 text-slate-300 dark:text-slate-700" />
+                <p className="text-lg font-medium text-slate-600 dark:text-slate-400">
+                  ไม่มีข้อมูลสรุปรายเดือนในช่วงที่เลือก
+                </p>
+                <p className="text-sm text-slate-400 dark:text-slate-600 mt-1">
+                  ลองขยายช่วงวันที่หรือเลือกรถอื่น
+                </p>
+              </div>
             </Card>
           ) : (
             <Card>
