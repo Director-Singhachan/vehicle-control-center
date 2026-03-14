@@ -1,6 +1,6 @@
 // VehicleTripUsageReport.tsx
 // รายงานการใช้รถละเอียด — แสดงตารางสรุปรายวันต่อรถคัน พร้อม modal ทริป/สินค้า/พนักงาน
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Truck,
   Route,
@@ -9,6 +9,8 @@ import {
   Search,
   ChevronDown,
   ChevronUp,
+  ChevronLeft,
+  ChevronRight,
   Package,
   Users,
   X,
@@ -274,6 +276,8 @@ export const VehicleTripUsageReport: React.FC<VehicleTripUsageReportProps> = ({
   const [searchedEnd, setSearchedEnd] = useState(defaultRange.end);
 
   const [selectedDay, setSelectedDay] = useState<VehicleTripDailySummary | null>(null);
+  const [dailyTablePage, setDailyTablePage] = useState(1);
+  const [dailyTablePerPage, setDailyTablePerPage] = useState(20);
 
   const { dailySummaries, productSummary, loading, productSummaryLoading, error, refetch } =
     useVehicleTripUsageReport({
@@ -288,6 +292,29 @@ export const VehicleTripUsageReport: React.FC<VehicleTripUsageReportProps> = ({
     setSearchedStart(startDate);
     setSearchedEnd(endDate);
   };
+
+  // รีเซ็ตไปหน้า 1 เมื่อผลการค้นหาเปลี่ยน
+  useEffect(() => {
+    setDailyTablePage(1);
+  }, [dailySummaries.length, searchedVehicleId, searchedStart, searchedEnd]);
+
+  // Pagination สำหรับตารางสรุปรายวัน
+  const dailyTotal = dailySummaries.length;
+  const dailyTotalPages = Math.max(1, Math.ceil(dailyTotal / dailyTablePerPage));
+  const dailyPageSafe = Math.min(Math.max(1, dailyTablePage), dailyTotalPages);
+  const dailyStartIndex = (dailyPageSafe - 1) * dailyTablePerPage;
+  const dailyEndIndex = Math.min(dailyStartIndex + dailyTablePerPage, dailyTotal);
+  const paginatedDaily = useMemo(
+    () => dailySummaries.slice(dailyStartIndex, dailyEndIndex),
+    [dailySummaries, dailyStartIndex, dailyEndIndex]
+  );
+
+  // ซิงค์หมายเลขหน้าเมื่อจำนวนหน้าลด (เช่น เปลี่ยน "แสดงต่อหน้า")
+  useEffect(() => {
+    if (dailyTotalPages > 0 && dailyTablePage > dailyTotalPages) {
+      setDailyTablePage(dailyTotalPages);
+    }
+  }, [dailyTotalPages, dailyTablePage]);
 
   // Aggregate stats
   const totalTrips = useMemo(() => dailySummaries.reduce((s, d) => s + d.trip_count, 0), [dailySummaries]);
@@ -532,60 +559,86 @@ export const VehicleTripUsageReport: React.FC<VehicleTripUsageReportProps> = ({
             </Card>
           )}
 
-          {/* Daily Table */}
+          {/* Daily Table — แบ่งหน้าและจัดระเบียบ */}
           {dailySummaries.length > 0 ? (
             <Card>
               <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-700">
-                <h3 className="text-base font-semibold text-slate-900 dark:text-white">
-                  สรุปการใช้รถรายวัน
-                  {selectedVehicle && (
-                    <span className="ml-2 text-sm font-normal text-slate-500 dark:text-slate-400">
-                      — {selectedVehicle.plate}
-                      {selectedVehicle.make && selectedVehicle.model
-                        ? ` (${selectedVehicle.make} ${selectedVehicle.model})`
-                        : ''}
-                    </span>
-                  )}
-                </h3>
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                  <div>
+                    <h3 className="text-base font-semibold text-slate-900 dark:text-white">
+                      สรุปการใช้รถรายวัน
+                      {selectedVehicle && (
+                        <span className="ml-2 text-sm font-normal text-slate-500 dark:text-slate-400">
+                          — {selectedVehicle.plate}
+                          {selectedVehicle.make && selectedVehicle.model
+                            ? ` (${selectedVehicle.make} ${selectedVehicle.model})`
+                            : ''}
+                        </span>
+                      )}
+                    </h3>
+                    <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
+                      รวม {dailyTotal.toLocaleString('th-TH')} วันในช่วงที่เลือก
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <label className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400">
+                      แสดงต่อหน้า
+                      <select
+                        value={dailyTablePerPage}
+                        onChange={(e) => {
+                          setDailyTablePerPage(Number(e.target.value));
+                          setDailyTablePage(1);
+                        }}
+                        className="px-2 py-1.5 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm focus:outline-none focus:ring-2 focus:ring-enterprise-500"
+                      >
+                        <option value={10}>10</option>
+                        <option value={20}>20</option>
+                        <option value={30}>30</option>
+                        <option value={50}>50</option>
+                        <option value={100}>100</option>
+                      </select>
+                    </label>
+                  </div>
+                </div>
               </div>
               <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60">
-                      <th className="text-left py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">
+                <table className="w-full min-w-[520px]">
+                  <thead className="sticky top-0 z-10 bg-slate-50 dark:bg-slate-800/95 border-b border-slate-200 dark:border-slate-700">
+                    <tr>
+                      <th className="text-left py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300 whitespace-nowrap">
                         วันที่
                       </th>
-                      <th className="text-right py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">
+                      <th className="text-right py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300 whitespace-nowrap">
                         จำนวนทริป
                       </th>
-                      <th className="text-right py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">
+                      <th className="text-right py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300 whitespace-nowrap">
                         ระยะทางรวม (กม.)
                       </th>
-                      <th className="text-left py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">
+                      <th className="text-left py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300 min-w-[140px]">
                         คนขับ
                       </th>
-                      <th className="text-center py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">
+                      <th className="text-center py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300 whitespace-nowrap">
                         รายละเอียด
                       </th>
                     </tr>
                   </thead>
                   <tbody>
-                    {dailySummaries.map((day, index) => (
+                    {paginatedDaily.map((day, index) => (
                       <tr
                         key={day.date}
-                        className={`border-b border-slate-100 dark:border-slate-800 ${
+                        className={`border-b border-slate-100 dark:border-slate-800 transition-colors hover:bg-slate-50/80 dark:hover:bg-slate-800/50 ${
                           index % 2 === 0
                             ? 'bg-white dark:bg-slate-900'
-                            : 'bg-slate-50/60 dark:bg-slate-900/60'
+                            : 'bg-slate-50/50 dark:bg-slate-900/50'
                         }`}
                       >
                         <td className="py-3 px-4 text-slate-900 dark:text-slate-100 font-medium whitespace-nowrap">
                           {formatThaiDate(day.date)}
                         </td>
-                        <td className="py-3 px-4 text-right text-slate-900 dark:text-slate-100">
+                        <td className="py-3 px-4 text-right text-slate-900 dark:text-slate-100 tabular-nums">
                           {day.trip_count}
                         </td>
-                        <td className="py-3 px-4 text-right text-slate-900 dark:text-slate-100 font-semibold">
+                        <td className="py-3 px-4 text-right text-slate-900 dark:text-slate-100 font-semibold tabular-nums">
                           {day.total_distance_km > 0
                             ? day.total_distance_km.toLocaleString('th-TH', {
                                 minimumFractionDigits: 0,
@@ -593,7 +646,7 @@ export const VehicleTripUsageReport: React.FC<VehicleTripUsageReportProps> = ({
                               })
                             : '-'}
                         </td>
-                        <td className="py-3 px-4 text-slate-600 dark:text-slate-400 text-sm">
+                        <td className="py-3 px-4 text-slate-600 dark:text-slate-400 text-sm max-w-[200px] truncate" title={day.drivers.join('; ')}>
                           {day.drivers.length > 0 ? day.drivers.join('; ') : '-'}
                         </td>
                         <td className="py-3 px-4 text-center">
@@ -612,6 +665,43 @@ export const VehicleTripUsageReport: React.FC<VehicleTripUsageReportProps> = ({
                   </tbody>
                 </table>
               </div>
+
+              {/* Pagination */}
+              {dailyTotalPages > 1 && (
+                <div className="px-6 py-4 border-t border-slate-200 dark:border-slate-700 flex flex-col sm:flex-row items-center justify-between gap-4">
+                  <p className="text-sm text-slate-600 dark:text-slate-400 order-2 sm:order-1">
+                    แสดง {dailyStartIndex + 1}-{dailyEndIndex} จาก {dailyTotal.toLocaleString('th-TH')} รายการ
+                    <span className="ml-1 text-slate-500 dark:text-slate-500">
+                      (หน้า {dailyPageSafe} / {dailyTotalPages.toLocaleString('th-TH')})
+                    </span>
+                  </p>
+                  <div className="flex items-center gap-2 order-1 sm:order-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setDailyTablePage((p) => Math.max(1, p - 1))}
+                      disabled={dailyPageSafe <= 1}
+                      className="gap-1"
+                    >
+                      <ChevronLeft size={16} />
+                      ก่อนหน้า
+                    </Button>
+                    <span className="px-3 py-1 text-sm font-medium text-slate-700 dark:text-slate-300 min-w-[4rem] text-center">
+                      {dailyPageSafe} / {dailyTotalPages}
+                    </span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setDailyTablePage((p) => Math.min(dailyTotalPages, p + 1))}
+                      disabled={dailyPageSafe >= dailyTotalPages}
+                      className="gap-1"
+                    >
+                      ถัดไป
+                      <ChevronRight size={16} />
+                    </Button>
+                  </div>
+                </div>
+              )}
             </Card>
           ) : (
             <Card>
