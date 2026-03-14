@@ -1,6 +1,7 @@
 // vehicleTripUsageService.ts
 // Summarizes vehicle usage by day over a date range using tripLogService.getTripHistory
 import { tripLogService, type TripLogWithRelations } from './tripLogService';
+import { tripHistoryAggregatesService } from './deliveryTrip/tripHistoryAggregatesService';
 
 // ─────────────────────────────────────────────────
 // Types
@@ -37,6 +38,16 @@ export interface GetVehicleDailyUsageOptions {
   vehicleId: string;
   startDate: string; // ISO date string or date-time string
   endDate: string;   // ISO date string or date-time string
+}
+
+/** สรุปสินค้าแต่ละชนิดที่รถบรรทุกในช่วงวันที่ที่เลือก (รวมทุกทริป) */
+export interface VehicleProductSummaryItem {
+  product_id: string;
+  product_code: string;
+  product_name: string;
+  category: string;
+  unit: string;
+  total_quantity: number;
 }
 
 // ─────────────────────────────────────────────────
@@ -150,5 +161,68 @@ export const vehicleTripUsageService = {
     // เรียงจากวันใหม่ → เก่า
     results.sort((a, b) => b.date.localeCompare(a.date));
     return results;
+  },
+
+  /**
+   * สรุปผลรวมสินค้าแต่ละชนิดที่รถคันนี้บรรทุกในช่วงวันที่ที่เลือก (รวมทุกทริป delivery)
+   * คืน array เรียงตามชื่อสินค้า
+   */
+  getVehicleProductSummary: async (
+    options: GetVehicleDailyUsageOptions
+  ): Promise<VehicleProductSummaryItem[]> => {
+    const { vehicleId, startDate, endDate } = options;
+
+    const endDateTime = endDate.includes('T') ? endDate : `${endDate}T23:59:59.999Z`;
+    const startDateTime = startDate.includes('T') ? startDate : `${startDate}T00:00:00.000Z`;
+
+    const { data: trips } = await tripLogService.getTripHistory({
+      vehicle_id: vehicleId,
+      start_date: startDateTime,
+      end_date: endDateTime,
+      limit: 1000,
+    });
+
+    const deliveryTripIds = new Set<string>();
+    for (const trip of trips) {
+      const id = trip.delivery_trip?.id;
+      if (id) deliveryTripIds.add(id);
+    }
+
+    const productMap = new Map<
+      string,
+      { product_code: string; product_name: string; category: string; unit: string; total_quantity: number }
+    >();
+
+    for (const tripId of deliveryTripIds) {
+      const items = await tripHistoryAggregatesService.getAggregatedProducts(tripId);
+      for (const item of items) {
+        const existing = productMap.get(item.product_id);
+        if (existing) {
+          existing.total_quantity += item.total_quantity;
+        } else {
+          productMap.set(item.product_id, {
+            product_code: item.product_code,
+            product_name: item.product_name,
+            category: item.category,
+            unit: item.unit,
+            total_quantity: item.total_quantity,
+          });
+        }
+      }
+    }
+
+    const result: VehicleProductSummaryItem[] = Array.from(productMap.entries()).map(
+      ([product_id, v]) => ({
+        product_id,
+        product_code: v.product_code,
+        product_name: v.product_name,
+        category: v.category,
+        unit: v.unit,
+        total_quantity: v.total_quantity,
+      })
+    );
+
+    result.sort((a, b) => (a.product_name || a.product_code).localeCompare(b.product_name || b.product_code));
+    return result;
   },
 };

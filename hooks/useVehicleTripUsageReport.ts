@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   vehicleTripUsageService,
   type VehicleTripDailySummary,
+  type VehicleProductSummaryItem,
 } from '../services/vehicleTripUsageService';
 
 interface UseVehicleTripUsageReportParams {
@@ -18,29 +19,34 @@ export const useVehicleTripUsageReport = ({
   endDate,
 }: UseVehicleTripUsageReportParams) => {
   const [dailySummaries, setDailySummaries] = useState<VehicleTripDailySummary[]>([]);
+  const [productSummary, setProductSummary] = useState<VehicleProductSummaryItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
     if (!vehicleId || !startDate || !endDate) {
       setDailySummaries([]);
+      setProductSummary([]);
       return;
     }
 
     setLoading(true);
     setError(null);
 
+    const options = { vehicleId, startDate, endDate };
+
     try {
-      const result = await vehicleTripUsageService.getVehicleDailyUsage({
-        vehicleId,
-        startDate,
-        endDate,
-      });
-      setDailySummaries(result);
+      const [dailyResult, productResult] = await Promise.all([
+        vehicleTripUsageService.getVehicleDailyUsage(options),
+        vehicleTripUsageService.getVehicleProductSummary(options),
+      ]);
+      setDailySummaries(dailyResult);
+      setProductSummary(productResult);
     } catch (err) {
       console.error('[useVehicleTripUsageReport] Error fetching data:', err);
       setError(err instanceof Error ? err.message : 'เกิดข้อผิดพลาดในการโหลดข้อมูล');
       setDailySummaries([]);
+      setProductSummary([]);
     } finally {
       setLoading(false);
     }
@@ -52,6 +58,7 @@ export const useVehicleTripUsageReport = ({
 
   return {
     dailySummaries,
+    productSummary,
     loading,
     error,
     refetch: fetchData,
