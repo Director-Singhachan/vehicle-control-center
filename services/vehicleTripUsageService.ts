@@ -68,7 +68,7 @@ function mapToDetail(trip: TripLogWithRelations): VehicleTripDetail {
   const isManual = trip.manual_distance_km !== null && trip.manual_distance_km !== undefined;
   return {
     trip_log_id: trip.id,
-    delivery_trip_id: trip.delivery_trip_id ?? null,
+    delivery_trip_id: trip.delivery_trip?.id ?? null,
     trip_number: trip.delivery_trip?.trip_number ?? null,
     checkout_time: trip.checkout_time ?? null,
     checkin_time: trip.checkin_time ?? null,
