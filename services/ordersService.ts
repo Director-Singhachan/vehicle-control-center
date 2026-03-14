@@ -283,12 +283,66 @@ export const ordersService = {
       .filter((o: any) => {
         if (this.isOldOrderNumberFormat(o.order_number)) return false;
         const orderStatus = (orderIdToStatus.get(o.id) ?? String(o.status ?? '')).toLowerCase();
-        if (orderStatus === 'delivered') return false;
+        if (orderStatus === 'delivered' || orderStatus === 'awaiting_dispatch') return false;
         const remaining = orderIdToRemaining.get(o.id) ?? 0;
         if (remaining <= 0) return false;
         return true;
       })
       .map((o: any) => ({ ...o, items: orderIdToItems.get(o.id) ?? [] }));
+  },
+
+  /**
+   * ดึงออเดอร์ที่รอการแบ่งยอด (awaiting_dispatch)
+   */
+  async getAwaitingDispatchOrders(filters?: { branch?: string }) {
+    let query = supabase
+      .from('orders_with_details')
+      .select('*')
+      .eq('status', 'awaiting_dispatch')
+      .is('delivery_trip_id', null)
+      .order('created_at', { ascending: true });
+
+    if (filters?.branch && filters.branch !== 'ALL') {
+      query = query.eq('branch', filters.branch);
+    }
+
+    const { data: orders, error } = await query;
+    if (error) throw error;
+    if (!orders?.length) return [];
+
+    const orderIds = orders.map((o: any) => o.id);
+
+    const { data: items, error: itemsError } = await supabase
+      .from('order_items')
+      .select(`
+        id,
+        order_id,
+        product_id,
+        quantity,
+        quantity_picked_up_at_store,
+        quantity_delivered,
+        fulfillment_method,
+        notes,
+        product:products(product_name, product_code, unit)
+      `)
+      .in('order_id', orderIds);
+
+    if (itemsError) throw itemsError;
+
+    return orders.map((order: any) => {
+      const orderItems = (items ?? []).filter((i: any) => i.order_id === order.id);
+      return {
+        ...order,
+        items: orderItems.map((i: any) => ({
+          ...i,
+          product_name: i.product?.product_name || 'ไม่ระบุชื่อสินค้า',
+          product_code: i.product?.product_code || '-',
+          unit_name: i.product?.unit || 'หน่วย'
+        })),
+        total_items: orderItems.length,
+        isAwaitingDispatch: true
+      };
+    });
   },
 
   /**
@@ -1033,6 +1087,63 @@ export const ordersService = {
     }
 
     return deletedIds.map(id => ({ id }));
+  },
+
+  /**
+   * ยืนยันการจัดสรรเสร็จสิ้น (Dispatch ready)
+   * เปลี่ยนสถานะจาก awaiting_dispatch -> confirmed
+   */
+  async markAsReady(orderId: string, updatedBy: string) {
+    return this.updateStatus(orderId, 'confirmed', updatedBy);
+  },
+
+  /**
+   * แตกรายการสินค้าออกเป็นหลายรายการ (Split)
+   * ใช้เมื่อต้องการแบ่งจำนวนส่งไปหลายที่หรือหลายวิธี
+   */
+  async splitItem(itemId: string, splits: Array<{
+    quantity: number;
+    fulfillment_method: 'delivery' | 'pickup';
+    notes?: string | null;
+  }>): Promise<void> {
+    // 1. ดึงข้อมูลรายการเดิม
+    const { data: original, error: fetchError } = await supabase
+      .from('order_items')
+      .select('*')
+      .eq('id', itemId)
+      .single();
+
+    if (fetchError || !original) throw fetchError || new Error('Item not found');
+
+    // 2. เตรียมรายการใหม่
+    const newItems = splits.map(split => {
+      const unitPrice = Number(original.unit_price || 0);
+      const discountPercent = Number(original.discount_percent || 0);
+      const quantity = Number(split.quantity);
+
+      const discountAmount = (unitPrice * quantity * discountPercent) / 100;
+      const lineTotal = (unitPrice * quantity) - discountAmount;
+
+      return {
+        order_id: original.order_id,
+        product_id: original.product_id,
+        quantity: quantity,
+        unit_price: unitPrice,
+        discount_percent: discountPercent,
+        discount_amount: discountAmount,
+        line_total: lineTotal,
+        fulfillment_method: split.fulfillment_method,
+        notes: split.notes || original.notes,
+        is_bonus: original.is_bonus,
+      };
+    });
+
+    // 3. ลบอันเก่าและเพิ่มอันใหม่
+    const { error: deleteError } = await supabase.from('order_items').delete().eq('id', itemId);
+    if (deleteError) throw deleteError;
+
+    const { error: insertError } = await supabase.from('order_items').insert(newItems);
+    if (insertError) throw insertError;
   },
 };
 

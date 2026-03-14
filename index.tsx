@@ -70,6 +70,7 @@ const PickupOrdersView = lazy(() => import('./views/PickupOrdersView').then(m =>
 const CreateOrderView = lazy(() => import('./views/CreateOrderView').then(m => ({ default: m.CreateOrderView })));
 const CustomerManagementView = lazy(() => import('./views/CustomerManagementView').then(m => ({ default: m.CustomerManagementView })));
 const PendingOrdersView = lazy(() => import('./views/PendingOrdersView').then(m => ({ default: m.PendingOrdersView })));
+const SplitOrderView = lazy(() => import('./views/SplitOrderView').then(m => ({ default: m.SplitOrderView })));
 const TrackOrdersView = lazy(() => import('./views/TrackOrdersView').then(m => ({ default: m.TrackOrdersView })));
 const SalesTripsView = lazy(() => import('./views/SalesTripsView').then(m => ({ default: m.SalesTripsView })));
 const CleanupTestOrdersView = lazy(() => import('./views/CleanupTestOrdersView').then(m => ({ default: m.CleanupTestOrdersView })));
@@ -1449,136 +1450,196 @@ const AppContent = () => {
                   onMouseEnter={handleLogisticsFlyoutMouseEnter}
                   onMouseLeave={handleLogisticsFlyoutMouseLeave}
                 >
-                  <div
-                    className="bg-white dark:bg-charcoal-900 border border-slate-200 dark:border-slate-700 rounded-xl shadow-2xl min-w-[240px] py-2 ring-1 ring-black/5 dark:ring-white/10 animate-in fade-in slide-in-from-left-2 duration-150 overflow-y-auto"
-                    style={{ maxHeight: logisticsFlyoutMaxHeight }}
+                  <div className="bg-white dark:bg-charcoal-900 border border-slate-200 dark:border-slate-700 rounded-xl shadow-2xl py-2 ring-1 ring-black/5 dark:ring-white/10 animate-in fade-in slide-in-from-left-2 duration-150 overflow-y-auto"
+                    style={{ maxHeight: logisticsFlyoutMaxHeight, width: 'fit-content', minWidth: '500px' }}
                   >
                     <div className="px-4 pb-2 mb-2 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between">
-                      <p className="text-[10px] font-black text-blue-500 uppercase tracking-widest">ฝ่ายขนส่ง (Logistics)</p>
+                      <p className="text-[10px] font-black text-blue-500 dark:text-blue-400 uppercase tracking-widest">เมนูฝ่ายขนส่ง</p>
                       <div className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"></div>
                     </div>
-                    <div className="px-2 space-y-0.5">
-                      <MenuSectionHeader label="การจัดส่ง & งานขับรถ" />
-                      <SubSidebarItem
-                        label="บันทึกการใช้งานรถ"
-                        active={activeTab === 'triplogs'}
-                        onClick={() => {
-                          setActiveTab('triplogs');
-                          setTripLogView(isDriver ? 'form' : 'list');
-                          setIsLogisticsHovered(false);
-                        }}
-                        isCollapsed={false}
-                        isFlyout={true}
-                      />
-                      <SubSidebarItem
-                        label="บันทึกการเติมน้ำมัน"
-                        active={activeTab === 'fuellogs'}
-                        onClick={() => {
-                          setActiveTab('fuellogs');
-                          setFuelLogView(isDriver ? 'form' : 'list');
-                          setIsLogisticsHovered(false);
-                        }}
-                        isCollapsed={false}
-                        isFlyout={true}
-                      />
-                      <SubSidebarItem
-                        label="แจ้งซ่อม / การซ่อมบำรุง"
-                        active={activeTab === 'maintenance'}
-                        onClick={() => {
-                          setActiveTab('maintenance');
-                          setTicketView(isDriver ? 'form' : 'list');
-                          setIsLogisticsHovered(false);
-                        }}
-                        isCollapsed={false}
-                        isFlyout={true}
-                      />
-                      <SubSidebarItem
-                        label="จำลองจัดเรียง"
-                        active={activeTab === 'packing-simulation'}
-                        onClick={() => {
-                          setActiveTab('packing-simulation');
-                          setIsLogisticsHovered(false);
-                        }}
-                        isCollapsed={false}
-                        isFlyout={true}
-                      />
-                      {(isAdmin || isManager || isInspector || isExecutive) && (
-                        <>
-                          <MenuSectionHeader label="เฉพาะเจ้าหน้าที่ / Manager" />
-                          {!isDriver && (
-                            <SubSidebarItem
-                              label="เดชบอร์ด(ฝ่ายขนส่ง)"
-                              active={activeTab === 'dashboard'}
-                              onClick={() => {
-                                setActiveTab('dashboard');
-                                setIsLogisticsHovered(false);
-                              }}
-                              isCollapsed={false}
-                              isFlyout={true}
-                            />
-                          )}
-                          {!isDriver && (
-                            <SubSidebarItem
-                              label="ยานพาหนะ"
-                              active={activeTab === 'vehicles'}
-                              onClick={() => {
-                                setActiveTab('vehicles');
-                                setIsLogisticsHovered(false);
-                              }}
-                              isCollapsed={false}
-                              isFlyout={true}
-                            />
-                          )}
+
+                    <div className="flex divide-x divide-slate-100 dark:divide-slate-800">
+                      {/* Column 1: ออเดอร์ & จัดส่ง */}
+                      <div className="flex-1 px-2 space-y-0.5 min-w-[240px]">
+                        <MenuSectionHeader label="งานออเดอร์และการจัดส่ง" />
+                        <div className="px-4 py-1">
+                          <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">งานทั่วไป</p>
+                        </div>
+
+                        {/* แบ่งยอดส่ง — เฉพาะไม่ใช่พนักงานขับ */}
+                        {!isDriver && (
                           <SubSidebarItem
-                            label="ภาพรวมการอนุมัติ"
-                            active={activeTab === 'approvals'}
+                            label="แบ่งยอดส่ง"
+                            active={activeTab === 'split-order'}
                             onClick={() => {
-                              setActiveTab('approvals');
+                              setActiveTab('split-order');
                               setIsLogisticsHovered(false);
                             }}
                             isCollapsed={false}
                             isFlyout={true}
                           />
-                          {!isDriver && (
+                        )}
+
+                        {!isDriver && (
+                          <SubSidebarItem
+                            label="ออเดอร์รอจัดส่ง"
+                            active={activeTab === 'pending-orders'}
+                            onClick={() => {
+                              setActiveTab('pending-orders');
+                              setIsLogisticsHovered(false);
+                            }}
+                            isCollapsed={false}
+                            isFlyout={true}
+                          />
+                        )}
+
+                        {!isDriver && (
+                          <SubSidebarItem
+                            label="ทริปส่งสินค้า"
+                            active={activeTab === 'delivery-trips'}
+                            onClick={() => {
+                              setActiveTab('delivery-trips');
+                              setDeliveryTripView('list');
+                              setSelectedDeliveryTripId(null);
+                              setIsLogisticsHovered(false);
+                            }}
+                            isCollapsed={false}
+                            isFlyout={true}
+                          />
+                        )}
+
+                        {/* จำลองจัดเรียง */}
+                        <SubSidebarItem
+                          label="จำลองจัดเรียง"
+                          active={activeTab === 'packing-simulation'}
+                          onClick={() => {
+                            setActiveTab('packing-simulation');
+                            setIsLogisticsHovered(false);
+                          }}
+                          isCollapsed={false}
+                          isFlyout={true}
+                        />
+                      </div>
+
+                      {/* Column 2: งานรถ & บุคลากร */}
+                      <div className="flex-1 px-2 space-y-0.5 min-w-[240px]">
+                        <MenuSectionHeader label="งานรถและพนักงานขับ" />
+                        <div className="px-4 py-1">
+                          <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">งานทั่วไป</p>
+                        </div>
+
+                        {/* Trip Logs */}
+                        <SubSidebarItem
+                          label="บันทึกการใช้งานรถ"
+                          active={activeTab === 'triplogs'}
+                          onClick={() => {
+                            setActiveTab('triplogs');
+                            setTripLogView(isDriver ? 'form' : 'list');
+                            setIsLogisticsHovered(false);
+                          }}
+                          isCollapsed={false}
+                          isFlyout={true}
+                        />
+
+                        {/* Fuel Logs */}
+                        <SubSidebarItem
+                          label="บันทึกการเติมน้ำมัน"
+                          active={activeTab === 'fuellogs'}
+                          onClick={() => {
+                            setActiveTab('fuellogs');
+                            setFuelLogView(isDriver ? 'form' : 'list');
+                            setIsLogisticsHovered(false);
+                          }}
+                          isCollapsed={false}
+                          isFlyout={true}
+                        />
+
+                        {/* Maintenance */}
+                        <SubSidebarItem
+                          label="การซ่อมบำรุง"
+                          active={activeTab === 'maintenance'}
+                          onClick={() => {
+                            setActiveTab('maintenance');
+                            if (isDriver) {
+                              setTicketView('form');
+                            } else {
+                              setTicketView('list');
+                            }
+                            setIsLogisticsHovered(false);
+                          }}
+                          isCollapsed={false}
+                          isFlyout={true}
+                        />
+
+                        {(isAdmin || isManager || isInspector || isExecutive) && (
+                          <>
+                            <MenuSectionHeader label="เฉพาะเจ้าหน้าที่ / Manager" />
+
+                            {!isDriver && (
+                              <SubSidebarItem
+                                label="เดชบอร์ด(ฝ่ายขนส่ง)"
+                                active={activeTab === 'dashboard'}
+                                onClick={() => {
+                                  setActiveTab('dashboard');
+                                  setIsLogisticsHovered(false);
+                                }}
+                                isCollapsed={false}
+                                isFlyout={true}
+                              />
+                            )}
+
+                            {!isDriver && (
+                              <SubSidebarItem
+                                label="ยานพาหนะ"
+                                active={activeTab === 'vehicles'}
+                                onClick={() => {
+                                  setActiveTab('vehicles');
+                                  setIsLogisticsHovered(false);
+                                }}
+                                isCollapsed={false}
+                                isFlyout={true}
+                              />
+                            )}
+
                             <SubSidebarItem
-                              label="สรุปการใช้รถรายวัน"
-                              active={activeTab === 'daily-summary'}
+                              label="ภาพรวมการอนุมัติ"
+                              active={activeTab === 'approvals'}
                               onClick={() => {
-                                setActiveTab('daily-summary');
+                                setActiveTab('approvals');
                                 setIsLogisticsHovered(false);
                               }}
                               isCollapsed={false}
                               isFlyout={true}
                             />
-                          )}
-                          {!isDriver && (
-                            <>
+
+                            {!isDriver && (
                               <SubSidebarItem
-                                label="ทริปส่งสินค้า"
-                                active={activeTab === 'delivery-trips'}
+                                label="สรุปการใช้รถรายวัน"
+                                active={activeTab === 'daily-summary'}
                                 onClick={() => {
-                                  setActiveTab('delivery-trips');
-                                  setDeliveryTripView('list');
-                                  setSelectedDeliveryTripId(null);
+                                  setActiveTab('daily-summary');
                                   setIsLogisticsHovered(false);
                                 }}
                                 isCollapsed={false}
                                 isFlyout={true}
                               />
+                            )}
+
+                            {isAdmin && (
                               <SubSidebarItem
-                                label="ออเดอร์รอจัดส่ง"
-                                active={activeTab === 'pending-orders'}
+                                label="จัดการพนักงาน"
+                                active={activeTab === 'service-staff'}
                                 onClick={() => {
-                                  setActiveTab('pending-orders');
+                                  setActiveTab('service-staff');
                                   setIsLogisticsHovered(false);
                                 }}
                                 isCollapsed={false}
                                 isFlyout={true}
                               />
-                            </>
-                          )}
-                        </>
-                      )}
+                            )}
+                          </>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -1586,7 +1647,8 @@ const AppContent = () => {
             </>
           )}
 
-          {/* 5. บุคคล / HR */}
+          {/* 5. 
+           */}
           {(isAdmin || isHR) && (
             <>
               <div
@@ -1628,7 +1690,7 @@ const AppContent = () => {
                     isFlyout={false}
                   />
                   <SubSidebarItem
-                    label="ประวัติการลงปฏิบัติงาน"
+                    label="ประวัติการปฏิบัติงาน"
                     active={activeTab === 'service-staff'}
                     onClick={() => navigateAndCloseMobile('service-staff')}
                     isCollapsed={false}
@@ -1680,7 +1742,7 @@ const AppContent = () => {
                         isFlyout={true}
                       />
                       <SubSidebarItem
-                        label="ประวัติการลงปฏิบัติงาน"
+                        label="ประวัติการปฏิบัติงาน"
                         active={activeTab === 'service-staff'}
                         onClick={() => { setActiveTab('service-staff'); setIsHRHovered(false); }}
                         isCollapsed={false}
@@ -2747,6 +2809,8 @@ const AppContent = () => {
               <TrackOrdersView />
             ) : activeTab === 'pending-orders' ? (
               <PendingOrdersView />
+            ) : activeTab === 'split-order' ? (
+              <SplitOrderView />
             ) : activeTab === 'packing-simulation' ? (
               <PackingSimulationView />
             ) : activeTab === 'sales-trips' ? (
