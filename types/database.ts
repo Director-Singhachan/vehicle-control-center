@@ -902,6 +902,9 @@ export interface Database {
           vehicle_id: string;
           driver_id: string | null;
           planned_date: string;
+          trip_revenue: number | null;
+          trip_start_date: string | null;
+          trip_end_date: string | null;
           odometer_start: number | null;
           odometer_end: number | null;
           manual_distance_km: number | null;
@@ -922,6 +925,9 @@ export interface Database {
           vehicle_id: string;
           driver_id?: string | null;
           planned_date: string;
+          trip_revenue?: number | null;
+          trip_start_date?: string | null;
+          trip_end_date?: string | null;
           odometer_start?: number | null;
           odometer_end?: number | null;
           manual_distance_km?: number | null;
@@ -942,6 +948,9 @@ export interface Database {
           vehicle_id?: string;
           driver_id?: string | null;
           planned_date?: string;
+          trip_revenue?: number | null;
+          trip_start_date?: string | null;
+          trip_end_date?: string | null;
           odometer_start?: number | null;
           odometer_end?: number | null;
           manual_distance_km?: number | null;
@@ -955,6 +964,80 @@ export interface Database {
           updated_at?: string;
           created_by?: string | null;
           updated_by?: string | null;
+        };
+      };
+      vehicle_fixed_costs: {
+        Row: {
+          id: string;
+          vehicle_id: string;
+          cost_type: string;
+          amount: number;
+          period_type: 'monthly' | 'yearly';
+          period_start: string;
+          period_end: string | null;
+          notes: string | null;
+          created_at: string;
+          updated_at: string;
+          created_by: string | null;
+        };
+        Insert: {
+          id?: string;
+          vehicle_id: string;
+          cost_type: string;
+          amount: number;
+          period_type: 'monthly' | 'yearly';
+          period_start: string;
+          period_end?: string | null;
+          notes?: string | null;
+          created_at?: string;
+          updated_at?: string;
+          created_by?: string | null;
+        };
+        Update: {
+          id?: string;
+          vehicle_id?: string;
+          cost_type?: string;
+          amount?: number;
+          period_type?: 'monthly' | 'yearly';
+          period_start?: string;
+          period_end?: string | null;
+          notes?: string | null;
+          updated_at?: string;
+          created_by?: string | null;
+        };
+      };
+      vehicle_variable_costs: {
+        Row: {
+          id: string;
+          vehicle_id: string;
+          cost_type: string;
+          amount: number;
+          cost_date: string;
+          delivery_trip_id: string | null;
+          notes: string | null;
+          created_at: string;
+          created_by: string | null;
+        };
+        Insert: {
+          id?: string;
+          vehicle_id: string;
+          cost_type: string;
+          amount: number;
+          cost_date: string;
+          delivery_trip_id?: string | null;
+          notes?: string | null;
+          created_at?: string;
+          created_by?: string | null;
+        };
+        Update: {
+          id?: string;
+          vehicle_id?: string;
+          cost_type?: string;
+          amount?: number;
+          cost_date?: string;
+          delivery_trip_id?: string | null;
+          notes?: string | null;
+          created_by?: string | null;
         };
       };
       price_change_history: {
