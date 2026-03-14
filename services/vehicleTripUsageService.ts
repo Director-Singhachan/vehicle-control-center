@@ -193,8 +193,13 @@ export const vehicleTripUsageService = {
       { product_code: string; product_name: string; category: string; unit: string; total_quantity: number }
     >();
 
-    for (const tripId of deliveryTripIds) {
-      const items = await tripHistoryAggregatesService.getAggregatedProducts(tripId);
+    // โหลดสินค้าของทุกทริปแบบขนาน แทนทีละทริป
+    const tripIdsArray = Array.from(deliveryTripIds);
+    const allItemsArrays = await Promise.all(
+      tripIdsArray.map((tripId) => tripHistoryAggregatesService.getAggregatedProducts(tripId))
+    );
+
+    for (const items of allItemsArrays) {
       for (const item of items) {
         const existing = productMap.get(item.product_id);
         if (existing) {

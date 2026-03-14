@@ -21,6 +21,7 @@ export const useVehicleTripUsageReport = ({
   const [dailySummaries, setDailySummaries] = useState<VehicleTripDailySummary[]>([]);
   const [productSummary, setProductSummary] = useState<VehicleProductSummaryItem[]>([]);
   const [loading, setLoading] = useState(false);
+  const [productSummaryLoading, setProductSummaryLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
@@ -31,24 +32,35 @@ export const useVehicleTripUsageReport = ({
     }
 
     setLoading(true);
+    setProductSummaryLoading(true);
     setError(null);
+    setProductSummary([]);
 
     const options = { vehicleId, startDate, endDate };
 
     try {
-      const [dailyResult, productResult] = await Promise.all([
-        vehicleTripUsageService.getVehicleDailyUsage(options),
-        vehicleTripUsageService.getVehicleProductSummary(options),
-      ]);
+      // โหลดสรุปรายวันก่อน ให้ผู้ใช้เห็นตารางเร็ว
+      const dailyResult = await vehicleTripUsageService.getVehicleDailyUsage(options);
       setDailySummaries(dailyResult);
-      setProductSummary(productResult);
     } catch (err) {
       console.error('[useVehicleTripUsageReport] Error fetching data:', err);
       setError(err instanceof Error ? err.message : 'เกิดข้อผิดพลาดในการโหลดข้อมูล');
       setDailySummaries([]);
-      setProductSummary([]);
+      setProductSummaryLoading(false);
+      return;
     } finally {
       setLoading(false);
+    }
+
+    // โหลดสรุปสินค้าในพื้นหลัง (ไม่บล็อก UI)
+    try {
+      const productResult = await vehicleTripUsageService.getVehicleProductSummary(options);
+      setProductSummary(productResult);
+    } catch (err) {
+      console.error('[useVehicleTripUsageReport] Error fetching product summary:', err);
+      setProductSummary([]);
+    } finally {
+      setProductSummaryLoading(false);
     }
   }, [vehicleId, startDate, endDate]);
 
@@ -60,6 +72,7 @@ export const useVehicleTripUsageReport = ({
     dailySummaries,
     productSummary,
     loading,
+    productSummaryLoading,
     error,
     refetch: fetchData,
   };

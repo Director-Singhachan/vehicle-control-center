@@ -19,6 +19,7 @@ import { useVehicles } from '../../hooks/useVehicles';
 import { useVehicleTripUsageReport } from '../../hooks/useVehicleTripUsageReport';
 import { TripProductSummarySection } from '../../components/trip/TripProductSummarySection';
 import { TripStaffItemDistributionSection } from '../../components/trip/TripStaffItemDistributionSection';
+import { ProductSummaryChart } from '../../components/trip/ProductSummaryChart';
 import type { VehicleTripDailySummary, VehicleTripDetail } from '../../services/vehicleTripUsageService';
 
 interface VehicleTripUsageReportProps {
@@ -274,7 +275,8 @@ export const VehicleTripUsageReport: React.FC<VehicleTripUsageReportProps> = ({
 
   const [selectedDay, setSelectedDay] = useState<VehicleTripDailySummary | null>(null);
 
-  const { dailySummaries, productSummary, loading, error, refetch } = useVehicleTripUsageReport({
+  const { dailySummaries, productSummary, loading, productSummaryLoading, error, refetch } =
+    useVehicleTripUsageReport({
     vehicleId: searchedVehicleId,
     startDate: searchedStart,
     endDate: searchedEnd,
@@ -434,8 +436,8 @@ export const VehicleTripUsageReport: React.FC<VehicleTripUsageReportProps> = ({
             </div>
           )}
 
-          {/* Product summary: สรุปสินค้าแต่ละชนิดที่บรรทุกในช่วงที่เลือก */}
-          {productSummary.length > 0 && (
+          {/* Product summary: สรุปสินค้าแต่ละชนิดที่บรรทุกในช่วงที่เลือก (โหลดในพื้นหลัง) */}
+          {(productSummaryLoading || productSummary.length > 0) && (
             <Card>
               <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-700">
                 <h3 className="text-base font-semibold text-slate-900 dark:text-white flex items-center gap-2">
@@ -446,12 +448,26 @@ export const VehicleTripUsageReport: React.FC<VehicleTripUsageReportProps> = ({
                       — {selectedVehicle.plate}
                     </span>
                   )}
+                  {productSummaryLoading && (
+                    <span className="inline-flex items-center gap-1.5 text-sm font-normal text-slate-500 dark:text-slate-400">
+                      <RefreshCw size={14} className="animate-spin" />
+                      กำลังโหลด...
+                    </span>
+                  )}
                 </h3>
-                <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
-                  รวมทุกทริปในวันที่กรอง · {productSummary.length} ชนิดสินค้า ·{' '}
-                  {productSummary.reduce((s, p) => s + p.total_quantity, 0).toLocaleString('th-TH')} ชิ้นรวม
-                </p>
+                {!productSummaryLoading && productSummary.length > 0 && (
+                  <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
+                    รวมทุกทริปในวันที่กรอง · {productSummary.length} ชนิดสินค้า ·{' '}
+                    {productSummary.reduce((s, p) => s + p.total_quantity, 0).toLocaleString('th-TH')} ชิ้นรวม
+                  </p>
+                )}
               </div>
+              {productSummaryLoading ? (
+                <div className="flex items-center justify-center py-12 text-slate-500 dark:text-slate-400 text-sm">
+                  <RefreshCw size={20} className="animate-spin mr-2" />
+                  กำลังโหลดสรุปสินค้า...
+                </div>
+              ) : (
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead>
@@ -503,6 +519,16 @@ export const VehicleTripUsageReport: React.FC<VehicleTripUsageReportProps> = ({
                   </tbody>
                 </table>
               </div>
+              )}
+              {!productSummaryLoading && productSummary.length > 0 && (
+                <div className="px-6 py-4 border-t border-slate-200 dark:border-slate-700">
+                  <ProductSummaryChart
+                    data={productSummary}
+                    isDark={isDark}
+                    productBarLimit={15}
+                  />
+                </div>
+              )}
             </Card>
           )}
 
