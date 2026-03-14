@@ -165,7 +165,7 @@ export const vehicleTripUsageService = {
 
   /**
    * สรุปผลรวมสินค้าแต่ละชนิดที่รถคันนี้บรรทุกในช่วงวันที่ที่เลือก (รวมทุกทริป delivery)
-   * คืน array เรียงตามชื่อสินค้า
+   * คืน array เรียงจากมากไปน้อยตามจำนวน (total_quantity)
    */
   getVehicleProductSummary: async (
     options: GetVehicleDailyUsageOptions
@@ -227,7 +227,11 @@ export const vehicleTripUsageService = {
       })
     );
 
-    result.sort((a, b) => (a.product_name || a.product_code).localeCompare(b.product_name || b.product_code));
+    result.sort(
+      (a, b) =>
+        b.total_quantity - a.total_quantity ||
+        (a.product_name || a.product_code || '').localeCompare(b.product_name || b.product_code || '')
+    );
     return result;
   },
 };

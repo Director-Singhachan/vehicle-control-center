@@ -278,6 +278,7 @@ export const VehicleTripUsageReport: React.FC<VehicleTripUsageReportProps> = ({
   const [selectedDay, setSelectedDay] = useState<VehicleTripDailySummary | null>(null);
   const [dailyTablePage, setDailyTablePage] = useState(1);
   const [dailyTablePerPage, setDailyTablePerPage] = useState(20);
+  const [showProductTable, setShowProductTable] = useState(false);
 
   const { dailySummaries, productSummary, loading, productSummaryLoading, error, refetch } =
     useVehicleTripUsageReport({
@@ -463,12 +464,12 @@ export const VehicleTripUsageReport: React.FC<VehicleTripUsageReportProps> = ({
             </div>
           )}
 
-          {/* Product summary: สรุปสินค้าแต่ละชนิดที่บรรทุกในช่วงที่เลือก (โหลดในพื้นหลัง) */}
+          {/* สรุปสินค้าที่บรรทุก: กราฟอยู่บนสุด รายการตารางซ่อนไว้กดดู */}
           {(productSummaryLoading || productSummary.length > 0) && (
             <Card>
               <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-700">
-                <h3 className="text-base font-semibold text-slate-900 dark:text-white flex items-center gap-2">
-                  <Package className="w-5 h-5 text-enterprise-600 dark:text-enterprise-400" />
+                <h3 className="text-base font-semibold text-slate-900 dark:text-white flex items-center gap-2 flex-wrap">
+                  <Package className="w-5 h-5 text-enterprise-600 dark:text-enterprise-400 shrink-0" />
                   สรุปสินค้าที่บรรทุกในช่วงที่เลือก
                   {selectedVehicle && (
                     <span className="text-sm font-normal text-slate-500 dark:text-slate-400">
@@ -489,72 +490,103 @@ export const VehicleTripUsageReport: React.FC<VehicleTripUsageReportProps> = ({
                   </p>
                 )}
               </div>
+
               {productSummaryLoading ? (
                 <div className="flex items-center justify-center py-12 text-slate-500 dark:text-slate-400 text-sm">
                   <RefreshCw size={20} className="animate-spin mr-2" />
                   กำลังโหลดสรุปสินค้า...
                 </div>
               ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60">
-                      <th className="text-left py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">
-                        รหัสสินค้า
-                      </th>
-                      <th className="text-left py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">
-                        ชื่อสินค้า
-                      </th>
-                      <th className="text-left py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">
-                        หมวดหมู่
-                      </th>
-                      <th className="text-left py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">
-                        หน่วย
-                      </th>
-                      <th className="text-right py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">
-                        จำนวนรวม (ชิ้น)
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {productSummary.map((row, index) => (
-                      <tr
-                        key={row.product_id}
-                        className={`border-b border-slate-100 dark:border-slate-800 ${
-                          index % 2 === 0
-                            ? 'bg-white dark:bg-slate-900'
-                            : 'bg-slate-50/60 dark:bg-slate-900/60'
-                        }`}
+                <>
+                  {/* กราฟอยู่บนสุด — ดูภาพรวมได้ทันที */}
+                  <div className="px-6 py-4">
+                    <ProductSummaryChart
+                      data={productSummary}
+                      isDark={isDark}
+                      productBarLimit={15}
+                    />
+                  </div>
+
+                  {/* รายการตาราง: ซ่อนไว้ กดถึงแสดง */}
+                  <div className="border-t border-slate-200 dark:border-slate-700">
+                    <div className="px-6 py-3 flex items-center justify-between bg-slate-50/80 dark:bg-slate-800/40">
+                      <span className="text-sm text-slate-600 dark:text-slate-400">
+                        รายการสินค้าแบบตาราง
+                      </span>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setShowProductTable((v) => !v)}
+                        className="gap-1.5"
                       >
-                        <td className="py-3 px-4 text-slate-800 dark:text-slate-100 font-medium">
-                          {row.product_code || '-'}
-                        </td>
-                        <td className="py-3 px-4 text-slate-800 dark:text-slate-100">
-                          {row.product_name || '-'}
-                        </td>
-                        <td className="py-3 px-4 text-slate-600 dark:text-slate-400 text-sm">
-                          {row.category || '-'}
-                        </td>
-                        <td className="py-3 px-4 text-slate-600 dark:text-slate-400 text-sm">
-                          {row.unit || '-'}
-                        </td>
-                        <td className="py-3 px-4 text-right text-slate-900 dark:text-slate-100 font-semibold">
-                          {row.total_quantity.toLocaleString('th-TH')}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              )}
-              {!productSummaryLoading && productSummary.length > 0 && (
-                <div className="px-6 py-4 border-t border-slate-200 dark:border-slate-700">
-                  <ProductSummaryChart
-                    data={productSummary}
-                    isDark={isDark}
-                    productBarLimit={15}
-                  />
-                </div>
+                        {showProductTable ? (
+                          <>
+                            <ChevronUp size={14} />
+                            ซ่อนรายการ
+                          </>
+                        ) : (
+                          <>
+                            <ChevronDown size={14} />
+                            ดูรายการ ({productSummary.length} รายการ)
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                    {showProductTable && (
+                      <div className="overflow-x-auto">
+                        <table className="w-full">
+                          <thead>
+                            <tr className="border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60">
+                              <th className="text-left py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">
+                                รหัสสินค้า
+                              </th>
+                              <th className="text-left py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">
+                                ชื่อสินค้า
+                              </th>
+                              <th className="text-left py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">
+                                หมวดหมู่
+                              </th>
+                              <th className="text-left py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">
+                                หน่วย
+                              </th>
+                              <th className="text-right py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300">
+                                จำนวนรวม (ชิ้น)
+                              </th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {productSummary.map((row, index) => (
+                              <tr
+                                key={row.product_id}
+                                className={`border-b border-slate-100 dark:border-slate-800 ${
+                                  index % 2 === 0
+                                    ? 'bg-white dark:bg-slate-900'
+                                    : 'bg-slate-50/60 dark:bg-slate-900/60'
+                                }`}
+                              >
+                                <td className="py-3 px-4 text-slate-800 dark:text-slate-100 font-medium">
+                                  {row.product_code || '-'}
+                                </td>
+                                <td className="py-3 px-4 text-slate-800 dark:text-slate-100">
+                                  {row.product_name || '-'}
+                                </td>
+                                <td className="py-3 px-4 text-slate-600 dark:text-slate-400 text-sm">
+                                  {row.category || '-'}
+                                </td>
+                                <td className="py-3 px-4 text-slate-600 dark:text-slate-400 text-sm">
+                                  {row.unit || '-'}
+                                </td>
+                                <td className="py-3 px-4 text-right text-slate-900 dark:text-slate-100 font-semibold tabular-nums">
+                                  {row.total_quantity.toLocaleString('th-TH')}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                </>
               )}
             </Card>
           )}
