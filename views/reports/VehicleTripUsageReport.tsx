@@ -17,9 +17,11 @@ import {
   DollarSign,
   Droplet,
   TrendingUp,
+  Download,
 } from 'lucide-react';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
+import { excelExport } from '../../utils/excelExport';
 import { useVehicles } from '../../hooks/useVehicles';
 import { useVehicleTripUsageReport } from '../../hooks/useVehicleTripUsageReport';
 import { TripProductSummarySection } from '../../components/trip/TripProductSummarySection';
@@ -291,7 +293,7 @@ export const VehicleTripUsageReport: React.FC<VehicleTripUsageReportProps> = ({
   const [showProductTable, setShowProductTable] = useState(false);
   const [viewMode, setViewMode] = useState<'daily' | 'monthly'>('daily');
 
-  const { dailySummaries, productSummary, costSummary, monthlySummaries, loading, productSummaryLoading, error, refetch } =
+  const { dailySummaries, productSummary, costSummary, financialSummary, monthlySummaries, loading, productSummaryLoading, error, refetch } =
     useVehicleTripUsageReport({
       vehicleId: searchedVehicleId,
       startDate: searchedStart,
@@ -348,6 +350,71 @@ export const VehicleTripUsageReport: React.FC<VehicleTripUsageReportProps> = ({
   const selectedVehicle = vehicles.find((v) => v.id === searchedVehicleId);
 
   const maxDate = new Date().toISOString().split('T')[0];
+
+  const handleExportExcel = () => {
+    const summaryRow = {
+      totalTrips,
+      totalDistance,
+      activeDays,
+      fuel_cost: costSummary?.fuel_cost ?? 0,
+      commission_cost: costSummary?.commission_cost ?? 0,
+      total_cost: costSummary?.total_cost ?? 0,
+    };
+    const dailyRows = dailySummaries.map((d) => ({
+      date: d.date,
+      trip_count: d.trip_count,
+      total_distance_km: d.total_distance_km,
+      drivers: d.drivers.join('; '),
+    }));
+    const monthlyRows = monthlySummaries.map((m) => ({
+      month: m.month,
+      trip_count: m.trip_count,
+      total_distance_km: m.total_distance_km,
+      fuel_cost: m.fuel_cost,
+      commission_cost: m.commission_cost,
+      total_cost: m.total_cost,
+    }));
+
+    excelExport.exportToExcelMultiSheet(
+      [
+        {
+          sheetName: 'สรุปช่วง',
+          data: [summaryRow],
+          columns: [
+            { key: 'totalTrips', label: 'ทริปทั้งหมด', width: 14, format: excelExport.formatNumber },
+            { key: 'totalDistance', label: 'ระยะทางรวม (กม.)', width: 18, format: (v: number) => excelExport.formatNumber(v, 1) },
+            { key: 'activeDays', label: 'วันที่มีใช้รถ', width: 16, format: excelExport.formatNumber },
+            { key: 'fuel_cost', label: 'ค่าน้ำมัน (บาท)', width: 18, format: excelExport.formatCurrency },
+            { key: 'commission_cost', label: 'ค่าคอม (บาท)', width: 18, format: excelExport.formatCurrency },
+            { key: 'total_cost', label: 'ต้นทุนรวม (บาท)', width: 20, format: excelExport.formatCurrency },
+          ],
+        },
+        {
+          sheetName: 'สรุปรายวัน',
+          data: dailyRows,
+          columns: [
+            { key: 'date', label: 'วันที่', width: 14 },
+            { key: 'trip_count', label: 'จำนวนทริป', width: 14, format: excelExport.formatNumber },
+            { key: 'total_distance_km', label: 'ระยะทาง (กม.)', width: 16, format: (v: number) => excelExport.formatNumber(v, 1) },
+            { key: 'drivers', label: 'คนขับ', width: 28 },
+          ],
+        },
+        {
+          sheetName: 'สรุปรายเดือน',
+          data: monthlyRows,
+          columns: [
+            { key: 'month', label: 'เดือน', width: 12 },
+            { key: 'trip_count', label: 'จำนวนทริป', width: 14, format: excelExport.formatNumber },
+            { key: 'total_distance_km', label: 'ระยะทาง (กม.)', width: 16, format: (v: number) => excelExport.formatNumber(v, 1) },
+            { key: 'fuel_cost', label: 'ค่าน้ำมัน (บาท)', width: 18, format: excelExport.formatCurrency },
+            { key: 'commission_cost', label: 'ค่าคอม (บาท)', width: 18, format: excelExport.formatCurrency },
+            { key: 'total_cost', label: 'ต้นทุนรวม (บาท)', width: 20, format: excelExport.formatCurrency },
+          ],
+        },
+      ],
+      `รายงานการใช้รถ_${selectedVehicle?.plate ?? 'vehicle'}_${searchedStart}_${searchedEnd}.xlsx`
+    );
+  };
 
   return (
     <div className="space-y-6">
@@ -443,31 +510,37 @@ export const VehicleTripUsageReport: React.FC<VehicleTripUsageReportProps> = ({
       {/* Results */}
       {!loading && searchedVehicleId && (
         <>
-          {/* View mode: ช่วงวันที่ | รายเดือน */}
+          {/* View mode: ช่วงวันที่ | รายเดือน + Export */}
           {(dailySummaries.length > 0 || monthlySummaries.length > 0) && (
-            <div className="flex gap-2 border-b border-slate-200 dark:border-slate-700 pb-2">
-              <button
-                type="button"
-                onClick={() => setViewMode('daily')}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  viewMode === 'daily'
-                    ? 'bg-enterprise-600 text-white dark:bg-enterprise-500'
-                    : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
-                }`}
-              >
-                ช่วงวันที่
-              </button>
-              <button
-                type="button"
-                onClick={() => setViewMode('monthly')}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  viewMode === 'monthly'
-                    ? 'bg-enterprise-600 text-white dark:bg-enterprise-500'
-                    : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
-                }`}
-              >
-                รายเดือน
-              </button>
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 dark:border-slate-700 pb-2">
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setViewMode('daily')}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    viewMode === 'daily'
+                      ? 'bg-enterprise-600 text-white dark:bg-enterprise-500'
+                      : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
+                  }`}
+                >
+                  ช่วงวันที่
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode('monthly')}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    viewMode === 'monthly'
+                      ? 'bg-enterprise-600 text-white dark:bg-enterprise-500'
+                      : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
+                  }`}
+                >
+                  รายเดือน
+                </button>
+              </div>
+              <Button variant="outline" size="sm" onClick={handleExportExcel} className="gap-2">
+                <Download size={16} />
+                Export Excel
+              </Button>
             </div>
           )}
 
@@ -557,6 +630,63 @@ export const VehicleTripUsageReport: React.FC<VehicleTripUsageReportProps> = ({
                       </div>
                       <div className="p-3 bg-slate-100 dark:bg-slate-700/50 rounded-lg">
                         <DollarSign className="text-slate-600 dark:text-slate-300" size={22} />
+                      </div>
+                    </div>
+                  </Card>
+                </div>
+              )}
+
+              {/* รายได้และกำไร/ขาดทุน (Phase 3 — ซ่อนไว้ก่อน) */}
+              {false && financialSummary && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <Card className="p-5">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm text-slate-500 dark:text-slate-400 mb-1">รายได้รวม</p>
+                        {financialSummary.has_revenue_data ? (
+                          <>
+                            <p className="text-2xl font-bold text-slate-900 dark:text-white">
+                              ฿{financialSummary.revenue.toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                            </p>
+                            <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">จากออเดอร์ที่ผูกทริปในช่วงที่เลือก</p>
+                          </>
+                        ) : (
+                          <>
+                            <p className="text-lg font-medium text-slate-500 dark:text-slate-400">—</p>
+                            <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">รายได้จะแสดงเมื่อมีออเดอร์ผูกกับทริป</p>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  </Card>
+                  <Card className="p-5">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm text-slate-500 dark:text-slate-400 mb-1">กำไร / ขาดทุน</p>
+                        {financialSummary.has_revenue_data ? (
+                          <>
+                            <p
+                              className={`text-2xl font-bold ${
+                                financialSummary.profit >= 0
+                                  ? 'text-green-600 dark:text-green-400'
+                                  : 'text-red-600 dark:text-red-400'
+                              }`}
+                            >
+                              {financialSummary.profit >= 0 ? '' : '−'}฿
+                              {Math.abs(financialSummary.profit).toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                            </p>
+                            <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">
+                              {financialSummary.revenue > 0
+                                ? `ประมาณ ${((financialSummary.profit / financialSummary.revenue) * 100).toFixed(1)}% ของรายได้`
+                                : financialSummary.profit >= 0 ? 'กำไร' : 'ขาดทุน'}
+                            </p>
+                          </>
+                        ) : (
+                          <>
+                            <p className="text-lg font-medium text-slate-500 dark:text-slate-400">—</p>
+                            <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">กำไร/ขาดทุนจะแสดงเมื่อมีข้อมูลรายได้</p>
+                          </>
+                        )}
                       </div>
                     </div>
                   </Card>
@@ -785,6 +915,17 @@ export const VehicleTripUsageReport: React.FC<VehicleTripUsageReportProps> = ({
                         <th className="text-right py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300 whitespace-nowrap">
                           ต้นทุนรวม (บาท)
                         </th>
+                        {/* รายได้/กำไร — ซ่อนไว้ก่อน */}
+                        {false && (
+                          <>
+                            <th className="text-right py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300 whitespace-nowrap">
+                              รายได้ (บาท)
+                            </th>
+                            <th className="text-right py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300 whitespace-nowrap">
+                              กำไร/ขาดทุน (บาท)
+                            </th>
+                          </>
+                        )}
                       </tr>
                     </thead>
                     <tbody>

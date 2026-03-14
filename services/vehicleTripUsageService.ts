@@ -58,7 +58,15 @@ export interface VehicleCostSummary {
   total_cost: number;
 }
 
-/** สรุปรายเดือน: จำนวนทริป, ระยะทาง, ค่าน้ำมัน, ค่าคอม ต่อเดือน */
+/** สรุปการเงิน: ต้นทุน + รายได้ + กำไร/ขาดทุน (รายได้จาก orders.total_amount ที่ผูก delivery_trip_id) */
+export interface VehicleFinancialSummary extends VehicleCostSummary {
+  revenue: number;
+  profit: number;
+  /** true ถ้ามีออเดอร์ผูกทริปในช่วงนี้ (ใช้แสดงข้อความเมื่อไม่มีรายได้) */
+  has_revenue_data: boolean;
+}
+
+/** สรุปรายเดือน: จำนวนทริป, ระยะทาง, ค่าน้ำมัน, ค่าคอม, รายได้, กำไร ต่อเดือน */
 export interface VehicleMonthlySummary {
   month: string; // YYYY-MM
   trip_count: number;
@@ -66,6 +74,8 @@ export interface VehicleMonthlySummary {
   fuel_cost: number;
   commission_cost: number;
   total_cost: number;
+  revenue: number;
+  profit: number;
 }
 
 // ─────────────────────────────────────────────────
@@ -306,6 +316,53 @@ export const vehicleTripUsageService = {
   },
 
   /**
+   * สรุปการเงินของรถในช่วงวันที่: ต้นทุน + รายได้จากออเดอร์ที่ผูกทริป + กำไร/ขาดทุน
+   * รายได้ = sum(orders.total_amount) ที่ delivery_trip_id อยู่ในทริปของรถในช่วง
+   */
+  getVehicleFinancialSummary: async (
+    options: GetVehicleDailyUsageOptions
+  ): Promise<VehicleFinancialSummary> => {
+    const costSummary = await vehicleTripUsageService.getVehicleCostSummary(options);
+    const { vehicleId, startDate, endDate } = options;
+    const startDateOnly = startDate.split('T')[0];
+    const endDateOnly = endDate.split('T')[0];
+
+    const { data: trips } = await supabase
+      .from('delivery_trips')
+      .select('id')
+      .eq('vehicle_id', vehicleId)
+      .gte('planned_date', startDateOnly)
+      .lte('planned_date', endDateOnly);
+
+    const tripIds = (trips ?? []).map((t) => t.id);
+    let revenue = 0;
+    let has_revenue_data = false;
+
+    if (tripIds.length > 0) {
+      const { data: orderRows } = await (supabase as any)
+        .from('orders')
+        .select('total_amount')
+        .in('delivery_trip_id', tripIds);
+      if (orderRows?.length) {
+        has_revenue_data = true;
+        revenue = orderRows.reduce(
+          (sum: number, r: { total_amount?: number | null }) => sum + (Number(r?.total_amount) || 0),
+          0
+        );
+      }
+    }
+
+    const profit = revenue - costSummary.total_cost;
+
+    return {
+      ...costSummary,
+      revenue,
+      profit,
+      has_revenue_data,
+    };
+  },
+
+  /**
    * สรุปรายเดือน: จำนวนทริป, ระยะทาง, ค่าน้ำมัน, ค่าคอม ต่อเดือน (รถคันเดียว, ในช่วงที่เลือก)
    * คืน array เรียงจากเดือนเก่า → ใหม่
    */
@@ -358,7 +415,7 @@ export const vehicleTripUsageService = {
 
     const monthly: Record<
       string,
-      { trip_count: number; total_distance_km: number; fuel_cost: number; commission_cost: number }
+      { trip_count: number; total_distance_km: number; fuel_cost: number; commission_cost: number; revenue: number }
     > = {};
     for (const m of monthList) {
       monthly[m] = {
@@ -366,6 +423,7 @@ export const vehicleTripUsageService = {
         total_distance_km: 0,
         fuel_cost: 0,
         commission_cost: 0,
+        revenue: 0,
       };
     }
 
@@ -396,25 +454,37 @@ export const vehicleTripUsageService = {
 
     for (const [month, tripIds] of tripIdsByMonth) {
       if (tripIds.length === 0) continue;
-      const { data: logs } = await supabase
-        .from('commission_logs')
-        .select('actual_commission')
-        .in('delivery_trip_id', tripIds);
-      if (logs) {
-        const sum = logs.reduce((s, r) => s + (Number(r.actual_commission) || 0), 0);
+      const [logsRes, ordersRes] = await Promise.all([
+        supabase
+          .from('commission_logs')
+          .select('actual_commission')
+          .in('delivery_trip_id', tripIds),
+        (supabase as any).from('orders').select('total_amount').in('delivery_trip_id', tripIds),
+      ]);
+      if (logsRes.data) {
+        const sum = logsRes.data.reduce((s, r) => s + (Number(r.actual_commission) || 0), 0);
         if (monthly[month]) monthly[month].commission_cost = sum;
+      }
+      if (ordersRes?.data?.length && monthly[month]) {
+        monthly[month].revenue = ordersRes.data.reduce(
+          (s: number, r: { total_amount?: number | null }) => s + (Number(r?.total_amount) || 0),
+          0
+        );
       }
     }
 
     const result: VehicleMonthlySummary[] = monthList.map((month) => {
       const v = monthly[month];
+      const total_cost = v.fuel_cost + v.commission_cost;
       return {
         month,
         trip_count: v.trip_count,
         total_distance_km: v.total_distance_km,
         fuel_cost: v.fuel_cost,
         commission_cost: v.commission_cost,
-        total_cost: v.fuel_cost + v.commission_cost,
+        total_cost,
+        revenue: v.revenue,
+        profit: v.revenue - total_cost,
       };
     });
 

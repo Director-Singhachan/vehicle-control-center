@@ -13,13 +13,13 @@ todos:
     status: completed
   - id: phase2-monthly-ui
     content: "Phase 2: UI ตารางสรุปรายเดือน + กราฟต้นทุนต่อเดือน + โหมดดูรายเดือน"
-    status: in_progress
+    status: completed
   - id: phase3-revenue
     content: "Phase 3: ตรวจ schema รายได้ + Service/UI รายได้และกำไร/ขาดทุน"
-    status: pending
+    status: completed
   - id: phase4-export
     content: "Phase 4: ปุ่ม Export CSV/Excel สถิติช่วง+รายวัน+รายเดือน"
-    status: pending
+    status: completed
 isProject: false
 ---
 

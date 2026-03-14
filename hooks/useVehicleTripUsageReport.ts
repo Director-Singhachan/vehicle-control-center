@@ -6,6 +6,7 @@ import {
   type VehicleTripDailySummary,
   type VehicleProductSummaryItem,
   type VehicleCostSummary,
+  type VehicleFinancialSummary,
   type VehicleMonthlySummary,
 } from '../services/vehicleTripUsageService';
 
@@ -23,6 +24,7 @@ export const useVehicleTripUsageReport = ({
   const [dailySummaries, setDailySummaries] = useState<VehicleTripDailySummary[]>([]);
   const [productSummary, setProductSummary] = useState<VehicleProductSummaryItem[]>([]);
   const [costSummary, setCostSummary] = useState<VehicleCostSummary | null>(null);
+  const [financialSummary, setFinancialSummary] = useState<VehicleFinancialSummary | null>(null);
   const [monthlySummaries, setMonthlySummaries] = useState<VehicleMonthlySummary[]>([]);
   const [loading, setLoading] = useState(false);
   const [productSummaryLoading, setProductSummaryLoading] = useState(false);
@@ -42,25 +44,28 @@ export const useVehicleTripUsageReport = ({
     setError(null);
     setProductSummary([]);
     setCostSummary(null);
+    setFinancialSummary(null);
     setMonthlySummaries([]);
 
     const options = { vehicleId, startDate, endDate };
 
     try {
-      // โหลดสรุปรายวัน + ต้นทุน + รายเดือน พร้อมกัน
-      const [dailyResult, costResult, monthlyResult] = await Promise.all([
+      // โหลดสรุปรายวัน + การเงิน (ต้นทุน+รายได้+กำไร) + รายเดือน พร้อมกัน
+      const [dailyResult, financialResult, monthlyResult] = await Promise.all([
         vehicleTripUsageService.getVehicleDailyUsage(options),
-        vehicleTripUsageService.getVehicleCostSummary(options),
+        vehicleTripUsageService.getVehicleFinancialSummary(options),
         vehicleTripUsageService.getVehicleMonthlySummary(options),
       ]);
       setDailySummaries(dailyResult);
-      setCostSummary(costResult);
+      setCostSummary(financialResult);
+      setFinancialSummary(financialResult);
       setMonthlySummaries(monthlyResult);
     } catch (err) {
       console.error('[useVehicleTripUsageReport] Error fetching data:', err);
       setError(err instanceof Error ? err.message : 'เกิดข้อผิดพลาดในการโหลดข้อมูล');
       setDailySummaries([]);
       setCostSummary(null);
+      setFinancialSummary(null);
       setMonthlySummaries([]);
       setProductSummaryLoading(false);
       return;
@@ -88,6 +93,7 @@ export const useVehicleTripUsageReport = ({
     dailySummaries,
     productSummary,
     costSummary,
+    financialSummary,
     monthlySummaries,
     loading,
     productSummaryLoading,
