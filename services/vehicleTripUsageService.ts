@@ -78,6 +78,15 @@ export interface VehicleMonthlySummary {
   profit: number;
 }
 
+/** รายการร้านที่ไปส่งต่อทริป (สำหรับ export) */
+export interface VehicleTripStoreRow {
+  trip_number: string | null;
+  planned_date: string;
+  sequence_order: number;
+  customer_code: string | null;
+  customer_name: string | null;
+}
+
 // ─────────────────────────────────────────────────
 // Helpers
 // ─────────────────────────────────────────────────
@@ -489,5 +498,61 @@ export const vehicleTripUsageService = {
     });
 
     return result;
+  },
+
+  /**
+   * รายการร้านค้าที่ไปส่งในแต่ละทริป (ในช่วงที่เลือก) สำหรับ export
+   */
+  getVehicleTripStoresForExport: async (
+    options: GetVehicleDailyUsageOptions
+  ): Promise<VehicleTripStoreRow[]> => {
+    const { vehicleId, startDate, endDate } = options;
+    const startDateOnly = startDate.split('T')[0];
+    const endDateOnly = endDate.split('T')[0];
+
+    const { data: tripsData } = await supabase
+      .from('delivery_trips')
+      .select('id, trip_number, planned_date')
+      .eq('vehicle_id', vehicleId)
+      .gte('planned_date', startDateOnly)
+      .lte('planned_date', endDateOnly)
+      .order('planned_date', { ascending: true });
+
+    const trips = (tripsData ?? []) as { id: string; trip_number: string | null; planned_date: string }[];
+    if (!trips.length) return [];
+
+    const tripIds = trips.map((t) => t.id);
+    const tripMap = new Map(trips.map((t) => [t.id, t]));
+
+    const { data: tripStoresData } = await supabase
+      .from('delivery_trip_stores')
+      .select('delivery_trip_id, store_id, sequence_order')
+      .in('delivery_trip_id', tripIds)
+      .order('sequence_order', { ascending: true });
+
+    const tripStores = (tripStoresData ?? []) as { delivery_trip_id: string; store_id: string; sequence_order: number }[];
+    if (!tripStores.length) return [];
+
+    const storeIds = [...new Set(tripStores.map((ts) => ts.store_id).filter(Boolean))];
+    type StoreRow = { id: string; customer_code: string | null; customer_name: string | null };
+    const { data: stores } =
+      storeIds.length > 0
+        ? await supabase.from('stores').select('id, customer_code, customer_name').in('id', storeIds)
+        : { data: [] as StoreRow[] };
+    const storeMap = new Map<string, StoreRow>((stores ?? []).map((s) => [s.id, s]));
+
+    const rows: VehicleTripStoreRow[] = [];
+    for (const ts of tripStores) {
+      const trip = tripMap.get(ts.delivery_trip_id);
+      const store = storeMap.get(ts.store_id);
+      rows.push({
+        trip_number: trip?.trip_number ?? null,
+        planned_date: trip?.planned_date ?? '',
+        sequence_order: ts.sequence_order ?? 0,
+        customer_code: store?.customer_code ?? null,
+        customer_name: store?.customer_name ?? null,
+      });
+    }
+    return rows;
   },
 };

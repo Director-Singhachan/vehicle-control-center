@@ -28,7 +28,7 @@ import { TripProductSummarySection } from '../../components/trip/TripProductSumm
 import { TripStaffItemDistributionSection } from '../../components/trip/TripStaffItemDistributionSection';
 import { ProductSummaryChart } from '../../components/trip/ProductSummaryChart';
 import { MonthlyCostChart } from '../../components/trip/MonthlyCostChart';
-import type { VehicleTripDailySummary, VehicleTripDetail } from '../../services/vehicleTripUsageService';
+import { vehicleTripUsageService, type VehicleTripDailySummary, type VehicleTripDetail } from '../../services/vehicleTripUsageService';
 
 interface VehicleTripUsageReportProps {
   isDark?: boolean;
@@ -351,32 +351,58 @@ export const VehicleTripUsageReport: React.FC<VehicleTripUsageReportProps> = ({
 
   const maxDate = new Date().toISOString().split('T')[0];
 
-  const handleExportExcel = () => {
-    const summaryRow = {
-      totalTrips,
-      totalDistance,
-      activeDays,
-      fuel_cost: costSummary?.fuel_cost ?? 0,
-      commission_cost: costSummary?.commission_cost ?? 0,
-      total_cost: costSummary?.total_cost ?? 0,
-    };
-    const dailyRows = dailySummaries.map((d) => ({
-      date: d.date,
-      trip_count: d.trip_count,
-      total_distance_km: d.total_distance_km,
-      drivers: d.drivers.join('; '),
-    }));
-    const monthlyRows = monthlySummaries.map((m) => ({
-      month: m.month,
-      trip_count: m.trip_count,
-      total_distance_km: m.total_distance_km,
-      fuel_cost: m.fuel_cost,
-      commission_cost: m.commission_cost,
-      total_cost: m.total_cost,
-    }));
+  const [exporting, setExporting] = useState(false);
+  const handleExportExcel = async () => {
+    if (!searchedVehicleId) return;
+    setExporting(true);
+    try {
+      const summaryRow = {
+        totalTrips,
+        totalDistance,
+        activeDays,
+        fuel_cost: costSummary?.fuel_cost ?? 0,
+        commission_cost: costSummary?.commission_cost ?? 0,
+        total_cost: costSummary?.total_cost ?? 0,
+      };
+      const dailyRows = dailySummaries.map((d) => ({
+        date: d.date,
+        trip_count: d.trip_count,
+        total_distance_km: d.total_distance_km,
+        drivers: d.drivers.join('; '),
+      }));
+      const monthlyRows = monthlySummaries.map((m) => ({
+        month: m.month,
+        trip_count: m.trip_count,
+        total_distance_km: m.total_distance_km,
+        fuel_cost: m.fuel_cost,
+        commission_cost: m.commission_cost,
+        total_cost: m.total_cost,
+      }));
 
-    excelExport.exportToExcelMultiSheet(
-      [
+      const tripListRows = dailySummaries.flatMap((d) =>
+        d.trips.map((t) => ({
+          date: d.date,
+          trip_number: t.trip_number ?? '-',
+          driver_name: t.driver_name,
+          distance_km: t.distance_km ?? 0,
+        }))
+      );
+
+      const productRows = productSummary.map((p) => ({
+        product_code: p.product_code,
+        product_name: p.product_name,
+        category: p.category,
+        unit: p.unit,
+        total_quantity: p.total_quantity,
+      }));
+
+      const tripStoresRows = await vehicleTripUsageService.getVehicleTripStoresForExport({
+        vehicleId: searchedVehicleId,
+        startDate: searchedStart,
+        endDate: searchedEnd,
+      });
+
+      const sheets: { sheetName: string; data: Record<string, unknown>[]; columns: { key: string; label: string; width?: number; format?: (v: unknown) => string | number }[] }[] = [
         {
           sheetName: 'สรุปช่วง',
           data: [summaryRow],
@@ -387,6 +413,44 @@ export const VehicleTripUsageReport: React.FC<VehicleTripUsageReportProps> = ({
             { key: 'fuel_cost', label: 'ค่าน้ำมัน (บาท)', width: 18, format: excelExport.formatCurrency },
             { key: 'commission_cost', label: 'ค่าคอม (บาท)', width: 18, format: excelExport.formatCurrency },
             { key: 'total_cost', label: 'ต้นทุนรวม (บาท)', width: 20, format: excelExport.formatCurrency },
+          ],
+        },
+        {
+          sheetName: 'รหัสทริป',
+          data: tripListRows,
+          columns: [
+            { key: 'date', label: 'วันที่', width: 14 },
+            { key: 'trip_number', label: 'รหัสทริป', width: 18 },
+            { key: 'driver_name', label: 'คนขับ', width: 22 },
+            { key: 'distance_km', label: 'ระยะทาง (กม.)', width: 16, format: (v: number) => excelExport.formatNumber(v, 1) },
+          ],
+        },
+        {
+          sheetName: 'สรุปสินค้า',
+          data: productRows,
+          columns: [
+            { key: 'product_code', label: 'รหัสสินค้า', width: 16 },
+            { key: 'product_name', label: 'ชื่อสินค้า', width: 28 },
+            { key: 'category', label: 'หมวดหมู่', width: 16 },
+            { key: 'unit', label: 'หน่วย', width: 10 },
+            { key: 'total_quantity', label: 'จำนวนรวม (ชิ้น)', width: 18, format: excelExport.formatNumber },
+          ],
+        },
+        {
+          sheetName: 'ร้านค้าที่ไปส่ง',
+          data: tripStoresRows.map((r) => ({
+            trip_number: r.trip_number ?? '-',
+            planned_date: r.planned_date,
+            sequence_order: r.sequence_order,
+            customer_code: r.customer_code ?? '-',
+            customer_name: r.customer_name ?? '-',
+          })),
+          columns: [
+            { key: 'trip_number', label: 'รหัสทริป', width: 18 },
+            { key: 'planned_date', label: 'วันที่', width: 14 },
+            { key: 'sequence_order', label: 'ลำดับ', width: 10, format: excelExport.formatNumber },
+            { key: 'customer_code', label: 'รหัสร้าน', width: 14 },
+            { key: 'customer_name', label: 'ชื่อร้าน', width: 28 },
           ],
         },
         {
@@ -411,9 +475,15 @@ export const VehicleTripUsageReport: React.FC<VehicleTripUsageReportProps> = ({
             { key: 'total_cost', label: 'ต้นทุนรวม (บาท)', width: 20, format: excelExport.formatCurrency },
           ],
         },
-      ],
-      `รายงานการใช้รถ_${selectedVehicle?.plate ?? 'vehicle'}_${searchedStart}_${searchedEnd}.xlsx`
-    );
+      ];
+
+      excelExport.exportToExcelMultiSheet(
+        sheets,
+        `รายงานการใช้รถ_${selectedVehicle?.plate ?? 'vehicle'}_${searchedStart}_${searchedEnd}.xlsx`
+      );
+    } finally {
+      setExporting(false);
+    }
   };
 
   return (
@@ -537,9 +607,15 @@ export const VehicleTripUsageReport: React.FC<VehicleTripUsageReportProps> = ({
                   รายเดือน
                 </button>
               </div>
-              <Button variant="outline" size="sm" onClick={handleExportExcel} className="gap-2">
-                <Download size={16} />
-                Export Excel
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleExportExcel}
+                disabled={exporting}
+                className="gap-2"
+              >
+                <Download size={16} className={exporting ? 'animate-pulse' : ''} />
+                {exporting ? 'กำลัง export...' : 'Export Excel'}
               </Button>
             </div>
           )}
