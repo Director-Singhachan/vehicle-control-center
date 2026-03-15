@@ -16,9 +16,9 @@ interface FixedCostModalProps {
   onSuccess: () => void;
 }
 
+// เงินเดือนอยู่ฝั่ง HR (staff_salaries) คำนวณเป็นต้นทุนบุคลากรต่อเที่ยว — ไม่ใส่ในต้นทุนคงที่ต่อรถ
 const COST_TYPE_OPTIONS = [
   { value: 'ค่างวด', label: 'ค่างวด' },
-  { value: 'เงินเดือน', label: 'เงินเดือน' },
   { value: 'ภาษี', label: 'ภาษี' },
   { value: 'อื่นๆ', label: 'อื่นๆ' },
 ];
