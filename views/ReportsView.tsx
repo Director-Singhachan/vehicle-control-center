@@ -1,5 +1,5 @@
 // Reports View - Tab orchestrator for all report types
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import { Droplet, Route, Wrench, DollarSign, Truck, FileText, Package, MapPin, TrendingUp, BarChart3 } from 'lucide-react';
 import { PageLayout } from '../components/layout/PageLayout';
@@ -46,9 +46,13 @@ interface ReportsViewProps {
   onNavigateToStoreDetail?: (storeId: string) => void;
   /** ไปหน้ารายละเอียดรถ (จากรายงานการใช้รถ) */
   onNavigateToVehicleDetail?: (vehicleId: string) => void;
+  /** ไปหน้ารายละเอียดเที่ยว (จากรายงานกำไร/ขาดทุนต่อเที่ยว) */
+  onNavigateToTrip?: (tripId: string) => void;
+  /** แท็บที่แสดงเมื่อเปิดหน้ารายงาน (ใช้เมื่อกลับจากหน้ารายละเอียดเที่ยว) */
+  initialTab?: ReportTab;
 }
 
-type ReportTab = 'fuel' | 'trip' | 'maintenance' | 'cost' | 'usage' | 'fuel-consumption' | 'delivery' | 'vehicle-documents' | 'vehicle-trip-usage' | 'trip-pnl' | 'fleet-pnl';
+export type ReportTab = 'fuel' | 'trip' | 'maintenance' | 'cost' | 'usage' | 'fuel-consumption' | 'delivery' | 'vehicle-documents' | 'vehicle-trip-usage' | 'trip-pnl' | 'fleet-pnl';
 
 const TAB_CONFIG: { id: ReportTab; label: string; Icon: LucideIcon }[] = [
   { id: 'fuel', label: 'รายงานน้ำมัน', Icon: Droplet },
@@ -64,8 +68,13 @@ const TAB_CONFIG: { id: ReportTab; label: string; Icon: LucideIcon }[] = [
   { id: 'vehicle-trip-usage', label: 'รายงานการใช้รถละเอียด', Icon: MapPin },
 ];
 
-export const ReportsView: React.FC<ReportsViewProps> = ({ isDark = false, onNavigateToStoreDetail, onNavigateToVehicleDetail }) => {
-  const [activeTab, setActiveTab] = useState<ReportTab>('fuel');
+export const ReportsView: React.FC<ReportsViewProps> = ({ isDark = false, onNavigateToStoreDetail, onNavigateToVehicleDetail, onNavigateToTrip, initialTab }) => {
+  const [activeTab, setActiveTab] = useState<ReportTab>(initialTab ?? 'fuel');
+
+  // ซิงค์แท็บเมื่อกลับจากหน้ารายละเอียดเที่ยว (initialTab ถูกส่งมาแล้ว)
+  useEffect(() => {
+    if (initialTab != null) setActiveTab(initialTab);
+  }, [initialTab]);
 
   const filters = useReportFilters();
 
@@ -153,7 +162,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ isDark = false, onNavi
       {activeTab === 'vehicle-trip-usage' && (
         <VehicleTripUsageReport isDark={isDark} onNavigateToVehicleDetail={onNavigateToVehicleDetail} />
       )}
-      {activeTab === 'trip-pnl' && <TripPnlReport isDark={isDark} />}
+      {activeTab === 'trip-pnl' && <TripPnlReport isDark={isDark} onNavigateToTrip={onNavigateToTrip} />}
       {activeTab === 'fleet-pnl' && (
         <FleetPnlReport isDark={isDark} onNavigateToVehicleDetail={onNavigateToVehicleDetail} />
       )}

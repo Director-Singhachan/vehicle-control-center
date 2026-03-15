@@ -1,18 +1,4 @@
-/**
- * Trip P&L Report (Phase 4)
- * ตารางเที่ยววิ่งในช่วง แสดงรายได้ ต้นทุนผันแปร ต้นทุนคงที่×วัน กำไรสุทธิต่อเที่ยว
- * คลิกแถวหรือปุ่ม "ดูการคำนวณ" เพื่อเปิดโมดัลแสดงภาพการคำนวณ
- */
-import React, { useState, useMemo } from 'react';
-import { createPortal } from 'react-dom';
-import { TrendingUp, RefreshCw, AlertCircle, Calculator, Download } from 'lucide-react';
-import { Card } from '../../components/ui/Card';
-import { Button } from '../../components/ui/Button';
-import { excelExport } from '../../utils/excelExport';
-import { Modal } from '../../components/ui/Modal';
-import { useTripPnl } from '../../hooks/useTripPnl';
-import { useVehicles } from '../../hooks/useVehicles';
-import type { TripPnlRow, TripDaysSource } from '../../services/reports/tripPnlService';
+const STORAGE_KEY = 'tripPnlReportFilters';
 
 function getDefaultDateRange() {
   const today = new Date();
@@ -22,6 +8,50 @@ function getDefaultDateRange() {
   const startStr = start.toISOString().split('T')[0];
   return { start: startStr, end };
 }
+
+function loadSavedFilters(): { dateRange: { start: string; end: string }; vehicleId: string } {
+  try {
+    const raw = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem(STORAGE_KEY) : null;
+    if (!raw) return { dateRange: getDefaultDateRange(), vehicleId: '' };
+    const parsed = JSON.parse(raw) as { start?: string; end?: string; vehicleId?: string };
+    const start = typeof parsed?.start === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(parsed.start) ? parsed.start : null;
+    const end = typeof parsed?.end === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(parsed.end) ? parsed.end : null;
+    if (start && end) {
+      return {
+        dateRange: { start, end },
+        vehicleId: typeof parsed?.vehicleId === 'string' ? parsed.vehicleId : '',
+      };
+    }
+  } catch {
+    /* ignore */
+  }
+  return { dateRange: getDefaultDateRange(), vehicleId: '' };
+}
+
+function saveFilters(dateRange: { start: string; end: string }, vehicleId: string) {
+  try {
+    sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ start: dateRange.start, end: dateRange.end, vehicleId: vehicleId || '' }));
+  } catch {
+    /* ignore */
+  }
+}
+
+/**
+ * Trip P&L Report (Phase 4)
+ * ตารางเที่ยววิ่งในช่วง แสดงรายได้ ต้นทุนผันแปร ต้นทุนคงที่×วัน กำไรสุทธิต่อเที่ยว
+ * คลิกแถวหรือปุ่ม "ดูการคำนวณ" เพื่อเปิดโมดัลแสดงภาพการคำนวณ
+ * Filter (ช่วงวันที่ + รถ) ถูกบันทึกใน sessionStorage เพื่อคืนค่าเมื่อกลับจากหน้ารายละเอียดเที่ยว
+ */
+import React, { useState, useMemo, useEffect } from 'react';
+import { createPortal } from 'react-dom';
+import { TrendingUp, RefreshCw, AlertCircle, Calculator, Download } from 'lucide-react';
+import { Card } from '../../components/ui/Card';
+import { Button } from '../../components/ui/Button';
+import { excelExport } from '../../utils/excelExport';
+import { Modal } from '../../components/ui/Modal';
+import { useTripPnl } from '../../hooks/useTripPnl';
+import { useVehicles } from '../../hooks/useVehicles';
+import type { TripPnlRow, TripDaysSource } from '../../services/reports/tripPnlService';
 
 function formatDate(dateStr: string) {
   return new Date(dateStr + 'T00:00:00').toLocaleDateString('th-TH', {
@@ -50,13 +80,18 @@ function daysSourceLabel(source: TripDaysSource): string {
 
 interface TripPnlReportProps {
   isDark?: boolean;
+  /** คลิกแถวแล้วไปหน้ารายละเอียดเที่ยว (กำหนดจาก ReportsView) */
+  onNavigateToTrip?: (tripId: string) => void;
 }
 
-export const TripPnlReport: React.FC<TripPnlReportProps> = ({ isDark = false }) => {
-  const [dateRange, setDateRange] = useState(getDefaultDateRange);
-  const [vehicleId, setVehicleId] = useState<string>('');
+export const TripPnlReport: React.FC<TripPnlReportProps> = ({ isDark = false, onNavigateToTrip }) => {
+  const [dateRange, setDateRange] = useState(() => loadSavedFilters().dateRange);
+  const [vehicleId, setVehicleId] = useState<string>(() => loadSavedFilters().vehicleId);
   const [detailRow, setDetailRow] = useState<TripPnlRow | null>(null);
   const [exporting, setExporting] = useState(false);
+  useEffect(() => {
+    saveFilters(dateRange, vehicleId);
+  }, [dateRange, vehicleId]);
   const { vehicles } = useVehicles();
   const { rows, loading, error, refetch } = useTripPnl({
     startDate: dateRange.start,
@@ -226,9 +261,10 @@ export const TripPnlReport: React.FC<TripPnlReportProps> = ({ isDark = false }) 
                       key={r.tripId}
                       role="button"
                       tabIndex={0}
-                      onClick={() => setDetailRow(r)}
-                      onKeyDown={(e) => e.key === 'Enter' && setDetailRow(r)}
+                      onClick={() => (onNavigateToTrip ? onNavigateToTrip(r.tripId) : setDetailRow(r))}
+                      onKeyDown={(e) => e.key === 'Enter' && (onNavigateToTrip ? onNavigateToTrip(r.tripId) : setDetailRow(r))}
                       className="border-b border-slate-100 dark:border-slate-700/50 hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer"
+                      title={onNavigateToTrip ? 'คลิกไปหน้ารายละเอียดเที่ยว' : undefined}
                     >
                       <td className="px-3 py-2 text-slate-900 dark:text-white">
                         <span className="font-medium">{r.trip_number ?? r.tripId.slice(0, 8)}</span>
