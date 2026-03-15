@@ -86,6 +86,69 @@ export const FleetPnlReport: React.FC<FleetPnlReportProps> = ({
     };
   }, [data, isDark, branchFilter]);
 
+  /** กราฟแนวนอน P&L รายคัน — เหมาะกับรถจำนวนมาก (40+), แสดงกำไร/ขาดทุนต่อคัน */
+  const perVehicleChartData = useMemo(() => {
+    if (!data || data.rows.length === 0) return null;
+    const green = isDark ? '#22c55e' : '#16a34a';
+    const red = isDark ? '#ef4444' : '#dc2626';
+    return {
+      labels: data.rows.map((r) => r.plate ?? r.vehicle_id.slice(0, 8)),
+      datasets: [
+        {
+          label: 'กำไร/ขาดทุนสุทธิ (฿)',
+          data: data.rows.map((r) => r.net_profit),
+          backgroundColor: data.rows.map((r) => (r.net_profit >= 0 ? green : red)),
+          borderRadius: 4,
+        },
+      ],
+    };
+  }, [data, isDark]);
+
+  const perVehicleChartOptions = useMemo(
+    () => ({
+      indexAxis: 'y' as const,
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: isDark ? '#020617' : '#ffffff',
+          titleColor: isDark ? '#f8fafc' : '#0f172a',
+          bodyColor: isDark ? '#cbd5e1' : '#475569',
+          callbacks: {
+            label: (context: { parsed: { x: number } }) =>
+              `฿${formatMoney(context.parsed.x)}`,
+          },
+        },
+      },
+      scales: {
+        x: {
+          grid: { color: isDark ? '#334155' : '#e2e8f0' },
+          ticks: {
+            color: isDark ? '#94a3b8' : '#64748b',
+            callback: (value: string | number) =>
+              typeof value === 'number' ? `฿${(value / 1000).toFixed(0)}k` : value,
+          },
+        },
+        y: {
+          grid: { display: false },
+          ticks: {
+            color: isDark ? '#94a3b8' : '#64748b',
+            maxRotation: 0,
+            autoSkip: false,
+            font: { size: 11 },
+          },
+        },
+      },
+    }),
+    [isDark]
+  );
+
+  /** ความสูงของกราฟรายคัน — ให้แต่ละแถวอ่านง่าย และเลื่อนดูได้เมื่อรถเยอะ */
+  const perVehicleChartHeight = data?.rows.length
+    ? Math.min(Math.max(data.rows.length * 28, 200), 1200)
+    : 300;
+
   const chartOptions = useMemo(
     () => ({
       responsive: true,
@@ -497,7 +560,7 @@ export const FleetPnlReport: React.FC<FleetPnlReportProps> = ({
             </Card>
           </div>
 
-          {/* Chart: รายได้ vs ต้นทุน */}
+          {/* Chart: รายได้ vs ต้นทุน (ภาพรวม) */}
           <Card className="p-5">
             <h3 className="text-base font-semibold text-slate-800 dark:text-slate-200 mb-4">
               รายได้ vs ต้นทุน {branchFilter ? `(สาขา ${branchFilter})` : '(ทั้งกองรถ)'}
@@ -508,6 +571,26 @@ export const FleetPnlReport: React.FC<FleetPnlReportProps> = ({
               </div>
             )}
           </Card>
+
+          {/* กราฟ P&L รายคัน — แนวนอน เลื่อนได้ เหมาะกับรถ 40+ คัน */}
+          {perVehicleChartData && data && data.rows.length > 0 && (
+            <Card className="p-5">
+              <h3 className="text-base font-semibold text-slate-800 dark:text-slate-200 mb-2">
+                กำไร/ขาดทุนสุทธิ รายคัน ({data.rows.length} คัน)
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">
+                สีเขียว = กำไร สีแดง = ขาดทุน — เลื่อนลงเพื่อดูทุกคัน
+              </p>
+              <div
+                className="w-full overflow-y-auto rounded-lg border border-slate-200 dark:border-slate-700"
+                style={{ maxHeight: 520 }}
+              >
+                <div style={{ height: perVehicleChartHeight, minHeight: 200 }}>
+                  <Bar data={perVehicleChartData} options={perVehicleChartOptions} />
+                </div>
+              </div>
+            </Card>
+          )}
 
           {/* Table ต่อคัน */}
           <Card className="overflow-hidden">
