@@ -5,9 +5,10 @@
  */
 import React, { useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { TrendingUp, RefreshCw, AlertCircle, Calculator } from 'lucide-react';
+import { TrendingUp, RefreshCw, AlertCircle, Calculator, Download } from 'lucide-react';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
+import { excelExport } from '../../utils/excelExport';
 import { Modal } from '../../components/ui/Modal';
 import { useTripPnl } from '../../hooks/useTripPnl';
 import { useVehicles } from '../../hooks/useVehicles';
@@ -55,6 +56,7 @@ export const TripPnlReport: React.FC<TripPnlReportProps> = ({ isDark = false }) 
   const [dateRange, setDateRange] = useState(getDefaultDateRange);
   const [vehicleId, setVehicleId] = useState<string>('');
   const [detailRow, setDetailRow] = useState<TripPnlRow | null>(null);
+  const [exporting, setExporting] = useState(false);
   const { vehicles } = useVehicles();
   const { rows, loading, error, refetch } = useTripPnl({
     startDate: dateRange.start,
@@ -75,6 +77,38 @@ export const TripPnlReport: React.FC<TripPnlReportProps> = ({ isDark = false }) 
       { revenue: 0, variable_cost: 0, fixed_cost: 0, net_profit: 0, count: 0 }
     );
   }, [rows]);
+
+  const handleExportExcel = () => {
+    if (rows.length === 0) return;
+    setExporting(true);
+    try {
+      const exportRows = rows.map((r) => ({
+        trip_number: r.trip_number ?? '',
+        planned_date: r.planned_date,
+        vehicle_plate: r.vehicle_plate ?? '',
+        revenue: r.revenue,
+        variable_cost: r.variable_cost,
+        fixed_cost: r.fixed_cost,
+        net_profit: r.net_profit,
+      }));
+      excelExport.exportToExcel(
+        exportRows,
+        [
+          { key: 'trip_number', label: 'รหัสเที่ยว', width: 16 },
+          { key: 'planned_date', label: 'วันที่วางแผน', width: 14 },
+          { key: 'vehicle_plate', label: 'ทะเบียนรถ', width: 14 },
+          { key: 'revenue', label: 'รายได้ (บาท)', width: 16, format: excelExport.formatCurrency },
+          { key: 'variable_cost', label: 'ต้นทุนผันแปร (บาท)', width: 18, format: excelExport.formatCurrency },
+          { key: 'fixed_cost', label: 'ต้นทุนคงที่×วัน (บาท)', width: 20, format: excelExport.formatCurrency },
+          { key: 'net_profit', label: 'กำไรสุทธิ (บาท)', width: 18, format: excelExport.formatCurrency },
+        ],
+        `Trip_PnL_${dateRange.start}_${dateRange.end}.xlsx`,
+        'กำไรขาดทุนต่อเที่ยว'
+      );
+    } finally {
+      setExporting(false);
+    }
+  };
 
   return (
     <Card className={`p-6 ${isDark ? 'dark' : ''}`}>
@@ -122,6 +156,15 @@ export const TripPnlReport: React.FC<TripPnlReportProps> = ({ isDark = false }) 
           <Button variant="outline" size="sm" onClick={() => refetch()} disabled={loading}>
             <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
             รีเฟรช
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleExportExcel}
+            disabled={exporting || rows.length === 0}
+          >
+            <Download className={`w-4 h-4 mr-2 ${exporting ? 'animate-pulse' : ''}`} />
+            Export Excel
           </Button>
         </div>
 

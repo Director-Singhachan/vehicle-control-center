@@ -5,9 +5,11 @@
  */
 import React, { useState, useMemo } from 'react';
 import { Bar } from 'react-chartjs-2';
-import { DollarSign, TrendingUp, Truck, RefreshCw } from 'lucide-react';
+import { DollarSign, TrendingUp, Truck, RefreshCw, Download } from 'lucide-react';
 import { Card } from '../../components/ui/Card';
-import { useFleetPnl } from '../../hooks/useFleetPnl';
+import { Button } from '../../components/ui/Button';
+import { excelExport } from '../../utils/excelExport';
+import { useFleetPnl, useFleetPnlMonthly } from '../../hooks/useFleetPnl';
 
 function getDefaultDateRange() {
   const today = new Date();
@@ -31,10 +33,19 @@ export const FleetPnlReport: React.FC<FleetPnlReportProps> = ({
   onNavigateToVehicleDetail,
 }) => {
   const [dateRange, setDateRange] = useState(getDefaultDateRange);
+  const [exporting, setExporting] = useState(false);
+  const [viewMode, setViewMode] = useState<'range' | 'monthly'>('range');
+
   const { data, loading, error, refetch } = useFleetPnl({
     startDate: dateRange.start,
     endDate: dateRange.end,
-    enabled: !!dateRange.start && !!dateRange.end,
+    enabled: (!!dateRange.start && !!dateRange.end) && viewMode === 'range',
+  });
+
+  const { data: monthlyData, loading: monthlyLoading, error: monthlyError, refetch: refetchMonthly } = useFleetPnlMonthly({
+    startDate: dateRange.start,
+    endDate: dateRange.end,
+    enabled: (!!dateRange.start && !!dateRange.end) && viewMode === 'monthly',
   });
 
   const chartData = useMemo(() => {
@@ -92,6 +103,125 @@ export const FleetPnlReport: React.FC<FleetPnlReportProps> = ({
     [isDark]
   );
 
+  const monthlyChartData = useMemo(() => {
+    if (!monthlyData || monthlyData.length === 0) return null;
+    return {
+      labels: monthlyData.map((r) => r.month_label),
+      datasets: [
+        {
+          label: 'รายได้ (฿)',
+          data: monthlyData.map((r) => r.total_revenue),
+          backgroundColor: isDark ? '#22c55e' : '#16a34a',
+          borderRadius: 4,
+        },
+        {
+          label: 'ต้นทุน (฿)',
+          data: monthlyData.map((r) => r.total_cost),
+          backgroundColor: isDark ? '#f97316' : '#ea580c',
+          borderRadius: 4,
+        },
+        {
+          label: 'กำไรสุทธิ (฿)',
+          data: monthlyData.map((r) => r.net_profit),
+          backgroundColor: isDark ? '#3b82f6' : '#2563eb',
+          borderRadius: 4,
+        },
+      ],
+    };
+  }, [monthlyData, isDark]);
+
+  const handleExportExcel = () => {
+    if (!data) return;
+    setExporting(true);
+    try {
+      const summarySheet = [
+        {
+          start_date: data.start_date,
+          end_date: data.end_date,
+          vehicle_count: data.vehicle_count,
+          total_revenue: data.total_revenue,
+          total_cost: data.total_cost,
+          net_profit: data.net_profit,
+        },
+      ];
+      const rowsSheet = data.rows.map((r) => ({
+        plate: r.plate ?? r.vehicle_id.slice(0, 8),
+        revenue: r.revenue,
+        total_cost: r.total_cost,
+        net_profit: r.net_profit,
+        cost_per_km: r.cost_per_km ?? '',
+        cost_per_trip: r.cost_per_trip ?? '',
+        cost_per_piece: r.cost_per_piece ?? '',
+        total_trips: r.total_trips,
+        total_distance_km: r.total_distance_km,
+        total_pieces: r.total_pieces,
+      }));
+      excelExport.exportToExcelMultiSheet(
+        [
+          {
+            sheetName: 'สรุปทั้งกองรถ',
+            data: summarySheet,
+            columns: [
+              { key: 'start_date', label: 'วันที่เริ่ม', width: 12 },
+              { key: 'end_date', label: 'วันที่สิ้นสุด', width: 12 },
+              { key: 'vehicle_count', label: 'จำนวนรถ (คัน)', width: 14, format: excelExport.formatNumber },
+              { key: 'total_revenue', label: 'รายได้รวม (บาท)', width: 18, format: excelExport.formatCurrency },
+              { key: 'total_cost', label: 'ต้นทุนรวม (บาท)', width: 18, format: excelExport.formatCurrency },
+              { key: 'net_profit', label: 'กำไรสุทธิ (บาท)', width: 18, format: excelExport.formatCurrency },
+            ],
+          },
+          {
+            sheetName: 'รายคัน',
+            data: rowsSheet,
+            columns: [
+              { key: 'plate', label: 'ทะเบียน', width: 14 },
+              { key: 'revenue', label: 'รายได้ (บาท)', width: 16, format: excelExport.formatCurrency },
+              { key: 'total_cost', label: 'ต้นทุน (บาท)', width: 16, format: excelExport.formatCurrency },
+              { key: 'net_profit', label: 'กำไรสุทธิ (บาท)', width: 16, format: excelExport.formatCurrency },
+              { key: 'cost_per_km', label: 'ต้นทุน/กม. (บาท)', width: 16, format: (v: number | string) => (v === '' || v == null ? '-' : excelExport.formatCurrency(Number(v))) },
+              { key: 'cost_per_trip', label: 'ต้นทุน/เที่ยว (บาท)', width: 18, format: (v: number | string) => (v === '' || v == null ? '-' : excelExport.formatCurrency(Number(v))) },
+              { key: 'cost_per_piece', label: 'ต้นทุน/ชิ้น (บาท)', width: 18, format: (v: number | string) => (v === '' || v == null ? '-' : excelExport.formatCurrency(Number(v))) },
+              { key: 'total_trips', label: 'จำนวนเที่ยว', width: 12, format: excelExport.formatNumber },
+              { key: 'total_distance_km', label: 'ระยะทาง (กม.)', width: 14, format: (v: number) => excelExport.formatNumber(v, 1) },
+              { key: 'total_pieces', label: 'จำนวนชิ้น', width: 12, format: excelExport.formatNumber },
+            ],
+          },
+        ],
+        `Fleet_PnL_${data.start_date}_${data.end_date}.xlsx`
+      );
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const handleExportMonthlyExcel = () => {
+    if (monthlyData.length === 0) return;
+    setExporting(true);
+    try {
+      excelExport.exportToExcel(
+        monthlyData.map((r) => ({
+          month: r.month,
+          month_label: r.month_label,
+          total_revenue: r.total_revenue,
+          total_cost: r.total_cost,
+          net_profit: r.net_profit,
+          vehicle_count: r.vehicle_count,
+        })),
+        [
+          { key: 'month_label', label: 'เดือน', width: 14 },
+          { key: 'total_revenue', label: 'รายได้รวม (บาท)', width: 18, format: excelExport.formatCurrency },
+          { key: 'total_cost', label: 'ต้นทุนรวม (บาท)', width: 18, format: excelExport.formatCurrency },
+          { key: 'net_profit', label: 'กำไรสุทธิ (บาท)', width: 18, format: excelExport.formatCurrency },
+          { key: 'vehicle_count', label: 'จำนวนรถ (คัน)', width: 14, format: (v: number) => excelExport.formatNumber(v, 0) },
+        ],
+        `Fleet_PnL_รายเดือน_${dateRange.start}_${dateRange.end}.xlsx`,
+        'สรุปรายเดือน'
+      );
+    } finally {
+      setExporting(false);
+    }
+  };
+
   return (
     <div className={`space-y-6 ${isDark ? 'dark' : ''}`}>
       {/* Filter */}
@@ -123,29 +253,150 @@ export const FleetPnlReport: React.FC<FleetPnlReportProps> = ({
               className="px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
             />
           </div>
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-slate-600 dark:text-slate-400">มุมมอง:</span>
+            <button
+              type="button"
+              onClick={() => setViewMode('range')}
+              className={`px-3 py-2 rounded-lg text-sm font-medium ${
+                viewMode === 'range'
+                  ? 'bg-enterprise-600 text-white dark:bg-enterprise-500'
+                  : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-600'
+              }`}
+            >
+              ตามช่วง
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode('monthly')}
+              className={`px-3 py-2 rounded-lg text-sm font-medium ${
+                viewMode === 'monthly'
+                  ? 'bg-enterprise-600 text-white dark:bg-enterprise-500'
+                  : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-600'
+              }`}
+            >
+              รายเดือน
+            </button>
+          </div>
           <button
             type="button"
-            onClick={() => refetch()}
-            disabled={loading}
+            onClick={() => (viewMode === 'range' ? refetch() : refetchMonthly())}
+            disabled={viewMode === 'range' ? loading : monthlyLoading}
             className="px-4 py-2 rounded-lg bg-enterprise-600 text-white hover:bg-enterprise-700 disabled:opacity-50 flex items-center gap-2"
           >
-            <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
+            <RefreshCw size={16} className={loading || monthlyLoading ? 'animate-spin' : ''} />
             โหลดใหม่
           </button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => viewMode === 'range' ? handleExportExcel() : handleExportMonthlyExcel()}
+            disabled={
+              exporting ||
+              (viewMode === 'range' ? !data || data.rows.length === 0 : monthlyData.length === 0)
+            }
+          >
+            <Download className={`w-4 h-4 mr-2 ${exporting ? 'animate-pulse' : ''}`} />
+            Export Excel
+          </Button>
         </div>
       </Card>
 
-      {error && (
+      {(error || monthlyError) && (
         <div className="rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 px-4 py-3 text-red-700 dark:text-red-300 text-sm">
-          {error.message}
+          {(viewMode === 'range' ? error : monthlyError)?.message}
         </div>
       )}
 
-      {loading && !data ? (
+      {viewMode === 'monthly' && (
+        <>
+          {monthlyLoading && monthlyData.length === 0 ? (
+            <Card className="p-8 flex items-center justify-center">
+              <RefreshCw className="w-8 h-8 animate-spin text-slate-400" />
+            </Card>
+          ) : monthlyData.length > 0 ? (
+            <>
+              <Card className="p-5">
+                <h3 className="text-base font-semibold text-slate-800 dark:text-slate-200 mb-4">
+                  สรุปรายเดือน — รายได้ vs ต้นทุน vs กำไรสุทธิ
+                </h3>
+                {monthlyChartData && (
+                  <div className="h-72">
+                    <Bar data={monthlyChartData} options={chartOptions} />
+                  </div>
+                )}
+              </Card>
+              <Card className="overflow-hidden">
+                <div className="px-4 py-3 border-b border-slate-200 dark:border-slate-700">
+                  <h3 className="text-base font-semibold text-slate-800 dark:text-slate-200">
+                    ตารางสรุปรายเดือน
+                  </h3>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="min-w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60">
+                        <th className="px-4 py-2 text-left font-medium text-slate-600 dark:text-slate-300">
+                          เดือน
+                        </th>
+                        <th className="px-4 py-2 text-right font-medium text-slate-600 dark:text-slate-300">
+                          รายได้
+                        </th>
+                        <th className="px-4 py-2 text-right font-medium text-slate-600 dark:text-slate-300">
+                          ต้นทุน
+                        </th>
+                        <th className="px-4 py-2 text-right font-medium text-slate-600 dark:text-slate-300">
+                          กำไร/ขาดทุน
+                        </th>
+                        <th className="px-4 py-2 text-right font-medium text-slate-600 dark:text-slate-300">
+                          จำนวนรถ
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {monthlyData.map((row) => (
+                        <tr
+                          key={row.month}
+                          className="border-b border-slate-100 dark:border-slate-700/50"
+                        >
+                          <td className="px-4 py-2 font-medium text-slate-900 dark:text-white">
+                            {row.month_label}
+                          </td>
+                          <td className="px-4 py-2 text-right text-slate-700 dark:text-slate-300">
+                            ฿{formatMoney(row.total_revenue)}
+                          </td>
+                          <td className="px-4 py-2 text-right text-slate-700 dark:text-slate-300">
+                            ฿{formatMoney(row.total_cost)}
+                          </td>
+                          <td
+                            className={`px-4 py-2 text-right font-medium ${
+                              row.net_profit >= 0
+                                ? 'text-green-600 dark:text-green-400'
+                                : 'text-red-600 dark:text-red-400'
+                            }`}
+                          >
+                            {row.net_profit >= 0 ? '' : '−'}฿
+                            {formatMoney(Math.abs(row.net_profit))}
+                          </td>
+                          <td className="px-4 py-2 text-right text-slate-600 dark:text-slate-400">
+                            {row.vehicle_count} คัน
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </Card>
+            </>
+          ) : null}
+        </>
+      )}
+
+      {viewMode === 'range' && loading && !data ? (
         <Card className="p-8 flex items-center justify-center">
           <RefreshCw className="w-8 h-8 animate-spin text-slate-400" />
         </Card>
-      ) : data ? (
+      ) : viewMode === 'range' && data ? (
         <>
           {/* Summary Cards */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
