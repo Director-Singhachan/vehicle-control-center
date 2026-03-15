@@ -12,9 +12,11 @@ import {
 export function useFleetPnl(options: {
   startDate: string;
   endDate: string;
+  /** กรองเฉพาะรถในสาขา — ส่ง vehicleIds จาก vehicles ที่ branch ตรง */
+  vehicleIds?: string[] | null;
   enabled?: boolean;
 }) {
-  const { startDate, endDate, enabled = true } = options;
+  const { startDate, endDate, vehicleIds, enabled = true } = options;
   const [data, setData] = useState<FleetPnlResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
@@ -27,7 +29,7 @@ export function useFleetPnl(options: {
     setLoading(true);
     setError(null);
     try {
-      const result = await getFleetPnlSummary({ startDate, endDate });
+      const result = await getFleetPnlSummary({ startDate, endDate, vehicleIds });
       setData(result);
     } catch (err) {
       setError(err instanceof Error ? err : new Error('โหลด Fleet P&L ไม่ได้'));
@@ -35,7 +37,7 @@ export function useFleetPnl(options: {
     } finally {
       setLoading(false);
     }
-  }, [startDate, endDate, enabled]);
+  }, [startDate, endDate, vehicleIds, enabled]);
 
   useEffect(() => {
     fetchData();
@@ -50,9 +52,10 @@ export function useFleetPnl(options: {
 export function useFleetPnlMonthly(options: {
   startDate: string;
   endDate: string;
+  vehicleIds?: string[] | null;
   enabled?: boolean;
 }) {
-  const { startDate, endDate, enabled = true } = options;
+  const { startDate, endDate, vehicleIds, enabled = true } = options;
   const [data, setData] = useState<FleetPnlMonthlyRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
@@ -65,7 +68,7 @@ export function useFleetPnlMonthly(options: {
     setLoading(true);
     setError(null);
     try {
-      const result = await getFleetPnlMonthly({ startDate, endDate });
+      const result = await getFleetPnlMonthly({ startDate, endDate, vehicleIds });
       setData(result);
     } catch (err) {
       setError(err instanceof Error ? err : new Error('โหลด Fleet P&L รายเดือนไม่ได้'));
@@ -73,7 +76,7 @@ export function useFleetPnlMonthly(options: {
     } finally {
       setLoading(false);
     }
-  }, [startDate, endDate, enabled]);
+  }, [startDate, endDate, vehicleIds, enabled]);
 
   useEffect(() => {
     fetchData();

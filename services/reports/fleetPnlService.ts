@@ -127,6 +127,7 @@ export interface FleetPnlMonthlyRow {
 export interface FleetPnlMonthlyOptions {
   startDate: string;
   endDate: string;
+  vehicleIds?: string[] | null;
 }
 
 /**
@@ -135,7 +136,7 @@ export interface FleetPnlMonthlyOptions {
 export async function getFleetPnlMonthly(
   options: FleetPnlMonthlyOptions
 ): Promise<FleetPnlMonthlyRow[]> {
-  const { startDate, endDate } = options;
+  const { startDate, endDate, vehicleIds } = options;
   const startStr = startDate.split('T')[0];
   const endStr = endDate.split('T')[0];
   const months = getMonthsInRange(startStr, endStr);
@@ -157,6 +158,7 @@ export async function getFleetPnlMonthly(
       const summary = await getFleetPnlSummary({
         startDate: firstDay,
         endDate: endDay,
+        vehicleIds,
       });
       return {
         month,

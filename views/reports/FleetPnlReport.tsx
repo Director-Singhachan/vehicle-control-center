@@ -10,6 +10,7 @@ import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { excelExport } from '../../utils/excelExport';
 import { useFleetPnl, useFleetPnlMonthly } from '../../hooks/useFleetPnl';
+import { useVehicles } from '../../hooks/useVehicles';
 
 function getDefaultDateRange() {
   const today = new Date();
@@ -33,25 +34,41 @@ export const FleetPnlReport: React.FC<FleetPnlReportProps> = ({
   onNavigateToVehicleDetail,
 }) => {
   const [dateRange, setDateRange] = useState(getDefaultDateRange);
+  const [branchFilter, setBranchFilter] = useState<string>('');
   const [exporting, setExporting] = useState(false);
   const [viewMode, setViewMode] = useState<'range' | 'monthly'>('range');
+
+  const { vehicles } = useVehicles();
+  const vehicleList = (vehicles ?? []) as { id: string; plate: string | null; branch: string | null }[];
+  const branches = useMemo(() => {
+    const set = new Set<string>();
+    vehicleList.forEach((v) => { if (v.branch) set.add(v.branch); });
+    return Array.from(set).sort();
+  }, [vehicleList]);
+  const vehicleIdsInBranch = useMemo(() => {
+    if (!branchFilter) return undefined;
+    return vehicleList.filter((v) => v.branch === branchFilter).map((v) => v.id);
+  }, [vehicleList, branchFilter]);
 
   const { data, loading, error, refetch } = useFleetPnl({
     startDate: dateRange.start,
     endDate: dateRange.end,
+    vehicleIds: vehicleIdsInBranch,
     enabled: (!!dateRange.start && !!dateRange.end) && viewMode === 'range',
   });
 
   const { data: monthlyData, loading: monthlyLoading, error: monthlyError, refetch: refetchMonthly } = useFleetPnlMonthly({
     startDate: dateRange.start,
     endDate: dateRange.end,
+    vehicleIds: vehicleIdsInBranch,
     enabled: (!!dateRange.start && !!dateRange.end) && viewMode === 'monthly',
   });
 
   const chartData = useMemo(() => {
     if (!data) return null;
+    const scopeLabel = branchFilter ? `รวมสาขา ${branchFilter}` : 'รวมทั้งกองรถ';
     return {
-      labels: ['รวมทั้งกองรถ'],
+      labels: [scopeLabel],
       datasets: [
         {
           label: 'รายได้รวม (฿)',
@@ -67,7 +84,7 @@ export const FleetPnlReport: React.FC<FleetPnlReportProps> = ({
         },
       ],
     };
-  }, [data, isDark]);
+  }, [data, isDark, branchFilter]);
 
   const chartOptions = useMemo(
     () => ({
@@ -252,6 +269,23 @@ export const FleetPnlReport: React.FC<FleetPnlReportProps> = ({
               }
               className="px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
             />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+              สาขา
+            </label>
+            <select
+              value={branchFilter}
+              onChange={(e) => setBranchFilter(e.target.value)}
+              className="px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 min-w-[140px]"
+            >
+              <option value="">ทุกสาขา</option>
+              {branches.map((b) => (
+                <option key={b} value={b}>
+                  {b}
+                </option>
+              ))}
+            </select>
           </div>
           <div className="flex items-center gap-2">
             <span className="text-sm text-slate-600 dark:text-slate-400">มุมมอง:</span>
@@ -453,7 +487,7 @@ export const FleetPnlReport: React.FC<FleetPnlReportProps> = ({
                     {formatMoney(Math.abs(data.net_profit))}
                   </p>
                   <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">
-                    ทั้งบริษัท
+                    {branchFilter ? `สาขา ${branchFilter}` : 'ทั้งบริษัท'}
                   </p>
                 </div>
                 <div className="p-3 bg-slate-100 dark:bg-slate-700/50 rounded-lg">
@@ -466,7 +500,7 @@ export const FleetPnlReport: React.FC<FleetPnlReportProps> = ({
           {/* Chart: รายได้ vs ต้นทุน */}
           <Card className="p-5">
             <h3 className="text-base font-semibold text-slate-800 dark:text-slate-200 mb-4">
-              รายได้ vs ต้นทุน (ทั้งกองรถ)
+              รายได้ vs ต้นทุน {branchFilter ? `(สาขา ${branchFilter})` : '(ทั้งกองรถ)'}
             </h3>
             {chartData && (
               <div className="h-64">
