@@ -1,7 +1,7 @@
 // Reports View - Tab orchestrator for all report types
 import React, { useState } from 'react';
 import type { LucideIcon } from 'lucide-react';
-import { Droplet, Route, Wrench, DollarSign, Truck, FileText, Package, MapPin } from 'lucide-react';
+import { Droplet, Route, Wrench, DollarSign, Truck, FileText, Package, MapPin, TrendingUp } from 'lucide-react';
 import { PageLayout } from '../components/layout/PageLayout';
 
 import { VehicleUsageReport } from './reports/VehicleUsageReport';
@@ -13,6 +13,7 @@ import { CostReport } from './reports/CostReport';
 import { VehicleDocumentsReport } from './reports/VehicleDocumentsReport';
 import { DeliveryReport } from './reports/DeliveryReport';
 import { VehicleTripUsageReport } from './reports/VehicleTripUsageReport';
+import { TripPnlReport } from './reports/TripPnlReport';
 import { useReportFilters } from '../hooks/useReportFilters';
 import {
   Chart as ChartJS,
@@ -44,11 +45,12 @@ interface ReportsViewProps {
   onNavigateToStoreDetail?: (storeId: string) => void;
 }
 
-type ReportTab = 'fuel' | 'trip' | 'maintenance' | 'cost' | 'usage' | 'fuel-consumption' | 'delivery' | 'vehicle-documents' | 'vehicle-trip-usage';
+type ReportTab = 'fuel' | 'trip' | 'maintenance' | 'cost' | 'usage' | 'fuel-consumption' | 'delivery' | 'vehicle-documents' | 'vehicle-trip-usage' | 'trip-pnl';
 
 const TAB_CONFIG: { id: ReportTab; label: string; Icon: LucideIcon }[] = [
   { id: 'fuel', label: 'รายงานน้ำมัน', Icon: Droplet },
   { id: 'trip', label: 'รายงานการเดินทาง', Icon: Route },
+  { id: 'trip-pnl', label: 'กำไร/ขาดทุนต่อเที่ยว (P&L)', Icon: TrendingUp },
   { id: 'maintenance', label: 'รายงานการซ่อม', Icon: Wrench },
   { id: 'cost', label: 'วิเคราะห์ค่าใช้จ่าย', Icon: DollarSign },
   { id: 'usage', label: 'รถที่ใช้งานเยอะที่สุด', Icon: Truck },
@@ -147,6 +149,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ isDark = false, onNavi
       {activeTab === 'vehicle-trip-usage' && (
         <VehicleTripUsageReport isDark={isDark} />
       )}
+      {activeTab === 'trip-pnl' && <TripPnlReport isDark={isDark} />}
     </PageLayout>
   );
 };
