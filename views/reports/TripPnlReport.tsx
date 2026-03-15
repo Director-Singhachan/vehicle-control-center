@@ -9,28 +9,29 @@ function getDefaultDateRange() {
   return { start: startStr, end };
 }
 
-function loadSavedFilters(): { dateRange: { start: string; end: string }; vehicleId: string } {
+function loadSavedFilters(): { dateRange: { start: string; end: string }; vehicleId: string; branch: string } {
   try {
     const raw = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem(STORAGE_KEY) : null;
-    if (!raw) return { dateRange: getDefaultDateRange(), vehicleId: '' };
-    const parsed = JSON.parse(raw) as { start?: string; end?: string; vehicleId?: string };
+    if (!raw) return { dateRange: getDefaultDateRange(), vehicleId: '', branch: '' };
+    const parsed = JSON.parse(raw) as { start?: string; end?: string; vehicleId?: string; branch?: string };
     const start = typeof parsed?.start === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(parsed.start) ? parsed.start : null;
     const end = typeof parsed?.end === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(parsed.end) ? parsed.end : null;
     if (start && end) {
       return {
         dateRange: { start, end },
         vehicleId: typeof parsed?.vehicleId === 'string' ? parsed.vehicleId : '',
+        branch: typeof parsed?.branch === 'string' ? parsed.branch : '',
       };
     }
   } catch {
     /* ignore */
   }
-  return { dateRange: getDefaultDateRange(), vehicleId: '' };
+  return { dateRange: getDefaultDateRange(), vehicleId: '', branch: '' };
 }
 
-function saveFilters(dateRange: { start: string; end: string }, vehicleId: string) {
+function saveFilters(dateRange: { start: string; end: string }, vehicleId: string, branch: string) {
   try {
-    sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ start: dateRange.start, end: dateRange.end, vehicleId: vehicleId || '' }));
+    sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ start: dateRange.start, end: dateRange.end, vehicleId: vehicleId || '', branch: branch || '' }));
   } catch {
     /* ignore */
   }
@@ -42,7 +43,7 @@ function saveFilters(dateRange: { start: string; end: string }, vehicleId: strin
  * คลิกแถวหรือปุ่ม "ดูการคำนวณ" เพื่อเปิดโมดัลแสดงภาพการคำนวณ
  * Filter (ช่วงวันที่ + รถ) ถูกบันทึกใน sessionStorage เพื่อคืนค่าเมื่อกลับจากหน้ารายละเอียดเที่ยว
  */
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { TrendingUp, RefreshCw, AlertCircle, Calculator, Download } from 'lucide-react';
 import { Card } from '../../components/ui/Card';
@@ -84,15 +85,50 @@ interface TripPnlReportProps {
   onNavigateToTrip?: (tripId: string) => void;
 }
 
+type VehicleRow = { id: string; plate: string | null; branch: string | null };
+
 export const TripPnlReport: React.FC<TripPnlReportProps> = ({ isDark = false, onNavigateToTrip }) => {
-  const [dateRange, setDateRange] = useState(() => loadSavedFilters().dateRange);
-  const [vehicleId, setVehicleId] = useState<string>(() => loadSavedFilters().vehicleId);
+  const saved = loadSavedFilters();
+  const [dateRange, setDateRange] = useState(saved.dateRange);
+  const [vehicleId, setVehicleId] = useState<string>(saved.vehicleId);
+  const [branchFilter, setBranchFilter] = useState<string>(saved.branch);
+  const [vehicleSearchText, setVehicleSearchText] = useState('');
+  const [vehicleDropdownOpen, setVehicleDropdownOpen] = useState(false);
+  const vehicleDropdownRef = useRef<HTMLDivElement>(null);
   const [detailRow, setDetailRow] = useState<TripPnlRow | null>(null);
   const [exporting, setExporting] = useState(false);
-  useEffect(() => {
-    saveFilters(dateRange, vehicleId);
-  }, [dateRange, vehicleId]);
   const { vehicles } = useVehicles();
+
+  useEffect(() => {
+    saveFilters(dateRange, vehicleId, branchFilter);
+  }, [dateRange, vehicleId, branchFilter]);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (vehicleDropdownRef.current && !vehicleDropdownRef.current.contains(e.target as Node)) {
+        setVehicleDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const vehicleList = (vehicles ?? []) as VehicleRow[];
+  const branches = useMemo(() => {
+    const set = new Set<string>();
+    vehicleList.forEach((v) => { if (v.branch) set.add(v.branch); });
+    return Array.from(set).sort();
+  }, [vehicleList]);
+  const vehiclesByBranch = useMemo(() => {
+    return branchFilter ? vehicleList.filter((v) => v.branch === branchFilter) : vehicleList;
+  }, [vehicleList, branchFilter]);
+  const filteredVehicles = useMemo(() => {
+    const q = vehicleSearchText.trim().toLowerCase();
+    if (!q) return vehiclesByBranch;
+    return vehiclesByBranch.filter((v) => (v.plate ?? '').toLowerCase().includes(q));
+  }, [vehiclesByBranch, vehicleSearchText]);
+  const selectedVehicle = vehicleId ? vehicleList.find((v) => v.id === vehicleId) : null;
+  const vehicleDisplayValue = selectedVehicle ? (selectedVehicle.plate ?? selectedVehicle.id.slice(0, 8)) : vehicleSearchText;
   const { rows, loading, error, refetch } = useTripPnl({
     startDate: dateRange.start,
     endDate: dateRange.end,
@@ -100,8 +136,14 @@ export const TripPnlReport: React.FC<TripPnlReportProps> = ({ isDark = false, on
     enabled: true,
   });
 
+  const vehicleIdsInBranch = useMemo(() => new Set(vehiclesByBranch.map((v) => v.id)), [vehiclesByBranch]);
+  const displayRows = useMemo(() => {
+    if (!branchFilter) return rows;
+    return rows.filter((r) => vehicleIdsInBranch.has(r.vehicle_id));
+  }, [rows, branchFilter, vehicleIdsInBranch]);
+
   const totals = useMemo(() => {
-    return rows.reduce(
+    return displayRows.reduce(
       (acc, r) => ({
         revenue: acc.revenue + r.revenue,
         variable_cost: acc.variable_cost + r.variable_cost,
@@ -112,13 +154,13 @@ export const TripPnlReport: React.FC<TripPnlReportProps> = ({ isDark = false, on
       }),
       { revenue: 0, variable_cost: 0, fixed_cost: 0, personnel_cost: 0, net_profit: 0, count: 0 }
     );
-  }, [rows]);
+  }, [displayRows]);
 
   const handleExportExcel = () => {
-    if (rows.length === 0) return;
+    if (displayRows.length === 0) return;
     setExporting(true);
     try {
-      const exportRows = rows.map((r) => ({
+      const exportRows = displayRows.map((r) => ({
         trip_number: r.trip_number ?? '',
         planned_date: r.planned_date,
         vehicle_plate: r.vehicle_plate ?? '',
@@ -176,20 +218,68 @@ export const TripPnlReport: React.FC<TripPnlReportProps> = ({ isDark = false, on
           </div>
           <div>
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
-              รถ (ทั้งหมด)
+              สาขา
             </label>
             <select
-              value={vehicleId}
-              onChange={(e) => setVehicleId(e.target.value)}
-              className="px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 min-w-[180px]"
+              value={branchFilter}
+              onChange={(e) => setBranchFilter(e.target.value)}
+              className="px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 min-w-[140px]"
             >
-              <option value="">ทุกคัน</option>
-              {(vehicles ?? []).map((v) => (
-                <option key={v.id} value={v.id}>
-                  {v.plate ?? v.id.slice(0, 8)}
-                </option>
+              <option value="">ทุกสาขา</option>
+              {branches.map((b) => (
+                <option key={b} value={b}>{b}</option>
               ))}
             </select>
+          </div>
+          <div ref={vehicleDropdownRef} className="relative min-w-[200px]">
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+              รถ (ทะเบียน)
+            </label>
+            <input
+              type="text"
+              value={vehicleDisplayValue}
+              onChange={(e) => {
+                setVehicleSearchText(e.target.value);
+                setVehicleId('');
+                setVehicleDropdownOpen(true);
+              }}
+              onFocus={() => setVehicleDropdownOpen(true)}
+              placeholder="พิมพ์ทะเบียน..."
+              className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
+            />
+            {vehicleDropdownOpen && (
+              <div className="absolute top-full left-0 right-0 mt-1 max-h-48 overflow-y-auto rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 shadow-lg z-50">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setVehicleId('');
+                    setVehicleSearchText('');
+                    setVehicleDropdownOpen(false);
+                  }}
+                  className="w-full px-3 py-2 text-left text-sm text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700"
+                >
+                  ทุกคัน
+                </button>
+                {filteredVehicles.map((v) => (
+                  <button
+                    key={v.id}
+                    type="button"
+                    onClick={() => {
+                      setVehicleId(v.id);
+                      setVehicleSearchText(v.plate ?? '');
+                      setVehicleDropdownOpen(false);
+                    }}
+                    className={`w-full px-3 py-2 text-left text-sm hover:bg-slate-100 dark:hover:bg-slate-700 ${v.id === vehicleId ? 'bg-enterprise-50 dark:bg-enterprise-900/30 text-enterprise-700 dark:text-enterprise-300' : 'text-slate-900 dark:text-white'}`}
+                  >
+                    {v.plate ?? v.id.slice(0, 8)}
+                    {v.branch ? <span className="ml-2 text-xs text-slate-500 dark:text-slate-400">({v.branch})</span> : null}
+                  </button>
+                ))}
+                {filteredVehicles.length === 0 && (
+                  <div className="px-3 py-2 text-sm text-slate-500 dark:text-slate-400">ไม่พบรถที่ตรงกับที่พิมพ์</div>
+                )}
+              </div>
+            )}
           </div>
           <Button variant="outline" size="sm" onClick={() => refetch()} disabled={loading}>
             <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
@@ -199,7 +289,7 @@ export const TripPnlReport: React.FC<TripPnlReportProps> = ({ isDark = false, on
             variant="outline"
             size="sm"
             onClick={handleExportExcel}
-            disabled={exporting || rows.length === 0}
+            disabled={exporting || displayRows.length === 0}
           >
             <Download className={`w-4 h-4 mr-2 ${exporting ? 'animate-pulse' : ''}`} />
             Export Excel
@@ -213,12 +303,12 @@ export const TripPnlReport: React.FC<TripPnlReportProps> = ({ isDark = false, on
           </div>
         )}
 
-        {loading && rows.length === 0 ? (
+        {loading && displayRows.length === 0 ? (
           <div className="flex items-center justify-center py-12">
             <RefreshCw className="w-8 h-8 animate-spin text-slate-400" />
             <span className="ml-3 text-slate-600 dark:text-slate-400">กำลังโหลด...</span>
           </div>
-        ) : rows.length === 0 ? (
+        ) : displayRows.length === 0 ? (
           <div className="text-center py-12 text-slate-500 dark:text-slate-400">
             <TrendingUp className="w-12 h-12 mx-auto mb-4 opacity-50" />
             <p>ไม่มีข้อมูลเที่ยวในช่วงที่เลือก</p>
@@ -256,7 +346,7 @@ export const TripPnlReport: React.FC<TripPnlReportProps> = ({ isDark = false, on
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.map((r) => (
+                  {displayRows.map((r) => (
                     <tr
                       key={r.tripId}
                       role="button"
