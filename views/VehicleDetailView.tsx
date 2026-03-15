@@ -19,10 +19,12 @@ import { Card } from '../components/ui/Card';
 import { PageLayout } from '../components/layout/PageLayout';
 import { VehicleGroupBadge } from '../components/vehicle/VehicleGroupBadge';
 import { VehicleDocumentManager } from '../components/vehicle/VehicleDocumentManager';
+import { VehicleCostManager } from '../components/vehicle/VehicleCostManager';
 import { DocumentExpiryAlert } from '../components/vehicle/DocumentExpiryAlert';
 import { VehicleDriverHistory } from '../components/vehicle/VehicleDriverHistory';
-import { useTickets } from '../hooks';
+import { useTickets, useToast } from '../hooks';
 import { ImageModal } from '../components/ui/ImageModal';
+import { ToastContainer } from '../components/ui/Toast';
 
 interface VehicleDetailViewProps {
   vehicleId: string;
@@ -41,6 +43,7 @@ export const VehicleDetailView: React.FC<VehicleDetailViewProps> = ({
 }) => {
   const [isImageOpen, setIsImageOpen] = useState(false);
   const { isManager, isAdmin } = useAuth();
+  const { toasts, dismissToast } = useToast();
   const { vehicle, loading, error } = useVehicle(vehicleId);
   const {
     history: maintenanceHistory,
@@ -108,6 +111,8 @@ export const VehicleDetailView: React.FC<VehicleDetailViewProps> = ({
   const StatusIcon = statusConfig[status as keyof typeof statusConfig].icon;
 
   return (
+    <>
+      <ToastContainer toasts={toasts} onDismiss={dismissToast} />
     <PageLayout
       title={vehicle.plate}
       subtitle={`${vehicle.make} ${vehicle.model || ''}`.trim()}
@@ -313,6 +318,9 @@ export const VehicleDetailView: React.FC<VehicleDetailViewProps> = ({
           {/* Vehicle Documents */}
           <VehicleDocumentManager vehicleId={vehicleId} canEdit={canEdit} />
 
+          {/* ต้นทุนคงที่ & ผันแปร (Phase 3) */}
+          <VehicleCostManager vehicleId={vehicleId} canEdit={canEdit} />
+
           <VehicleDriverHistory vehicleId={vehicleId} onViewDeliveryTrip={onViewDeliveryTrip} />
 
           {/* Maintenance History Table */}
@@ -487,5 +495,6 @@ export const VehicleDetailView: React.FC<VehicleDetailViewProps> = ({
         </div>
       </div>
     </PageLayout>
+    </>
   );
 };

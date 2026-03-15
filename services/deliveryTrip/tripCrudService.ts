@@ -767,6 +767,7 @@ export const tripCrudService = {
 
     // Validate edit_reason if this is a data edit (not just status change)
     const isDataEdit = data.vehicle_id || data.driver_id || data.planned_date ||
+      data.trip_revenue !== undefined || data.trip_start_date !== undefined || data.trip_end_date !== undefined ||
       data.odometer_start !== undefined || data.notes !== undefined ||
       data.stores || data.helpers;
 
@@ -800,6 +801,9 @@ export const tripCrudService = {
       vehicle_id: data.vehicle_id,
       driver_id: data.driver_id,
       planned_date: data.planned_date,
+      trip_revenue: data.trip_revenue,
+      trip_start_date: data.trip_start_date,
+      trip_end_date: data.trip_end_date,
       odometer_start: data.odometer_start,
       odometer_end: data.odometer_end,
       status: data.status,
@@ -837,7 +841,7 @@ export const tripCrudService = {
     const newValues: Record<string, any> = {};
 
     // Track which fields are being changed
-    const fieldsToTrack = ['vehicle_id', 'driver_id', 'planned_date', 'odometer_start', 'odometer_end', 'status', 'notes', 'sequence_order'];
+    const fieldsToTrack = ['vehicle_id', 'driver_id', 'planned_date', 'trip_revenue', 'trip_start_date', 'trip_end_date', 'odometer_start', 'odometer_end', 'status', 'notes', 'sequence_order'];
     fieldsToTrack.forEach(field => {
       if (field in updateData && updateData[field as keyof typeof updateData] !== undefined) {
         oldValues[field] = currentTrip[field as keyof typeof currentTrip];

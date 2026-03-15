@@ -12,6 +12,9 @@ export interface TripBasicInfoFormData {
   planned_date: string;
   odometer_start: string;
   notes: string;
+  trip_revenue?: string;
+  trip_start_date?: string;
+  trip_end_date?: string;
 }
 
 export interface DriverOption {
@@ -252,6 +255,40 @@ export const TripBasicInfoForm: React.FC<TripBasicInfoFormProps> = ({
             onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
             placeholder="หมายเหตุเพิ่มเติม"
           />
+        </div>
+
+        {/* รายได้เที่ยว — สำหรับ P&L (กำไรจากสินค้าในเที่ยว / ค่าจ้างส่ง) */}
+        <div className="md:col-span-2 border-t border-slate-200 dark:border-slate-700 pt-4 mt-2">
+          <h4 className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-3">รายได้และวันเที่ยว (ใช้คำนวณ P&L)</h4>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-600 dark:text-slate-400 mb-1">รายได้เที่ยว (บาท)</label>
+              <Input
+                type="number"
+                value={formData.trip_revenue ?? ''}
+                onChange={(e) => setFormData(prev => ({ ...prev, trip_revenue: e.target.value }))}
+                placeholder="กำไรจากสินค้า / ค่าจ้างส่ง"
+                min={0}
+                step={0.01}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-600 dark:text-slate-400 mb-1">วันเริ่มเที่ยว</label>
+              <Input
+                type="date"
+                value={formData.trip_start_date ?? ''}
+                onChange={(e) => setFormData(prev => ({ ...prev, trip_start_date: e.target.value }))}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-600 dark:text-slate-400 mb-1">วันสิ้นสุดเที่ยว</label>
+              <Input
+                type="date"
+                value={formData.trip_end_date ?? ''}
+                onChange={(e) => setFormData(prev => ({ ...prev, trip_end_date: e.target.value }))}
+              />
+            </div>
+          </div>
         </div>
       </div>
 

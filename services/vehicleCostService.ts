@@ -2,8 +2,17 @@
  * vehicleCostService.ts
  * Phase 1: ดึงต้นทุนคงที่จาก vehicle_tax_records + vehicle_insurance_records (ปันส่วนรายปี)
  * Phase 2: vehicle_fixed_costs ปันส่วน + Daily Rate + รวมต้นทุนผันแปร (fuel, commission, tickets, vehicle_variable_costs)
+ * Phase 3: CRUD สำหรับ vehicle_fixed_costs และ vehicle_variable_costs (UI บันทึกต้นทุน)
  */
 import { supabase } from '../lib/supabase';
+import type { Database } from '../types/database';
+
+type VehicleFixedCostRow = Database['public']['Tables']['vehicle_fixed_costs']['Row'];
+type VehicleFixedCostInsert = Database['public']['Tables']['vehicle_fixed_costs']['Insert'];
+type VehicleFixedCostUpdate = Database['public']['Tables']['vehicle_fixed_costs']['Update'];
+type VehicleVariableCostRow = Database['public']['Tables']['vehicle_variable_costs']['Row'];
+type VehicleVariableCostInsert = Database['public']['Tables']['vehicle_variable_costs']['Insert'];
+type VehicleVariableCostUpdate = Database['public']['Tables']['vehicle_variable_costs']['Update'];
 
 export interface GetProratedFixedCostOptions {
   vehicleId: string;
@@ -316,10 +325,104 @@ export async function getVehicleCostSummaryPhase2(
   };
 }
 
+// ─── CRUD: vehicle_fixed_costs ─────────────────────────────────────────────────
+export async function listFixedCosts(vehicleId: string): Promise<VehicleFixedCostRow[]> {
+  const { data, error } = await supabase
+    .from('vehicle_fixed_costs')
+    .select('*')
+    .eq('vehicle_id', vehicleId)
+    .order('period_start', { ascending: false });
+  if (error) throw error;
+  return data ?? [];
+}
+
+export async function createFixedCost(
+  payload: Omit<VehicleFixedCostInsert, 'id' | 'created_at' | 'updated_at' | 'created_by'>
+): Promise<VehicleFixedCostRow> {
+  const { data: { user } } = await supabase.auth.getUser();
+  const { data, error } = await supabase
+    .from('vehicle_fixed_costs')
+    .insert({
+      ...payload,
+      created_by: user?.id ?? null,
+    })
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function updateFixedCost(id: string, payload: VehicleFixedCostUpdate): Promise<VehicleFixedCostRow> {
+  const { data, error } = await supabase
+    .from('vehicle_fixed_costs')
+    .update({ ...payload, updated_at: new Date().toISOString() })
+    .eq('id', id)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function deleteFixedCost(id: string): Promise<void> {
+  const { error } = await supabase.from('vehicle_fixed_costs').delete().eq('id', id);
+  if (error) throw error;
+}
+
+// ─── CRUD: vehicle_variable_costs ────────────────────────────────────────────
+export async function listVariableCosts(vehicleId: string): Promise<VehicleVariableCostRow[]> {
+  const { data, error } = await supabase
+    .from('vehicle_variable_costs')
+    .select('*')
+    .eq('vehicle_id', vehicleId)
+    .order('cost_date', { ascending: false });
+  if (error) throw error;
+  return data ?? [];
+}
+
+export async function createVariableCost(
+  payload: Omit<VehicleVariableCostInsert, 'id' | 'created_by'>
+): Promise<VehicleVariableCostRow> {
+  const { data: { user } } = await supabase.auth.getUser();
+  const { data, error } = await supabase
+    .from('vehicle_variable_costs')
+    .insert({
+      ...payload,
+      created_by: user?.id ?? null,
+    })
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function updateVariableCost(id: string, payload: VehicleVariableCostUpdate): Promise<VehicleVariableCostRow> {
+  const { data, error } = await supabase
+    .from('vehicle_variable_costs')
+    .update(payload)
+    .eq('id', id)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function deleteVariableCost(id: string): Promise<void> {
+  const { error } = await supabase.from('vehicle_variable_costs').delete().eq('id', id);
+  if (error) throw error;
+}
+
 export const vehicleCostService = {
   getProratedFixedCostFromTaxAndInsurance,
   getTotalProratedFixedCostAndDailyRate,
   getVariableCostSummary,
   getVehicleCostSummaryPhase2,
   daysInRange,
+  listFixedCosts,
+  createFixedCost,
+  updateFixedCost,
+  deleteFixedCost,
+  listVariableCosts,
+  createVariableCost,
+  updateVariableCost,
+  deleteVariableCost,
 };
