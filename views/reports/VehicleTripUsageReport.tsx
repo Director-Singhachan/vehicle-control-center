@@ -24,6 +24,7 @@ import { Button } from '../../components/ui/Button';
 import { excelExport } from '../../utils/excelExport';
 import { useVehicles } from '../../hooks/useVehicles';
 import { useVehicleTripUsageReport } from '../../hooks/useVehicleTripUsageReport';
+import { useVehiclePnl } from '../../hooks/useVehiclePnl';
 import { TripProductSummarySection } from '../../components/trip/TripProductSummarySection';
 import { TripStaffItemDistributionSection } from '../../components/trip/TripStaffItemDistributionSection';
 import { ProductSummaryChart } from '../../components/trip/ProductSummaryChart';
@@ -299,6 +300,13 @@ export const VehicleTripUsageReport: React.FC<VehicleTripUsageReportProps> = ({
       startDate: searchedStart,
       endDate: searchedEnd,
     });
+
+  const { summary: pnlSummary, loading: pnlLoading } = useVehiclePnl({
+    vehicleId: searchedVehicleId,
+    startDate: searchedStart,
+    endDate: searchedEnd,
+    enabled: !!searchedVehicleId && !!searchedStart && !!searchedEnd,
+  });
 
   const handleSearch = () => {
     if (!selectedVehicleId) return;
@@ -804,7 +812,91 @@ export const VehicleTripUsageReport: React.FC<VehicleTripUsageReportProps> = ({
                   </div>
                 </Card>
               )}
+
             </>
+          )}
+
+          {/* Vehicle P&L (Phase 5): แสดงเมื่อเลือกรถและช่วงวันที่ (ทั้งโหมดรายวันและรายเดือน) */}
+          {searchedVehicleId && (pnlLoading || pnlSummary) && (
+            <Card className="p-5">
+              <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-3 flex items-center gap-2">
+                <DollarSign size={18} className="text-enterprise-600 dark:text-enterprise-400" />
+                สรุป P&L รถคันนี้ (Vehicle P&L)
+              </h3>
+              {pnlLoading ? (
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 animate-pulse">
+                  {[1, 2, 3, 4].map((i) => (
+                    <div key={i} className="h-14 rounded bg-slate-200 dark:bg-slate-700" />
+                  ))}
+                </div>
+              ) : pnlSummary ? (
+                <>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4">
+                    <div>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">กำไรสุทธิ</p>
+                      <p
+                        className={`text-lg font-semibold ${
+                          pnlSummary.net_profit >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+                        }`}
+                      >
+                        {pnlSummary.net_profit >= 0 ? '' : '−'}฿
+                        {Math.abs(pnlSummary.net_profit).toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">ต้นทุนจอดทิ้ง (Idle)</p>
+                      <p className="text-lg font-semibold text-slate-900 dark:text-white">
+                        ฿{pnlSummary.idle_cost.toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">อัตราการใช้รถ</p>
+                      <p className="text-lg font-semibold text-slate-900 dark:text-white">
+                        {(pnlSummary.utilization * 100).toFixed(1)}%
+                      </p>
+                      <p className="text-xs text-slate-400 dark:text-slate-500">
+                        {pnlSummary.days_with_work} / {pnlSummary.days_in_filter} วัน
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">ต้นทุนรวม (คงที่+ผันแปร)</p>
+                      <p className="text-lg font-semibold text-slate-900 dark:text-white">
+                        ฿{pnlSummary.total_cost.toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="border-t border-slate-200 dark:border-slate-700 pt-3">
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mb-2">ตัวชี้จากต้นทุนเต็ม (คงที่+ผันแปร)</p>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                      {pnlSummary.cost_per_trip !== null && (
+                        <div>
+                          <p className="text-sm font-medium text-slate-900 dark:text-white">
+                            ฿{pnlSummary.cost_per_trip.toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 2 })} / ทริป
+                          </p>
+                        </div>
+                      )}
+                      {pnlSummary.cost_per_km !== null && (
+                        <div>
+                          <p className="text-sm font-medium text-slate-900 dark:text-white">
+                            ฿{pnlSummary.cost_per_km.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} / กม.
+                          </p>
+                        </div>
+                      )}
+                      {pnlSummary.cost_per_piece !== null && (
+                        <div>
+                          <p className="text-sm font-medium text-slate-900 dark:text-white">
+                            ฿{pnlSummary.cost_per_piece.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} / ชิ้น
+                          </p>
+                        </div>
+                      )}
+                      {pnlSummary.cost_per_trip === null && pnlSummary.cost_per_km === null && pnlSummary.cost_per_piece === null && (
+                        <p className="text-sm text-slate-500 dark:text-slate-400">ไม่มีข้อมูลระยะทาง/ทริป/ชิ้นในช่วงนี้</p>
+                      )}
+                    </div>
+                  </div>
+                </>
+              ) : null}
+            </Card>
           )}
 
           {/* สรุปสินค้าที่บรรทุก — แสดงเฉพาะโหมดรายวัน */}
