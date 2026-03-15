@@ -1,6 +1,6 @@
 /**
  * Trip P&L Report Service (Phase 4)
- * คำนวณรายได้ ต้นทุนผันแปร ต้นทุนคงที่×วันเที่ยว และกำไรสุทธิต่อเที่ยว
+ * คำนวณรายได้ ต้นทุนผันแปร ต้นทุนคงที่×วันเที่ยว ต้นทุนบุคลากรต่อเที่ยว และกำไรสุทธิต่อเที่ยว
  * ปรับเป็น batch queries เพื่อลดจำนวนรอบการเชื่อมต่อ DB (โหลดเร็วขึ้นเมื่อข้อมูลเยอะ)
  */
 import { supabase } from '../../lib/supabase';
@@ -23,6 +23,12 @@ export interface TripPnlVariableBreakdown {
   fuel: number;
 }
 
+/** ต้นทุนบุคลากรต่อเที่ยว (เงินเดือนปันส่วนตามวันเที่ยว จาก delivery_trip_crews + staff_salaries) */
+export interface TripPnlPersonnelBreakdown {
+  /** ต้นทุนบุคลากรรวม (บาท) */
+  personnel_cost: number;
+}
+
 /** ที่มาของจำนวนวันเที่ยว */
 export type TripDaysSource = 'trip_start_end' | 'trip_log' | 'planned_date';
 
@@ -36,6 +42,8 @@ export interface TripPnlRow {
   trip_days: number;
   variable_cost: number;
   fixed_cost: number; // daily_fixed_cost × trip_days
+  /** ต้นทุนบุคลากรต่อเที่ยว (จาก delivery_trip_crews + staff_salaries) */
+  personnel_cost: number;
   net_profit: number;
   /** สำหรับแสดงภาพการคำนวณใน UI */
   breakdown?: {
@@ -43,6 +51,7 @@ export interface TripPnlRow {
     days_source: TripDaysSource;
     date_range: { start: string; end: string };
     daily_fixed_cost: number;
+    personnel?: TripPnlPersonnelBreakdown;
   };
 }
 
@@ -65,6 +74,23 @@ function getTripRangeFromFields(trip: TripWithDates): { days: number; start: str
     return { days: Math.max(1, days), start: startStr, end: endStr };
   }
   return null;
+}
+
+/** รายการวันที่ YYYY-MM-DD ระหว่าง start ถึง end (รวมทั้งสองปลาย) */
+function getDatesInRange(start: string, end: string): string[] {
+  const out: string[] = [];
+  const [sy, sm, sd] = start.slice(0, 10).split('-').map(Number);
+  const [ey, em, ed] = end.slice(0, 10).split('-').map(Number);
+  const d = new Date(sy!, sm! - 1, sd!);
+  const endD = new Date(ey!, em! - 1, ed!);
+  while (d <= endD) {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    out.push(`${y}-${m}-${day}`);
+    d.setDate(d.getDate() + 1);
+  }
+  return out;
 }
 
 /** รวมต้นทุนจาก fuel record หนึ่งรายการ */
@@ -105,17 +131,31 @@ export async function getTripPnlList(options: TripPnlOptions): Promise<TripPnlRo
   const tripIds = trips.map((t) => t.id);
   const vehicleIds = [...new Set(trips.map((t) => t.vehicle_id))];
 
-  // 2) Batch: รถ (plate), trip_logs สำหรับเที่ยวที่ไม่มี start/end, ต้นทุนผันแปร, ค่าคอม, น้ำมัน
+  // เที่ยวทั้งหมดในช่วง (ทุกคัน) — ใช้เฉพาะสำหรับนับ (staff, วันที่) ให้ปันส่วนเงินเดือนถูกข้ามคัน
+  const { data: allTripsData } = await supabase
+    .from('delivery_trips')
+    .select('id, trip_number, planned_date, vehicle_id, trip_revenue, trip_start_date, trip_end_date')
+    .gte('planned_date', startStr)
+    .lte('planned_date', endStr)
+    .order('planned_date', { ascending: true });
+  const allTripsInRange = (allTripsData ?? []) as TripWithDates[];
+  const allTripIds = allTripsInRange.map((t) => t.id);
+
   const needLogIds = trips
+    .filter((t) => !getTripRangeFromFields(t))
+    .map((t) => t.id);
+  const needLogIdsAll = allTripsInRange
     .filter((t) => !getTripRangeFromFields(t))
     .map((t) => t.id);
 
   const [
     vehiclesRes,
     tripLogsRes,
+    tripLogsAllRes,
     variableCostsRes,
     commissionRes,
     fuelRes,
+    crewsRes,
   ] = await Promise.all([
     supabase.from('vehicles').select('id, plate').in('id', vehicleIds),
     needLogIds.length > 0
@@ -123,6 +163,13 @@ export async function getTripPnlList(options: TripPnlOptions): Promise<TripPnlRo
           .from('trip_logs')
           .select('delivery_trip_id, checkout_time, checkin_time')
           .in('delivery_trip_id', needLogIds)
+          .order('checkout_time', { ascending: true })
+      : Promise.resolve({ data: [] as { delivery_trip_id: string; checkout_time: string; checkin_time: string | null }[] }),
+    needLogIdsAll.length > 0
+      ? supabase
+          .from('trip_logs')
+          .select('delivery_trip_id, checkout_time, checkin_time')
+          .in('delivery_trip_id', needLogIdsAll)
           .order('checkout_time', { ascending: true })
       : Promise.resolve({ data: [] as { delivery_trip_id: string; checkout_time: string; checkin_time: string | null }[] }),
     supabase
@@ -139,6 +186,10 @@ export async function getTripPnlList(options: TripPnlOptions): Promise<TripPnlRo
       .in('vehicle_id', vehicleIds)
       .gte('filled_at', startDateTime)
       .lte('filled_at', endDateTime),
+    supabase
+      .from('delivery_trip_crews')
+      .select('delivery_trip_id, staff_id, status')
+      .in('delivery_trip_id', allTripIds),
   ]);
 
   const vehicles = vehiclesRes.data ?? [];
@@ -157,6 +208,18 @@ export async function getTripPnlList(options: TripPnlOptions): Promise<TripPnlRo
     const start = checkout.split('T')[0];
     const end = (checkin || new Date().toISOString()).split('T')[0];
     rangeByTripFromLog.set(id, { start, end, days: Math.max(1, daysInRange(start, end)) });
+  }
+
+  const rangeByTripFromLogAll = new Map<string, { start: string; end: string; days: number }>();
+  for (const row of tripLogsAllRes.data ?? []) {
+    const id = (row as { delivery_trip_id?: string }).delivery_trip_id;
+    if (!id || rangeByTripFromLogAll.has(id)) continue;
+    const checkout = (row as { checkout_time: string }).checkout_time;
+    const checkin = (row as { checkin_time: string | null }).checkin_time;
+    if (!checkout) continue;
+    const start = checkout.split('T')[0];
+    const end = (checkin || new Date().toISOString()).split('T')[0];
+    rangeByTripFromLogAll.set(id, { start, end, days: Math.max(1, daysInRange(start, end)) });
   }
 
   // tripId -> ต้นทุนผันแปร (variable_costs + commission)
@@ -181,6 +244,51 @@ export async function getTripPnlList(options: TripPnlOptions): Promise<TripPnlRo
     price_per_liter?: number | null;
   }[];
 
+  // tripId -> staff_id[] (เฉพาะ status active)
+  const crewByTrip = new Map<string, string[]>();
+  const uniqueCrewStaffIds = new Set<string>();
+  for (const row of crewsRes.data ?? []) {
+    const r = row as { delivery_trip_id: string; staff_id: string; status?: string };
+    if (r.status !== 'active') continue;
+    const list = crewByTrip.get(r.delivery_trip_id) ?? [];
+    if (!list.includes(r.staff_id)) {
+      list.push(r.staff_id);
+      uniqueCrewStaffIds.add(r.staff_id);
+    }
+    crewByTrip.set(r.delivery_trip_id, list);
+  }
+
+  // ต้นทุนบุคลากร: ดึง staff_salaries ของลูกเรือทั้งหมด แล้วใช้ effective ณ วันเริ่มเที่ยว
+  type SalaryRow = { staff_id: string; effective_from: string; effective_to: string | null; monthly_salary: number };
+  let salaryRows: SalaryRow[] = [];
+  if (uniqueCrewStaffIds.size > 0) {
+    const { data: salData } = await supabase
+      .from('staff_salaries')
+      .select('staff_id, effective_from, effective_to, monthly_salary')
+      .in('staff_id', [...uniqueCrewStaffIds]);
+    salaryRows = (salData ?? []) as SalaryRow[];
+  }
+
+  /** วันที่จาก DB อาจเป็น ISO string — ตัดเป็น YYYY-MM-DD ก่อนเปรียบเทียบ */
+  function toDateOnly(s: string | null): string {
+    if (!s) return '';
+    return s.slice(0, 10);
+  }
+
+  function getEffectiveSalaryAt(staffId: string, dateStr: string, rows: SalaryRow[]): number {
+    const dateNorm = toDateOnly(dateStr);
+    if (!dateNorm) return 0;
+    const candidates = rows.filter(
+      (r) =>
+        r.staff_id === staffId &&
+        toDateOnly(r.effective_from) <= dateNorm &&
+        (r.effective_to == null || toDateOnly(r.effective_to) >= dateNorm)
+    );
+    if (candidates.length === 0) return 0;
+    candidates.sort((a, b) => (toDateOnly(b.effective_from) > toDateOnly(a.effective_from) ? 1 : -1));
+    return Number(candidates[0].monthly_salary) || 0;
+  }
+
   // 3) Daily fixed cost ต่อรถ (ครั้งเดียวต่อรถ ไม่ใช่ต่อเที่ยว) — ใช้ช่วง filter
   const dailyFixedByVehicle = new Map<string, number>();
   await Promise.all(
@@ -193,6 +301,21 @@ export async function getTripPnlList(options: TripPnlOptions): Promise<TripPnlRo
       dailyFixedByVehicle.set(vid, dailyFixedCost);
     })
   );
+
+  // 3.5) จำนวนเที่ยวที่อ้างอิง (staff_id, วันที่) — นับทั้งกอง (ทุกคัน) เพื่อปันส่วนเงินเดือนถูกแม้พนักงานไปหลายเที่ยวหลายคันในวันเดียวกัน
+  const personnelDayTripCount = new Map<string, number>();
+  for (const t of allTripsInRange) {
+    let range = getTripRangeFromFields(t);
+    if (!range) range = rangeByTripFromLogAll.get(t.id) ?? { start: (t.planned_date ?? '').split('T')[0] || startStr, end: (t.planned_date ?? '').split('T')[0] || startStr, days: 1 };
+    const crewIds = crewByTrip.get(t.id) ?? [];
+    const dates = getDatesInRange(range.start, range.end);
+    for (const staffId of crewIds) {
+      for (const date of dates) {
+        const key = `${staffId}:${date}`;
+        personnelDayTripCount.set(key, (personnelDayTripCount.get(key) ?? 0) + 1);
+      }
+    }
+  }
 
   // 4) สร้างแถวผลลัพธ์ (คำนวณใน memory)
   const rows: TripPnlRow[] = [];
@@ -222,7 +345,20 @@ export async function getTripPnlList(options: TripPnlOptions): Promise<TripPnlRo
 
     const dailyFixed = dailyFixedByVehicle.get(t.vehicle_id) ?? 0;
     const fixed_cost = dailyFixed * range.days;
-    const net_profit = revenue - variable_cost - fixed_cost;
+
+    const crewStaffIds = crewByTrip.get(tid) ?? [];
+    const tripDates = getDatesInRange(range.start, range.end);
+    let personnel_cost = 0;
+    for (const staffId of crewStaffIds) {
+      for (const date of tripDates) {
+        const monthly = getEffectiveSalaryAt(staffId, date, salaryRows);
+        const dailyRate = monthly / 30;
+        const nTripsSameDay = personnelDayTripCount.get(`${staffId}:${date}`) ?? 1;
+        personnel_cost += dailyRate / nTripsSameDay;
+      }
+    }
+
+    const net_profit = revenue - variable_cost - fixed_cost - personnel_cost;
 
     const daysSource: TripDaysSource = getTripRangeFromFields(t)
       ? 'trip_start_end'
@@ -240,12 +376,14 @@ export async function getTripPnlList(options: TripPnlOptions): Promise<TripPnlRo
       trip_days: range.days,
       variable_cost,
       fixed_cost,
+      personnel_cost,
       net_profit,
       breakdown: {
         variable: { other: otherVariable, fuel: fuelVariable },
         days_source: daysSource,
         date_range: { start: range.start, end: range.end },
         daily_fixed_cost: dailyFixed,
+        personnel: { personnel_cost },
       },
     });
   }

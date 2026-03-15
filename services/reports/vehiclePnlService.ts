@@ -1,12 +1,14 @@
 /**
  * Vehicle P&L Report Service (Phase 5)
  * กำไรสุทธิรถ 1 คัน, ต้นทุนจอดทิ้ง (Idle Cost), Utilization, ต้นทุนต่อกม./เที่ยว/ชิ้น
+ * รวมต้นทุนบุคลากรต่อเที่ยว (จาก staff_salaries + delivery_trip_crews)
  */
 import { supabase } from '../../lib/supabase';
 import {
   getVehicleCostSummaryPhase2,
   daysInRange,
 } from '../vehicleCostService';
+import { getTripPnlList } from './tripPnlService';
 
 export interface VehiclePnlOptions {
   vehicleId: string;
@@ -23,6 +25,8 @@ export interface VehiclePnlSummary {
   revenue: number;
   total_fixed: number;
   total_variable: number;
+  /** ต้นทุนบุคลากรรวม (จากลูกเรือเที่ยว × เงินเดือนปันส่วน) */
+  total_personnel: number;
   total_cost: number;
   daily_fixed_cost: number;
   net_profit: number;
@@ -123,7 +127,13 @@ export async function getVehiclePnlSummary(
 
   const total_fixed = costSummary.total_fixed;
   const total_variable = costSummary.total_variable;
-  const total_cost = total_fixed + total_variable;
+  const tripRows = await getTripPnlList({
+    startDate: startStr,
+    endDate: endStr,
+    vehicleId,
+  });
+  const total_personnel = tripRows.reduce((s, r) => s + r.personnel_cost, 0);
+  const total_cost = total_fixed + total_variable + total_personnel;
   const daily_fixed_cost = costSummary.daily_fixed_cost;
   const net_profit = revenue - total_cost;
   const idle_cost = daily_fixed_cost * Math.max(0, days_in_filter - days_with_work);
@@ -143,6 +153,7 @@ export async function getVehiclePnlSummary(
     revenue,
     total_fixed,
     total_variable,
+    total_personnel,
     total_cost,
     daily_fixed_cost,
     net_profit,

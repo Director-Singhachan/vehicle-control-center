@@ -71,10 +71,11 @@ export const TripPnlReport: React.FC<TripPnlReportProps> = ({ isDark = false }) 
         revenue: acc.revenue + r.revenue,
         variable_cost: acc.variable_cost + r.variable_cost,
         fixed_cost: acc.fixed_cost + r.fixed_cost,
+        personnel_cost: acc.personnel_cost + r.personnel_cost,
         net_profit: acc.net_profit + r.net_profit,
         count: acc.count + 1,
       }),
-      { revenue: 0, variable_cost: 0, fixed_cost: 0, net_profit: 0, count: 0 }
+      { revenue: 0, variable_cost: 0, fixed_cost: 0, personnel_cost: 0, net_profit: 0, count: 0 }
     );
   }, [rows]);
 
@@ -89,6 +90,7 @@ export const TripPnlReport: React.FC<TripPnlReportProps> = ({ isDark = false }) 
         revenue: r.revenue,
         variable_cost: r.variable_cost,
         fixed_cost: r.fixed_cost,
+        personnel_cost: r.personnel_cost,
         net_profit: r.net_profit,
       }));
       excelExport.exportToExcel(
@@ -100,6 +102,7 @@ export const TripPnlReport: React.FC<TripPnlReportProps> = ({ isDark = false }) 
           { key: 'revenue', label: 'รายได้ (บาท)', width: 16, format: excelExport.formatCurrency },
           { key: 'variable_cost', label: 'ต้นทุนผันแปร (บาท)', width: 18, format: excelExport.formatCurrency },
           { key: 'fixed_cost', label: 'ต้นทุนคงที่×วัน (บาท)', width: 20, format: excelExport.formatCurrency },
+          { key: 'personnel_cost', label: 'ต้นทุนบุคลากร (บาท)', width: 18, format: excelExport.formatCurrency },
           { key: 'net_profit', label: 'กำไรสุทธิ (บาท)', width: 18, format: excelExport.formatCurrency },
         ],
         `Trip_PnL_${dateRange.start}_${dateRange.end}.xlsx`,
@@ -207,6 +210,9 @@ export const TripPnlReport: React.FC<TripPnlReportProps> = ({ isDark = false }) 
                       ต้นทุนคงที่ (×วัน)
                     </th>
                     <th className="px-3 py-2 text-right font-medium text-slate-600 dark:text-slate-300">
+                      ต้นทุนบุคลากร
+                    </th>
+                    <th className="px-3 py-2 text-right font-medium text-slate-600 dark:text-slate-300">
                       กำไรสุทธิ
                     </th>
                     <th className="px-3 py-2 w-24 font-medium text-slate-600 dark:text-slate-300">
@@ -246,6 +252,9 @@ export const TripPnlReport: React.FC<TripPnlReportProps> = ({ isDark = false }) 
                           ({r.trip_days} วัน)
                         </span>
                       </td>
+                      <td className="px-3 py-2 text-right text-slate-700 dark:text-slate-300">
+                        {formatMoney(r.personnel_cost)}
+                      </td>
                       <td
                         className={`px-3 py-2 text-right font-medium ${
                           r.net_profit >= 0
@@ -282,6 +291,9 @@ export const TripPnlReport: React.FC<TripPnlReportProps> = ({ isDark = false }) 
                     </td>
                     <td className="px-3 py-3 text-right text-slate-700 dark:text-slate-300">
                       {formatMoney(totals.fixed_cost)}
+                    </td>
+                    <td className="px-3 py-3 text-right text-slate-700 dark:text-slate-300">
+                      {formatMoney(totals.personnel_cost)}
                     </td>
                     <td
                       className={`px-3 py-3 text-right ${
@@ -354,10 +366,25 @@ export const TripPnlReport: React.FC<TripPnlReportProps> = ({ isDark = false }) 
                     </p>
                   </div>
 
+                  <div className="border-t border-slate-200 dark:border-slate-700 pt-4">
+                    <h4 className="font-medium text-slate-800 dark:text-slate-200 mb-2">5. ต้นทุนบุคลากร</h4>
+                    <p className="text-slate-700 dark:text-slate-300">
+                      เงินเดือนลูกเรือ (คนขับ + พนักงานบริการ) ปันส่วนตามวันเที่ยว จาก HR (staff_salaries) = <strong>{formatMoney(detailRow.personnel_cost)}</strong> บาท
+                    </p>
+                    <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+                      ระบบนับว่าวันนั้นพนักงานคนนี้อยู่กี่เที่ยว (รวมทุกคันในช่วงที่เลือก) แล้วแบ่งต้นทุนวันนั้น (เงินเดือน/30) ให้แต่ละเที่ยวเท่าๆ กัน — ไม่คิดซ้ำแม้ไปหลายคัน
+                    </p>
+                    {detailRow.personnel_cost === 0 && (
+                      <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
+                        ถ้าเที่ยวนี้มีลูกเรือและใส่เงินเดือนในหน้าจัดการเงินเดือนแล้ว แต่ยังเป็น 0 ให้ตรวจสอบ: (1) ลูกเรือในเที่ยวมีสถานะ active (2) อัตราเงินเดือนใน HR ตั้งวันเริ่มต้น (effective_from) ไม่เกินวันเริ่มเที่ยว และวันสิ้นสุด (effective_to) ต้องว่างหรือไม่ก่อนวันเริ่มเที่ยว
+                      </p>
+                    )}
+                  </div>
+
                   <div className="border-t border-slate-200 dark:border-slate-700 pt-4 rounded-lg bg-slate-50 dark:bg-slate-800/50 p-4">
-                    <h4 className="font-medium text-slate-800 dark:text-slate-200 mb-2">5. กำไรสุทธิ</h4>
+                    <h4 className="font-medium text-slate-800 dark:text-slate-200 mb-2">6. กำไรสุทธิ</h4>
                     <p className="text-slate-700 dark:text-slate-300 font-mono text-base">
-                      {formatMoney(detailRow.revenue)} − {formatMoney(detailRow.variable_cost)} − {formatMoney(detailRow.fixed_cost)} ={' '}
+                      {formatMoney(detailRow.revenue)} − {formatMoney(detailRow.variable_cost)} − {formatMoney(detailRow.fixed_cost)} − {formatMoney(detailRow.personnel_cost)} ={' '}
                       <strong className={detailRow.net_profit >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}>
                         {formatMoney(detailRow.net_profit)} บาท
                       </strong>
@@ -370,6 +397,7 @@ export const TripPnlReport: React.FC<TripPnlReportProps> = ({ isDark = false }) 
                   <p>รายได้: {formatMoney(detailRow.revenue)} บาท</p>
                   <p>ต้นทุนผันแปร: {formatMoney(detailRow.variable_cost)} บาท</p>
                   <p>ต้นทุนคงที่: {formatMoney(detailRow.fixed_cost)} บาท ({detailRow.trip_days} วัน)</p>
+                  <p>ต้นทุนบุคลากร: {formatMoney(detailRow.personnel_cost)} บาท</p>
                   <p className="font-medium">
                     กำไรสุทธิ: <span className={detailRow.net_profit >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}>{formatMoney(detailRow.net_profit)} บาท</span>
                   </p>

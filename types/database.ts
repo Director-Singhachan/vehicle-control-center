@@ -848,6 +848,41 @@ export interface Database {
           updated_by?: string | null;
         };
       };
+      staff_salaries: {
+        Row: {
+          id: string;
+          staff_id: string;
+          effective_from: string;
+          effective_to: string | null;
+          monthly_salary: number;
+          notes: string | null;
+          created_at: string;
+          updated_at: string;
+          created_by: string | null;
+        };
+        Insert: {
+          id?: string;
+          staff_id: string;
+          effective_from: string;
+          effective_to?: string | null;
+          monthly_salary: number;
+          notes?: string | null;
+          created_at?: string;
+          updated_at?: string;
+          created_by?: string | null;
+        };
+        Update: {
+          id?: string;
+          staff_id?: string;
+          effective_from?: string;
+          effective_to?: string | null;
+          monthly_salary?: number;
+          notes?: string | null;
+          created_at?: string;
+          updated_at?: string;
+          created_by?: string | null;
+        };
+      };
       commission_rates: {
         Row: {
           id: string;
