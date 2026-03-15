@@ -44,6 +44,30 @@ export const excelExport = {
     XLSX.writeFile(workbook, safeFilename);
   },
 
+  /** Export หลายชีตในไฟล์เดียว */
+  exportToExcelMultiSheet: <T extends Record<string, any>>(
+    sheets: { sheetName: string; data: T[]; columns: ExportColumn[] }[],
+    filename: string = 'export.xlsx'
+  ): void => {
+    const workbook = XLSX.utils.book_new();
+    sheets.forEach(({ sheetName, data, columns }) => {
+      const formattedData = data.map(row => {
+        const formattedRow: Record<string, any> = {};
+        columns.forEach(col => {
+          const value = row[col.key];
+          formattedRow[col.label] = col.format ? col.format(value) : value;
+        });
+        return formattedRow;
+      });
+      const worksheet = XLSX.utils.json_to_sheet(formattedData);
+      const colWidths = columns.map(col => ({ wch: col.width || 15 }));
+      worksheet['!cols'] = colWidths;
+      XLSX.utils.book_append_sheet(workbook, worksheet, sheetName.slice(0, 31));
+    });
+    const safeFilename = filename.endsWith('.xlsx') ? filename : `${filename}.xlsx`;
+    XLSX.writeFile(workbook, safeFilename);
+  },
+
   // Format currency (Thai Baht)
   formatCurrency: (value: number | null | undefined): string => {
     if (value === null || value === undefined) return '0.00';

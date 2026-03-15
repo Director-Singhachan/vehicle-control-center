@@ -1,7 +1,7 @@
 // Reports View - Tab orchestrator for all report types
 import React, { useState } from 'react';
 import type { LucideIcon } from 'lucide-react';
-import { Droplet, Route, Wrench, DollarSign, Truck, FileText, Package } from 'lucide-react';
+import { Droplet, Route, Wrench, DollarSign, Truck, FileText, Package, MapPin } from 'lucide-react';
 import { PageLayout } from '../components/layout/PageLayout';
 
 import { VehicleUsageReport } from './reports/VehicleUsageReport';
@@ -12,6 +12,7 @@ import { MaintenanceReport } from './reports/MaintenanceReport';
 import { CostReport } from './reports/CostReport';
 import { VehicleDocumentsReport } from './reports/VehicleDocumentsReport';
 import { DeliveryReport } from './reports/DeliveryReport';
+import { VehicleTripUsageReport } from './reports/VehicleTripUsageReport';
 import { useReportFilters } from '../hooks/useReportFilters';
 import {
   Chart as ChartJS,
@@ -43,7 +44,7 @@ interface ReportsViewProps {
   onNavigateToStoreDetail?: (storeId: string) => void;
 }
 
-type ReportTab = 'fuel' | 'trip' | 'maintenance' | 'cost' | 'usage' | 'fuel-consumption' | 'delivery' | 'vehicle-documents';
+type ReportTab = 'fuel' | 'trip' | 'maintenance' | 'cost' | 'usage' | 'fuel-consumption' | 'delivery' | 'vehicle-documents' | 'vehicle-trip-usage';
 
 const TAB_CONFIG: { id: ReportTab; label: string; Icon: LucideIcon }[] = [
   { id: 'fuel', label: 'รายงานน้ำมัน', Icon: Droplet },
@@ -54,6 +55,7 @@ const TAB_CONFIG: { id: ReportTab; label: string; Icon: LucideIcon }[] = [
   { id: 'fuel-consumption', label: 'การเติมน้ำมันแต่ละคัน', Icon: Droplet },
   { id: 'delivery', label: 'รายงานการส่งสินค้า', Icon: Package },
   { id: 'vehicle-documents', label: 'รายงานเอกสารรถ', Icon: FileText },
+  { id: 'vehicle-trip-usage', label: 'รายงานการใช้รถละเอียด', Icon: MapPin },
 ];
 
 export const ReportsView: React.FC<ReportsViewProps> = ({ isDark = false, onNavigateToStoreDetail }) => {
@@ -141,6 +143,9 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ isDark = false, onNavi
       )}
       {activeTab === 'vehicle-documents' && (
         <VehicleDocumentsReport isDark={isDark} onNavigateToStoreDetail={onNavigateToStoreDetail} />
+      )}
+      {activeTab === 'vehicle-trip-usage' && (
+        <VehicleTripUsageReport isDark={isDark} />
       )}
     </PageLayout>
   );
