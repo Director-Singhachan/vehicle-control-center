@@ -2659,6 +2659,11 @@ const AppContent = () => {
                     setSelectedStoreId(storeId);
                     setStoreDetailView('detail');
                   }}
+                  onNavigateToVehicleDetail={(vehicleId) => {
+                    setActiveTab('vehicles');
+                    setSelectedVehicleId(vehicleId);
+                    setVehicleView('detail');
+                  }}
                 />
               )
             ) : activeTab === 'settings' ? (

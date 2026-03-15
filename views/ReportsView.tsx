@@ -43,6 +43,8 @@ ChartJS.register(
 interface ReportsViewProps {
   isDark?: boolean;
   onNavigateToStoreDetail?: (storeId: string) => void;
+  /** ไปหน้ารายละเอียดรถ (จากรายงานการใช้รถ) */
+  onNavigateToVehicleDetail?: (vehicleId: string) => void;
 }
 
 type ReportTab = 'fuel' | 'trip' | 'maintenance' | 'cost' | 'usage' | 'fuel-consumption' | 'delivery' | 'vehicle-documents' | 'vehicle-trip-usage' | 'trip-pnl';
@@ -60,7 +62,7 @@ const TAB_CONFIG: { id: ReportTab; label: string; Icon: LucideIcon }[] = [
   { id: 'vehicle-trip-usage', label: 'รายงานการใช้รถละเอียด', Icon: MapPin },
 ];
 
-export const ReportsView: React.FC<ReportsViewProps> = ({ isDark = false, onNavigateToStoreDetail }) => {
+export const ReportsView: React.FC<ReportsViewProps> = ({ isDark = false, onNavigateToStoreDetail, onNavigateToVehicleDetail }) => {
   const [activeTab, setActiveTab] = useState<ReportTab>('fuel');
 
   const filters = useReportFilters();
@@ -147,7 +149,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ isDark = false, onNavi
         <VehicleDocumentsReport isDark={isDark} onNavigateToStoreDetail={onNavigateToStoreDetail} />
       )}
       {activeTab === 'vehicle-trip-usage' && (
-        <VehicleTripUsageReport isDark={isDark} />
+        <VehicleTripUsageReport isDark={isDark} onNavigateToVehicleDetail={onNavigateToVehicleDetail} />
       )}
       {activeTab === 'trip-pnl' && <TripPnlReport isDark={isDark} />}
     </PageLayout>

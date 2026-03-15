@@ -1,6 +1,7 @@
 // VehicleTripUsageReport.tsx
 // รายงานการใช้รถละเอียด — แสดงตารางสรุปรายวันต่อรถคัน พร้อม modal ทริป/สินค้า/พนักงาน
 import React, { useState, useMemo, useEffect } from 'react';
+import ReactDOM from 'react-dom';
 import {
   Truck,
   Route,
@@ -18,9 +19,14 @@ import {
   Droplet,
   TrendingUp,
   Download,
+  ExternalLink,
+  Settings,
 } from 'lucide-react';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
+import { Modal } from '../../components/ui/Modal';
+import { VehicleCostManager } from '../../components/vehicle/VehicleCostManager';
+import { useAuth } from '../../hooks/useAuth';
 import { excelExport } from '../../utils/excelExport';
 import { useVehicles } from '../../hooks/useVehicles';
 import { useVehicleTripUsageReport } from '../../hooks/useVehicleTripUsageReport';
@@ -33,6 +39,8 @@ import { vehicleTripUsageService, type VehicleTripDailySummary, type VehicleTrip
 
 interface VehicleTripUsageReportProps {
   isDark?: boolean;
+  /** ไปหน้ารายละเอียดรถ (ถ้ามี callback จาก parent) */
+  onNavigateToVehicleDetail?: (vehicleId: string) => void;
 }
 
 // ─────────────────────────────────────────────────
@@ -274,8 +282,11 @@ const DayTripsModal: React.FC<DayModalProps> = ({ daySummary, isDark, onClose })
 
 export const VehicleTripUsageReport: React.FC<VehicleTripUsageReportProps> = ({
   isDark = false,
+  onNavigateToVehicleDetail,
 }) => {
   const defaultRange = useMemo(() => getDefaultDateRange(), []);
+  const { isManager, isAdmin } = useAuth();
+  const canEdit = isManager || isAdmin;
 
   const { vehicles, loading: vehiclesLoading } = useVehicles();
 
@@ -293,6 +304,7 @@ export const VehicleTripUsageReport: React.FC<VehicleTripUsageReportProps> = ({
   const [dailyTablePerPage, setDailyTablePerPage] = useState(20);
   const [showProductTable, setShowProductTable] = useState(false);
   const [viewMode, setViewMode] = useState<'daily' | 'monthly'>('daily');
+  const [costModalOpen, setCostModalOpen] = useState(false);
 
   const { dailySummaries, productSummary, costSummary, financialSummary, monthlySummaries, loading, productSummaryLoading, error, refetch } =
     useVehicleTripUsageReport({
@@ -894,9 +906,48 @@ export const VehicleTripUsageReport: React.FC<VehicleTripUsageReportProps> = ({
                       )}
                     </div>
                   </div>
+                  <div className="border-t border-slate-200 dark:border-slate-700 pt-3 mt-3 flex flex-wrap items-center gap-3">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCostModalOpen(true)}
+                      className="gap-2"
+                    >
+                      <Settings size={16} />
+                      จัดการต้นทุนรถคันนี้
+                    </Button>
+                    {onNavigateToVehicleDetail && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => onNavigateToVehicleDetail(searchedVehicleId!)}
+                        className="gap-2"
+                      >
+                        <ExternalLink size={16} />
+                        ดูหน้ารถ
+                      </Button>
+                    )}
+                  </div>
                 </>
               ) : null}
             </Card>
+          )}
+
+          {/* โมดัลจัดการต้นทุน (จากรายงานไปหน้ารถ/ต้นทุน) */}
+          {costModalOpen && searchedVehicleId && ReactDOM.createPortal(
+            <Modal
+              isOpen={costModalOpen}
+              onClose={() => setCostModalOpen(false)}
+              title={`จัดการต้นทุนคงที่/ผันแปร — ${selectedVehicle?.plate ?? 'รถ'}`}
+              size="large"
+            >
+              <div className="p-4 max-h-[70vh] overflow-y-auto">
+                <VehicleCostManager vehicleId={searchedVehicleId} canEdit={canEdit} />
+              </div>
+            </Modal>,
+            document.body
           )}
 
           {/* สรุปสินค้าที่บรรทุก — แสดงเฉพาะโหมดรายวัน */}
