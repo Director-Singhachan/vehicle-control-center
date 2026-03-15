@@ -211,6 +211,8 @@ export async function getTripPnlList(options: TripPnlOptions): Promise<TripPnlRo
   }
 
   const rangeByTripFromLogAll = new Map<string, { start: string; end: string; days: number }>();
+  /** ช่วงเวลาออก–กลับจริง (สำหรับจับคู่น้ำมัน: เติมในช่วงเที่ยวไหน = ของเที่ยวนั้น) */
+  const tripTimeWindow = new Map<string, { checkout: string; checkin: string }>();
   for (const row of tripLogsAllRes.data ?? []) {
     const id = (row as { delivery_trip_id?: string }).delivery_trip_id;
     if (!id || rangeByTripFromLogAll.has(id)) continue;
@@ -220,6 +222,7 @@ export async function getTripPnlList(options: TripPnlOptions): Promise<TripPnlRo
     const start = checkout.split('T')[0];
     const end = (checkin || new Date().toISOString()).split('T')[0];
     rangeByTripFromLogAll.set(id, { start, end, days: Math.max(1, daysInRange(start, end)) });
+    if (checkin) tripTimeWindow.set(id, { checkout, checkin });
   }
 
   // tripId -> ต้นทุนผันแปร (variable_costs + commission)
@@ -333,12 +336,14 @@ export async function getTripPnlList(options: TripPnlOptions): Promise<TripPnlRo
     const revenue = Number(t.trip_revenue) || 0;
     const otherVariable = variableByTrip.get(tid) ?? 0;
     let fuelVariable = 0;
-    const tripStart = `${range.start}T00:00:00.000Z`;
-    const tripEnd = `${range.end}T23:59:59.999Z`;
-    for (const f of fuelRecords) {
-      if (f.vehicle_id !== t.vehicle_id) continue;
-      if (f.filled_at >= tripStart && f.filled_at <= tripEnd) {
-        fuelVariable += fuelCost(f);
+    // จับคู่น้ำมันกับเที่ยวตามช่วงออกรถ–กลับ: เติมระหว่าง checkout กับ checkin = ของเที่ยวนั้น (ไม่ปันส่วน)
+    const timeWindow = tripTimeWindow.get(tid);
+    if (timeWindow) {
+      for (const f of fuelRecords) {
+        if (f.vehicle_id !== t.vehicle_id) continue;
+        if (f.filled_at >= timeWindow.checkout && f.filled_at <= timeWindow.checkin) {
+          fuelVariable += fuelCost(f);
+        }
       }
     }
     const variable_cost = otherVariable + fuelVariable;
