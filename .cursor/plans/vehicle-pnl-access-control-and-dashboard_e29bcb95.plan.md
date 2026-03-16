@@ -337,3 +337,102 @@ isProject: false
 - **ใช้ Snapshot Table สำหรับ P&L** เพื่อรองรับ Dashboard ที่เร็วและการดูข้อมูลย้อนหลัง พร้อมรองรับ Recalculation แบบควบคุมได้
 - **ผูก Role & Permission Matrix กับการออกแบบ UI/UX จริง** ทำให้แต่ละ Role มีหน้าจอและข้อมูลที่สอดคล้องกับหน้าที่และระดับความลับ
 
+### 12. แผนควบคุมสิทธิ์แบบละเอียด (Actionable Checklist)
+
+#### 12.1 Role / Permission Model
+
+- **ยืนยัน enum `app_role` ใน Supabase**
+  - ตรวจใน Supabase ว่า `app_role` มีค่า: `user`, `inspector`, `manager`, `executive`, `admin`, `driver`, `sales`, `service_staff`, `hr`, `accounting`, `warehouse`
+  - ยืนยันว่าตาราง `profiles` ใช้ฟิลด์ `role` (ชนิด `app_role`) เป็น source หลักของสิทธิ์ผู้ใช้
+- **นิยาม Business Role (สำหรับ P&L) ฝั่งโค้ด**
+  - สร้างไฟล์ `types/permissions.ts`
+  - ประกาศ `type BusinessRole` ครอบคลุม:
+    - `ROLE_PURCHASING_USER`
+    - `ROLE_HR_USER`
+    - `ROLE_OPERATION_USER`
+    - `ROLE_BRANCH_MANAGER`
+    - `ROLE_TOP_MANAGEMENT`
+    - `ROLE_SYSTEM_ADMIN`
+  - เพิ่ม `APP_ROLE_TO_BUSINESS_ROLE: Partial<Record<AppRole, BusinessRole>>` โดย map:
+    - `accounting` → `ROLE_PURCHASING_USER`
+    - `hr` → `ROLE_HR_USER`
+    - `warehouse` → `ROLE_OPERATION_USER`
+    - `manager` → `ROLE_BRANCH_MANAGER`
+    - `executive` → `ROLE_TOP_MANAGEMENT`
+    - `admin` → `ROLE_SYSTEM_ADMIN`
+
+#### 12.2 Hook ควบคุมสิทธิ์ใน Frontend
+
+- **สร้าง `usePermissions()**`
+  - import `AppRole`, `BusinessRole`, `APP_ROLE_TO_BUSINESS_ROLE` จาก `types/permissions.ts`
+  - ดึง `profile` จาก `useAuth` (หรือ hook โปรไฟล์ที่มีอยู่)
+  - อ่าน `profile.role` เป็น `AppRole` (ถ้าไม่มีให้เป็น `undefined`)
+  - แปลงเป็น `businessRole` ด้วย `APP_ROLE_TO_BUSINESS_ROLE[appRole] ?? null`
+  - คืนค่าอย่างน้อย:
+    - `businessRole: BusinessRole | null`
+    - `canViewTripPnl: boolean`
+    - `canViewVehiclePnl: boolean`
+    - `canViewFleetPnl: boolean`
+  - กำหนด logic สิทธิ์เบื้องต้น:
+    - `ROLE_OPERATION_USER` → `canViewTripPnl = true`
+    - `ROLE_BRANCH_MANAGER` → `canViewTripPnl` + `canViewVehiclePnl = true`
+    - `ROLE_TOP_MANAGEMENT` → `canViewFleetPnl` + summary P&L ทั้งหมด = true
+    - `ROLE_PURCHASING_USER` / `ROLE_HR_USER` → เห็นเฉพาะเมนู/หน้าที่เกี่ยวข้อง (เช่น cost summary)
+    - `ROLE_SYSTEM_ADMIN` → เห็นหน้า config/monitoring แต่ไม่เห็น detail ส่วนบุคคลเกินจำเป็น
+
+#### 12.3 การผูกกับเมนูและ Routing
+
+- **ซ่อน/แสดงเมนูตามสิทธิ์**
+  - ปรับ Sidebar/Navigation หลักให้:
+    - แสดงเมนู `Trip P&L` เมื่อ `canViewTripPnl === true`
+    - แสดงเมนู `Vehicle P&L` เมื่อ `canViewVehiclePnl === true`
+    - แสดงเมนู `Fleet P&L` เมื่อ `canViewFleetPnl === true`
+- **ป้องกันการเข้าถึงหน้าตรงๆ**
+  - ใน `TripPnlView.tsx`:
+    - เรียก `usePermissions()`
+    - ถ้า `!canViewTripPnl` → แสดง component “ไม่มีสิทธิ์เข้าถึงหน้านี้”
+  - ใน `VehiclePnlView.tsx`:
+    - ถ้า `!canViewVehiclePnl` → แสดง “ไม่มีสิทธิ์เข้าถึงหน้านี้”
+  - ใน `FleetPnlOverviewView.tsx`:
+    - ถ้า `!canViewFleetPnl` → แสดง “ไม่มีสิทธิ์เข้าถึงหน้านี้”
+
+#### 12.4 การผูกกับ RLS/Policy ใน Supabase
+
+- **เปิดใช้ RLS บนตาราง P&L (ถ้ายังไม่ได้เปิด)**
+  - `pnl_trip`
+  - `pnl_vehicle`
+  - `pnl_fleet`
+- **เขียน Policy ตาม `app_role` + branch/company**
+  - สำหรับ `manager` (Branch Manager):
+    - Policy อ่าน `pnl_trip` เฉพาะ trip ที่ belong กับสาขาของ manager
+    - Policy อ่าน `pnl_vehicle` เฉพาะรถในสาขาของ manager
+  - สำหรับ `executive` (Top Management):
+    - Policy อ่าน `pnl_fleet` ได้ทุก branch/company
+  - สำหรับ `accounting` / `hr`:
+    - ให้เห็นผ่าน view/summary เท่านั้น ไม่แตะตารางดิบที่มีข้อมูลบุคคลละเอียด
+- **ทดสอบ RLS ด้วย user ตัวอย่าง**
+  - สร้าง/ตั้งค่าโปรไฟล์ user ที่มี `app_role` แต่ละแบบ (manager, executive, accounting, hr, warehouse)
+  - ใช้ Supabase SQL editor หรือ PostgREST ทดสอบ select ตาราง P&L
+  - ยืนยันว่า user แต่ละ role เห็นเฉพาะข้อมูลตามที่ออกแบบ
+
+#### 12.5 การทดสอบ End-to-End ตาม Role
+
+- **เตรียมชุด user สำหรับทดสอบใน UI จริง**
+  - User A: `app_role = manager`
+  - User B: `app_role = executive`
+  - User C: `app_role = accounting`
+  - User D: `app_role = hr`
+  - User E: `app_role = warehouse`
+- **ทดสอบจากมุมมองผู้ใช้**
+  - ล็อกอินด้วยแต่ละ user
+  - ตรวจเมนูที่เห็นว่า:
+    - Manager เห็น Trip/Vehicle P&L แต่ไม่เห็น Fleet P&L รวมทั้งบริษัท
+    - Executive เห็น Fleet P&L + summary เหมาะสม
+    - Accounting/HR เห็นเฉพาะเมนูที่เกี่ยวข้อง
+  - เข้าหน้า P&L แต่ละแบบ:
+    - ถ้าไม่มีสิทธิ์ → เห็นข้อความ “ไม่มีสิทธิ์เข้าถึงหน้านี้”
+    - ถ้ามีสิทธิ์ → ข้อมูลจำกัดตาม branch/company ที่ควรเห็น
+- **บันทึกผลและช่องโหว่**
+  - จดเคสที่สิทธิ์หลวมเกินไป หรือเข้มเกินไป
+  - ปรับ mapping `APP_ROLE_TO_BUSINESS_ROLE` หรือ Policy RLS ตามผลทดสอบ
+

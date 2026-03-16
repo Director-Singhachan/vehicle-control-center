@@ -11,6 +11,7 @@ import { Button } from '../../components/ui/Button';
 import { excelExport } from '../../utils/excelExport';
 import { useFleetPnl, useFleetPnlMonthly } from '../../hooks/useFleetPnl';
 import { useVehicles } from '../../hooks/useVehicles';
+import { usePermissions } from '../../hooks';
 
 function getDefaultDateRange() {
   const today = new Date();
@@ -33,6 +34,23 @@ export const FleetPnlReport: React.FC<FleetPnlReportProps> = ({
   isDark = false,
   onNavigateToVehicleDetail,
 }) => {
+  const { canViewFleetPnl } = usePermissions();
+
+  if (!canViewFleetPnl) {
+    return (
+      <Card className={`p-6 ${isDark ? 'dark' : ''}`}>
+        <div className="text-center py-12">
+          <p className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-2">
+            ไม่มีสิทธิ์เข้าถึงหน้านี้
+          </p>
+          <p className="text-slate-600 dark:text-slate-400 text-sm">
+            โปรดติดต่อผู้ดูแลระบบหากคุณคิดว่าควรมีสิทธิ์เข้าถึงรายงาน Fleet P&L
+          </p>
+        </div>
+      </Card>
+    );
+  }
+
   const [dateRange, setDateRange] = useState(getDefaultDateRange);
   const [branchFilter, setBranchFilter] = useState<string>('');
   const [exporting, setExporting] = useState(false);

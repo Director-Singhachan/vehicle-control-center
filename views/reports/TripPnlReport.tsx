@@ -52,6 +52,7 @@ import { excelExport } from '../../utils/excelExport';
 import { Modal } from '../../components/ui/Modal';
 import { useTripPnl } from '../../hooks/useTripPnl';
 import { useVehicles } from '../../hooks/useVehicles';
+import { usePermissions } from '../../hooks';
 import type { TripPnlRow, TripDaysSource } from '../../services/reports/tripPnlService';
 
 function formatDate(dateStr: string) {
@@ -88,6 +89,23 @@ interface TripPnlReportProps {
 type VehicleRow = { id: string; plate: string | null; branch: string | null };
 
 export const TripPnlReport: React.FC<TripPnlReportProps> = ({ isDark = false, onNavigateToTrip }) => {
+  const { canViewTripPnl } = usePermissions();
+
+  if (!canViewTripPnl) {
+    return (
+      <Card className={`p-6 ${isDark ? 'dark' : ''}`}>
+        <div className="text-center py-12">
+          <p className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-2">
+            ไม่มีสิทธิ์เข้าถึงหน้านี้
+          </p>
+          <p className="text-slate-600 dark:text-slate-400 text-sm">
+            โปรดติดต่อผู้ดูแลระบบหากคุณคิดว่าควรมีสิทธิ์เข้าถึงรายงาน P&L ต่อเที่ยว
+          </p>
+        </div>
+      </Card>
+    );
+  }
+
   const saved = loadSavedFilters();
   const [dateRange, setDateRange] = useState(saved.dateRange);
   const [vehicleId, setVehicleId] = useState<string>(saved.vehicleId);

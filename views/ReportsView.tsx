@@ -15,6 +15,7 @@ import { DeliveryReport } from './reports/DeliveryReport';
 import { VehicleTripUsageReport } from './reports/VehicleTripUsageReport';
 import { TripPnlReport } from './reports/TripPnlReport';
 import { FleetPnlReport } from './reports/FleetPnlReport';
+import { usePermissions } from '../hooks';
 import { useReportFilters } from '../hooks/useReportFilters';
 import {
   Chart as ChartJS,
@@ -69,6 +70,8 @@ const TAB_CONFIG: { id: ReportTab; label: string; Icon: LucideIcon }[] = [
 ];
 
 export const ReportsView: React.FC<ReportsViewProps> = ({ isDark = false, onNavigateToStoreDetail, onNavigateToVehicleDetail, onNavigateToTrip, initialTab }) => {
+  const { canViewTripPnl, canViewVehiclePnl, canViewFleetPnl } = usePermissions();
+
   const [activeTab, setActiveTab] = useState<ReportTab>(initialTab ?? 'fuel');
 
   // ซิงค์แท็บเมื่อกลับจากหน้ารายละเอียดเที่ยว (initialTab ถูกส่งมาแล้ว)
@@ -98,20 +101,24 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ isDark = false, onNavi
       }
     >
       <div className="flex gap-2 border-b border-slate-200 dark:border-slate-700 mb-6">
-        {TAB_CONFIG.map(({ id, label, Icon }) => (
-          <button
-            key={id}
-            onClick={() => setActiveTab(id)}
-            className={`px-4 py-2 font-medium transition-colors ${
-              activeTab === id
-                ? 'border-b-2 border-enterprise-600 text-enterprise-600 dark:text-enterprise-400'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
-            }`}
-          >
-            <Icon className="inline-block w-4 h-4 mr-2" />
-            {label}
-          </button>
-        ))}
+        {TAB_CONFIG.map(({ id, label, Icon }) => {
+          if (id === 'trip-pnl' && !canViewTripPnl) return null;
+          if (id === 'fleet-pnl' && !canViewFleetPnl) return null;
+          return (
+            <button
+              key={id}
+              onClick={() => setActiveTab(id)}
+              className={`px-4 py-2 font-medium transition-colors ${
+                activeTab === id
+                  ? 'border-b-2 border-enterprise-600 text-enterprise-600 dark:text-enterprise-400'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+              }`}
+            >
+              <Icon className="inline-block w-4 h-4 mr-2" />
+              {label}
+            </button>
+          );
+        })}
       </div>
 
       {activeTab === 'fuel' && <FuelReport months={filters.months} isDark={isDark} />}
@@ -162,8 +169,10 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ isDark = false, onNavi
       {activeTab === 'vehicle-trip-usage' && (
         <VehicleTripUsageReport isDark={isDark} onNavigateToVehicleDetail={onNavigateToVehicleDetail} />
       )}
-      {activeTab === 'trip-pnl' && <TripPnlReport isDark={isDark} onNavigateToTrip={onNavigateToTrip} />}
-      {activeTab === 'fleet-pnl' && (
+      {activeTab === 'trip-pnl' && canViewTripPnl && (
+        <TripPnlReport isDark={isDark} onNavigateToTrip={onNavigateToTrip} />
+      )}
+      {activeTab === 'fleet-pnl' && canViewFleetPnl && (
         <FleetPnlReport isDark={isDark} onNavigateToVehicleDetail={onNavigateToVehicleDetail} />
       )}
     </PageLayout>
