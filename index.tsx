@@ -67,6 +67,7 @@ const CustomerTiersManagementView = lazy(() => import('./views/CustomerTiersMana
 const ProductTierPricingView = lazy(() => import('./views/ProductTierPricingView').then(m => ({ default: m.ProductTierPricingView })));
 const InventoryReceiptsView = lazy(() => import('./views/InventoryReceiptsView').then(m => ({ default: m.InventoryReceiptsView })));
 const PickupOrdersView = lazy(() => import('./views/PickupOrdersView').then(m => ({ default: m.PickupOrdersView })));
+const ConfirmOrderView = lazy(() => import('./views/ConfirmOrderView').then(m => ({ default: m.ConfirmOrderView })));
 const CreateOrderView = lazy(() => import('./views/CreateOrderView').then(m => ({ default: m.CreateOrderView })));
 const CustomerManagementView = lazy(() => import('./views/CustomerManagementView').then(m => ({ default: m.CustomerManagementView })));
 const PendingOrdersView = lazy(() => import('./views/PendingOrdersView').then(m => ({ default: m.PendingOrdersView })));
@@ -1127,6 +1128,16 @@ const AppContent = () => {
                         isFlyout={true}
                       />
                       <SubSidebarItem
+                        label="ยืนยันและแบ่งส่ง"
+                        active={activeTab === 'confirm-orders'}
+                        onClick={() => {
+                          setActiveTab('confirm-orders');
+                          setIsOrdersHovered(false);
+                        }}
+                        isCollapsed={false}
+                        isFlyout={true}
+                      />
+                      <SubSidebarItem
                         label="ออกใบแจ้งหนี้"
                         active={activeTab === 'sales-trips'}
                         onClick={() => {
@@ -1624,6 +1635,36 @@ const AppContent = () => {
                                 isFlyout={true}
                               />
                             )}
+                            <SubSidebarItem
+                                label="ติดตามออเดอร์"
+                                active={activeTab === 'track-orders'}
+                                onClick={() => {
+                                  setActiveTab('track-orders');
+                                  setIsLogisticsHovered(false);
+                                }}
+                                isCollapsed={false}
+                                isFlyout={true}
+                              />
+                              <SubSidebarItem
+                                label="ยืนยันและแบ่งส่ง"
+                                active={activeTab === 'confirm-orders'}
+                                onClick={() => {
+                                  setActiveTab('confirm-orders');
+                                  setIsLogisticsHovered(false);
+                                }}
+                                isCollapsed={false}
+                                isFlyout={true}
+                              />
+                              <SubSidebarItem
+                                label="ออกใบแจ้งหนี้"
+                                active={activeTab === 'sales-trips'}
+                                onClick={() => {
+                                  setActiveTab('sales-trips');
+                                  setIsLogisticsHovered(false);
+                                }}
+                                isCollapsed={false}
+                                isFlyout={true}
+                              />
 
                             {isAdmin && (
                               <SubSidebarItem
@@ -2807,6 +2848,8 @@ const AppContent = () => {
               <CreateOrderView />
             ) : activeTab === 'track-orders' ? (
               <TrackOrdersView />
+            ) : activeTab === 'confirm-orders' ? (
+              <ConfirmOrderView />
             ) : activeTab === 'pending-orders' ? (
               <PendingOrdersView />
             ) : activeTab === 'split-order' ? (
