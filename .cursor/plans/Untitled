@@ -1,0 +1,52 @@
+# Technical Specification: Enterprise-Grade Role-Based Access Control (RBAC) System
+
+## 1. Objective
+สร้างระบบจัดการสิทธิ์การเข้าถึง (Access Control) ที่มีความยืดหยุ่นสูง (Scalable) และปลอดภัย (Secure) โดยรองรับการกำหนดสิทธิ์ในระดับ Granular Permissions เพื่อให้ระบบสามารถรองรับ User ตั้งแต่ระดับบุคคลไปจนถึงระดับองค์กรขนาดใหญ่
+
+## 2. Core Architecture Concept
+ระบบต้องใช้โมเดลการจัดการสิทธิ์แบบ **RBAC (Role-Based Access Control)** ที่แยกส่วนประกอบออกจากกันอย่างชัดเจน:
+- **Identity (Who):** ผู้ใช้งานในระบบ
+- **Role (What Position):** กลุ่มของสิทธิ์ (เช่น Admin, Editor, Viewer)
+- **Permission (What Action):** การกระทำเฉพาะเจาะจง (เช่น `post:edit`, `user:invite`)
+
+## 3. Database Schema (Relational Model)
+AI Agent โปรดสร้าง Schema หรือ Migration สำหรับตารางต่อไปนี้:
+
+| Table | Description |
+| :--- | :--- |
+| **Users** | ข้อมูลพื้นฐานของผู้ใช้ |
+| **Roles** | ชื่อบทบาท (Slug, Name, Description) |
+| **Permissions** | รายการสิทธิ์ย่อยในรูปแบบ `resource:action` (e.g., `settings:write`) |
+| **Role_Permissions** | Mapping (Many-to-Many) ระหว่าง Roles และ Permissions |
+| **User_Roles** | Mapping (Many-to-Many) ระหว่าง Users และ Roles |
+
+## 4. Feature Requirements
+
+### A. Backend Logic (Security First)
+- **Middleware-Based Protection:** ทุก API Endpoint ต้องถูกตรวจสอบสิทธิ์ผ่าน Middleware ก่อนเข้าถึง Business Logic
+- **Atomic Permissions:** การตรวจสอบสิทธิ์ต้องเช็คที่ระดับ `Permission` ไม่ใช่แค่ระดับ `Role` (Role เป็นเพียง Container ของ Permissions เท่านั้น)
+- **Deny by Default:** หากไม่มีการระบุสิทธิ์ ให้ระบบปฏิเสธการเข้าถึง (Unauthorized) เป็นค่าเริ่มต้น
+
+### B. Frontend Implementation (User Experience)
+- **Permission-Based UI Rendering:** สร้าง Component หรือ Hook (เช่น `usePermission`) เพื่อซ่อน/แสดงปุ่มหรือเมนูตามสิทธิ์จริงของ User
+- **Route Guards:** ป้องกันการเข้าถึงหน้าเพจผ่าน URL หาก User ไม่มี Permission ที่เกี่ยวข้อง
+- **Centralized Config:** การเพิ่ม Role หรือ Permission ใหม่ต้องไม่ส่งผลกระทบต่อโครงสร้างโค้ดส่วนอื่น (Plug-and-Play)
+
+### C. Admin Management Interface
+- หน้า Dashboard สำหรับ Admin เพื่อ:
+  - สร้าง/แก้ไข Role
+  - เลือก Assign สิทธิ์ (Permissions) ให้กับ Role นั้นๆ
+  - จัดการสิทธิ์รายบุคคล (Assign Role to User)
+
+## 5. Security & Audit
+- **Audit Logging:** ทุกการแก้ไข Role/Permission ต้องถูกบันทึกในระบบ Log (ใครเปลี่ยน, เปลี่ยนอะไร, เมื่อไหร่)
+- **Token Payload:** ข้อมูล Roles/Permissions ควรถูกฝังอยู่ใน JWT (หากใช้ Stateless Auth) หรือใช้การ Caching ใน Redis เพื่อประสิทธิภาพในการ Query
+
+## 6. Development Instructions for AI Agent
+1. **Phase 1:** ออกแบบ Database Schema ตามที่ระบุในข้อ 3
+2. **Phase 2:** สร้าง Middleware สำหรับตรวจสอบสิทธิ์ในฝั่ง Backend
+3. **Phase 3:** สร้าง Logic ฝั่ง Frontend (React/Next.js/Vue) เพื่อจัดการการแสดงผลตามสิทธิ์
+4. **Phase 4:** สร้าง CRUD API สำหรับจัดการ Role และ Permission
+
+---
+**Note:** โปรดใช้แนวทาง "Least Privilege" ในการเขียน Code และตรวจสอบความปลอดภัยของ Input ทุกครั้ง

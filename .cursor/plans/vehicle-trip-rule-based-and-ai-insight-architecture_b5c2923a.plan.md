@@ -100,7 +100,7 @@ isProject: false
   - ใน `similarTripService` หรือ `vehicleRecommendationService`:
     - ฟังก์ชัน `buildSimilarTripsContext(similarTrips: SimilarTripSummary[]): string`
     - จำกัดจำนวนบรรทัด/ตัวอักษรให้เหมาะกับ context ของ LLM (เช่น ไม่เกิน 5–10 ทริป)
-- **2.3 ผูกเข้ากับ `getRecommendations` / `getAIRecommendation**`
+- **2.3 ผูกเข้ากับ `getRecommendations` / `getAIRecommendation`**
   - เมื่อมี recommendation input (orders/items):
     - คำนวณ `loadEstimate` (มีอยู่แล้วใน `vehicleRecommendationService`)
     - ใช้ `getSimilarTripsForLoad` เพื่อดึงทริปคล้ายกัน

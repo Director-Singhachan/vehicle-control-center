@@ -363,7 +363,7 @@ isProject: false
 
 #### 12.2 Hook ควบคุมสิทธิ์ใน Frontend
 
-- **สร้าง `usePermissions()**`
+- **สร้าง `usePermissions()`**
   - import `AppRole`, `BusinessRole`, `APP_ROLE_TO_BUSINESS_ROLE` จาก `types/permissions.ts`
   - ดึง `profile` จาก `useAuth` (หรือ hook โปรไฟล์ที่มีอยู่)
   - อ่าน `profile.role` เป็น `AppRole` (ถ้าไม่มีให้เป็น `undefined`)
