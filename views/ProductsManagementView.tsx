@@ -69,20 +69,28 @@ export function ProductsManagementView() {
   // กรองสินค้า (รองรับรหัสสินค้า product_code และชื่อสินค้า product_name)
   const filteredProducts = useMemo(() => {
     const keyword = searchQuery.toLowerCase();
+
+    // แปลง selectedCategory (id) -> ชื่อหมวดหมู่ตาม categories
+    const selectedCategoryName =
+      selectedCategory === 'all'
+        ? null
+        : (() => {
+            const cat = categories.find((c: any) => String(c.id) === String(selectedCategory));
+            return cat?.name ?? null;
+          })();
+
     return products.filter((product: any) => {
       const matchesSearch =
         product.product_name?.toLowerCase().includes(keyword) ||
         product.product_code?.toLowerCase().includes(keyword);
 
       const matchesCategory =
-        selectedCategory === 'all' ||
-        product.category === selectedCategory ||
-        product.category_id === selectedCategory || // เผื่อข้อมูลเก่า
-        product.category?.id === selectedCategory;
+        !selectedCategoryName ||
+        String(product.category) === String(selectedCategoryName);
 
       return matchesSearch && matchesCategory;
     });
-  }, [products, searchQuery, selectedCategory]);
+  }, [products, searchQuery, selectedCategory, categories]);
 
   // Pagination (client-side)
   const totalCount = filteredProducts.length;
@@ -100,11 +108,21 @@ export function ProductsManagementView() {
   const handleOpenModal = (product?: any) => {
     if (product) {
       setEditingProduct(product);
+
+      // map category string ของสินค้า -> id ของ categories (ถ้าพบ)
+      const matchedCategory =
+        product.category &&
+        categories.find(
+          (cat: any) =>
+            String(cat.name) === String(product.category) ||
+            String(cat.id) === String(product.category)
+        );
+
       setFormData({
         product_code: product.product_code || '',
         product_name: product.product_name || '',
         description: product.description || '',
-        category: product.category?.id || product.category || '',
+        category: matchedCategory?.id || '',
         unit: product.unit || '',
         base_price: product.base_price?.toString() || product.price_per_unit?.toString() || '',
         cost_per_unit: product.cost_per_unit?.toString() || '',
@@ -167,12 +185,17 @@ export function ProductsManagementView() {
         return isNaN(n) ? null : n;
       };
 
+      // แปลง id หมวดหมู่จากฟอร์ม -> ชื่อหมวดหมู่เพื่อบันทึกใน products.category
+      const selectedCategoryObj =
+        formData.category &&
+        categories.find((cat: any) => String(cat.id) === String(formData.category));
+
       // ใช้ any เพื่อรองรับฟิลด์เสริมอย่าง min_stock_level ที่อาจยังไม่อยู่ใน type ที่ gen มาจาก DB
       const payload: any = {
         product_code: formData.product_code,
         product_name: formData.product_name,
         description: formData.description || null,
-        category: formData.category || null,
+        category: selectedCategoryObj?.name || null,
         unit: formData.unit || null,
         base_price: toNumberOrNull(formData.base_price),
         cost_per_unit: toNumberOrNull(formData.cost_per_unit),
@@ -210,7 +233,23 @@ export function ProductsManagementView() {
       refetch();
       handleCloseModal();
     } catch (error: any) {
-      showNotification('error', error.message || 'เกิดข้อผิดพลาด');
+      const message: string = error?.message || '';
+
+      // กรณีรหัสสินค้า + หน่วย ซ้ำ (unique constraint)
+      if (
+        message.includes('duplicate key') ||
+        message.includes('products_product_code_unit_key') ||
+        message.includes('409')
+      ) {
+        showNotification(
+          'error',
+          'ไม่สามารถบันทึกได้: รหัสสินค้า + หน่วย นี้มีอยู่แล้วในระบบ กรุณาเปลี่ยนรหัสหรือหน่วย'
+        );
+        return;
+      }
+
+      // แสดงข้อความ error จริง เพื่อช่วย debug
+      showNotification('error', message || 'เกิดข้อผิดพลาด');
     }
   };
 
