@@ -7,6 +7,7 @@ import { LoadingSpinner } from '../ui/LoadingSpinner';
 import { useToast } from '../../hooks';
 import { orderUploadService, UploadedOrder } from '../../services/orderUploadService';
 import { ordersService } from '../../services/ordersService';
+import { incompleteOrdersService } from '../../services/incompleteOrdersService';
 import { useAuth } from '../../hooks';
 
 interface OrderUploadModalProps {
@@ -81,10 +82,9 @@ export function OrderUploadModal({ isOpen, onClose, onSuccess, selectedWarehouse
 
     setIsProcessing(true);
     try {
-      // Batch create orders
+      // Batch create valid orders
       let successCount = 0;
       for (const order of validOrders) {
-        
         const orderInsert = {
           store_id: order.store_id!, // known valid since not error
           order_date: order.order_date,
@@ -98,7 +98,7 @@ export function OrderUploadModal({ isOpen, onClose, onSuccess, selectedWarehouse
           product_id: item.product_id!, // known valid
           quantity: item.quantity,
           unit_price: item.unit_price,
-          discount_percent: Math.round((item.discount / item.total) * 100) || 0, // Approx
+          discount_percent: Math.round((item.discount / (item.total || 1)) * 100) || 0,
           is_bonus: item.unit_price === 0,
           fulfillment_method: 'delivery' as const,
         }));
@@ -106,8 +106,40 @@ export function OrderUploadModal({ isOpen, onClose, onSuccess, selectedWarehouse
         await ordersService.createWithItems(orderInsert, itemsToSubmit, null, null);
         successCount++;
       }
+
+      // Save invalid orders to Pending Sales
+      const invalidOrders = parsedOrders.filter(o => o.error);
+      let pendingCount = 0;
+      for (const order of invalidOrders) {
+          await incompleteOrdersService.create({
+              doc_no: order.doc_no,
+              order_date: order.order_date,
+              customer_name: order.customer_name,
+              customer_code: order.customer_code,
+              net_value: order.net_value,
+              items: order.items.map(item => ({
+                  product_name: item.product_name,
+                  product_code: item.product_code,
+                  quantity: item.quantity,
+                  unit_price: item.unit_price,
+                  unit: item.unit,
+              })),
+              error_message: order.error || 'Unknown error',
+              warehouse_id: selectedWarehouse.id,
+              branch: profile?.branch || null,
+              created_by: profile?.id || null,
+          });
+          pendingCount++;
+      }
       
-      success(`อัพโหลดสำเร็จ ${successCount} ออเดอร์`);
+      if (successCount > 0 && pendingCount > 0) {
+          success(`บันทึกสำเร็จ ${successCount} ออเดอร์ และส่งไปใบขายคงค้าง ${pendingCount} ออเดอร์`);
+      } else if (successCount > 0) {
+          success(`อัพโหลดสำเร็จ ${successCount} ออเดอร์`);
+      } else if (pendingCount > 0) {
+          success(`ส่งข้อมูลไปใบขายคงค้าง ${pendingCount} ออเดอร์สำเร็จ`);
+      }
+
       onSuccess();
       onClose();
     } catch (err: any) {
@@ -287,13 +319,13 @@ export function OrderUploadModal({ isOpen, onClose, onSuccess, selectedWarehouse
                   <Button variant="outline" onClick={resetUpload} disabled={isProcessing}>
                       อัพโหลดไฟล์ใหม่
                   </Button>
-                  <Button 
+                   <Button 
                       onClick={handleConfirmUpload} 
-                      disabled={isProcessing || validCount === 0}
+                      disabled={isProcessing || parsedOrders.length === 0}
                       className="flex items-center gap-2"
                   >
                       <CheckCircle2 className="w-4 h-4" />
-                      บันทึก {validCount} ออเดอร์
+                      บันทึก {parsedOrders.length} ออเดอร์
                   </Button>
                </>
            ) : (
