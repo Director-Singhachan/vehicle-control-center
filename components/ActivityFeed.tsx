@@ -91,7 +91,7 @@ export const ActivityFeed: React.FC<ActivityFeedProps> = ({
         title: isCompleted 
           ? `ซ่อมเสร็จ: ${ticket.vehicle_plate || 'N/A'}`
           : `แจ้งซ่อม: ${ticket.vehicle_plate || 'N/A'}`,
-        description: `${ticket.issue_description || 'ไม่มีรายละเอียด'} - ${getTicketStatusLabel(ticket.status)}`,
+        description: `${ticket.problem_description || 'ไม่มีรายละเอียด'} - ${getTicketStatusLabel(ticket.status)}`,
         time: ticket.created_at,
         icon: getTicketStatusIcon(ticket.status),
         color: isCompleted ? 'text-emerald-500' : 'text-amber-500',

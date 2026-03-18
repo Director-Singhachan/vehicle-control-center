@@ -19,4 +19,5 @@ export * from './useVehicleDocuments';
 export * from './useVehicleDocumentReports';
 export * from './useToast';
 export * from './useCreateTripWizard';
+export * from './usePermissions';
 

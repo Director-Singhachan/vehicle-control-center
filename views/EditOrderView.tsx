@@ -2,6 +2,7 @@ import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { ShoppingCart, Plus, Trash2, Search, Check, Edit, AlertTriangle, Grid3x3, Clock, Gift, Truck, Store } from 'lucide-react';
 import { useProducts, useWarehouses, useProductCategories } from '../hooks/useInventory';
 import { ordersService, orderItemsService } from '../services/ordersService';
+import { orderTripSyncService } from '../services/orderTripSyncService';
 import { productTierPriceService } from '../services/customerTierService';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
@@ -569,11 +570,22 @@ export function EditOrderView({ orderId, onSave, onCancel }: EditOrderViewProps)
         total_amount: calculateTotal.total,
       });
 
-      // 8. Sync ไปยังทริป (ทำงานอัตโนมัติผ่าน database trigger)
-      // หมายเหตุ: การ sync จะทำงานอัตโนมัติใน database backend
-      // ไม่ต้องเรียก sync service เอง เพราะ database trigger จะจัดการให้
       if (hasAssignedTrip) {
-        showNotification('success', 'แก้ไขออเดอร์เรียบร้อย ระบบจะ sync ไปยังทริปอัตโนมัติ');
+        const syncResult = await orderTripSyncService.syncOrderToTrip(orderId);
+
+        if (syncResult.success) {
+          showNotification(
+            'success',
+            syncResult.syncedItems && syncResult.syncedItems > 0
+              ? 'แก้ไขออเดอร์และซิงค์ข้อมูลไปยังทริปเรียบร้อย'
+              : 'แก้ไขออเดอร์เรียบร้อย ข้อมูลทริปเป็นปัจจุบันแล้ว'
+          );
+        } else {
+          showNotification(
+            'warning',
+            `แก้ไขออเดอร์เรียบร้อย แต่ซิงค์ไปยังทริปไม่สำเร็จ: ${syncResult.message}`
+          );
+        }
       } else {
         showNotification('success', 'แก้ไขออเดอร์เรียบร้อย');
       }

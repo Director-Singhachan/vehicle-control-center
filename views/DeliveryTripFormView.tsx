@@ -110,7 +110,12 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
 
   if (loadingTrip) {
     return (
-      <PageLayout title={isEdit ? 'แก้ไขทริปส่งสินค้า' : 'สร้างทริปส่งสินค้า'} loading={true} />
+      <PageLayout
+        title={isEdit ? 'แก้ไขทริปส่งสินค้า' : 'สร้างทริปส่งสินค้า'}
+        loading={true}
+      >
+        {/* ใช้ PageLayout ในโหมด loading ขณะกำลังดึงข้อมูลทริป */}
+      </PageLayout>
     );
   }
 

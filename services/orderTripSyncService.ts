@@ -75,7 +75,7 @@ export const orderTripSyncService = {
       // 3. ดึง order items (เฉพาะ fulfillment_method = 'delivery' — pickup ไม่ sync)
       const { data: allOrderItems, error: itemsError } = await supabase
         .from('order_items')
-        .select('id, product_id, quantity, is_bonus, fulfillment_method')
+        .select('id, product_id, quantity, notes, is_bonus, fulfillment_method, quantity_picked_up_at_store')
         .eq('order_id', orderId);
 
       if (itemsError) {
@@ -88,13 +88,6 @@ export const orderTripSyncService = {
       const orderItems = (allOrderItems || []).filter(
         (i: any) => (i.fulfillment_method ?? 'delivery') !== 'pickup'
       );
-
-      if (orderItems.length === 0) {
-        return {
-          success: true,
-          message: 'ออเดอร์นี้ไม่มีรายการจัดส่งที่ต้อง sync (เฉพาะ delivery)',
-        };
-      }
 
       // 4. ดึง store_id จากออเดอร์
       const { data: orderData, error: orderDataError } = await supabase
@@ -126,63 +119,164 @@ export const orderTripSyncService = {
 
       const tripStore = tripStores[0];
 
-      // 6. Sync แต่ละ order item ไปยัง delivery_trip_items
+      // 6. Mirror ข้อมูล order_items ไปยัง delivery_trip_items ของร้านนี้
+      const { data: existingTripItems, error: existingTripItemsError } = await supabase
+        .from('delivery_trip_items')
+        .select('id, product_id, quantity, notes, is_bonus, quantity_picked_up_at_store')
+        .eq('delivery_trip_id', trip.id)
+        .eq('delivery_trip_store_id', tripStore.id);
+
+      if (existingTripItemsError) {
+        return {
+          success: false,
+          message: `เกิดข้อผิดพลาดในการดึงรายการสินค้าในทริป: ${existingTripItemsError.message}`,
+        };
+      }
+
+      const makeItemKey = (productId: string, isBonus: boolean) => `${productId}__${isBonus ? 'bonus' : 'normal'}`;
+
+      const desiredTripItems = new Map<string, {
+        product_id: string;
+        quantity: number;
+        notes: string | null;
+        is_bonus: boolean;
+        quantity_picked_up_at_store: number;
+      }>();
+
+      for (const item of orderItems) {
+        const key = makeItemKey(item.product_id, item.is_bonus || false);
+        const existing = desiredTripItems.get(key);
+        const quantity = Number(item.quantity || 0);
+        const pickedUpAtStore = Math.min(
+          Math.max(0, Number(item.quantity_picked_up_at_store ?? 0)),
+          quantity,
+        );
+
+        if (existing) {
+          existing.quantity += quantity;
+          existing.quantity_picked_up_at_store = Math.min(
+            existing.quantity,
+            existing.quantity_picked_up_at_store + pickedUpAtStore,
+          );
+          if (!existing.notes && item.notes) {
+            existing.notes = item.notes;
+          }
+        } else {
+          desiredTripItems.set(key, {
+            product_id: item.product_id,
+            quantity,
+            notes: item.notes ?? null,
+            is_bonus: item.is_bonus || false,
+            quantity_picked_up_at_store: pickedUpAtStore,
+          });
+        }
+      }
+
+      const existingTripItemsByKey = new Map<string, any[]>();
+      for (const item of existingTripItems || []) {
+        const key = makeItemKey(item.product_id, item.is_bonus || false);
+        const bucket = existingTripItemsByKey.get(key) || [];
+        bucket.push(item);
+        existingTripItemsByKey.set(key, bucket);
+      }
+
       let syncedCount = 0;
       let skippedCount = 0;
 
-      for (const orderItem of orderItems) {
-        // หา delivery_trip_item ที่มี product_id และ is_bonus เหมือนกัน
-        const { data: existingTripItems, error: findError } = await supabase
+      for (const tripItem of existingTripItems || []) {
+        const key = makeItemKey(tripItem.product_id, tripItem.is_bonus || false);
+        if (desiredTripItems.has(key)) continue;
+
+        const { error: deleteError } = await supabase
           .from('delivery_trip_items')
-          .select('id, quantity')
-          .eq('delivery_trip_id', trip.id)
-          .eq('delivery_trip_store_id', tripStore.id)
-          .eq('product_id', orderItem.product_id)
-          .eq('is_bonus', orderItem.is_bonus || false);
+          .delete()
+          .eq('id', tripItem.id);
 
-        if (findError) {
-          console.error(`[orderTripSyncService] Error finding trip item for product ${orderItem.product_id}:`, findError);
+        if (deleteError) {
+          console.error(`[orderTripSyncService] Error deleting trip item ${tripItem.id}:`, deleteError);
           skippedCount++;
-          continue;
-        }
-
-        if (existingTripItems && existingTripItems.length > 0) {
-          // อัพเดท quantity
-          const tripItem = existingTripItems[0];
-          if (tripItem.quantity !== orderItem.quantity) {
-            const { error: updateError } = await supabase
-              .from('delivery_trip_items')
-              .update({ quantity: orderItem.quantity })
-              .eq('id', tripItem.id);
-
-            if (updateError) {
-              console.error(`[orderTripSyncService] Error updating trip item ${tripItem.id}:`, updateError);
-              skippedCount++;
-            } else {
-              syncedCount++;
-            }
-          } else {
-            skippedCount++; // ไม่ต้อง sync เพราะ quantity เหมือนกัน
-          }
         } else {
-          // ไม่มี trip item → เพิ่มใหม่
+          syncedCount++;
+        }
+      }
+
+      for (const desiredTripItem of desiredTripItems.values()) {
+        const key = makeItemKey(desiredTripItem.product_id, desiredTripItem.is_bonus);
+        const matchingTripItems = existingTripItemsByKey.get(key) || [];
+        const existingTripItem = matchingTripItems[0];
+
+        if (!existingTripItem) {
           const { error: insertError } = await supabase
             .from('delivery_trip_items')
             .insert({
               delivery_trip_id: trip.id,
               delivery_trip_store_id: tripStore.id,
-              product_id: orderItem.product_id,
-              quantity: orderItem.quantity,
-              is_bonus: orderItem.is_bonus || false,
+              product_id: desiredTripItem.product_id,
+              quantity: desiredTripItem.quantity,
+              quantity_picked_up_at_store: desiredTripItem.quantity_picked_up_at_store,
+              notes: desiredTripItem.notes,
+              is_bonus: desiredTripItem.is_bonus,
             });
 
           if (insertError) {
-            console.error(`[orderTripSyncService] Error inserting trip item for product ${orderItem.product_id}:`, insertError);
+            console.error(`[orderTripSyncService] Error inserting trip item for product ${desiredTripItem.product_id}:`, insertError);
             skippedCount++;
           } else {
             syncedCount++;
           }
+          continue;
         }
+
+        if (matchingTripItems.length > 1) {
+          for (const duplicateTripItem of matchingTripItems.slice(1)) {
+            const { error: duplicateDeleteError } = await supabase
+              .from('delivery_trip_items')
+              .delete()
+              .eq('id', duplicateTripItem.id);
+
+            if (duplicateDeleteError) {
+              console.error(`[orderTripSyncService] Error deleting duplicate trip item ${duplicateTripItem.id}:`, duplicateDeleteError);
+              skippedCount++;
+            } else {
+              syncedCount++;
+            }
+          }
+        }
+
+        const shouldUpdate =
+          Number(existingTripItem.quantity) !== desiredTripItem.quantity ||
+          Number(existingTripItem.quantity_picked_up_at_store ?? 0) !== desiredTripItem.quantity_picked_up_at_store ||
+          (existingTripItem.notes ?? null) !== desiredTripItem.notes;
+
+        if (!shouldUpdate) {
+          skippedCount++;
+          continue;
+        }
+
+        const { error: updateError } = await supabase
+          .from('delivery_trip_items')
+          .update({
+            quantity: desiredTripItem.quantity,
+            quantity_picked_up_at_store: desiredTripItem.quantity_picked_up_at_store,
+            notes: desiredTripItem.notes,
+          })
+          .eq('id', existingTripItem.id);
+
+        if (updateError) {
+          console.error(`[orderTripSyncService] Error updating trip item ${existingTripItem.id}:`, updateError);
+          skippedCount++;
+        } else {
+          syncedCount++;
+        }
+      }
+
+      if (orderItems.length === 0 && (existingTripItems || []).length === 0) {
+        return {
+          success: true,
+          message: 'ออเดอร์นี้ไม่มีรายการจัดส่งที่ต้อง sync',
+          syncedItems: 0,
+          skippedItems: 0,
+        };
       }
 
       // 7. Mark trip as having item changes (ถ้ามีการ sync)
