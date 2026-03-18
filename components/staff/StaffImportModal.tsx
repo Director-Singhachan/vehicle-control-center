@@ -94,7 +94,14 @@ export const StaffImportModal: React.FC<StaffImportModalProps> = ({ isOpen, onCl
     const [loading, setLoading] = useState(false);
     const [importing, setImporting] = useState(false);
     const [progress, setProgress] = useState(0);
+    const [expandedRow, setExpandedRow] = useState<number | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
+
+    // Filter and Sort states
+    const [searchQuery, setSearchQuery] = useState('');
+    const [actionFilter, setActionFilter] = useState<'all' | 'create' | 'update' | 'skip'>('all');
+    const [roleFilter, setRoleFilter] = useState<string>('all');
+    const [sortConfig, setSortConfig] = useState<{ key: keyof ProcessedRow | 'role' | 'branch' | 'action', direction: 'asc' | 'desc' } | null>(null);
 
     const stats = useMemo(() => {
         return {
@@ -104,6 +111,53 @@ export const StaffImportModal: React.FC<StaffImportModalProps> = ({ isOpen, onCl
             error: processedRows.filter(r => r.error).length,
         };
     }, [processedRows]);
+
+    const roles = useMemo(() => {
+        const set = new Set<string>();
+        processedRows.forEach(r => set.add(r.role));
+        return Array.from(set).sort();
+    }, [processedRows]);
+
+    const filteredRows = useMemo(() => {
+        let rows = [...processedRows];
+
+        // Filtering
+        if (searchQuery) {
+            const q = searchQuery.toLowerCase();
+            rows = rows.filter(r => 
+                r.full_name.toLowerCase().includes(q) || 
+                r.employee_code.toLowerCase().includes(q) ||
+                (r.position || '').toLowerCase().includes(q)
+            );
+        }
+        if (actionFilter !== 'all') {
+            rows = rows.filter(r => r.action === actionFilter);
+        }
+        if (roleFilter !== 'all') {
+            rows = rows.filter(r => r.role === roleFilter);
+        }
+
+        // Sorting
+        if (sortConfig) {
+            rows.sort((a, b) => {
+                const aVal = (a as any)[sortConfig.key] || '';
+                const bVal = (b as any)[sortConfig.key] || '';
+                if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
+                if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
+                return 0;
+            });
+        }
+
+        return rows;
+    }, [processedRows, searchQuery, actionFilter, roleFilter, sortConfig]);
+
+    const toggleSort = (key: any) => {
+        let direction: 'asc' | 'desc' = 'asc';
+        if (sortConfig && sortConfig.key === key && sortConfig.direction === 'asc') {
+            direction = 'desc';
+        }
+        setSortConfig({ key, direction });
+    };
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const f = e.target.files?.[0];
@@ -120,12 +174,10 @@ export const StaffImportModal: React.FC<StaffImportModalProps> = ({ isOpen, onCl
             try {
                 const data = new Uint8Array(e.target?.result as ArrayBuffer);
                 const workbook = XLSX.read(data, { type: 'array' });
-                const sheet = workbook.Sheets['Simple'] || workbook.Sheets[workbook.SheetNames[0]];
+                const sheetIndices = workbook.SheetNames.findIndex(n => n.includes('Simple'));
+                const sheetName = sheetIndices !== -1 ? workbook.SheetNames[sheetIndices] : workbook.SheetNames[0];
+                const sheet = workbook.Sheets[sheetName];
                 
-                // transform logic per user request:
-                // Skip rows until headers are found. The Power Query skips and promotes twice.
-                // Usually this means headers might be on row 2 or 3.
-                // We'll search for 'รหัสพนักงาน' to find the header row.
                 const rawJson = XLSX.utils.sheet_to_json(sheet, { header: 1 }) as any[][];
                 let headerRowIndex = -1;
                 for (let i = 0; i < Math.min(20, rawJson.length); i++) {
@@ -170,13 +222,19 @@ export const StaffImportModal: React.FC<StaffImportModalProps> = ({ isOpen, onCl
                     let changes: Record<string, { old: any, new: any }> = {};
 
                     if (existing) {
-                        if (existing.full_name !== fullName) changes.full_name = { old: existing.full_name, new: fullName };
-                        if (existing.name_prefix !== prefix) changes.name_prefix = { old: existing.name_prefix, new: prefix };
-                        if (existing.role !== role) changes.role = { old: existing.role, new: role };
-                        if (existing.branch !== branch) changes.branch = { old: existing.branch, new: branch };
-                        if (existing.department !== dept) changes.department = { old: existing.department, new: dept };
-                        if (existing.position !== pos) changes.position = { old: existing.position, new: pos };
-                        if (existing.phone !== phone) changes.phone = { old: existing.phone, new: phone };
+                        const checkVal = (old: any, val: any) => {
+                            const o = (old || '').toString().trim();
+                            const n = (val || '').toString().trim();
+                            return o === n;
+                        };
+
+                        if (!checkVal(existing.full_name, fullName)) changes.full_name = { old: existing.full_name, new: fullName };
+                        if (!checkVal(existing.name_prefix, prefix)) changes.name_prefix = { old: existing.name_prefix, new: prefix };
+                        if (!checkVal(existing.role, role)) changes.role = { old: existing.role, new: role };
+                        if (!checkVal(existing.branch, branch)) changes.branch = { old: existing.branch, new: branch };
+                        if (!checkVal(existing.department, dept)) changes.department = { old: existing.department, new: dept };
+                        if (!checkVal(existing.position, pos)) changes.position = { old: existing.position, new: pos };
+                        if (!checkVal(existing.phone, phone)) changes.phone = { old: existing.phone, new: phone };
                         
                         // Only update if there are actual changes
                         if (Object.keys(changes).length === 0) {
@@ -260,6 +318,11 @@ export const StaffImportModal: React.FC<StaffImportModalProps> = ({ isOpen, onCl
         onClose();
     };
 
+    const renderSortIcon = (key: any) => {
+        if (!sortConfig || sortConfig.key !== key) return null;
+        return <span className="ml-1">{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>;
+    };
+
     return (
         <Modal
             isOpen={isOpen}
@@ -292,7 +355,7 @@ export const StaffImportModal: React.FC<StaffImportModalProps> = ({ isOpen, onCl
                     </div>
                 ) : (
                     <div className="space-y-4">
-                        <div className="flex items-center justify-between">
+                        <div className="flex flex-wrap items-center justify-between gap-4">
                             <div className="flex items-center gap-3">
                                 <div className="p-2 bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 rounded-lg">
                                     <FileText size={20} />
@@ -314,61 +377,179 @@ export const StaffImportModal: React.FC<StaffImportModalProps> = ({ isOpen, onCl
                             </div>
                         ) : (
                             <>
-                                <div className="grid grid-cols-3 gap-4">
-                                    <Card className="p-3 bg-blue-50/50 dark:bg-blue-900/20 border-blue-100 dark:border-blue-900/30">
-                                        <p className="text-[10px] text-blue-600 dark:text-blue-400 font-bold uppercase">ทั้งหมด</p>
-                                        <p className="text-xl font-bold">{stats.total}</p>
+                                {/* Stats & Filters */}
+                                <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+                                    <Card className="p-3 bg-blue-50/50 dark:bg-blue-900/20 border-blue-100 dark:border-blue-900/30 lg:col-span-1">
+                                        <p className="text-[10px] text-blue-600 dark:text-blue-400 font-bold uppercase">สรุปเบื้องต้น</p>
+                                        <div className="flex gap-4 mt-1">
+                                            <div>
+                                                <p className="text-xs text-slate-500">สร้างใหม่</p>
+                                                <p className="text-lg font-bold text-green-600">{stats.create}</p>
+                                            </div>
+                                            <div>
+                                                <p className="text-xs text-slate-500">อัปเดต</p>
+                                                <p className="text-lg font-bold text-orange-600">{stats.update}</p>
+                                            </div>
+                                        </div>
                                     </Card>
-                                    <Card className="p-3 bg-green-50/50 dark:bg-green-900/20 border-green-100 dark:border-green-900/30">
-                                        <p className="text-[10px] text-green-600 dark:text-green-400 font-bold uppercase">สร้างใหม่</p>
-                                        <p className="text-xl font-bold text-green-600">{stats.create}</p>
-                                    </Card>
-                                    <Card className="p-3 bg-orange-50/50 dark:bg-orange-900/20 border-orange-100 dark:border-orange-900/30">
-                                        <p className="text-[10px] text-orange-600 dark:text-orange-400 font-bold uppercase">อัปเดต</p>
-                                        <p className="text-xl font-bold text-orange-600">{stats.update}</p>
-                                    </Card>
+
+                                    <div className="lg:col-span-3 grid grid-cols-1 md:grid-cols-3 gap-2">
+                                        <div className="relative">
+                                            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+                                            <input
+                                                type="text"
+                                                placeholder="ค้นหาชื่อ หรือรหัส..."
+                                                value={searchQuery}
+                                                onChange={(e) => setSearchQuery(e.target.value)}
+                                                className="w-full pl-8 pr-3 py-2 text-xs border border-slate-200 dark:border-slate-800 rounded-lg bg-white dark:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                            />
+                                        </div>
+                                        <select
+                                            value={actionFilter}
+                                            onChange={(e) => setActionFilter(e.target.value as any)}
+                                            className="px-3 py-2 text-xs border border-slate-200 dark:border-slate-800 rounded-lg bg-white dark:bg-slate-900 focus:outline-none"
+                                        >
+                                            <option value="all">การดำเนินการทั้งหมด</option>
+                                            <option value="create">เพิ่มอย่างเดียว</option>
+                                            <option value="update">อัปเดตอย่างเดียว</option>
+                                            <option value="skip">ไม่เปลี่ยนแปลง</option>
+                                        </select>
+                                        <select
+                                            value={roleFilter}
+                                            onChange={(e) => setRoleFilter(e.target.value)}
+                                            className="px-3 py-2 text-xs border border-slate-200 dark:border-slate-800 rounded-lg bg-white dark:bg-slate-900 focus:outline-none"
+                                        >
+                                            <option value="all">บทบาททั้งหมด</option>
+                                            {roles.map(r => <option key={r} value={r}>{r}</option>)}
+                                        </select>
+                                    </div>
                                 </div>
 
-                                <div className="max-h-[400px] overflow-auto rounded-lg border border-slate-200 dark:border-slate-800">
-                                    <table className="w-full text-left border-collapse">
-                                        <thead className="sticky top-0 bg-slate-100 dark:bg-slate-800 text-[10px] uppercase font-bold text-slate-500">
+                                <div className="max-h-[400px] overflow-auto rounded-lg border border-slate-200 dark:border-slate-800 shadow-inner">
+                                    <table className="w-full text-left border-separate border-spacing-0">
+                                        <thead className="sticky top-0 z-10 bg-slate-100 dark:bg-slate-800 text-[10px] uppercase font-bold text-slate-500">
                                             <tr>
-                                                <th className="px-4 py-2">รหัส</th>
-                                                <th className="px-4 py-2">ชื่อ-นามสกุล</th>
-                                                <th className="px-4 py-2">Role/สาขา</th>
-                                                <th className="px-4 py-2">การดำเนินการ</th>
+                                                <th className="px-4 py-2 cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors" onClick={() => toggleSort('employee_code')}>
+                                                    รหัส {renderSortIcon('employee_code')}
+                                                </th>
+                                                <th className="px-4 py-2 cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors" onClick={() => toggleSort('full_name')}>
+                                                    ชื่อ-นามสกุล {renderSortIcon('full_name')}
+                                                </th>
+                                                <th className="px-4 py-2 cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors" onClick={() => toggleSort('role')}>
+                                                    Role/สาขา {renderSortIcon('role')}
+                                                </th>
+                                                <th className="px-4 py-2 cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors" onClick={() => toggleSort('action')}>
+                                                    สถานะ {renderSortIcon('action')}
+                                                </th>
+                                                <th className="px-4 py-2"></th>
                                             </tr>
                                         </thead>
                                         <tbody className="text-sm divide-y divide-slate-100 dark:divide-slate-800">
-                                            {processedRows.map((row, idx) => (
-                                                <tr key={idx} className={row.action === 'skip' ? 'opacity-40' : ''}>
-                                                    <td className="px-4 py-3 font-mono text-xs">{row.employee_code}</td>
-                                                    <td className="px-4 py-3">
-                                                        <div className="font-medium text-slate-900 dark:text-white">
-                                                            {row.name_prefix} {row.full_name}
-                                                        </div>
-                                                        <div className="text-[10px] text-slate-500">{row.position}</div>
-                                                    </td>
-                                                    <td className="px-4 py-3">
-                                                        <div className="flex flex-col gap-1">
-                                                            <Badge variant="info" className="text-[10px] w-fit">{row.role}</Badge>
-                                                            <span className="text-[10px] text-slate-500">{row.branch}</span>
-                                                        </div>
-                                                    </td>
-                                                    <td className="px-4 py-3">
-                                                        {row.action === 'create' && <Badge variant="success">เพิ่มใหม่</Badge>}
-                                                        {row.action === 'update' && (
-                                                            <div className="space-y-1">
-                                                                <Badge variant="warning">อัปเดต</Badge>
-                                                                <div className="text-[10px] text-slate-400">
-                                                                    {Object.keys(row.changes || {}).length} ฟิลด์เปลี่ยน
-                                                                </div>
-                                                            </div>
-                                                        )}
-                                                        {row.action === 'skip' && <span className="text-xs text-slate-400">ไม่มีอะไรเปลี่ยนแปลง</span>}
-                                                    </td>
+                                            {filteredRows.length === 0 ? (
+                                                <tr>
+                                                    <td colSpan={5} className="px-4 py-10 text-center text-slate-400 italic">ไม่พบคออมูลที่ค้นหา</td>
                                                 </tr>
-                                            ))}
+                                            ) : (
+                                                filteredRows.map((row, idx) => {
+                                                    const isExpanded = expandedRow === idx;
+                                                    return (
+                                                        <React.Fragment key={idx}>
+                                                            <tr className={`hover:bg-slate-50/50 dark:hover:bg-slate-900/50 transition-colors ${row.action === 'skip' ? 'opacity-50' : ''}`}>
+                                                                <td className="px-4 py-3 font-mono text-xs">{row.employee_code}</td>
+                                                                <td className="px-4 py-3">
+                                                                    <div className="font-medium text-slate-900 dark:text-white">
+                                                                        {row.name_prefix} {row.full_name}
+                                                                    </div>
+                                                                    <div className="text-[10px] text-slate-500">{row.position}</div>
+                                                                </td>
+                                                                <td className="px-4 py-3">
+                                                                    <div className="flex flex-col gap-1">
+                                                                        <Badge variant="info" className="text-[10px] w-fit">{row.role}</Badge>
+                                                                        <span className="text-[10px] text-slate-500">{row.branch}</span>
+                                                                    </div>
+                                                                </td>
+                                                                <td className="px-4 py-3">
+                                                                    {row.action === 'create' && <Badge variant="success">เพิ่มใหม่</Badge>}
+                                                                    {row.action === 'update' && (
+                                                                        <div className="flex flex-col gap-1">
+                                                                            <Badge variant="warning">อัปเดต</Badge>
+                                                                            <span className="text-[10px] text-slate-400">{Object.keys(row.changes || {}).length} รายการ</span>
+                                                                        </div>
+                                                                    )}
+                                                                    {row.action === 'skip' && <span className="text-xs text-slate-400 italic">ไม่มีการแก้ไข</span>}
+                                                                </td>
+                                                                <td className="px-4 py-3 text-right">
+                                                                    <Button 
+                                                                        variant="ghost" 
+                                                                        size="sm" 
+                                                                        className="p-1 h-auto"
+                                                                        onClick={() => setExpandedRow(isExpanded ? null : idx)}
+                                                                    >
+                                                                        <Info size={16} className={isExpanded ? 'text-blue-600' : 'text-slate-400'} />
+                                                                    </Button>
+                                                                </td>
+                                                            </tr>
+                                                            {isExpanded && (
+                                                                <tr className="bg-slate-50 dark:bg-slate-900/30">
+                                                                    <td colSpan={5} className="px-8 py-4 border-t border-slate-200 dark:border-slate-800">
+                                                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                                                                            {/* Full Details */}
+                                                                            <div>
+                                                                                <h5 className="text-xs font-bold text-slate-400 uppercase mb-3 flex items-center gap-1.5">
+                                                                                    <Info size={12} /> ข้อมูลทั้งหมดที่จะนำเข้า
+                                                                                </h5>
+                                                                                <div className="grid grid-cols-2 gap-y-2 text-xs">
+                                                                                    <span className="text-slate-500">รหัสพนักงาน:</span> <span className="font-medium">{row.employee_code}</span>
+                                                                                    <span className="text-slate-500">ชื่อ-นามสกุล:</span> <span className="font-medium">{row.name_prefix}{row.full_name}</span>
+                                                                                    <span className="text-slate-500">ตำแหน่ง:</span> <span className="font-medium">{row.position || '-'}</span>
+                                                                                    <span className="text-slate-500">แผนก:</span> <span className="font-medium">{row.department || '-'}</span>
+                                                                                    <span className="text-slate-500">เบอร์โทร:</span> <span className="font-medium">{row.phone || '-'}</span>
+                                                                                    <span className="text-slate-500">อีเมล:</span> <span className="font-medium">{row.email || '(อัตโนมัติ)'}</span>
+                                                                                    <span className="text-slate-500">สาขา:</span> <span className="font-medium">{row.branch}</span>
+                                                                                    <span className="text-slate-500">Role:</span> <span className="font-medium text-blue-600">{row.role}</span>
+                                                                                </div>
+                                                                            </div>
+
+                                                                            {/* Change Comparison for Updates */}
+                                                                            {row.action === 'update' && row.changes && (
+                                                                                <div>
+                                                                                    <h5 className="text-xs font-bold text-orange-500 uppercase mb-3 flex items-center gap-1.5">
+                                                                                        <AlertCircle size={12} /> รายการที่มีการเปลี่ยนแปลง
+                                                                                    </h5>
+                                                                                    <div className="space-y-2">
+                                                                                        {Object.entries(row.changes).map(([key, diff]) => {
+                                                                                            const d = diff as { old: any, new: any };
+                                                                                            const labels: Record<string, string> = {
+                                                                                                full_name: 'ชื่อ-นามสกุล',
+                                                                                                name_prefix: 'คำนำหน้า',
+                                                                                                role: 'บทบาท',
+                                                                                                branch: 'สาขา',
+                                                                                                department: 'แผนก',
+                                                                                                position: 'ตำแหน่ง',
+                                                                                                phone: 'เบอร์โทร'
+                                                                                            };
+                                                                                            return (
+                                                                                                <div key={key} className="flex flex-col p-2 bg-white dark:bg-slate-800 rounded border border-slate-200 dark:border-slate-700 shadow-sm">
+                                                                                                    <span className="text-[10px] font-bold text-slate-400 uppercase">{labels[key] || key}</span>
+                                                                                                    <div className="flex items-center gap-2 mt-1">
+                                                                                                        <span className="text-xs text-slate-400 line-through truncate max-w-[120px]">{d.old || '(ว่าง)'}</span>
+                                                                                                        <ArrowRight size={10} className="text-slate-300" />
+                                                                                                        <span className="text-xs text-blue-600 font-bold truncate">{d.new || '(ว่าง)'}</span>
+                                                                                                    </div>
+                                                                                                </div>
+                                                                                            );
+                                                                                        })}
+                                                                                    </div>
+                                                                                </div>
+                                                                            )}
+                                                                        </div>
+                                                                    </td>
+                                                                </tr>
+                                                            )}
+                                                        </React.Fragment>
+                                                    );
+                                                })
+                                            )}
                                         </tbody>
                                     </table>
                                 </div>
@@ -378,23 +559,23 @@ export const StaffImportModal: React.FC<StaffImportModalProps> = ({ isOpen, onCl
                 )}
             </div>
 
-            <div className="flex justify-end gap-3 mt-6">
+            <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-slate-100 dark:border-slate-800">
                 <Button variant="ghost" onClick={onClose} disabled={importing}>ยกเลิก</Button>
                 {file && !loading && (
                     <Button 
                         onClick={handleImport} 
                         disabled={importing || (stats.create === 0 && stats.update === 0)}
-                        className="min-w-[120px]"
+                        className="min-w-[150px] bg-enterprise-600 hover:bg-enterprise-700 text-white"
                     >
                         {importing ? (
                             <>
                                 <LoadingSpinner size={16} className="mr-2" />
-                                {progress}%
+                                กำลังดำเนินการ {progress}%
                             </>
                         ) : (
                             <>
-                                <Save size={16} className="mr-2" />
-                                ยืนยันนำเข้า {stats.create + stats.update} รายการ
+                                <CheckCircle size={16} className="mr-2" />
+                                นำเข้า {stats.create + stats.update} รายการ
                             </>
                         )}
                     </Button>
