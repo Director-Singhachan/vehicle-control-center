@@ -82,9 +82,9 @@ function inferRole(position: string): AppRole {
 
 function inferBranch(position: string, branchCode: string): string {
     const combined = `${position} ${branchCode}`.toUpperCase();
-    if (combined.includes('SD')) return 'สาขาสอยดาว';
+    if (combined.includes('SD')) return 'SD';
     if (combined.includes('ASIA')) return 'Asia';
-    return 'สาขาหลัก';
+    return 'HQ';
 }
 
 export const StaffImportModal: React.FC<StaffImportModalProps> = ({ isOpen, onClose, onSuccess, existingStaff }) => {
@@ -204,10 +204,14 @@ export const StaffImportModal: React.FC<StaffImportModalProps> = ({ isOpen, onCl
                     const code = row[colMap['รหัสพนักงาน']]?.toString().trim();
                     if (!code) continue;
 
-                    const prefix = row[colMap['คำนำหน้า']]?.toString().trim() || null;
+                    let prefix = row[colMap['คำนำหน้า']]?.toString().trim() || null;
+                    if (prefix && prefix.length > 3) {
+                        prefix = prefix.substring(3);
+                    }
                     const firstName = row[colMap['ชื่อจริง']]?.toString().trim() || '';
                     const lastName = row[colMap['นามสกุล']]?.toString().trim() || '';
-                    const fullName = `${firstName} ${lastName}`.trim();
+                    const nickname = row[colMap['ชื่อเล่น']]?.toString().trim() || '';
+                    const fullName = `${firstName} ${lastName}${nickname ? ` (${nickname})` : ''}`.trim();
                     const phone = row[colMap['เบอร์โทร']]?.toString().trim() || null;
                     const email = row[colMap['Email']]?.toString().trim() || null;
                     const dept = row[colMap['ชื่อแผนก']]?.toString().trim() || null;
@@ -327,19 +331,19 @@ export const StaffImportModal: React.FC<StaffImportModalProps> = ({ isOpen, onCl
         <Modal
             isOpen={isOpen}
             onClose={onClose}
-            title="นำเข้าพนักงานจากไฟล์ Excel"
+            title="จัดการการนำเข้าข้อมูลพนักงาน"
             size="large"
         >
             <div className="space-y-6">
                 {!file ? (
-                    <div className="flex flex-col items-center justify-center py-12 border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-xl bg-slate-50/50 dark:bg-slate-900/50">
-                        <div className="w-16 h-16 bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-full flex items-center justify-center mb-4">
-                            <Upload size={32} />
+                    <div className="flex flex-col items-center justify-center py-16 border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-2xl bg-slate-50/30 dark:bg-slate-900/30 transition-all hover:border-enterprise-400 hover:bg-slate-50/50">
+                        <div className="w-20 h-20 bg-blue-100/50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-2xl flex items-center justify-center mb-6 shadow-sm">
+                            <Upload size={40} />
                         </div>
-                        <h4 className="text-lg font-semibold text-slate-900 dark:text-white mb-1">ลากไฟล์วางที่นี่ หรือคลิกเพื่อค้นหา</h4>
-                        <p className="text-sm text-slate-500 dark:text-slate-400 mb-6 text-center max-w-sm">
-                            รองรับไฟล์ .xlsx จากระบบพนักงาน (Sheet: Simple)<br />
-                            รหัสพนักงานจะถูกใช้เป็นกุญแจหลักในการเปรียบเทียบข้อมูล
+                        <h4 className="text-xl font-bold text-slate-900 dark:text-white mb-2">อัปโหลดไฟล์ข้อมูลพนักงาน</h4>
+                        <p className="text-sm text-slate-500 dark:text-slate-400 mb-8 text-center max-w-sm px-6">
+                            รองรับไฟล์ <span className="font-bold">.xlsx (Sheet: Simple)</span><br />
+                            ระบบจะเปรียบเทียบข้อมูลด้วยรหัสพนักงานเป็นหลัก
                         </p>
                         <input
                             type="file"
@@ -348,210 +352,285 @@ export const StaffImportModal: React.FC<StaffImportModalProps> = ({ isOpen, onCl
                             accept=".xlsx"
                             onChange={handleFileChange}
                         />
-                        <Button onClick={() => fileInputRef.current?.click()} disabled={loading}>
-                            {loading ? <LoadingSpinner size={16} className="mr-2" /> : <FileText size={16} className="mr-2" />}
+                        <Button 
+                            onClick={() => fileInputRef.current?.click()} 
+                            disabled={loading}
+                            className="bg-enterprise-600 hover:bg-enterprise-700 text-white shadow-md px-8 py-2.5 rounded-xl transition-all active:scale-95"
+                        >
+                            {loading ? <LoadingSpinner size={20} className="mr-2" /> : <FileText size={20} className="mr-2" />}
                             เลือกไฟล์ Excel
                         </Button>
                     </div>
                 ) : (
-                    <div className="space-y-4">
-                        <div className="flex flex-wrap items-center justify-between gap-4">
-                            <div className="flex items-center gap-3">
-                                <div className="p-2 bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 rounded-lg">
-                                    <FileText size={20} />
+                    <div className="space-y-5 animate-in fade-in duration-500">
+                        {/* Header Status Bar */}
+                        <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-800 rounded-2xl">
+                            <div className="flex items-center gap-4">
+                                <div className="p-3 bg-white dark:bg-slate-800 text-green-600 dark:text-green-400 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700">
+                                    <FileText size={24} />
                                 </div>
-                                <div>
-                                    <p className="text-sm font-semibold text-slate-900 dark:text-white">{file.name}</p>
-                                    <p className="text-[10px] text-slate-500 dark:text-slate-400">ขนาด {(file.size / 1024).toFixed(1)} KB</p>
+                                <div className="flex flex-col">
+                                    <span className="text-sm font-bold text-slate-900 dark:text-white truncate max-w-[300px]">{file.name}</span>
+                                    <span className="text-[10px] text-slate-500 font-medium">ขนาด {(file.size / 1024).toFixed(1)} KB</span>
                                 </div>
                             </div>
-                            <Button variant="ghost" size="sm" onClick={() => { setFile(null); setProcessedRows([]); }}>
+                            <Button variant="ghost" size="sm" onClick={() => { setFile(null); setProcessedRows([]); }} className="text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 font-bold text-xs px-4">
                                 เปลี่ยนไฟล์
                             </Button>
                         </div>
 
                         {loading ? (
-                            <div className="py-20 flex flex-col items-center justify-center gap-4">
-                                <LoadingSpinner size={32} />
-                                <p className="text-sm text-slate-500 animate-pulse">กำลังประมวลผลข้อมูลในไฟล์...</p>
+                            <div className="py-24 flex flex-col items-center justify-center gap-5">
+                                <div className="relative">
+                                    <LoadingSpinner size={48} className="text-enterprise-600" />
+                                    <div className="absolute inset-0 flex items-center justify-center">
+                                        <XLSX_ICON className="w-5 h-5 text-green-600 animate-pulse" />
+                                    </div>
+                                </div>
+                                <div className="text-center">
+                                    <p className="text-sm font-bold text-slate-700 dark:text-slate-300">กำลังประมวลผลข้อมูล...</p>
+                                    <p className="text-[11px] text-slate-400 mt-1 italic">ใช้เวลาเพียงครู่เดียวเพื่อจัดเตรียมรายการพนักงาน</p>
+                                </div>
                             </div>
                         ) : (
                             <>
-                                {/* Stats & Filters */}
-                                <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
-                                    <Card className="p-3 bg-blue-50/50 dark:bg-blue-900/20 border-blue-100 dark:border-blue-900/30 lg:col-span-1">
-                                        <p className="text-[10px] text-blue-600 dark:text-blue-400 font-bold uppercase">สรุปเบื้องต้น</p>
-                                        <div className="flex gap-4 mt-1">
-                                            <div>
-                                                <p className="text-xs text-slate-500">สร้างใหม่</p>
-                                                <p className="text-lg font-bold text-green-600">{stats.create}</p>
-                                            </div>
-                                            <div>
-                                                <p className="text-xs text-slate-500">อัปเดต</p>
-                                                <p className="text-lg font-bold text-orange-600">{stats.update}</p>
-                                            </div>
+                                {/* Stats & Integrated Filters Ribbon */}
+                                <div className="space-y-4">
+                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                        <div className="p-4 bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl shadow-sm flex flex-col items-center justify-center">
+                                            <p className="text-[10px] text-slate-400 font-bold uppercase mb-1">รายการทั้งหมด</p>
+                                            <p className="text-2xl font-black text-slate-900 dark:text-white">{stats.total}</p>
                                         </div>
-                                    </Card>
+                                        <div className="p-4 bg-green-50/50 dark:bg-green-900/20 border border-green-100/50 dark:border-green-900/30 rounded-2xl shadow-sm flex flex-col items-center justify-center">
+                                            <p className="text-[10px] text-green-600 dark:text-green-400 font-bold uppercase mb-1">สร้างพนักงานใหม่</p>
+                                            <p className="text-2xl font-black text-green-600">{stats.create}</p>
+                                        </div>
+                                        <div className="p-4 bg-orange-50/50 dark:bg-orange-900/20 border border-orange-100/50 dark:border-orange-900/30 rounded-2xl shadow-sm flex flex-col items-center justify-center">
+                                            <p className="text-[10px] text-orange-600 dark:text-orange-400 font-bold uppercase mb-1">อัปเดตข้อมูลเดิม</p>
+                                            <p className="text-2xl font-black text-orange-600">{stats.update}</p>
+                                        </div>
+                                        <div className="p-4 bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl shadow-sm flex flex-col items-center justify-center opacity-70">
+                                            <p className="text-[10px] text-slate-500 font-bold uppercase mb-1">ไม่มีการแก้ไข</p>
+                                            <p className="text-2xl font-black text-slate-500">{stats.total - stats.create - stats.update}</p>
+                                        </div>
+                                    </div>
 
-                                    <div className="lg:col-span-3 grid grid-cols-1 md:grid-cols-3 gap-2">
-                                        <div className="relative">
-                                            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+                                    {/* Action Bar: Filters & Search */}
+                                    <div className="flex flex-wrap items-center gap-3 p-2 bg-slate-50/50 dark:bg-slate-900/50 rounded-2xl border border-slate-100 dark:border-slate-800">
+                                        <div className="relative flex-1 min-w-[200px]">
+                                            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
                                             <input
                                                 type="text"
-                                                placeholder="ค้นหาชื่อ หรือรหัส..."
+                                                placeholder="ค้นหาชื่อ, รหัส, หรือตำแหน่ง..."
                                                 value={searchQuery}
                                                 onChange={(e) => setSearchQuery(e.target.value)}
-                                                className="w-full pl-8 pr-3 py-2 text-xs border border-slate-200 dark:border-slate-800 rounded-lg bg-white dark:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                className="w-full pl-10 pr-4 py-2 text-sm border-none bg-white dark:bg-slate-800 rounded-xl shadow-sm focus:ring-2 focus:ring-enterprise-500/30 focus:outline-none transition-all"
                                             />
                                         </div>
-                                        <select
-                                            value={actionFilter}
-                                            onChange={(e) => setActionFilter(e.target.value as any)}
-                                            className="px-3 py-2 text-xs border border-slate-200 dark:border-slate-800 rounded-lg bg-white dark:bg-slate-900 focus:outline-none"
-                                        >
-                                            <option value="all">การดำเนินการทั้งหมด</option>
-                                            <option value="create">เพิ่มอย่างเดียว</option>
-                                            <option value="update">อัปเดตอย่างเดียว</option>
-                                            <option value="skip">ไม่เปลี่ยนแปลง</option>
-                                        </select>
-                                        <select
-                                            value={roleFilter}
-                                            onChange={(e) => setRoleFilter(e.target.value)}
-                                            className="px-3 py-2 text-xs border border-slate-200 dark:border-slate-800 rounded-lg bg-white dark:bg-slate-900 focus:outline-none"
-                                        >
-                                            <option value="all">บทบาททั้งหมด</option>
-                                            {roles.map(r => <option key={r} value={r}>{r}</option>)}
-                                        </select>
+                                        <div className="flex gap-2 shrink-0">
+                                            <select
+                                                value={actionFilter}
+                                                onChange={(e) => setActionFilter(e.target.value as any)}
+                                                className="px-4 py-2 text-xs font-bold border-none bg-white dark:bg-slate-800 rounded-xl shadow-sm focus:ring-2 focus:ring-enterprise-500/30 focus:outline-none"
+                                            >
+                                                <option value="all">สถานะทั้งหมด</option>
+                                                <option value="create">(+) เพิ่มใหม่</option>
+                                                <option value="update">(≈) อัปเดต</option>
+                                                <option value="skip">(•) ข้าม</option>
+                                            </select>
+                                            <select
+                                                value={roleFilter}
+                                                onChange={(e) => setRoleFilter(e.target.value)}
+                                                className="px-4 py-2 text-xs font-bold border-none bg-white dark:bg-slate-800 rounded-xl shadow-sm focus:ring-2 focus:ring-enterprise-500/30 focus:outline-none"
+                                            >
+                                                <option value="all">บทบาททั้งหมด</option>
+                                                {roles.map(r => <option key={r} value={r}>{r}</option>)}
+                                            </select>
+                                        </div>
                                     </div>
                                 </div>
 
-                                <div className="max-h-[400px] overflow-auto rounded-lg border border-slate-200 dark:border-slate-800 shadow-inner">
-                                    <table className="w-full text-left border-separate border-spacing-0">
-                                        <thead className="sticky top-0 z-10 bg-slate-100 dark:bg-slate-800 text-[10px] uppercase font-bold text-slate-500">
-                                            <tr>
-                                                <th className="px-4 py-2 cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors" onClick={() => toggleSort('employee_code')}>
-                                                    รหัส {renderSortIcon('employee_code')}
-                                                </th>
-                                                <th className="px-4 py-2 cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors" onClick={() => toggleSort('full_name')}>
-                                                    ชื่อ-นามสกุล {renderSortIcon('full_name')}
-                                                </th>
-                                                <th className="px-4 py-2 cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors" onClick={() => toggleSort('role')}>
-                                                    Role/สาขา {renderSortIcon('role')}
-                                                </th>
-                                                <th className="px-4 py-2 cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors" onClick={() => toggleSort('action')}>
-                                                    สถานะ {renderSortIcon('action')}
-                                                </th>
-                                                <th className="px-4 py-2"></th>
-                                            </tr>
-                                        </thead>
-                                        <tbody className="text-sm divide-y divide-slate-100 dark:divide-slate-800">
-                                            {filteredRows.length === 0 ? (
-                                                <tr>
-                                                    <td colSpan={5} className="px-4 py-10 text-center text-slate-400 italic">ไม่พบคออมูลที่ค้นหา</td>
+                                {/* Table Area */}
+                                <div className="overflow-hidden rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm bg-white dark:bg-slate-950">
+                                    <div className="max-h-[380px] overflow-auto custom-scrollbar">
+                                        <table className="w-full text-left border-separate border-spacing-0">
+                                            <thead className="sticky top-0 z-20 bg-slate-50 dark:bg-slate-900 text-[10px] uppercase font-bold text-slate-400">
+                                                <tr className="border-b dark:border-slate-800">
+                                                    <th className="px-6 py-4 cursor-pointer hover:text-enterprise-600 transition-colors" onClick={() => toggleSort('employee_code')}>
+                                                        รหัส {renderSortIcon('employee_code')}
+                                                    </th>
+                                                    <th className="px-6 py-4 cursor-pointer hover:text-enterprise-600 transition-colors" onClick={() => toggleSort('full_name')}>
+                                                        พนักงาน {renderSortIcon('full_name')}
+                                                    </th>
+                                                    <th className="px-6 py-4 cursor-pointer hover:text-enterprise-600 transition-colors" onClick={() => toggleSort('role')}>
+                                                        Role / สาขา {renderSortIcon('role')}
+                                                    </th>
+                                                    <th className="px-6 py-4 cursor-pointer hover:text-enterprise-600 transition-colors" onClick={() => toggleSort('action')}>
+                                                        สถานะ {renderSortIcon('action')}
+                                                    </th>
+                                                    <th className="px-6 py-4"></th>
                                                 </tr>
-                                            ) : (
-                                                filteredRows.map((row, idx) => {
-                                                    const isExpanded = expandedRow === idx;
-                                                    return (
-                                                        <React.Fragment key={idx}>
-                                                            <tr className={`hover:bg-slate-50/50 dark:hover:bg-slate-900/50 transition-colors ${row.action === 'skip' ? 'opacity-50' : ''}`}>
-                                                                <td className="px-4 py-3 font-mono text-xs">{row.employee_code}</td>
-                                                                <td className="px-4 py-3">
-                                                                    <div className="font-medium text-slate-900 dark:text-white">
-                                                                        {row.name_prefix} {row.full_name}
-                                                                    </div>
-                                                                    <div className="text-[10px] text-slate-500">{row.position}</div>
-                                                                </td>
-                                                                <td className="px-4 py-3">
-                                                                    <div className="flex flex-col gap-1">
-                                                                        <Badge variant="info" className="text-[10px] w-fit">{row.role}</Badge>
-                                                                        <span className="text-[10px] text-slate-500">{row.branch}</span>
-                                                                    </div>
-                                                                </td>
-                                                                <td className="px-4 py-3">
-                                                                    {row.action === 'create' && <Badge variant="success">เพิ่มใหม่</Badge>}
-                                                                    {row.action === 'update' && (
-                                                                        <div className="flex flex-col gap-1">
-                                                                            <Badge variant="warning">อัปเดต</Badge>
-                                                                            <span className="text-[10px] text-slate-400">{Object.keys(row.changes || {}).length} รายการ</span>
-                                                                        </div>
-                                                                    )}
-                                                                    {row.action === 'skip' && <span className="text-xs text-slate-400 italic">ไม่มีการแก้ไข</span>}
-                                                                </td>
-                                                                <td className="px-4 py-3 text-right">
-                                                                    <Button 
-                                                                        variant="ghost" 
-                                                                        size="sm" 
-                                                                        className="p-1 h-auto"
-                                                                        onClick={() => setExpandedRow(isExpanded ? null : idx)}
-                                                                    >
-                                                                        <Info size={16} className={isExpanded ? 'text-blue-600' : 'text-slate-400'} />
-                                                                    </Button>
-                                                                </td>
-                                                            </tr>
-                                                            {isExpanded && (
-                                                                <tr className="bg-slate-50 dark:bg-slate-900/30">
-                                                                    <td colSpan={5} className="px-8 py-4 border-t border-slate-200 dark:border-slate-800">
-                                                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                                                                            {/* Full Details */}
-                                                                            <div>
-                                                                                <h5 className="text-xs font-bold text-slate-400 uppercase mb-3 flex items-center gap-1.5">
-                                                                                    <Info size={12} /> ข้อมูลทั้งหมดที่จะนำเข้า
-                                                                                </h5>
-                                                                                <div className="grid grid-cols-2 gap-y-2 text-xs">
-                                                                                    <span className="text-slate-500">รหัสพนักงาน:</span> <span className="font-medium">{row.employee_code}</span>
-                                                                                    <span className="text-slate-500">ชื่อ-นามสกุล:</span> <span className="font-medium">{row.name_prefix}{row.full_name}</span>
-                                                                                    <span className="text-slate-500">ตำแหน่ง:</span> <span className="font-medium">{row.position || '-'}</span>
-                                                                                    <span className="text-slate-500">แผนก:</span> <span className="font-medium">{row.department || '-'}</span>
-                                                                                    <span className="text-slate-500">เบอร์โทร:</span> <span className="font-medium">{row.phone || '-'}</span>
-                                                                                    <span className="text-slate-500">อีเมล:</span> <span className="font-medium">{row.email || '(อัตโนมัติ)'}</span>
-                                                                                    <span className="text-slate-500">สาขา:</span> <span className="font-medium">{row.branch}</span>
-                                                                                    <span className="text-slate-500">Role:</span> <span className="font-medium text-blue-600">{row.role}</span>
-                                                                                </div>
+                                            </thead>
+                                            <tbody className="text-sm divide-y divide-slate-50 dark:divide-slate-900">
+                                                {filteredRows.length === 0 ? (
+                                                    <tr>
+                                                        <td colSpan={5} className="px-6 py-16 text-center text-slate-400 italic">
+                                                            <Search size={32} className="mx-auto mb-3 opacity-20" />
+                                                            ไม่พบรายการที่ต้องการค้นหา
+                                                        </td>
+                                                    </tr>
+                                                ) : (
+                                                    filteredRows.map((row, idx) => {
+                                                        const isExpanded = expandedRow === idx;
+                                                        return (
+                                                            <React.Fragment key={idx}>
+                                                                <tr 
+                                                                    onClick={() => setExpandedRow(isExpanded ? null : idx)}
+                                                                    className={`group cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-900/50 transition-all ${isExpanded ? 'bg-slate-50/50 dark:bg-blue-900/10' : ''} ${row.action === 'skip' ? 'grayscale opacity-60' : ''}`}
+                                                                >
+                                                                    <td className="px-6 py-4 font-mono text-[11px] font-bold text-slate-500">{row.employee_code}</td>
+                                                                    <td className="px-6 py-4">
+                                                                        <div className="flex items-center gap-3">
+                                                                            <div className="w-8 h-8 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-xs font-bold text-slate-500 border border-slate-200 dark:border-slate-700">
+                                                                                {row.full_name.charAt(0)}
                                                                             </div>
-
-                                                                            {/* Change Comparison for Updates */}
-                                                                            {row.action === 'update' && row.changes && (
-                                                                                <div>
-                                                                                    <h5 className="text-xs font-bold text-orange-500 uppercase mb-3 flex items-center gap-1.5">
-                                                                                        <AlertCircle size={12} /> รายการที่มีการเปลี่ยนแปลง
-                                                                                    </h5>
-                                                                                    <div className="space-y-2">
-                                                                                        {Object.entries(row.changes).map(([key, diff]) => {
-                                                                                            const d = diff as { old: any, new: any };
-                                                                                            const labels: Record<string, string> = {
-                                                                                                full_name: 'ชื่อ-นามสกุล',
-                                                                                                name_prefix: 'คำนำหน้า',
-                                                                                                role: 'บทบาท',
-                                                                                                branch: 'สาขา',
-                                                                                                department: 'แผนก',
-                                                                                                position: 'ตำแหน่ง',
-                                                                                                phone: 'เบอร์โทร'
-                                                                                            };
-                                                                                            return (
-                                                                                                <div key={key} className="flex flex-col p-2 bg-white dark:bg-slate-800 rounded border border-slate-200 dark:border-slate-700 shadow-sm">
-                                                                                                    <span className="text-[10px] font-bold text-slate-400 uppercase">{labels[key] || key}</span>
-                                                                                                    <div className="flex items-center gap-2 mt-1">
-                                                                                                        <span className="text-xs text-slate-400 line-through truncate max-w-[120px]">{d.old || '(ว่าง)'}</span>
-                                                                                                        <ArrowRight size={10} className="text-slate-300" />
-                                                                                                        <span className="text-xs text-blue-600 font-bold truncate">{d.new || '(ว่าง)'}</span>
-                                                                                                    </div>
-                                                                                                </div>
-                                                                                            );
-                                                                                        })}
-                                                                                    </div>
+                                                                            <div>
+                                                                                <div className="font-bold text-slate-900 dark:text-white leading-tight">
+                                                                                    {row.name_prefix} {row.full_name}
                                                                                 </div>
-                                                                            )}
+                                                                                <div className="text-[10px] text-slate-400 font-medium">{row.position || 'ไม่มีตำแหน่ง'}</div>
+                                                                            </div>
+                                                                        </div>
+                                                                    </td>
+                                                                    <td className="px-6 py-4">
+                                                                        <div className="flex flex-col gap-1">
+                                                                            <Badge variant="info" className="text-[10px] px-2 py-0 w-fit font-bold rounded-md bg-blue-50/50 text-blue-600 border border-blue-100/50">{row.role}</Badge>
+                                                                            <span className="text-[10px] text-slate-400 font-medium px-1">{row.branch}</span>
+                                                                        </div>
+                                                                    </td>
+                                                                    <td className="px-6 py-4">
+                                                                        {row.action === 'create' && <Badge variant="success" className="px-3 py-1 text-[10px] font-black rounded-xl">เพิ่มใหม่</Badge>}
+                                                                        {row.action === 'update' && (
+                                                                            <div className="flex flex-col gap-1">
+                                                                                <Badge variant="warning" className="px-3 py-1 text-[10px] font-black rounded-xl">อัปเดต</Badge>
+                                                                                <span className="text-[9px] text-orange-400 font-bold px-1 select-none">แก้ {Object.keys(row.changes || {}).length} รายการ</span>
+                                                                            </div>
+                                                                        )}
+                                                                        {row.action === 'skip' && <span className="text-[10px] text-slate-400 font-bold bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-lg">ข้าม</span>}
+                                                                    </td>
+                                                                    <td className="px-6 py-4 text-right">
+                                                                        <div className="p-1.5 rounded-lg group-hover:bg-white dark:group-hover:bg-slate-800 shadow-sm transition-all border border-transparent group-hover:border-slate-100 dark:group-hover:border-slate-700">
+                                                                            <ArrowRight size={14} className={`text-slate-300 transition-all ${isExpanded ? 'rotate-90 text-blue-500' : ''}`} />
                                                                         </div>
                                                                     </td>
                                                                 </tr>
-                                                            )}
-                                                        </React.Fragment>
-                                                    );
-                                                })
-                                            )}
-                                        </tbody>
-                                    </table>
+                                                                {isExpanded && (
+                                                                    <tr className="bg-slate-50/80 dark:bg-slate-900/40">
+                                                                        <td colSpan={5} className="p-0 border-t border-slate-100 dark:border-slate-800">
+                                                                            <div className="p-8 grid grid-cols-1 lg:grid-cols-12 gap-10 animate-in slide-in-from-top-1 duration-300">
+                                                                                {/* Full Profile Details Card */}
+                                                                                <div className="lg:col-span-5 bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700">
+                                                                                    <h5 className="text-[11px] font-black text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
+                                                                                        <Info size={14} className="text-blue-500" /> ข้อมูลทั้งหมดที่จะนำเข้า
+                                                                                    </h5>
+                                                                                    <div className="space-y-3">
+                                                                                        {[
+                                                                                            { label: 'รหัสพนักงาน', val: row.employee_code, mono: true },
+                                                                                            { label: 'พนักงาน', val: (row.name_prefix || '') + row.full_name },
+                                                                                            { label: 'ตำแหน่ง', val: row.position },
+                                                                                            { label: 'แผนก', val: row.department },
+                                                                                            { label: 'สาขา', val: row.branch },
+                                                                                            { label: 'บทบาท', val: row.role, highlight: true },
+                                                                                            { label: 'อีเมล', val: row.email || '(ใช้รหัสพนักงาน@staff.local)' },
+                                                                                            { label: 'เบอร์โทร', val: row.phone },
+                                                                                        ].map((item, i) => (
+                                                                                            <div key={i} className="flex justify-between items-center py-2 border-b border-slate-50 last:border-0">
+                                                                                                <span className="text-[11px] text-slate-400 font-bold">{item.label}</span>
+                                                                                                <span className={`text-xs font-bold ${item.mono ? 'font-mono' : ''} ${item.highlight ? 'text-blue-600 bg-blue-50 px-2 py-0.5 rounded' : 'text-slate-800 dark:text-slate-200'}`}>
+                                                                                                    {item.val || '-'}
+                                                                                                </span>
+                                                                                            </div>
+                                                                                        ))}
+                                                                                    </div>
+                                                                                </div>
+
+                                                                                {/* Detailed Comparison View */}
+                                                                                <div className="lg:col-span-7">
+                                                                                    <h5 className="text-[11px] font-black text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
+                                                                                        <AlertCircle size={14} className={row.action === 'update' ? 'text-orange-500' : 'text-green-500'} />
+                                                                                        {row.action === 'update' ? 'รายละเอียดสิ่งที่เปลี่ยนแปลง' : 'ข้อมูลพนักงานใหม่'}
+                                                                                    </h5>
+                                                                                    
+                                                                                    {row.action === 'update' && row.changes ? (
+                                                                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                                                                            {Object.entries(row.changes).map(([key, diff]) => {
+                                                                                                const d = diff as { old: any, new: any };
+                                                                                                const labels: Record<string, string> = {
+                                                                                                    full_name: 'ชื่อ-นามสกุล',
+                                                                                                    name_prefix: 'คำนำหน้า',
+                                                                                                    role: 'บทบาท',
+                                                                                                    branch: 'สาขา',
+                                                                                                    department: 'แผนก',
+                                                                                                    position: 'ตำแหน่ง',
+                                                                                                    phone: 'เบอร์โทร'
+                                                                                                };
+                                                                                                return (
+                                                                                                    <div key={key} className="group/diff p-4 bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 shadow-sm flex flex-col gap-2 transition-all hover:ring-2 hover:ring-blue-500/10 overflow-hidden">
+                                                                                                        <span className="text-[10px] font-black text-slate-300 uppercase shrink-0">{labels[key] || key}</span>
+                                                                                                        <div className="flex flex-col gap-2 relative">
+                                                                                                            <div 
+                                                                                                                className="text-[10px] text-slate-400 line-through font-medium bg-slate-50 dark:bg-slate-900 px-3 py-1.5 rounded-lg break-words transition-all hover:bg-slate-100 dark:hover:bg-slate-800"
+                                                                                                                title={`จาก: ${d.old || '(ไม่มี)'}`}
+                                                                                                            >
+                                                                                                                {d.old || '(ไม่มี)'}
+                                                                                                            </div>
+                                                                                                            <div className="absolute left-1/2 -top-1.5 -translate-x-1/2 z-10 w-6 h-6 bg-white dark:bg-slate-800 text-blue-500 rounded-full flex items-center justify-center shadow-sm border border-slate-100 dark:border-slate-700 pointer-events-none">
+                                                                                                                <ArrowRight size={10} className="rotate-90" />
+                                                                                                            </div>
+                                                                                                            <div 
+                                                                                                                className="text-xs text-blue-600 font-bold bg-blue-50/50 dark:bg-blue-900/20 px-3 py-2 rounded-lg break-words border border-blue-100/30 dark:border-blue-800/30 transition-all hover:bg-blue-100/50 dark:hover:bg-blue-900/40 shadow-sm"
+                                                                                                                title={`เป็น: ${d.new || '(ไม่มี)'}`}
+                                                                                                            >
+                                                                                                                {d.new || '(ไม่มี)'}
+                                                                                                            </div>
+                                                                                                        </div>
+                                                                                                    </div>
+                                                                                                );
+                                                                                            })}
+                                                                                        </div>
+                                                                                    ) : (
+                                                                                        <div className="p-12 bg-green-50/30 dark:bg-green-900/10 border-2 border-dashed border-green-200/50 dark:border-green-800/30 rounded-3xl flex flex-col items-center justify-center text-center">
+                                                                                            <div className="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center mb-4 shadow-sm border border-green-200">
+                                                                                                <CheckCircle size={32} />
+                                                                                            </div>
+                                                                                            <h6 className="text-green-800 dark:text-green-300 font-bold">พร้อมสำหรับการสร้างพนักงานใหม่</h6>
+                                                                                            <p className="text-[11px] text-green-600 mt-1">ข้อมูลถูกจัดเตรียมไว้เรียบร้อยแล้ว กดยืนยันที่ปุ่มด้านล่างเพื่อดำเนินการ</p>
+                                                                                        </div>
+                                                                                    )}
+                                                                                </div>
+                                                                            </div>
+                                                                        </td>
+                                                                    </tr>
+                                                                )}
+                                                            </React.Fragment>
+                                                        );
+                                                    })
+                                                )}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                    
+                                    {/* Scroll Indicator */}
+                                    <div className="px-6 py-2 bg-slate-50/50 dark:bg-slate-900/50 border-t border-slate-100 dark:border-slate-800 flex justify-between items-center">
+                                        <p className="text-[10px] text-slate-400 font-bold">
+                                            แสดง {filteredRows.length} จาก {processedRows.length} รายการ
+                                        </p>
+                                        <div className="flex gap-1.5">
+                                            <div className="w-1 h-1 rounded-full bg-slate-300 animate-pulse"></div>
+                                            <div className="w-1 h-1 rounded-full bg-slate-300 animate-pulse delay-75"></div>
+                                            <div className="w-1 h-1 rounded-full bg-slate-300 animate-pulse delay-150"></div>
+                                        </div>
+                                    </div>
                                 </div>
                             </>
                         )}
@@ -559,23 +638,25 @@ export const StaffImportModal: React.FC<StaffImportModalProps> = ({ isOpen, onCl
                 )}
             </div>
 
-            <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-slate-100 dark:border-slate-800">
-                <Button variant="ghost" onClick={onClose} disabled={importing}>ยกเลิก</Button>
+            <div className="flex justify-end gap-3 mt-8 pt-6 border-t border-slate-100 dark:border-slate-800">
+                <Button variant="ghost" onClick={onClose} disabled={importing} className="font-bold text-slate-500 hover:text-slate-800 dark:hover:text-slate-200">
+                    ยกเลิก
+                </Button>
                 {file && !loading && (
                     <Button 
                         onClick={handleImport} 
                         disabled={importing || (stats.create === 0 && stats.update === 0)}
-                        className="min-w-[150px] bg-enterprise-600 hover:bg-enterprise-700 text-white"
+                        className="min-w-[180px] bg-enterprise-600 hover:bg-enterprise-700 text-white font-black py-2.5 rounded-xl shadow-lg shadow-enterprise-500/20 active:scale-95 transition-all"
                     >
                         {importing ? (
                             <>
-                                <LoadingSpinner size={16} className="mr-2" />
+                                <LoadingSpinner size={18} className="mr-2" />
                                 กำลังดำเนินการ {progress}%
                             </>
                         ) : (
                             <>
-                                <CheckCircle size={16} className="mr-2" />
-                                นำเข้า {stats.create + stats.update} รายการ
+                                <CheckCircle size={18} className="mr-2" />
+                                ยืนยันการนำเข้าข้อมูล
                             </>
                         )}
                     </Button>
@@ -584,3 +665,10 @@ export const StaffImportModal: React.FC<StaffImportModalProps> = ({ isOpen, onCl
         </Modal>
     );
 };
+
+/* --- Local Helper Icons --- */
+const XLSX_ICON = ({ className }: { className?: string }) => (
+    <svg className={className} fill="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+        <path d="M14.5 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V7.5L14.5 2zM14 8V3.5L18.5 8H14zM16 19h-8v-2h8v2zm0-4h-8v-2h8v2zm0-4h-8V9h8v2z" />
+    </svg>
+);
