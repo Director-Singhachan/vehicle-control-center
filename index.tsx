@@ -1075,6 +1075,7 @@ const AppContent = () => {
               {isMobile && mobileOrdersExpanded && isSidebarOpen && (
                 <div className="pl-2 pr-1 space-y-0.5 animate-in fade-in slide-in-from-top-1 duration-150">
                   <SubSidebarItem label="สร้างออเดอร์" active={activeTab === 'create-order'} onClick={() => navigateAndCloseMobile('create-order')} isCollapsed={false} isFlyout={false} />
+                  <SubSidebarItem label="ยืนยันและแบ่งส่ง" active={activeTab === 'confirm-orders'} onClick={() => navigateAndCloseMobile('confirm-orders')} isCollapsed={false} isFlyout={false} />
                   <SubSidebarItem label="ติดตามออเดอร์" active={activeTab === 'track-orders'} onClick={() => navigateAndCloseMobile('track-orders')} isCollapsed={false} isFlyout={false} />
                   <SubSidebarItem label="ออกใบแจ้งหนี้" active={activeTab === 'sales-trips'} onClick={() => navigateAndCloseMobile('sales-trips')} isCollapsed={false} isFlyout={false} />
                   {(isAdmin || isManager) && (
@@ -1118,20 +1119,20 @@ const AppContent = () => {
                         isFlyout={true}
                       />
                       <SubSidebarItem
-                        label="ติดตามออเดอร์"
-                        active={activeTab === 'track-orders'}
+                        label="ยืนยันและแบ่งส่ง"
+                        active={activeTab === 'confirm-orders'}
                         onClick={() => {
-                          setActiveTab('track-orders');
+                          setActiveTab('confirm-orders');
                           setIsOrdersHovered(false);
                         }}
                         isCollapsed={false}
                         isFlyout={true}
                       />
                       <SubSidebarItem
-                        label="ยืนยันและแบ่งส่ง"
-                        active={activeTab === 'confirm-orders'}
+                        label="ติดตามออเดอร์"
+                        active={activeTab === 'track-orders'}
                         onClick={() => {
-                          setActiveTab('confirm-orders');
+                          setActiveTab('track-orders');
                           setIsOrdersHovered(false);
                         }}
                         isCollapsed={false}
