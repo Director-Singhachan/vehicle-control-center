@@ -746,8 +746,12 @@ const AppContent = () => {
   const [deliveryTripView, setDeliveryTripView] = useState<'list' | 'form' | 'detail' | 'metrics'>('list');
   const [selectedDeliveryTripId, setSelectedDeliveryTripId] = useState<string | null>(null);
   const [deliveryTripReturnContext, setDeliveryTripReturnContext] = useState<
-    'delivery-list' | 'triplogs' | 'daily-summary' | 'vehicles' | 'service-staff-usage'
+    'delivery-list' | 'triplogs' | 'daily-summary' | 'vehicles' | 'service-staff-usage' | 'reports'
   >('delivery-list');
+  const [reportsInitialTab, setReportsInitialTab] = useState<'trip-pnl' | null>(null);
+  useEffect(() => {
+    if (activeTab !== 'reports') setReportsInitialTab(null);
+  }, [activeTab]);
   const [storeDetailView, setStoreDetailView] = useState<'list' | 'detail'>('list');
   const [selectedStoreId, setSelectedStoreId] = useState<string | null>(null);
   const [serviceStaffView, setServiceStaffView] = useState<'list' | 'usage'>('list');
@@ -2645,10 +2649,24 @@ const AppContent = () => {
                 />
               ) : (
                 <ReportsView
+                  key={reportsInitialTab ? `reports-${reportsInitialTab}` : 'reports'}
                   isDark={isDark}
+                  initialTab={reportsInitialTab ?? undefined}
                   onNavigateToStoreDetail={(storeId) => {
                     setSelectedStoreId(storeId);
                     setStoreDetailView('detail');
+                  }}
+                  onNavigateToVehicleDetail={(vehicleId) => {
+                    setActiveTab('vehicles');
+                    setSelectedVehicleId(vehicleId);
+                    setVehicleView('detail');
+                  }}
+                  onNavigateToTrip={(tripId) => {
+                    setDeliveryTripReturnContext('reports');
+                    setReportsInitialTab('trip-pnl');
+                    setActiveTab('delivery-trips');
+                    setSelectedDeliveryTripId(tripId);
+                    setDeliveryTripView('detail');
                   }}
                 />
               )
@@ -2686,12 +2704,15 @@ const AppContent = () => {
                         } else if (deliveryTripReturnContext === 'service-staff-usage') {
                           setActiveTab('service-staff');
                           setServiceStaffView('usage');
+                        } else if (deliveryTripReturnContext === 'reports') {
+                          setActiveTab('reports');
                         } else {
                           // ค่าเริ่มต้น: กลับไปหน้ารายการทริปส่งสินค้า
                           setActiveTab('delivery-trips');
                           setDeliveryTripView('list');
                         }
                         setSelectedDeliveryTripId(null);
+                        setDeliveryTripView('list');
                       }}
                     />
                   );

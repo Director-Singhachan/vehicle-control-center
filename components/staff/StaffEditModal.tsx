@@ -29,9 +29,10 @@ const isLegacyEmail = (email: string | null | undefined) =>
 
 const ROLE_OPTIONS: { value: AppRole; label: string }[] = [
   { value: 'admin', label: 'Admin (ผู้ดูแลระบบ)' },
+  { value: 'executive', label: 'Executive (ผู้บริหาร)' },
   { value: 'manager', label: 'Manager (ผู้จัดการ)' },
   { value: 'hr', label: 'HR (บุคคล)' },
-  { value: 'accounting', label: 'Accounting (บัญชี)' },
+  { value: 'accounting', label: 'Accounting (บัญชี/จัดซื้อ)' },
   { value: 'warehouse', label: 'Warehouse (คลังสินค้า)' },
   { value: 'driver', label: 'Driver (คนขับ)' },
   { value: 'service_staff', label: 'Service Staff (พนักงานบริการ)' },

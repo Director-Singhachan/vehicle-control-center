@@ -36,6 +36,9 @@ export function useDeliveryTripForm({ tripId, onSave, onCancel }: UseDeliveryTri
     planned_date: new Date().toISOString().split('T')[0],
     odometer_start: '',
     notes: '',
+    trip_revenue: '' as string,
+    trip_start_date: '' as string,
+    trip_end_date: '' as string,
   });
 
   const [storeSearchDebounced, setStoreSearchDebounced] = useState('');
@@ -240,6 +243,9 @@ export function useDeliveryTripForm({ tripId, onSave, onCancel }: UseDeliveryTri
       planned_date: trip.planned_date || new Date().toISOString().split('T')[0],
       odometer_start: trip.odometer_start?.toString() || '',
       notes: trip.notes || '',
+      trip_revenue: (trip as any).trip_revenue != null ? String((trip as any).trip_revenue) : '',
+      trip_start_date: (trip as any).trip_start_date ? String((trip as any).trip_start_date).split('T')[0] : '',
+      trip_end_date: (trip as any).trip_end_date ? String((trip as any).trip_end_date).split('T')[0] : '',
     });
     if (trip.crews) {
       const helpers = trip.crews.filter(c => c.role === 'helper' && c.status === 'active').map(c => c.staff_id);
@@ -567,6 +573,9 @@ export function useDeliveryTripForm({ tripId, onSave, onCancel }: UseDeliveryTri
           planned_date: formData.planned_date,
           odometer_start: formData.odometer_start ? parseInt(formData.odometer_start) : undefined,
           notes: formData.notes || undefined,
+          trip_revenue: formData.trip_revenue !== '' && !Number.isNaN(Number(formData.trip_revenue)) ? Number(formData.trip_revenue) : undefined,
+          trip_start_date: formData.trip_start_date || undefined,
+          trip_end_date: formData.trip_end_date || undefined,
           edit_reason: editReason,
           helpers: selectedHelpers,
         };

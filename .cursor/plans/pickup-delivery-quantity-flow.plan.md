@@ -30,32 +30,24 @@ isProject: false
 
 คำนวณตัวเลขหลัก:
 
-- **Ordered (per item)**:  
+- **Ordered (per item)**:
 
 ordered = quantity
 
-- **PickedUp (per item)**:  
+- **PickedUp (per item)**:
 
 pickedup = quantitypickedupatstore
 
 - **Delivered (per item)**:
   - ถ้า `fulfillment_method = 'delivery'`:
-
   delivered = quantitydelivered
-
   - ถ้า `fulfillment_method = 'pickup'`:
-
   delivered = 0
-
 - **Remaining (per item)**:
   - ถ้า `fulfillment_method = 'delivery'`:
-
   remaining = quantity - quantitypickedupatstore - quantitydelivered
-
   - ถ้า `fulfillment_method = 'pickup'`:
-
   remaining = quantity - quantitypickedupatstore
-
 
 สำหรับการแสดงผล “รวมต่อสินค้า” (กรณีมีหลายบรรทัดของ product เดียวกันในออเดอร์):
 

@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Search, Users, Phone, Route } from 'lucide-react';
+import { Search, Users, Phone, Route, Banknote } from 'lucide-react';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Card } from '../components/ui/Card';
 import { PageLayout } from '../components/layout/PageLayout';
+import { StaffSalaryModal } from '../components/staff/StaffSalaryModal';
+import { useAuth } from '../hooks/useAuth';
 import { supabase } from '../lib/supabase';
 import type { Database } from '../types/database';
 
@@ -14,11 +16,13 @@ interface ServiceStaffManagementViewProps {
 }
 
 export const ServiceStaffManagementView: React.FC<ServiceStaffManagementViewProps> = ({ onViewUsage }) => {
+    const { profile } = useAuth();
     const [staff, setStaff] = useState<ServiceStaff[]>([]);
     const [loading, setLoading] = useState(true);
     const [fetchError, setFetchError] = useState<string | null>(null);
     const [search, setSearch] = useState('');
     const [branchFilter, setBranchFilter] = useState('');
+    const [salaryModalStaff, setSalaryModalStaff] = useState<ServiceStaff | null>(null);
 
     const fetchStaff = async () => {
         try {
@@ -189,16 +193,25 @@ export const ServiceStaffManagementView: React.FC<ServiceStaffManagementViewProp
                                     )}
                                 </div>
 
-                                <div className="pt-3 border-t border-slate-100 dark:border-slate-700 flex items-center gap-2">
+                                <div className="pt-3 border-t border-slate-100 dark:border-slate-700 flex flex-wrap items-center gap-2">
                                     <Button
                                         variant="outline"
                                         size="sm"
                                         onClick={() => onViewUsage?.(s.id)}
                                         disabled={!onViewUsage}
-                                        className="flex items-center justify-center gap-1.5 flex-1"
+                                        className="flex items-center justify-center gap-1.5 flex-1 min-w-0"
                                     >
                                         <Route size={14} />
                                         ดูประวัติการลงปฏิบัติงาน
+                                    </Button>
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => setSalaryModalStaff(s)}
+                                        className="flex items-center justify-center gap-1.5 flex-1 min-w-0"
+                                    >
+                                        <Banknote size={14} />
+                                        จัดการเงินเดือน
                                     </Button>
                                 </div>
                             </Card>
@@ -213,6 +226,17 @@ export const ServiceStaffManagementView: React.FC<ServiceStaffManagementViewProp
                         {' · '}ไม่ใช้งาน {staff.filter(s => s.status === 'inactive').length}
                     </div>
                 </>
+            )}
+
+            {salaryModalStaff && (
+                <StaffSalaryModal
+                    isOpen={!!salaryModalStaff}
+                    onClose={() => setSalaryModalStaff(null)}
+                    staffId={salaryModalStaff.id}
+                    staffName={[salaryModalStaff.name_prefix, salaryModalStaff.name].filter(Boolean).join(' ')}
+                    onSuccess={() => {}}
+                    createdBy={profile?.id ?? undefined}
+                />
             )}
         </PageLayout>
     );

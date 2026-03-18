@@ -1,7 +1,8 @@
 // Vehicle Detail View - Show detailed information about a vehicle
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useVehicle, useMaintenanceHistory } from '../hooks';
 import { useAuth } from '../hooks';
+import { useVehiclePnl } from '../hooks/useVehiclePnl';
 import {
   Truck,
   Edit,
@@ -19,10 +20,12 @@ import { Card } from '../components/ui/Card';
 import { PageLayout } from '../components/layout/PageLayout';
 import { VehicleGroupBadge } from '../components/vehicle/VehicleGroupBadge';
 import { VehicleDocumentManager } from '../components/vehicle/VehicleDocumentManager';
+import { VehicleCostManager } from '../components/vehicle/VehicleCostManager';
 import { DocumentExpiryAlert } from '../components/vehicle/DocumentExpiryAlert';
 import { VehicleDriverHistory } from '../components/vehicle/VehicleDriverHistory';
-import { useTickets } from '../hooks';
+import { useTickets, useToast } from '../hooks';
 import { ImageModal } from '../components/ui/ImageModal';
+import { ToastContainer } from '../components/ui/Toast';
 
 interface VehicleDetailViewProps {
   vehicleId: string;
@@ -41,6 +44,7 @@ export const VehicleDetailView: React.FC<VehicleDetailViewProps> = ({
 }) => {
   const [isImageOpen, setIsImageOpen] = useState(false);
   const { isManager, isAdmin } = useAuth();
+  const { toasts, dismissToast } = useToast();
   const { vehicle, loading, error } = useVehicle(vehicleId);
   const {
     history: maintenanceHistory,
@@ -53,6 +57,21 @@ export const VehicleDetailView: React.FC<VehicleDetailViewProps> = ({
   });
 
   const canEdit = isManager || isAdmin;
+
+  const pnlDateRange = useMemo(() => {
+    const now = new Date();
+    const start = new Date(now.getFullYear(), now.getMonth(), 1);
+    return {
+      start: start.toISOString().split('T')[0],
+      end: now.toISOString().split('T')[0],
+    };
+  }, []);
+  const { summary: pnlSummary, loading: pnlLoading } = useVehiclePnl({
+    vehicleId,
+    startDate: pnlDateRange.start,
+    endDate: pnlDateRange.end,
+    enabled: true,
+  });
 
   if (loading || loadingTickets) {
     return (
@@ -108,6 +127,8 @@ export const VehicleDetailView: React.FC<VehicleDetailViewProps> = ({
   const StatusIcon = statusConfig[status as keyof typeof statusConfig].icon;
 
   return (
+    <>
+      <ToastContainer toasts={toasts} onDismiss={dismissToast} />
     <PageLayout
       title={vehicle.plate}
       subtitle={`${vehicle.make} ${vehicle.model || ''}`.trim()}
@@ -313,6 +334,61 @@ export const VehicleDetailView: React.FC<VehicleDetailViewProps> = ({
           {/* Vehicle Documents */}
           <VehicleDocumentManager vehicleId={vehicleId} canEdit={canEdit} />
 
+          {/* ต้นทุนคงที่ & ผันแปร (Phase 3) */}
+          <VehicleCostManager vehicleId={vehicleId} canEdit={canEdit} />
+
+          {/* Vehicle P&L สรุปเดือนนี้ (Phase 5) */}
+          {(pnlLoading || pnlSummary) && (
+            <Card className="p-5">
+              <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-3 flex items-center gap-2">
+                <DollarSign size={18} className="text-enterprise-600 dark:text-enterprise-400" />
+                สรุป P&L รถคันนี้ (เดือนนี้)
+              </h3>
+              {pnlLoading ? (
+                <div className="grid grid-cols-3 gap-4 animate-pulse">
+                  {[1, 2, 3].map((i) => (
+                    <div key={i} className="h-12 rounded bg-slate-200 dark:bg-slate-700" />
+                  ))}
+                </div>
+              ) : pnlSummary ? (
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                  <div>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">กำไรสุทธิ</p>
+                    <p
+                      className={`text-lg font-semibold ${
+                        pnlSummary.net_profit >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+                      }`}
+                    >
+                      {pnlSummary.net_profit >= 0 ? '' : '−'}฿
+                      {Math.abs(pnlSummary.net_profit).toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">ต้นทุนจอดทิ้ง</p>
+                    <p className="text-lg font-semibold text-slate-900 dark:text-white">
+                      ฿{pnlSummary.idle_cost.toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">อัตราการใช้รถ</p>
+                    <p className="text-lg font-semibold text-slate-900 dark:text-white">
+                      {(pnlSummary.utilization * 100).toFixed(1)}%
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">ต้นทุนรวม</p>
+                    <p className="text-lg font-semibold text-slate-900 dark:text-white">
+                      ฿{pnlSummary.total_cost.toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                    </p>
+                  </div>
+                </div>
+              ) : null}
+              <p className="text-xs text-slate-400 dark:text-slate-500 mt-3">
+                ดูรายงาน P&L เต็มและตัวชี้ต้นทุนต่อกม./เที่ยว/ชิ้น ได้ที่ รายงาน → รายงานการใช้รถละเอียด
+              </p>
+            </Card>
+          )}
+
           <VehicleDriverHistory vehicleId={vehicleId} onViewDeliveryTrip={onViewDeliveryTrip} />
 
           {/* Maintenance History Table */}
@@ -487,5 +563,6 @@ export const VehicleDetailView: React.FC<VehicleDetailViewProps> = ({
         </div>
       </div>
     </PageLayout>
+    </>
   );
 };

@@ -119,6 +119,9 @@ export interface UpdateDeliveryTripData {
   driver_id?: string;
   driver_staff_id?: string;
   planned_date?: string;
+  trip_revenue?: number | null;
+  trip_start_date?: string | null;
+  trip_end_date?: string | null;
   odometer_start?: number;
   odometer_end?: number;
   status?: 'planned' | 'in_progress' | 'completed' | 'cancelled';
