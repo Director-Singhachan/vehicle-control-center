@@ -110,9 +110,9 @@ export async function getTripPnlList(options: TripPnlOptions): Promise<TripPnlRo
   const startDateTime = `${startStr}T00:00:00.000Z`;
   const endDateTime = `${endStr}T23:59:59.999Z`;
 
-  // 1) ดึงเที่ยวทั้งหมดในช่วง
+  // 1) ดึงเที่ยวทั้งหมดในช่วง (เฉพาะเที่ยวที่พร้อมเข้า P&L: status = completed ผ่าน view delivery_trips_ready_for_pnl)
   let query = supabase
-    .from('delivery_trips')
+    .from('delivery_trips_ready_for_pnl')
     .select('id, trip_number, planned_date, vehicle_id, trip_revenue, trip_start_date, trip_end_date')
     .gte('planned_date', startStr)
     .lte('planned_date', endStr)
@@ -133,7 +133,7 @@ export async function getTripPnlList(options: TripPnlOptions): Promise<TripPnlRo
 
   // เที่ยวทั้งหมดในช่วง (ทุกคัน) — ใช้เฉพาะสำหรับนับ (staff, วันที่) ให้ปันส่วนเงินเดือนถูกข้ามคัน
   const { data: allTripsData } = await supabase
-    .from('delivery_trips')
+    .from('delivery_trips_ready_for_pnl')
     .select('id, trip_number, planned_date, vehicle_id, trip_revenue, trip_start_date, trip_end_date')
     .gte('planned_date', startStr)
     .lte('planned_date', endStr)
@@ -156,6 +156,7 @@ export async function getTripPnlList(options: TripPnlOptions): Promise<TripPnlRo
     commissionRes,
     fuelRes,
     crewsRes,
+    ordersRes,
   ] = await Promise.all([
     supabase.from('vehicles').select('id, plate').in('id', vehicleIds),
     needLogIds.length > 0
@@ -190,6 +191,10 @@ export async function getTripPnlList(options: TripPnlOptions): Promise<TripPnlRo
       .from('delivery_trip_crews')
       .select('delivery_trip_id, staff_id, status')
       .in('delivery_trip_id', allTripIds),
+    supabase
+      .from('orders')
+      .select('delivery_trip_id, total_amount')
+      .in('delivery_trip_id', tripIds),
   ]);
 
   const vehicles = vehiclesRes.data ?? [];
@@ -223,6 +228,15 @@ export async function getTripPnlList(options: TripPnlOptions): Promise<TripPnlRo
     const end = (checkin || new Date().toISOString()).split('T')[0];
     rangeByTripFromLogAll.set(id, { start, end, days: Math.max(1, daysInRange(start, end)) });
     if (checkin) tripTimeWindow.set(id, { checkout, checkin });
+  }
+
+  // tripId -> รายได้จาก orders (fallback เมื่อ trip_revenue ว่าง)
+  const revenueByTripFromOrders = new Map<string, number>();
+  for (const r of ordersRes.data ?? []) {
+    const id = (r as { delivery_trip_id: string }).delivery_trip_id;
+    const amt = Number((r as { total_amount: number | null }).total_amount) || 0;
+    if (!id || amt === 0) continue;
+    revenueByTripFromOrders.set(id, (revenueByTripFromOrders.get(id) ?? 0) + amt);
   }
 
   // tripId -> ต้นทุนผันแปร (variable_costs + commission)
@@ -262,14 +276,29 @@ export async function getTripPnlList(options: TripPnlOptions): Promise<TripPnlRo
   }
 
   // ต้นทุนบุคลากร: ดึง staff_salaries ของลูกเรือทั้งหมด แล้วใช้ effective ณ วันเริ่มเที่ยว
+  // - พยายามใช้ view staff_salaries_ready_for_pnl (approved เท่านั้น) ก่อน
+  // - ถ้าไม่มีข้อมูลเลย (ระบบ workflow ยังไม่ถูกใช้) จะ fallback ไปใช้ตาราง staff_salaries เหมือนเดิม เพื่อไม่ให้ต้นทุนบุคลากรหายไปทั้งหมด
   type SalaryRow = { staff_id: string; effective_from: string; effective_to: string | null; monthly_salary: number };
   let salaryRows: SalaryRow[] = [];
   if (uniqueCrewStaffIds.size > 0) {
-    const { data: salData } = await supabase
-      .from('staff_salaries')
+    const staffIdsArray = [...uniqueCrewStaffIds];
+
+    // 1) ลองใช้เฉพาะรายการที่ approved แล้วก่อน
+    const { data: readyData, error: readyError } = await supabase
+      .from('staff_salaries_ready_for_pnl')
       .select('staff_id, effective_from, effective_to, monthly_salary')
-      .in('staff_id', [...uniqueCrewStaffIds]);
-    salaryRows = (salData ?? []) as SalaryRow[];
+      .in('staff_id', staffIdsArray);
+
+    if (!readyError && readyData && readyData.length > 0) {
+      salaryRows = readyData as SalaryRow[];
+    } else {
+      // 2) ถ้ายังไม่มีข้อมูลเลย (หรือ view ใช้งานไม่ได้) ให้ fallback ไปใช้ staff_salaries เดิม
+      const { data: allData } = await supabase
+        .from('staff_salaries')
+        .select('staff_id, effective_from, effective_to, monthly_salary')
+        .in('staff_id', staffIdsArray);
+      salaryRows = (allData ?? []) as SalaryRow[];
+    }
   }
 
   /** วันที่จาก DB อาจเป็น ISO string — ตัดเป็น YYYY-MM-DD ก่อนเปรียบเทียบ */
@@ -333,7 +362,9 @@ export async function getTripPnlList(options: TripPnlOptions): Promise<TripPnlRo
       };
     }
 
-    const revenue = Number(t.trip_revenue) || 0;
+    const explicitRevenue = Number(t.trip_revenue) || 0;
+    const fallbackRevenue = revenueByTripFromOrders.get(tid) ?? 0;
+    const revenue = explicitRevenue > 0 ? explicitRevenue : fallbackRevenue;
     const otherVariable = variableByTrip.get(tid) ?? 0;
     let fuelVariable = 0;
     // จับคู่น้ำมันกับเที่ยวตามช่วงออกรถ–กลับ: เติมระหว่าง checkout กับ checkin = ของเที่ยวนั้น (ไม่ปันส่วน)

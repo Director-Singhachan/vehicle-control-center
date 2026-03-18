@@ -58,7 +58,7 @@ export async function getVehiclePnlSummary(
   const [costSummary, tripsRes, tripLogsRes, total_pieces] = await Promise.all([
     getVehicleCostSummaryPhase2({ vehicleId, startDate: startStr, endDate: endStr }),
     supabase
-      .from('delivery_trips')
+      .from('delivery_trips_ready_for_pnl')
       .select('id, trip_revenue')
       .eq('vehicle_id', vehicleId)
       .gte('planned_date', startStr)
@@ -71,7 +71,7 @@ export async function getVehiclePnlSummary(
       .lte('checkout_time', endDateTime),
     (async () => {
       const { data: trips } = await supabase
-        .from('delivery_trips')
+        .from('delivery_trips_ready_for_pnl')
         .select('id')
         .eq('vehicle_id', vehicleId)
         .gte('planned_date', startStr)

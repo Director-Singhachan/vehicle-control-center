@@ -113,7 +113,7 @@ async function getProratedFixedCostFromVehicleFixedCosts(
   const rangeEnd = new Date(endStr);
 
   const { data: rows } = await supabase
-    .from('vehicle_fixed_costs')
+    .from('vehicle_fixed_costs_ready_for_pnl')
     .select('amount, period_type, period_start, period_end')
     .eq('vehicle_id', vehicleId);
 
@@ -228,7 +228,7 @@ export async function getVariableCostSummary(
       return { data: Array.from(ids).map((id) => ({ id })) };
     })(),
     supabase
-      .from('vehicle_variable_costs')
+      .from('vehicle_variable_costs_ready_for_pnl')
       .select('amount')
       .eq('vehicle_id', vehicleId)
       .gte('cost_date', startStr)

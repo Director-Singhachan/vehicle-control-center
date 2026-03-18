@@ -83,13 +83,19 @@ export const ExecutivePnlDashboard: React.FC<{ isDark?: boolean }> = ({ isDark =
 
   const branchPnl = React.useMemo(() => {
     if (!fleetSummary?.rows) return [];
+
+    // map vehicle_id -> branch จาก master list รถ
+    const branchByVehicleId = new Map<string, string | null>(
+      vehicleList.map((v) => [v.id, v.branch ?? null])
+    );
+
     const grouped = new Map<
       string,
       { revenue: number; variableCost: number; fixedCost: number; personnelCost: number; netProfit: number }
     >();
 
     fleetSummary.rows.forEach((r: any) => {
-      const branch = r.branch || 'ไม่ระบุ';
+      const branch = branchByVehicleId.get(r.vehicle_id) || 'ไม่ระบุ';
       if (!grouped.has(branch)) {
         grouped.set(branch, {
           revenue: 0,
@@ -101,9 +107,9 @@ export const ExecutivePnlDashboard: React.FC<{ isDark?: boolean }> = ({ isDark =
       }
       const g = grouped.get(branch)!;
       g.revenue += Number(r.revenue || 0);
-      g.variableCost += Number(r.variable_cost || 0);
-      g.fixedCost += Number(r.fixed_cost || 0);
-      g.personnelCost += Number(r.personnel_cost || 0);
+      g.variableCost += Number(r.total_variable || 0);
+      g.fixedCost += Number(r.total_fixed || 0);
+      g.personnelCost += Number(r.total_personnel || 0);
       g.netProfit += Number(r.net_profit || 0);
     });
 
@@ -111,7 +117,7 @@ export const ExecutivePnlDashboard: React.FC<{ isDark?: boolean }> = ({ isDark =
       branch,
       ...v,
     }));
-  }, [fleetSummary]);
+  }, [fleetSummary, vehicleList]);
 
   const vehiclePnl = React.useMemo(() => {
     if (!fleetSummary?.rows) return [];
@@ -134,26 +140,24 @@ export const ExecutivePnlDashboard: React.FC<{ isDark?: boolean }> = ({ isDark =
     }));
   }, [monthlyData]);
 
+  // โครงสร้างรายได้/ต้นทุนตามเวลา (ใช้เฉพาะ field ที่มีจริงจาก FleetPnlMonthlyRow)
   const costStructure = React.useMemo(() => {
     if (!monthlyData || monthlyData.length === 0) return [];
     return monthlyData.map((r: any) => {
-      const total =
-        Number(r.variable_cost || 0) +
-        Number(r.fixed_cost || 0) +
-        Number(r.personnel_cost || 0);
+      const rev = Number(r.total_revenue || 0);
+      const cost = Number(r.total_cost || 0);
+      const total = rev + cost;
       if (!total) {
         return {
           monthLabel: r.month_label,
-          variableCost: 0,
-          fixedCost: 0,
-          personnelCost: 0,
+          revenueShare: 0,
+          costShare: 0,
         };
       }
       return {
         monthLabel: r.month_label,
-        variableCost: Number(r.variable_cost || 0) / total,
-        fixedCost: Number(r.fixed_cost || 0) / total,
-        personnelCost: Number(r.personnel_cost || 0) / total,
+        revenueShare: rev / total,
+        costShare: cost / total,
       };
     });
   }, [monthlyData]);
@@ -324,10 +328,10 @@ export const ExecutivePnlDashboard: React.FC<{ isDark?: boolean }> = ({ isDark =
 
         <Card className="p-4 bg-white dark:bg-charcoal-900">
           <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-50 mb-1">
-            โครงสร้างต้นทุนตามเวลา
+            โครงสร้างรายได้/ต้นทุนตามเวลา
           </h2>
           <p className="text-xs text-slate-500 dark:text-slate-400 mb-3">
-            สัดส่วนต้นทุนผันแปร / คงที่ / บุคลากร ต่อเดือน
+            สัดส่วนรายได้ vs ต้นทุน ต่อเดือน
           </p>
           <div className="h-72">
             <ResponsiveContainer width="100%" height="100%">
@@ -349,27 +353,19 @@ export const ExecutivePnlDashboard: React.FC<{ isDark?: boolean }> = ({ isDark =
                 <Legend />
                 <Area
                   type="monotone"
-                  dataKey="variableCost"
-                  name="ผันแปร"
+                  dataKey="revenueShare"
+                  name="รายได้"
+                  stackId="1"
+                  stroke="#16a34a"
+                  fill="#bbf7d0"
+                />
+                <Area
+                  type="monotone"
+                  dataKey="costShare"
+                  name="ต้นทุน"
                   stackId="1"
                   stroke="#f97316"
                   fill="#fed7aa"
-                />
-                <Area
-                  type="monotone"
-                  dataKey="fixedCost"
-                  name="คงที่"
-                  stackId="1"
-                  stroke="#0ea5e9"
-                  fill="#bae6fd"
-                />
-                <Area
-                  type="monotone"
-                  dataKey="personnelCost"
-                  name="บุคลากร"
-                  stackId="1"
-                  stroke="#6366f1"
-                  fill="#c7d2fe"
                 />
               </AreaChart>
             </ResponsiveContainer>
