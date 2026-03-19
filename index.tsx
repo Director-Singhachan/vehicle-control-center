@@ -66,11 +66,12 @@ const WarehouseManagementView = lazy(() => import('./views/WarehouseManagementVi
 const CustomerTiersManagementView = lazy(() => import('./views/CustomerTiersManagementView').then(m => ({ default: m.CustomerTiersManagementView })));
 const ProductTierPricingView = lazy(() => import('./views/ProductTierPricingView').then(m => ({ default: m.ProductTierPricingView })));
 const InventoryReceiptsView = lazy(() => import('./views/InventoryReceiptsView').then(m => ({ default: m.InventoryReceiptsView })));
-const PickupOrdersView = lazy(() => import('./views/PickupOrdersView').then(m => ({ default: m.PickupOrdersView })));
+
+const ConfirmOrderView = lazy(() => import('./views/ConfirmOrderView').then(m => ({ default: m.ConfirmOrderView })));
 const CreateOrderView = lazy(() => import('./views/CreateOrderView').then(m => ({ default: m.CreateOrderView })));
 const CustomerManagementView = lazy(() => import('./views/CustomerManagementView').then(m => ({ default: m.CustomerManagementView })));
 const PendingOrdersView = lazy(() => import('./views/PendingOrdersView').then(m => ({ default: m.PendingOrdersView })));
-const SplitOrderView = lazy(() => import('./views/SplitOrderView').then(m => ({ default: m.SplitOrderView })));
+
 const TrackOrdersView = lazy(() => import('./views/TrackOrdersView').then(m => ({ default: m.TrackOrdersView })));
 const SalesTripsView = lazy(() => import('./views/SalesTripsView').then(m => ({ default: m.SalesTripsView })));
 const CleanupTestOrdersView = lazy(() => import('./views/CleanupTestOrdersView').then(m => ({ default: m.CleanupTestOrdersView })));
@@ -1078,6 +1079,7 @@ const AppContent = () => {
               {isMobile && mobileOrdersExpanded && isSidebarOpen && (
                 <div className="pl-2 pr-1 space-y-0.5 animate-in fade-in slide-in-from-top-1 duration-150">
                   <SubSidebarItem label="สร้างออเดอร์" active={activeTab === 'create-order'} onClick={() => navigateAndCloseMobile('create-order')} isCollapsed={false} isFlyout={false} />
+                  <SubSidebarItem label="ยืนยันและแบ่งส่ง" active={activeTab === 'confirm-orders'} onClick={() => navigateAndCloseMobile('confirm-orders')} isCollapsed={false} isFlyout={false} />
                   <SubSidebarItem label="ติดตามออเดอร์" active={activeTab === 'track-orders'} onClick={() => navigateAndCloseMobile('track-orders')} isCollapsed={false} isFlyout={false} />
                   <SubSidebarItem label="ออกใบแจ้งหนี้" active={activeTab === 'sales-trips'} onClick={() => navigateAndCloseMobile('sales-trips')} isCollapsed={false} isFlyout={false} />
                   {(isAdmin || isManager) && (
@@ -1115,6 +1117,16 @@ const AppContent = () => {
                         active={activeTab === 'create-order'}
                         onClick={() => {
                           setActiveTab('create-order');
+                          setIsOrdersHovered(false);
+                        }}
+                        isCollapsed={false}
+                        isFlyout={true}
+                      />
+                      <SubSidebarItem
+                        label="ยืนยันและแบ่งส่ง"
+                        active={activeTab === 'confirm-orders'}
+                        onClick={() => {
+                          setActiveTab('confirm-orders');
                           setIsOrdersHovered(false);
                         }}
                         isCollapsed={false}
@@ -1215,7 +1227,7 @@ const AppContent = () => {
                 <SidebarItem
                   icon={Boxes}
                   label={isSidebarOpen ? "คลังสินค้า" : ""}
-                  active={activeTab === 'stock-dashboard' || activeTab === 'warehouses' || activeTab === 'inventory-receipts' || activeTab === 'pickup-orders'}
+                  active={activeTab === 'stock-dashboard' || activeTab === 'warehouses' || activeTab === 'inventory-receipts'}
                   onClick={() => {
                     if (isMobile) {
                       setMobileStockExpanded(prev => !prev);
@@ -1233,7 +1245,6 @@ const AppContent = () => {
               {isMobile && mobileStockExpanded && isSidebarOpen && (
                 <div className="pl-2 pr-1 space-y-0.5 animate-in fade-in slide-in-from-top-1 duration-150">
                   <SubSidebarItem label="Stock Dashboard" active={activeTab === 'stock-dashboard'} onClick={() => navigateAndCloseMobile('stock-dashboard')} isCollapsed={false} isFlyout={false} />
-                  <SubSidebarItem label="รายการรอรับเอง" active={activeTab === 'pickup-orders'} onClick={() => navigateAndCloseMobile('pickup-orders')} isCollapsed={false} isFlyout={false} />
                   {(isAdmin || isManager) && (
                     <>
                       <SubSidebarItem label="จัดการคลัง" active={activeTab === 'warehouses'} onClick={() => navigateAndCloseMobile('warehouses')} isCollapsed={false} isFlyout={false} />
@@ -1271,16 +1282,7 @@ const AppContent = () => {
                         isCollapsed={false}
                         isFlyout={true}
                       />
-                      <SubSidebarItem
-                        label="รายการรอรับเอง"
-                        active={activeTab === 'pickup-orders'}
-                        onClick={() => {
-                          setActiveTab('pickup-orders');
-                          setIsStockHovered(false);
-                        }}
-                        isCollapsed={false}
-                        isFlyout={true}
-                      />
+
                       {(isAdmin || isManager) && (
                         <>
                           <MenuSectionHeader label="จัดการระบบคลัง" />
@@ -1470,19 +1472,7 @@ const AppContent = () => {
                           <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">งานทั่วไป</p>
                         </div>
 
-                        {/* แบ่งยอดส่ง — เฉพาะไม่ใช่พนักงานขับ */}
-                        {!isDriver && (
-                          <SubSidebarItem
-                            label="แบ่งยอดส่ง"
-                            active={activeTab === 'split-order'}
-                            onClick={() => {
-                              setActiveTab('split-order');
-                              setIsLogisticsHovered(false);
-                            }}
-                            isCollapsed={false}
-                            isFlyout={true}
-                          />
-                        )}
+
 
                         {!isDriver && (
                           <SubSidebarItem
@@ -1628,6 +1618,7 @@ const AppContent = () => {
                                 isFlyout={true}
                               />
                             )}
+
 
                             {isAdmin && (
                               <SubSidebarItem
@@ -2814,8 +2805,6 @@ const AppContent = () => {
               <WarehouseManagementView />
             ) : activeTab === 'inventory-receipts' ? (
               <InventoryReceiptsView />
-            ) : activeTab === 'pickup-orders' ? (
-              <PickupOrdersView />
             ) : activeTab === 'customer-tiers' ? (
               <CustomerTiersManagementView />
             ) : activeTab === 'product-pricing' ? (
@@ -2828,10 +2817,10 @@ const AppContent = () => {
               <CreateOrderView />
             ) : activeTab === 'track-orders' ? (
               <TrackOrdersView />
+            ) : activeTab === 'confirm-orders' ? (
+              <ConfirmOrderView />
             ) : activeTab === 'pending-orders' ? (
               <PendingOrdersView />
-            ) : activeTab === 'split-order' ? (
-              <SplitOrderView />
             ) : activeTab === 'packing-simulation' ? (
               <PackingSimulationView />
             ) : activeTab === 'sales-trips' ? (

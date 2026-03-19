@@ -22,6 +22,7 @@ interface ModalState {
   resetPassword: StaffProfile | null;
   confirmToggle: StaffProfile | null;
   confirmDelete: StaffProfile | null;
+  import: boolean;
 }
 
 export function useAdminStaffManagement() {
@@ -40,6 +41,7 @@ export function useAdminStaffManagement() {
     resetPassword: null,
     confirmToggle: null,
     confirmDelete: null,
+    import: false,
   });
 
   // ─── Operation loading ───────────────────────────────────────────────────
@@ -293,11 +295,13 @@ export function useAdminStaffManagement() {
     openResetPassword: (staff: StaffProfile) => setModals((m) => ({ ...m, resetPassword: staff })),
     openConfirmToggle: (staff: StaffProfile) => setModals((m) => ({ ...m, confirmToggle: staff })),
     openConfirmDelete: (staff: StaffProfile) => setModals((m) => ({ ...m, confirmDelete: staff })),
+    openImport: () => setModals((m) => ({ ...m, import: true })),
     closeCreate: () => { setCreateError(null); setModals((m) => ({ ...m, create: false })); },
     closeEdit: () => setModals((m) => ({ ...m, edit: null })),
     closeResetPassword: () => setModals((m) => ({ ...m, resetPassword: null })),
     closeConfirmToggle: () => setModals((m) => ({ ...m, confirmToggle: null })),
     closeConfirmDelete: () => setModals((m) => ({ ...m, confirmDelete: null })),
+    closeImport: () => setModals((m) => ({ ...m, import: false })),
 
     // operations
     submitting,
