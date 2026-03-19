@@ -88,7 +88,7 @@ export function OrderUploadModal({ isOpen, onClose, onSuccess, selectedWarehouse
         const orderInsert = {
           store_id: order.store_id!, // known valid since not error
           order_date: order.order_date,
-          status: 'awaiting_dispatch',
+          status: 'awaiting_confirmation',
           notes: `(อัพโหลดจาก SML / ${order.doc_no})`,
           created_by: profile?.id,
           warehouse_id: selectedWarehouse.id,

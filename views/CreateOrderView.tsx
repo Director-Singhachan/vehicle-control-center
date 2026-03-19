@@ -435,7 +435,7 @@ export const CreateOrderView: React.FC<CreateOrderViewProps> = ({
       const orderInsert = {
         store_id: selectedStore.id,
         order_date: new Date().toISOString().split('T')[0],
-        status: 'awaiting_dispatch',
+        status: 'awaiting_confirmation',
         notes: notes || null,
         delivery_address: selectedStore.address || null,
         // บันทึกวันที่ต้องการส่ง (ถ้าไม่ได้เลือก ให้เป็น null)

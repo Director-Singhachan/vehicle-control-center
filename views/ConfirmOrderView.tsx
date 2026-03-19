@@ -119,7 +119,7 @@ export const ConfirmOrderView: React.FC = () => {
         if (!orderId) return;
         setProcessingOrderIds(prev => new Set(prev).add(orderId));
         try {
-            await ordersService.markAsReady(orderId, 'SYSTEM'); 
+            await ordersService.markAsReady(orderId, profile?.id || ''); 
             success('ยืนยันออเดอร์เรียบร้อยแล้ว');
             fetchOrders();
         } catch (err: any) {
