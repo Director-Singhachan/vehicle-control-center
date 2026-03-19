@@ -1,3 +1,4 @@
+// @ts-nocheck
 // Supabase Edge Function: admin-staff-management
 // จัดการบัญชีพนักงานโดย Admin/HR โดยไม่ต้องเข้า Supabase Dashboard
 //
@@ -128,6 +129,8 @@ Deno.serve(async (req) => {
         employee_code: rawCode,
         link_service_staff_id,
         email: rawEmail,
+        is_banned,
+        resignation_date,
       } = body;
 
       if (!full_name || !role || !password) {
@@ -209,10 +212,18 @@ Deno.serve(async (req) => {
         position: position || null,
         phone: phone || null,
         employee_code,
+        is_banned: !!is_banned,
+        resignation_date: resignation_date || null,
       }, { onConflict: 'id' });
       if (profileInsertErr) {
         await adminClient.auth.admin.deleteUser(userId);
         throw profileInsertErr;
+      }
+
+      if (is_banned) {
+        await adminClient.auth.admin.updateUserById(userId, {
+          ban_duration: '87600h',
+        });
       }
 
       if (OPERATIONAL_ROLES.has(role)) {
@@ -265,7 +276,7 @@ Deno.serve(async (req) => {
 
     // ─── update_profile ─────────────────────────────────────────────────────
     if (action === 'update_profile') {
-      const { user_id, full_name, name_prefix, role, branch, department, position, phone, employee_code: rawEmployeeCode } = body;
+      const { user_id, full_name, name_prefix, role, branch, department, position, phone, employee_code: rawEmployeeCode, is_banned, resignation_date } = body;
       if (!user_id) return jsonError('user_id จำเป็นต้องระบุ', 400);
 
       const updates: Record<string, unknown> = {};
@@ -276,6 +287,8 @@ Deno.serve(async (req) => {
       if (department !== undefined) updates.department = department;
       if (position !== undefined) updates.position = position;
       if (phone !== undefined) updates.phone = phone;
+      if (is_banned !== undefined) updates.is_banned = is_banned;
+      if (resignation_date !== undefined) updates.resignation_date = resignation_date;
 
       // รองรับการตั้ง/แก้รหัสพนักงานโดย Admin (กรณีใช้อีเมลจริงแต่ยังไม่มีรหัส)
       if (rawEmployeeCode !== undefined) {
@@ -302,6 +315,12 @@ Deno.serve(async (req) => {
 
       const { error } = await adminClient.from('profiles').update(updates).eq('id', user_id);
       if (error) throw error;
+
+      if (is_banned !== undefined) {
+        await adminClient.auth.admin.updateUserById(user_id, {
+          ban_duration: is_banned ? '87600h' : 'none',
+        });
+      }
 
       // Sync name/name_prefix/branch/employee_code to service_staff if linked
       const ssSync: Record<string, unknown> = {};

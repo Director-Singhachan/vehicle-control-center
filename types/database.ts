@@ -2884,6 +2884,7 @@ export type Database = {
           name_prefix: string | null
           phone: string | null
           position: string | null
+          resignation_date: string | null
           role: Database["public"]["Enums"]["app_role"]
         }
         Insert: {
