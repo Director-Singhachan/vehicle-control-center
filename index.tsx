@@ -2814,7 +2814,7 @@ const AppContent = () => {
             ) : activeTab === 'customers' ? (
               <CustomerManagementView />
             ) : activeTab === 'create-order' ? (
-              <CreateOrderView />
+              <CreateOrderView onNavigateToConfirmOrders={() => setActiveTab('confirm-orders')} />
             ) : activeTab === 'track-orders' ? (
               <TrackOrdersView />
             ) : activeTab === 'confirm-orders' ? (

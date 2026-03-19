@@ -32,9 +32,13 @@ const MAX_RECENT_PRODUCTS = 20;
 
 interface CreateOrderViewProps {
   onNavigateToPendingSales?: () => void;
+  onNavigateToConfirmOrders?: () => void;
 }
 
-export const CreateOrderView: React.FC<CreateOrderViewProps> = ({ onNavigateToPendingSales }) => {
+export const CreateOrderView: React.FC<CreateOrderViewProps> = ({ 
+  onNavigateToPendingSales,
+  onNavigateToConfirmOrders
+}) => {
   const { products, loading: productsLoading } = useProducts();
   const { warehouses, loading: warehousesLoading } = useWarehouses();
   const { categories, loading: categoriesLoading } = useProductCategories();
@@ -457,6 +461,7 @@ export const CreateOrderView: React.FC<CreateOrderViewProps> = ({ onNavigateToPe
       );
 
       success('สร้างออเดอร์เรียบร้อย');
+      onNavigateToConfirmOrders?.();
 
       // Reset form
       setSelectedStore(null);
@@ -1176,7 +1181,7 @@ export const CreateOrderView: React.FC<CreateOrderViewProps> = ({ onNavigateToPe
         isOpen={isUploadModalOpen}
         onClose={() => setIsUploadModalOpen(false)}
         onSuccess={() => {
-          // TODO: Refresh orders list or redirect
+          onNavigateToConfirmOrders?.();
         }}
         selectedWarehouse={selectedWarehouse}
       />
