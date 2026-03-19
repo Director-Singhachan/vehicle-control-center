@@ -15,6 +15,8 @@ export interface CreateStaffInput {
   phone?: string;
   email?: string;
   password: string;
+  is_banned?: boolean;
+  resignation_date?: string | null;
   /** ผูกบัญชีกับรายชื่อใน service_staff ที่มีอยู่แล้ว (รักษาประวัติทริป) */
   link_service_staff_id?: string;
 }
@@ -29,6 +31,8 @@ export interface UpdateStaffInput {
   phone?: string;
   /** ตั้งหรือแก้รหัสพนักงาน (กรณีใช้อีเมลจริงแต่ยังไม่มีรหัส) — ส่งค่าว่างเพื่อล้าง */
   employee_code?: string | null;
+  is_banned?: boolean;
+  resignation_date?: string | null;
 }
 
 export interface StaffListFilters {

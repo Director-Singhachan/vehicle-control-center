@@ -32,6 +32,8 @@ interface ProcessedRow {
     action: 'create' | 'update' | 'skip';
     changes?: Record<string, { old: any, new: any }>;
     error?: string;
+    is_resigned?: boolean;
+    resignation_date?: string | null;
     rawData: any;
 }
 
@@ -108,6 +110,7 @@ export const StaffImportModal: React.FC<StaffImportModalProps> = ({ isOpen, onCl
             total: processedRows.length,
             create: processedRows.filter(r => r.action === 'create').length,
             update: processedRows.filter(r => r.action === 'update').length,
+            resigned: processedRows.filter(r => r.is_resigned).length,
             error: processedRows.filter(r => r.error).length,
         };
     }, [processedRows]);
@@ -130,7 +133,9 @@ export const StaffImportModal: React.FC<StaffImportModalProps> = ({ isOpen, onCl
                 (r.position || '').toLowerCase().includes(q)
             );
         }
-        if (actionFilter !== 'all') {
+        if (actionFilter === 'resigned') {
+            rows = rows.filter(r => r.is_resigned);
+        } else if (actionFilter !== 'all') {
             rows = rows.filter(r => r.action === actionFilter);
         }
         if (roleFilter !== 'all') {
@@ -217,6 +222,10 @@ export const StaffImportModal: React.FC<StaffImportModalProps> = ({ isOpen, onCl
                     const dept = row[colMap['ชื่อแผนก']]?.toString().trim() || null;
                     const pos = row[colMap['ชื่อตำแหน่ง']]?.toString().trim() || null;
                     const branchCode = row[colMap['รหัสสาขา']]?.toString().trim() || '';
+                    const resignedStatus = row[colMap['สถานะลาออก']]?.toString().trim().toUpperCase();
+                    const resignationDate = row[colMap['วันที่ลาออก']]?.toString().trim() || null;
+
+                    const isResigned = resignedStatus === 'Y';
 
                     const role = inferRole(pos || '');
                     const branch = inferBranch(pos || '', branchCode);
@@ -240,6 +249,14 @@ export const StaffImportModal: React.FC<StaffImportModalProps> = ({ isOpen, onCl
                         if (!checkVal(existing.position, pos)) changes.position = { old: existing.position, new: pos };
                         if (!checkVal(existing.phone, phone)) changes.phone = { old: existing.phone, new: phone };
                         
+                        // Check for resignation changes
+                        if (isResigned && !existing.is_banned) {
+                            changes.is_banned = { old: false, new: true };
+                        }
+                        if (resignationDate && existing.resignation_date !== resignationDate) {
+                            changes.resignation_date = { old: existing.resignation_date, new: resignationDate };
+                        }
+                        
                         // Only update if there are actual changes
                         if (Object.keys(changes).length === 0) {
                             action = 'skip';
@@ -259,6 +276,8 @@ export const StaffImportModal: React.FC<StaffImportModalProps> = ({ isOpen, onCl
                         branch,
                         role,
                         action,
+                        is_resigned: isResigned,
+                        resignation_date: resignationDate,
                         changes: action === 'update' ? changes : undefined,
                         rawData: row
                     });
@@ -295,6 +314,8 @@ export const StaffImportModal: React.FC<StaffImportModalProps> = ({ isOpen, onCl
                         phone: row.phone || undefined,
                         email: row.email || undefined,
                         password: row.employee_code, // Default password as employee code
+                        is_banned: row.is_resigned,
+                        resignation_date: row.resignation_date,
                     });
                 } else if (row.action === 'update') {
                     const existing = existingStaff.find(s => s.employee_code === row.employee_code);
@@ -307,6 +328,8 @@ export const StaffImportModal: React.FC<StaffImportModalProps> = ({ isOpen, onCl
                             department: row.department || undefined,
                             position: row.position || undefined,
                             phone: row.phone || undefined,
+                            is_banned: row.is_resigned,
+                            resignation_date: row.resignation_date,
                         });
                     }
                 }
@@ -396,7 +419,7 @@ export const StaffImportModal: React.FC<StaffImportModalProps> = ({ isOpen, onCl
                             <>
                                 {/* Stats & Integrated Filters Ribbon */}
                                 <div className="space-y-4">
-                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                    <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
                                         <div className="p-4 bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl shadow-sm flex flex-col items-center justify-center">
                                             <p className="text-[10px] text-slate-400 font-bold uppercase mb-1">รายการทั้งหมด</p>
                                             <p className="text-2xl font-black text-slate-900 dark:text-white">{stats.total}</p>
@@ -409,9 +432,13 @@ export const StaffImportModal: React.FC<StaffImportModalProps> = ({ isOpen, onCl
                                             <p className="text-[10px] text-orange-600 dark:text-orange-400 font-bold uppercase mb-1">อัปเดตข้อมูลเดิม</p>
                                             <p className="text-2xl font-black text-orange-600">{stats.update}</p>
                                         </div>
-                                        <div className="p-4 bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl shadow-sm flex flex-col items-center justify-center opacity-70">
+                                        <div className="p-4 bg-red-50/50 dark:bg-red-900/20 border border-red-100/50 dark:border-red-900/30 rounded-2xl shadow-sm flex flex-col items-center justify-center">
+                                            <p className="text-[10px] text-red-600 dark:text-red-400 font-bold uppercase mb-1">บัญชีที่ลาออก</p>
+                                            <p className="text-2xl font-black text-red-600">{stats.resigned}</p>
+                                        </div>
+                                        <div className="col-span-2 lg:col-span-1 p-4 bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl shadow-sm flex flex-col items-center justify-center opacity-70">
                                             <p className="text-[10px] text-slate-500 font-bold uppercase mb-1">ไม่มีการแก้ไข</p>
-                                            <p className="text-2xl font-black text-slate-500">{stats.total - stats.create - stats.update}</p>
+                                            <p className="text-2xl font-black text-slate-500">{stats.total - stats.create - stats.update - stats.resigned}</p>
                                         </div>
                                     </div>
 
@@ -436,6 +463,7 @@ export const StaffImportModal: React.FC<StaffImportModalProps> = ({ isOpen, onCl
                                                 <option value="all">สถานะทั้งหมด</option>
                                                 <option value="create">(+) เพิ่มใหม่</option>
                                                 <option value="update">(≈) อัปเดต</option>
+                                                <option value="resigned">(✖) ลาออก</option>
                                                 <option value="skip">(•) ข้าม</option>
                                             </select>
                                             <select
@@ -517,6 +545,9 @@ export const StaffImportModal: React.FC<StaffImportModalProps> = ({ isOpen, onCl
                                                                             </div>
                                                                         )}
                                                                         {row.action === 'skip' && <span className="text-[10px] text-slate-400 font-bold bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-lg">ข้าม</span>}
+                                                                        {row.is_resigned && (
+                                                                            <Badge variant="error" className="ml-1 px-3 py-1 text-[10px] font-black rounded-xl">ลาออก</Badge>
+                                                                        )}
                                                                     </td>
                                                                     <td className="px-6 py-4 text-right">
                                                                         <div className="p-1.5 rounded-lg group-hover:bg-white dark:group-hover:bg-slate-800 shadow-sm transition-all border border-transparent group-hover:border-slate-100 dark:group-hover:border-slate-700">
@@ -543,6 +574,7 @@ export const StaffImportModal: React.FC<StaffImportModalProps> = ({ isOpen, onCl
                                                                                             { label: 'บทบาท', val: row.role, highlight: true },
                                                                                             { label: 'อีเมล', val: row.email || '(ใช้รหัสพนักงาน@staff.local)' },
                                                                                             { label: 'เบอร์โทร', val: row.phone },
+                                                                                            { label: 'ลาออก/วันที่มีผล', val: row.is_resigned ? `ใช่ (${row.resignation_date || 'ไม่ระบุวัน'})` : 'ไม่ใช่', highlight: row.is_resigned },
                                                                                         ].map((item, i) => (
                                                                                             <div key={i} className="flex justify-between items-center py-2 border-b border-slate-50 last:border-0">
                                                                                                 <span className="text-[11px] text-slate-400 font-bold">{item.label}</span>
