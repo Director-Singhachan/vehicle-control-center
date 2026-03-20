@@ -1445,113 +1445,21 @@ export const tripCrudService = {
         throw updateOrdersError;
       }
 
-      // 3. รีเซ็ต quantity_delivered เป็น 0 ก่อน (ออเดอร์ที่ลบทริป = ยังไม่มีส่วนใดถูกจัดส่ง)
-      const { error: resetDeliveredError } = await supabase
-        .from('order_items')
-        .update({
-          quantity_delivered: 0,
-          updated_at: new Date().toISOString(),
-        })
-        .in('order_id', orderIds);
+      // 3. รีแคล์ quantity_delivered แบบ FIFO ต่อร้าน+สินค้า (RPC) — ไม่ใช้ยอดรวมเดียวกับทุกบรรทัดออเดอร์
+      //    p_excluded_trip_id = ทริปนี้ (กรณีลบทริป completed จะไม่นับยอดจากทริปนี้ใน pool)
+      const { error: rpcError } = await supabase.rpc('recalculate_quantity_delivered_after_order_unassign', {
+        p_order_ids: orderIds,
+        p_excluded_trip_id: id,
+      });
 
-      if (resetDeliveredError) {
-        console.error('[tripCrudService] Error resetting quantity_delivered:', resetDeliveredError);
-        throw resetDeliveredError;
+      if (rpcError) {
+        console.error('[tripCrudService] recalculate_quantity_delivered_after_order_unassign:', rpcError);
+        throw new Error(
+          rpcError.message || 'ไม่สามารถรีแคล์ยอดจัดส่งหลังถอดออเดอร์จากทริปได้ (ตรวจสอบว่า migration RPC ถูก apply แล้ว)'
+        );
       }
 
-      // 4. คำนวณ quantity_delivered ใหม่จากทริป completed อื่น (ถ้ามี) ที่ส่งให้ร้านเหล่านี้
-      //    หมายเหตุ: ไม่รีเซ็ต quantity_picked_up_at_store — เป็นข้อมูลฝ่ายขายว่าลูกค้ารับที่ร้านแล้ว
-      const { data: orderItems, error: itemsError } = await supabase
-        .from('order_items')
-        .select('id, order_id, product_id, quantity')
-        .in('order_id', orderIds);
-
-      const { data: ordersWithStore } = await supabase
-        .from('orders')
-        .select('id, store_id')
-        .in('id', orderIds);
-
-      if (itemsError || !ordersWithStore) {
-        console.error('[tripCrudService] Error fetching data for recalculating quantity_delivered:', itemsError);
-        // Don't throw - เรารีเซ็ตเป็น 0 แล้ว ต่อให้ recalc ไม่สำเร็จก็ใช้ 0 ได้
-      } else if (orderItems && orderItems.length > 0) {
-        const storeIdByOrderId = new Map(ordersWithStore.map((o: any) => [o.id, o.store_id]));
-
-        // ดึงข้อมูล completed trips ที่ส่งให้ร้านเหล่านี้ (ไม่รวมทริปที่กำลังจะลบ)
-        const storeIds = [...new Set(ordersWithStore.map((o: any) => o.store_id).filter(Boolean))];
-
-        // ดึง completed trip IDs — ไม่รวมทริปนี้ (id) เพราะกำลังจะลบ
-        const { data: completedTrips } = await supabase
-          .from('delivery_trips')
-          .select('id')
-          .eq('status', 'completed')
-          .neq('id', id);
-
-        const completedTripIds = completedTrips ? completedTrips.map((t: any) => t.id) : [];
-
-        // ดึง delivery_trip_stores ของ completed trips ที่ส่งให้ร้านเหล่านี้
-        const { data: completedTripStores } = completedTripIds.length > 0 && storeIds.length > 0
-          ? await supabase
-            .from('delivery_trip_stores')
-            .select('id, store_id, delivery_trip_id')
-            .in('store_id', storeIds)
-            .in('delivery_trip_id', completedTripIds)
-          : { data: [] };
-
-        if (completedTripStores && completedTripStores.length > 0) {
-          const tripStoreIds = completedTripStores.map((ts: any) => ts.id);
-
-          // ดึง delivery_trip_items ของ completed trips (ใช้ quantity - quantity_picked_up_at_store = จำนวนที่จัดส่งจริง)
-          const { data: tripItems } = await supabase
-            .from('delivery_trip_items')
-            .select('delivery_trip_store_id, product_id, quantity, quantity_picked_up_at_store')
-            .in('delivery_trip_store_id', tripStoreIds);
-
-          // คำนวณ quantity_delivered ต่อ (store_id, product_id)
-          const deliveredByStoreProduct = new Map<string, number>();
-          if (tripItems) {
-            tripItems.forEach((ti: any) => {
-              const tripStore = completedTripStores.find((ts: any) => ts.id === ti.delivery_trip_store_id);
-              if (tripStore) {
-                const key = `${tripStore.store_id}_${ti.product_id}`;
-                const pickedUp = Number(ti.quantity_picked_up_at_store ?? 0);
-                const delivered = Math.max(0, Number(ti.quantity || 0) - pickedUp);
-                const current = deliveredByStoreProduct.get(key) || 0;
-                deliveredByStoreProduct.set(key, current + delivered);
-              }
-            });
-          }
-
-          // อัปเดต quantity_delivered สำหรับแต่ละ order_item
-          for (const item of orderItems) {
-            const storeId = storeIdByOrderId.get(item.order_id);
-            if (!storeId) continue;
-
-            const key = `${storeId}_${item.product_id}`;
-            const totalDelivered = deliveredByStoreProduct.get(key) || 0;
-
-            // อัปเดต quantity_delivered (ไม่เกิน quantity ที่สั่ง)
-            await supabase
-              .from('order_items')
-              .update({
-                quantity_delivered: Math.min(totalDelivered, Number(item.quantity || 0)),
-                updated_at: new Date().toISOString(),
-              })
-              .eq('id', item.id);
-          }
-        } else {
-          // ถ้าไม่มี completed trips ที่ส่งให้ร้านเหล่านี้ ให้รีเซ็ต quantity_delivered เป็น 0
-          await supabase
-            .from('order_items')
-            .update({
-              quantity_delivered: 0,
-              updated_at: new Date().toISOString(),
-            })
-            .in('id', orderItems.map((item: any) => item.id));
-        }
-      }
-
-      console.log(`[tripCrudService] Reset ${orderIds.length} orders (cleared delivery_trip_id, order_number, recalculated quantity_delivered)`);
+      console.log(`[tripCrudService] Reset ${orderIds.length} orders (cleared delivery_trip_id, order_number, FIFO recalc quantity_delivered)`);
     }
 
     // 5. ลบทริป (CASCADE จะลบข้อมูลที่เกี่ยวข้องอัตโนมัติ)
