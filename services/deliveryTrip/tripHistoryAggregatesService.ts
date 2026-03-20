@@ -96,32 +96,62 @@ export const tripHistoryAggregatesService = {
     if (!changes || changes.length === 0) return [];
 
     const productIds = [...new Set(changes.map(c => c.product_id).filter(Boolean))] as string[];
-    const tripStoreIds = [...new Set(changes.map(c => c.delivery_trip_store_id).filter(Boolean))] as string[];
     const userIds = [...new Set(changes.map(c => c.created_by).filter(Boolean))] as string[];
 
-    const [productsResult, tripStoresResult, usersResult] = await Promise.all([
+    // รวม store_id ทั้งหมด: ใช้ store_id โดยตรง (ถ้ามี) หรือ resolve จาก delivery_trip_store_id
+    const directStoreIds = [...new Set(changes.map(c => (c as any).store_id).filter(Boolean))] as string[];
+    const tripStoreIds = [...new Set(
+      changes.filter(c => !(c as any).store_id && c.delivery_trip_store_id).map(c => c.delivery_trip_store_id).filter(Boolean)
+    )] as string[];
+
+    const [productsResult, usersResult] = await Promise.all([
       productIds.length ? supabase.from('products').select('id, product_code, product_name, unit').in('id', productIds) : Promise.resolve({ data: null, error: null } as any),
-      tripStoreIds.length ? supabase.from('delivery_trip_stores').select('id, store_id').in('id', tripStoreIds) : Promise.resolve({ data: null, error: null } as any),
       userIds.length ? supabase.from('profiles').select('id, full_name').in('id', userIds) : Promise.resolve({ data: null, error: null } as any),
     ]);
 
+    // Fetch tripStores สำหรับ records ที่ไม่มี store_id โดยตรง (fallback)
+    const tripStoreResult = tripStoreIds.length
+      ? await supabase.from('delivery_trip_stores').select('id, store_id').in('id', tripStoreIds)
+      : { data: [] as any[] };
+    const tripStores = (tripStoreResult as any).data || [];
+    const fallbackStoreIds = [...new Set(tripStores.map((ts: any) => ts.store_id).filter(Boolean))] as string[];
+
+    // รวม store_ids ทั้งหมดที่ต้อง fetch
+    const allStoreIds = [...new Set([...directStoreIds, ...fallbackStoreIds])];
+    const { data: storesData } = allStoreIds.length
+      ? await supabase.from('stores').select('id, customer_code, customer_name').in('id', allStoreIds)
+      : { data: [] as any[] };
+
     const products = (productsResult as any).data || [];
-    const tripStores = (tripStoresResult as any).data || [];
     const users = (usersResult as any).data || [];
     const productMap = new Map(products.map((p: any) => [p.id, p]));
-    const storeIds = [...new Set(tripStores.map((ts: any) => ts.store_id).filter(Boolean))];
-    const { data: storesData } = storeIds.length ? await supabase.from('stores').select('id, customer_code, customer_name').in('id', storeIds) : { data: [] as any[] };
-    const storeMap = new Map(storesData.map((s: any) => [s.id, s]));
-    const tripStoreToStoreMap = new Map(tripStores.map((ts: any) => [ts.id, storeMap.get(ts.store_id)]));
+    const storeMap = new Map((storesData || []).map((s: any) => [s.id, s]));
+    const tripStoreIdToStoreIdMap = new Map(tripStores.map((ts: any) => [ts.id, ts.store_id]));
     const userMap = new Map(users.map((u: any) => [u.id, u]));
 
-    return changes.map(change => ({
-      ...change,
-      product: change.product_id ? productMap.get(change.product_id) || null : null,
-      store: change.delivery_trip_store_id ? (tripStoreToStoreMap.get(change.delivery_trip_store_id) as any) || null : null,
-      user: change.created_by ? userMap.get(change.created_by) || null : null,
-    })) as DeliveryTripItemChangeWithDetails[];
+    return changes.map(change => {
+      let store = null;
+      const directStoreId = (change as any).store_id;
+      if (directStoreId) {
+        // ใช้ store_id โดยตรง (primary path — ทำงานได้แม้ delivery_trip_stores ถูกลบ)
+        store = storeMap.get(directStoreId) || null;
+      } else if (change.delivery_trip_store_id) {
+        // fallback: resolve ผ่าน delivery_trip_stores (สำหรับ records เก่าที่ยังไม่มี store_id)
+        const storeId = tripStoreIdToStoreIdMap.get(change.delivery_trip_store_id);
+        if (storeId) {
+          store = storeMap.get(storeId) || null;
+        }
+      }
+      return {
+        ...change,
+        product: change.product_id ? productMap.get(change.product_id) || null : null,
+        store,
+        user: change.created_by ? userMap.get(change.created_by) || null : null,
+      };
+    }) as DeliveryTripItemChangeWithDetails[];
   },
+
+
 
   getDeliveryTripEditHistory: async (tripId: string): Promise<TripEditHistory[]> => {
     const { data, error } = await supabase
