@@ -226,7 +226,7 @@ export const ConfirmOrderView: React.FC = () => {
     };
 
     return (
-        <PageLayout title="ยืนยันและแบ่งส่ง (Confirm & Split Delivery)">
+        <PageLayout title="ยืนยันและแบ่งส่งออเดอร์">
             <div className="space-y-6 max-w-7xl mx-auto pb-20">
                 {/* Tab Switcher */}
                 <div className="flex p-1.5 bg-slate-100 dark:bg-charcoal-800 rounded-3xl w-fit mx-auto shadow-inner border border-slate-200 dark:border-slate-800">
@@ -295,7 +295,7 @@ export const ConfirmOrderView: React.FC = () => {
                             <div className="space-y-1">
                                 <h4 className="text-sm font-black text-blue-900 dark:text-blue-300 uppercase tracking-wider">คำแนะนำการใช้งาน</h4>
                                 <p className="text-sm font-medium text-blue-700/80 dark:text-blue-400/80 leading-relaxed">
-                                    หน้านี้รวบรวมออเดอร์ทั้งหมดที่เริมต้นบันทึกเข้าระบบ (Draft/Awaiting Dispatch) <br />
+                                    หน้านี้รวบรวมออเดอร์ทั้งหมดที่เริมต้นบันทึกเข้าระบบ (ฉบับร่าง/รอการส่งมอบ) <br />
                                     ท่านสามารถตรวจสอบรายการ แบ่งยอดส่ง (Split) หรือกำหนดให้ลูกค้ามารับเอง และกดปุ่ม <span className="font-black text-blue-600">"ยืนยันออเดอร์"</span> เพื่อส่งให้ฝ่ายขนส่งดำเนินการต่อ
                                 </p>
                             </div>
@@ -341,9 +341,9 @@ export const ConfirmOrderView: React.FC = () => {
                                                         </div>
                                                         <div>
                                                             <div className="flex items-center gap-3">
-                                                                <h3 className="text-lg font-black text-slate-900 dark:text-white tracking-tight">{order.order_number || 'No Number'}</h3>
+                                                                <h3 className="text-lg font-black text-slate-900 dark:text-white tracking-tight">{order.order_number || 'ไม่มีเลขที่ออเดอร์'}</h3>
                                                                 <Badge variant="info" className="rounded-lg px-2 py-0.5 text-[10px] font-black uppercase">
-                                                                    Awaiting Confirmation
+                                                                    รอการยืนยัน
                                                                 </Badge>
                                                             </div>
                                                             <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1">
@@ -565,7 +565,7 @@ export const ConfirmOrderView: React.FC = () => {
                                                         </div>
                                                     </div>
                                                     <Badge variant="success" className="rounded-xl px-4 py-1.5 font-black uppercase tracking-wider text-[10px]">
-                                                        FULFILLED
+                                                        รับสินค้าแล้ว
                                                     </Badge>
                                                 </div>
                                                 {order.pickup_items?.length > 0 && (
