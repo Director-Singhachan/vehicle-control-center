@@ -665,44 +665,47 @@ export function PendingOrdersView() {
         </div>
 
         {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-          <Card>
-            <div className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-600 dark:text-gray-400">ออเดอร์ทั้งหมด</p>
-                  <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">{orders?.length || 0}</p>
-                </div>
-                <Package className="w-10 h-10 text-blue-500 opacity-50" />
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+          <Card className="border-0 shadow-sm overflow-hidden group relative">
+            <div className="absolute inset-0 bg-gradient-to-br from-slate-100 to-slate-50 dark:from-slate-800/50 dark:to-charcoal-900/50 opacity-50 group-hover:opacity-100 transition-opacity" />
+            <div className="p-5 flex items-center justify-between relative z-10">
+              <div>
+                <p className="text-sm font-bold tracking-wider text-slate-500 dark:text-slate-400 uppercase">ออเดอร์ทั้งหมด</p>
+                <p className="text-3xl font-black text-slate-900 dark:text-white mt-1">{orders?.length || 0}</p>
+              </div>
+              <div className="w-14 h-14 rounded-2xl bg-slate-200/50 dark:bg-slate-800 flex items-center justify-center transform group-hover:scale-110 transition-transform">
+                <Package className="w-8 h-8 text-slate-400 dark:text-slate-500" />
               </div>
             </div>
           </Card>
 
-          <Card>
-            <div className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-600 dark:text-gray-400">ออเดอร์ที่กรอง</p>
-                  <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">{filteredOrders.length}</p>
-                </div>
-                <Filter className="w-10 h-10 text-green-500 opacity-50" />
+          <Card className="border-0 shadow-sm overflow-hidden group relative ring-1 ring-inset ring-neon-green/10">
+            <div className="absolute inset-0 bg-gradient-to-br from-emerald-50 to-white dark:from-emerald-900/20 dark:to-charcoal-900/50 opacity-50 group-hover:opacity-100 transition-opacity" />
+            <div className="p-5 flex items-center justify-between relative z-10">
+              <div>
+                <p className="text-sm font-bold tracking-wider text-emerald-700/80 dark:text-emerald-500/80 uppercase">ออเดอร์ที่กรอง</p>
+                <p className="text-3xl font-black text-emerald-600 dark:text-emerald-400 mt-1">{filteredOrders.length}</p>
+              </div>
+              <div className="w-14 h-14 rounded-2xl bg-emerald-100 dark:bg-emerald-900/40 flex items-center justify-center transform group-hover:scale-110 transition-transform">
+                <Filter className="w-8 h-8 text-emerald-500" />
               </div>
             </div>
           </Card>
 
-          <Card>
-            <div className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-600 dark:text-gray-400">มูลค่ารวม</p>
-                  <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">
-                    {new Intl.NumberFormat('th-TH', {
-                      notation: 'compact',
-                      compactDisplay: 'short'
-                    }).format(filteredOrdersTotal)} ฿
-                  </p>
-                </div>
-                <DollarSign className="w-10 h-10 text-yellow-500 opacity-50" />
+          <Card className="border-0 shadow-sm overflow-hidden group relative ring-1 ring-inset ring-amber-500/10">
+            <div className="absolute inset-0 bg-gradient-to-br from-amber-50 to-white dark:from-amber-900/20 dark:to-charcoal-900/50 opacity-50 group-hover:opacity-100 transition-opacity" />
+            <div className="p-5 flex items-center justify-between relative z-10">
+              <div>
+                <p className="text-sm font-bold tracking-wider text-amber-700/80 dark:text-amber-500/80 uppercase">มูลค่ารวม</p>
+                <p className="text-3xl font-black text-amber-600 dark:text-amber-400 mt-1">
+                  {new Intl.NumberFormat('th-TH', {
+                    notation: 'compact',
+                    compactDisplay: 'short'
+                  }).format(filteredOrdersTotal)} <span className="text-lg">฿</span>
+                </p>
+              </div>
+              <div className="w-14 h-14 rounded-2xl bg-amber-100 dark:bg-amber-900/40 flex items-center justify-center transform group-hover:scale-110 transition-transform">
+                <DollarSign className="w-8 h-8 text-amber-500" />
               </div>
             </div>
           </Card>
