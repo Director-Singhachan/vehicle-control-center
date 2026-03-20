@@ -2884,6 +2884,7 @@ export type Database = {
           name_prefix: string | null
           phone: string | null
           position: string | null
+          resignation_date: string | null
           role: Database["public"]["Enums"]["app_role"]
         }
         Insert: {
@@ -6292,6 +6293,14 @@ export type Database = {
           product_name: string
           updated: boolean
         }[]
+      }
+      recalculate_quantity_delivered_after_order_unassign: {
+        Args: { p_excluded_trip_id?: string | null; p_order_ids: string[] }
+        Returns: undefined
+      }
+      recalculate_orders_status_from_fulfillment_quantities: {
+        Args: { p_order_ids: string[] }
+        Returns: undefined
       }
       calculate_layout_similarity: {
         Args: { p_trip_a_id: string; p_trip_b_id: string }

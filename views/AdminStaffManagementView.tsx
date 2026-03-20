@@ -1,5 +1,5 @@
 import React from 'react';
-import { UserPlus, ShieldAlert } from 'lucide-react';
+import { UserPlus, ShieldAlert, Upload } from 'lucide-react';
 import { PageLayout } from '../components/layout/PageLayout';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
@@ -8,6 +8,7 @@ import { StaffListSection } from '../components/staff/StaffListSection';
 import { StaffCreateModal } from '../components/staff/StaffCreateModal';
 import { StaffEditModal } from '../components/staff/StaffEditModal';
 import { StaffResetPasswordModal } from '../components/staff/StaffResetPasswordModal';
+import { StaffImportModal } from '../components/staff/StaffImportModal';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { useAdminStaffManagement } from '../hooks/useAdminStaffManagement';
 import { useAuth } from '../hooks';
@@ -29,11 +30,13 @@ export const AdminStaffManagementView: React.FC = () => {
     openResetPassword,
     openConfirmToggle,
     openConfirmDelete,
+    openImport,
     closeCreate,
     closeEdit,
     closeResetPassword,
     closeConfirmToggle,
     closeConfirmDelete,
+    closeImport,
     submitting,
     createError,
     handleCreate,
@@ -70,10 +73,16 @@ export const AdminStaffManagementView: React.FC = () => {
       title="จัดการบัญชีพนักงาน"
       subtitle={`พนักงานทั้งหมด ${staffList.length} คน`}
       actions={
-        <Button onClick={openCreate}>
-          <UserPlus size={16} className="mr-1.5" />
-          สร้างพนักงานใหม่
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={openImport}>
+            <Upload size={16} className="mr-1.5" />
+            นำเข้าพนักงาน (Excel)
+          </Button>
+          <Button onClick={openCreate}>
+            <UserPlus size={16} className="mr-1.5" />
+            สร้างพนักงานใหม่
+          </Button>
+        </div>
       }
     >
       {/* ── Staff list ─────────────────────────────────────────────── */}
@@ -121,6 +130,13 @@ export const AdminStaffManagementView: React.FC = () => {
         submitting={submitting}
         onSubmit={handleResetPassword}
         onClose={closeResetPassword}
+      />
+      
+      <StaffImportModal
+        isOpen={modals.import}
+        existingStaff={staffList}
+        onClose={closeImport}
+        onSuccess={refetch}
       />
 
       <ConfirmDialog

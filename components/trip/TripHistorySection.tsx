@@ -17,10 +17,25 @@ const FIELD_NAMES: Record<string, string> = {
   planned_date: 'วันที่วางแผน',
   odometer_start: 'เลขไมล์เริ่มต้น',
   odometer_end: 'เลขไมล์สิ้นสุด',
-  status: 'สถานะ',
+  status: 'สถานะทริป',
   notes: 'หมายเหตุ',
-  sequence_order: 'ลำดับ',
+  sequence_order: 'ลำดับทริป',
+  vehicle_id: 'รถที่ใช้',
+  driver_id: 'คนขับ',
+  trip_revenue: 'รายรับทริป',
+  trip_start_date: 'วันเริ่มทริปจริง',
+  trip_end_date: 'วันสิ้นสุดทริปจริง',
 };
+
+const STATUS_LABELS: Record<string, string> = {
+  planned: 'วางแผนแล้ว',
+  in_progress: 'กำลังดำเนินการ',
+  completed: 'เสร็จสิ้น',
+  cancelled: 'ยกเลิก',
+};
+
+// Fields ที่เป็น UUID — ไม่แสดง UUID ดิบ แสดงแค่ว่า "มีการเปลี่ยนแปลง"
+const UUID_FIELDS = new Set(['vehicle_id', 'driver_id']);
 
 function formatDateTime(date: string) {
   return new Date(date).toLocaleString('th-TH', {
@@ -34,15 +49,19 @@ function formatDateTime(date: string) {
 
 function formatFieldValue(field: string, val: any) {
   if (val === null || val === undefined || val === '') return '—';
-  if (field === 'planned_date') {
+  if (UUID_FIELDS.has(field)) return '(มีการเปลี่ยนแปลง)';
+  if (field === 'status') return STATUS_LABELS[val] ?? val;
+  if (field === 'planned_date' || field === 'trip_start_date' || field === 'trip_end_date') {
     return new Date(val).toLocaleDateString('th-TH', {
       year: 'numeric',
       month: 'short',
       day: 'numeric',
     });
   }
+  if (field === 'trip_revenue') return `${Number(val).toLocaleString()} บาท`;
   return String(val);
 }
+
 
 export const TripHistorySection: React.FC<TripHistorySectionProps> = ({
   editHistory,
@@ -94,7 +113,7 @@ export const TripHistorySection: React.FC<TripHistorySectionProps> = ({
                 >
                   <div className="flex items-center justify-between mb-2">
                     <div className="font-semibold text-slate-900 dark:text-slate-100">
-                      {edit.editor_name || edit.user?.full_name || 'ไม่ระบุผู้แก้ไข'}
+                      {edit.editor_name || edit.editor?.full_name || 'ไม่ระบุผู้แก้ไข'}
                     </div>
                     <div className="text-xs text-slate-500 dark:text-slate-400">
                       {formatDateTime(edit.edited_at || edit.created_at)}

@@ -9,7 +9,7 @@ export const tripStatusService = {
    *
    * **Multi-trip (ออเดอร์เดียวแบ่ง 3 เที่ยว):**
    * - ยกเลิก trip 1 (primary): ออเดอร์ที่ชี้ trip 1 จะถูก unassign (delivery_trip_id=null, order_number=null)
-   *   และ quantity_delivered จะ recalc จาก trip อื่นที่ completed แล้ว (ถ้ามี)
+   *   และ quantity_delivered จะรีแคล์แบบ FIFO ต่อร้าน+สินค้า (RPC recalculate_quantity_delivered_after_order_unassign)
    * - ยกเลิก trip 2 หรือ 3: ไม่มีออเดอร์ชี้ทริปนี้ (ออเดอร์ชี้ trip 1) จึงไม่ unassign
    *   ทริปจะเปลี่ยน status เป็น cancelled เท่านั้น
    */
@@ -88,73 +88,19 @@ export const tripStatusService = {
         })
         .in('id', orderIds);
 
-      await supabase
-        .from('order_items')
-        .update({ quantity_delivered: 0, updated_at: new Date().toISOString() })
-        .in('order_id', orderIds);
+      // ทริปยกเลิก (cancel) ไม่สามารถเป็น completed ได้ (guard ด้านบน)
+      // ดังนั้นไม่ควรรีเซ็ต/รีคำนวณ quantity_delivered จาก completed trips อื่น
+      // แค่คำนวณ orders.status จาก quantity_picked_up_at_store + quantity_delivered ที่มีอยู่เดิม
+      const { error: rpcError } = await supabase.rpc(
+        'recalculate_orders_status_from_fulfillment_quantities',
+        { p_order_ids: orderIds }
+      );
 
-      const { data: orderItems } = await supabase
-        .from('order_items')
-        .select('id, order_id, product_id, quantity')
-        .in('order_id', orderIds);
-      const { data: ordersWithStore } = await supabase
-        .from('orders')
-        .select('id, store_id')
-        .in('id', orderIds);
-
-      if (orderItems && ordersWithStore && orderItems.length > 0) {
-        const storeIdByOrderId = new Map(ordersWithStore.map((o: any) => [o.id, o.store_id]));
-        const storeIds = [...new Set(ordersWithStore.map((o: any) => o.store_id).filter(Boolean))];
-        const { data: completedTrips } = await supabase
-          .from('delivery_trips')
-          .select('id')
-          .eq('status', 'completed')
-          .neq('id', id);
-        const completedTripIds = completedTrips ? completedTrips.map((t: any) => t.id) : [];
-        const { data: completedTripStores } = completedTripIds.length > 0 && storeIds.length > 0
-          ? await supabase
-            .from('delivery_trip_stores')
-            .select('id, store_id, delivery_trip_id')
-            .in('store_id', storeIds)
-            .in('delivery_trip_id', completedTripIds)
-          : { data: [] };
-
-        if (completedTripStores && completedTripStores.length > 0) {
-          const tripStoreIds = completedTripStores.map((ts: any) => ts.id);
-          const { data: tripItems } = await supabase
-            .from('delivery_trip_items')
-            .select('delivery_trip_store_id, product_id, quantity, quantity_picked_up_at_store')
-            .in('delivery_trip_store_id', tripStoreIds);
-          const deliveredByStoreProduct = new Map<string, number>();
-          if (tripItems) {
-            tripItems.forEach((ti: any) => {
-              const tripStore = completedTripStores.find((ts: any) => ts.id === ti.delivery_trip_store_id);
-              if (tripStore) {
-                const key = `${tripStore.store_id}_${ti.product_id}`;
-                const pickedUp = Number(ti.quantity_picked_up_at_store ?? 0);
-                const delivered = Math.max(0, Number(ti.quantity || 0) - pickedUp);
-                deliveredByStoreProduct.set(key, (deliveredByStoreProduct.get(key) || 0) + delivered);
-              }
-            });
-          }
-          for (const item of orderItems) {
-            const storeId = storeIdByOrderId.get(item.order_id);
-            if (!storeId) continue;
-            const totalDelivered = deliveredByStoreProduct.get(`${storeId}_${item.product_id}`) || 0;
-            await supabase
-              .from('order_items')
-              .update({
-                quantity_delivered: Math.min(totalDelivered, Number(item.quantity || 0)),
-                updated_at: new Date().toISOString(),
-              })
-              .eq('id', item.id);
-          }
-        } else {
-          await supabase
-            .from('order_items')
-            .update({ quantity_delivered: 0, updated_at: new Date().toISOString() })
-            .in('id', orderItems.map((item: any) => item.id));
-        }
+      if (rpcError) {
+        console.error('[deliveryTripService] recalculate_orders_status_from_fulfillment_quantities:', rpcError);
+        throw new Error(
+          rpcError.message || 'ไม่สามารถรีคำนวณ orders.status หลังยกเลิกทริปได้ (ตรวจสอบว่า migration RPC ถูก apply แล้ว)'
+        );
       }
     }
 
