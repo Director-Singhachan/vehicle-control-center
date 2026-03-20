@@ -1,6 +1,6 @@
 // TripOrdersSection — ร้านค้าและสินค้า (store search + selected stores + items per store)
 import React from 'react';
-import { Package, Search, ChevronDown, ChevronUp, Trash2, Plus, X } from 'lucide-react';
+import { Package, Search, ChevronDown, ChevronUp, Trash2, Plus, X, Lock } from 'lucide-react';
 import { Input } from '../ui/Input';
 import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
@@ -218,78 +218,91 @@ export const TripOrdersSection: React.FC<TripOrdersSectionProps> = ({
 
               {isExpanded && (
                 <div className="mt-4 space-y-4">
-                  <div>
-                    <Input
-                      type="text"
-                      placeholder="ค้นหาสินค้า..."
-                      value={productSearch.get(storeIndex) || ''}
-                      onChange={(e) => {
-                        const newSearch = new Map(productSearch);
-                        newSearch.set(storeIndex, e.target.value);
-                        setProductSearch(newSearch);
-                      }}
-                      icon={<Search size={18} />}
-                    />
-                  </div>
+                  {/* ในโหมด edit: ไม่แสดง product search/add panel เพราะสินค้าต้องแก้จากฝ่ายขาย */}
+                  {!isEdit && (
+                    <>
+                      <div>
+                        <Input
+                          type="text"
+                          placeholder="ค้นหาสินค้า..."
+                          value={productSearch.get(storeIndex) || ''}
+                          onChange={(e) => {
+                            const newSearch = new Map(productSearch);
+                            newSearch.set(storeIndex, e.target.value);
+                            setProductSearch(newSearch);
+                          }}
+                          icon={<Search size={18} />}
+                        />
+                      </div>
 
-                  {filteredProducts.length > 0 && (
-                    <div className="space-y-2 max-h-60 overflow-y-auto p-2 border border-slate-200 dark:border-slate-700 rounded">
-                      <div className="text-xs font-medium text-slate-600 dark:text-slate-400 mb-2">เลือกสินค้าและระบุจำนวน:</div>
-                      {filteredProducts.map((product) => {
-                        const inputKey = `${storeIndex}-${product.id}`;
-                        const existingItem = storeWithItems.items.find(item => item.product_id === product.id);
-                        const currentQuantity = productQuantityInput.get(inputKey) ?? (existingItem ? existingItem.quantity.toString() : '');
-                        const isAdded = !!existingItem;
-                        return (
-                          <div
-                            key={product.id}
-                            className={`flex items-center gap-2 p-2 rounded border ${isAdded ? 'bg-green-50 dark:bg-green-900/20 border-green-300 dark:border-green-700 hover:bg-green-100 dark:hover:bg-green-900/30' : 'border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800'}`}
-                          >
-                            <div className="flex-1 min-w-0">
-                              <div className={`font-medium text-sm ${isAdded ? 'text-green-900 dark:text-green-100' : 'text-slate-900 dark:text-slate-100'}`}>
-                                {product.product_code}
-                                {isAdded && <span className="ml-2 text-xs text-green-600 dark:text-green-400">(เพิ่มแล้ว: {existingItem!.quantity} {product.unit})</span>}
-                              </div>
-                              <div className={`text-xs truncate ${isAdded ? 'text-green-700 dark:text-green-300' : 'text-slate-500 dark:text-slate-400'}`}>
-                                {product.product_name} ({product.unit})
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <Input
-                                type="number"
-                                value={currentQuantity}
-                                onChange={(e) => {
-                                  const newMap = new Map(productQuantityInput);
-                                  newMap.set(inputKey, e.target.value);
-                                  setProductQuantityInput(newMap);
-                                }}
-                                placeholder="จำนวน"
-                                className="w-20"
-                                min={0}
-                                step={0.01}
-                              />
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                onClick={() => {
-                                  const quantity = parseFloat(currentQuantity);
-                                  if (!quantity || quantity <= 0) {
-                                    setError('กรุณาระบุจำนวนสินค้าที่มากกว่า 0');
-                                    return;
-                                  }
-                                  onAddProduct(storeIndex, product.id, quantity);
-                                  const newMap = new Map(productQuantityInput);
-                                  newMap.delete(inputKey);
-                                  setProductQuantityInput(newMap);
-                                }}
+                      {filteredProducts.length > 0 && (
+                        <div className="space-y-2 max-h-60 overflow-y-auto p-2 border border-slate-200 dark:border-slate-700 rounded">
+                          <div className="text-xs font-medium text-slate-600 dark:text-slate-400 mb-2">เลือกสินค้าและระบุจำนวน:</div>
+                          {filteredProducts.map((product) => {
+                            const inputKey = `${storeIndex}-${product.id}`;
+                            const existingItem = storeWithItems.items.find(item => item.product_id === product.id);
+                            const currentQuantity = productQuantityInput.get(inputKey) ?? (existingItem ? existingItem.quantity.toString() : '');
+                            const isAdded = !!existingItem;
+                            return (
+                              <div
+                                key={product.id}
+                                className={`flex items-center gap-2 p-2 rounded border ${isAdded ? 'bg-green-50 dark:bg-green-900/20 border-green-300 dark:border-green-700 hover:bg-green-100 dark:hover:bg-green-900/30' : 'border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800'}`}
                               >
-                                <Plus size={16} />
-                              </Button>
-                            </div>
-                          </div>
-                        );
-                      })}
+                                <div className="flex-1 min-w-0">
+                                  <div className={`font-medium text-sm ${isAdded ? 'text-green-900 dark:text-green-100' : 'text-slate-900 dark:text-slate-100'}`}>
+                                    {product.product_code}
+                                    {isAdded && <span className="ml-2 text-xs text-green-600 dark:text-green-400">(เพิ่มแล้ว: {existingItem!.quantity} {product.unit})</span>}
+                                  </div>
+                                  <div className={`text-xs truncate ${isAdded ? 'text-green-700 dark:text-green-300' : 'text-slate-500 dark:text-slate-400'}`}>
+                                    {product.product_name} ({product.unit})
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <Input
+                                    type="number"
+                                    value={currentQuantity}
+                                    onChange={(e) => {
+                                      const newMap = new Map(productQuantityInput);
+                                      newMap.set(inputKey, e.target.value);
+                                      setProductQuantityInput(newMap);
+                                    }}
+                                    placeholder="จำนวน"
+                                    className="w-20"
+                                    min={0}
+                                    step={0.01}
+                                  />
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => {
+                                      const quantity = parseFloat(currentQuantity);
+                                      if (!quantity || quantity <= 0) {
+                                        setError('กรุณาระบุจำนวนสินค้าที่มากกว่า 0');
+                                        return;
+                                      }
+                                      onAddProduct(storeIndex, product.id, quantity);
+                                      const newMap = new Map(productQuantityInput);
+                                      newMap.delete(inputKey);
+                                      setProductQuantityInput(newMap);
+                                    }}
+                                  >
+                                    <Plus size={16} />
+                                  </Button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </>
+                  )}
+
+                  {/* ในโหมด edit: แสดง info banner แจ้งกรณีสินค้าถูก lock */}
+                  {isEdit && (
+                    <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 text-xs text-amber-700 dark:text-amber-300">
+                      <Lock size={13} className="shrink-0" />
+                      รายการสินค้าและจำนวนอ้างอิงจากออเดอร์ฝ่ายขาย — หากต้องการแก้ไขกรุณาดำเนินการผ่านฝ่ายขาย
                     </div>
                   )}
 
@@ -301,13 +314,13 @@ export const TripOrdersSection: React.FC<TripOrdersSectionProps> = ({
                           <ChevronUp size={14} /> ยุบร้านนี้
                         </button>
                       </div>
-                      <div className={`hidden sm:grid gap-2 px-2 text-xs font-medium text-slate-500 dark:text-slate-400 ${isEdit ? 'sm:grid-cols-[2fr_2fr_1.5fr_1fr_1fr_auto]' : 'sm:grid-cols-[2fr_2fr_1.5fr_1fr_auto]'}`}>
+                      <div className={`hidden sm:grid gap-2 px-2 text-xs font-medium text-slate-500 dark:text-slate-400 ${isEdit ? 'sm:grid-cols-[2fr_2fr_1.5fr_1fr_1fr]' : 'sm:grid-cols-[2fr_2fr_1.5fr_1fr_auto]'}`}>
                         <div>รหัสสินค้า</div>
                         <div>ชื่อสินค้า</div>
                         <div>หมวดหมู่</div>
                         <div className="text-right">จำนวน / หน่วย</div>
                         {isEdit && <div className="text-right text-amber-600 dark:text-amber-400">รับที่ร้าน</div>}
-                        <div className="text-center">ลบ</div>
+                        {!isEdit && <div className="text-center">ลบ</div>}
                       </div>
                       {storeWithItems.items.map((item, itemIndex) => {
                         const product = getProductInfo(item.product_id);
@@ -315,7 +328,7 @@ export const TripOrdersSection: React.FC<TripOrdersSectionProps> = ({
                         return (
                           <div
                             key={item.product_id}
-                            className={`flex flex-col gap-2 p-2 bg-slate-50 dark:bg-slate-800 rounded ${isEdit ? 'sm:grid sm:grid-cols-[2fr_2fr_1.5fr_1fr_1fr_auto]' : 'sm:grid sm:grid-cols-[2fr_2fr_1.5fr_1fr_auto]'}`}
+                            className={`flex flex-col gap-2 p-2 bg-slate-50 dark:bg-slate-800 rounded ${isEdit ? 'sm:grid sm:grid-cols-[2fr_2fr_1.5fr_1fr_1fr]' : 'sm:grid sm:grid-cols-[2fr_2fr_1.5fr_1fr_auto]'}`}
                           >
                             <div className="min-w-0">
                               <div className="sm:hidden text-[11px] text-slate-500 dark:text-slate-400 mb-0.5">รหัสสินค้า</div>
@@ -332,14 +345,21 @@ export const TripOrdersSection: React.FC<TripOrdersSectionProps> = ({
                             <div className="flex items-center gap-1 sm:justify-end">
                               <div className="flex-1 sm:flex-none">
                                 <div className="sm:hidden text-[11px] text-slate-500 dark:text-slate-400 mb-0.5">จำนวน</div>
-                                <Input
-                                  type="number"
-                                  value={item.quantity}
-                                  onChange={(e) => onUpdateQuantity(storeIndex, itemIndex, parseFloat(e.target.value) || 0)}
-                                  className="w-full text-right"
-                                  min={0}
-                                  step={0.01}
-                                />
+                                {isEdit ? (
+                                  // read-only ในโหมด edit
+                                  <div className="w-full text-right px-2 py-1.5 text-sm font-medium text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-md cursor-not-allowed select-none">
+                                    {Number(item.quantity).toLocaleString()}
+                                  </div>
+                                ) : (
+                                  <Input
+                                    type="number"
+                                    value={item.quantity}
+                                    onChange={(e) => onUpdateQuantity(storeIndex, itemIndex, parseFloat(e.target.value) || 0)}
+                                    className="w-full text-right"
+                                    min={0}
+                                    step={0.01}
+                                  />
+                                )}
                               </div>
                               <div className="text-xs text-slate-500 dark:text-slate-400 whitespace-nowrap pl-1">{product.unit}</div>
                             </div>
@@ -369,11 +389,14 @@ export const TripOrdersSection: React.FC<TripOrdersSectionProps> = ({
                                 )}
                               </div>
                             )}
-                            <div className="flex items-center justify-end">
-                              <button type="button" onClick={() => onRemoveProduct(storeIndex, itemIndex)} className="p-1 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded">
-                                <X size={16} />
-                              </button>
-                            </div>
+                            {/* ซ่อนปุ่ม X ลบสินค้าในโหมด edit */}
+                            {!isEdit && (
+                              <div className="flex items-center justify-end">
+                                <button type="button" onClick={() => onRemoveProduct(storeIndex, itemIndex)} className="p-1 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded">
+                                  <X size={16} />
+                                </button>
+                              </div>
+                            )}
                             <div className="col-span-full">
                               <PalletConfigSelector
                                 productId={item.product_id}

@@ -1075,30 +1075,31 @@ export const tripCrudService = {
       const insertChangeLog = async (params: {
         action: 'add' | 'update' | 'remove';
         delivery_trip_store_id: string | null;
+        store_id: string | null;  // เพิ่ม store_id โดยตรง เพื่อให้ดึงชื่อร้านค้าได้แม้หลัง delivery_trip_stores ถูกลบ
         delivery_trip_item_id: string | null;
         product_id: string | null;
         old_quantity: number | null;
         new_quantity: number | null;
       }) => {
-        const { action, delivery_trip_store_id, delivery_trip_item_id, product_id, old_quantity, new_quantity } = params;
+        const { action, delivery_trip_store_id, store_id, delivery_trip_item_id, product_id, old_quantity, new_quantity } = params;
         itemChangesOccurred = true;
         const { error: logError } = await supabase
           .from('delivery_trip_item_changes')
           .insert({
             delivery_trip_id: id,
             delivery_trip_store_id,
+            store_id,  // เพิ่ม store_id โดยตรง เพื่อให้ history lookup ทำงานได้แม้หลัง store ถูกลบ
             delivery_trip_item_id,
             product_id,
-            action: action, // Use 'action' column name to match database schema
+            action: action,
             old_quantity,
             new_quantity,
             reason: changeReason || null,
             created_by: user.id,
-          });
+          } as any);
 
         if (logError) {
           console.error('[tripCrudService] Error logging item change:', logError);
-          // ไม่ throw เพื่อไม่ให้การอัปเดตหลักล้มเหลวเพราะ log แต่จะพิมพ์เตือนใน console
         }
       };
 
@@ -1135,6 +1136,9 @@ export const tripCrudService = {
           }
         }
 
+        // Build map: delivery_trip_store.id -> store_id (for logging before delete)
+        const removedStoreIdMap = new Map<string, string>(storesToRemove.map((s: any) => [s.id as string, s.store_id as string]));
+
         // Load items for these stores to log removals
         const { data: removedStoreItems } = await supabase
           .from('delivery_trip_items')
@@ -1146,6 +1150,7 @@ export const tripCrudService = {
             await insertChangeLog({
               action: 'remove',
               delivery_trip_store_id: item.delivery_trip_store_id,
+              store_id: removedStoreIdMap.get(item.delivery_trip_store_id) || null,  // เพิ่ม store_id โดยตรง
               delivery_trip_item_id: item.id,
               product_id: item.product_id,
               old_quantity: Number(item.quantity),
@@ -1247,6 +1252,7 @@ export const tripCrudService = {
             await insertChangeLog({
               action: 'remove',
               delivery_trip_store_id: item.delivery_trip_store_id,
+              store_id: storeData.store_id,
               delivery_trip_item_id: item.id,
               product_id: item.product_id,
               old_quantity: Number(item.quantity),
@@ -1297,6 +1303,7 @@ export const tripCrudService = {
             await insertChangeLog({
               action: 'add',
               delivery_trip_store_id: tripStoreId,
+              store_id: storeData.store_id,
               delivery_trip_item_id: insertedItem.id,
               product_id: insertedItem.product_id,
               old_quantity: null,
@@ -1336,6 +1343,7 @@ export const tripCrudService = {
               await insertChangeLog({
                 action: 'update',
                 delivery_trip_store_id: existingItem.delivery_trip_store_id,
+                store_id: storeData.store_id,
                 delivery_trip_item_id: existingItem.id,
                 product_id: existingItem.product_id,
                 old_quantity: oldQty,
