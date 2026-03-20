@@ -1,7 +1,7 @@
 -- ============================================================
--- หลังยกเลิก/ลบทริป: คำนวณ quantity_delivered ใหม่แบบ FIFO ต่อร้าน+สินค้า
--- แทน logic เดิมในแอปที่ใช้ min(ยอดรวมร้าน, จำนวนบรรทัด) ทุกบรรทัด (ผิด)
--- p_excluded_trip_id: ใช้ตอนลบทริป — ไม่นับยอดจากทริปนี้ใน pool (กรณีทริป completed ก่อนลบ)
+-- v2 Fix: unassign/delete trip rollback
+-- - ใส่ cutoff ด้วย created_at ของ trip ที่กำลังลบ (กันยอด completed ภายหลังถูกจัดสรรกลับ)
+-- - cap quantity_delivered ไม่ให้เกิน (quantity - quantity_picked_up_at_store)
 -- ============================================================
 
 CREATE OR REPLACE FUNCTION public.recalculate_quantity_delivered_after_order_unassign(
@@ -170,4 +170,5 @@ END;
 $$;
 
 COMMENT ON FUNCTION public.recalculate_quantity_delivered_after_order_unassign(uuid[], uuid) IS
-  'หลังถอดออเดอร์จากทริป: รีแคล์ quantity_delivered แบบ FIFO ต่อร้าน+สินค้า จากทริป completed (ยกเว้น p_excluded_trip_id) แล้วอัปเดต orders.status';
+  'v2: unassign/delete trip rollback (cutoff by excluded trip created_at + cap by quantity - picked_up)';
+

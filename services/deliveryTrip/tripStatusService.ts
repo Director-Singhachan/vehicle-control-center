@@ -88,15 +88,18 @@ export const tripStatusService = {
         })
         .in('id', orderIds);
 
-      const { error: rpcError } = await supabase.rpc('recalculate_quantity_delivered_after_order_unassign', {
-        p_order_ids: orderIds,
-        p_excluded_trip_id: null,
-      });
+      // ทริปยกเลิก (cancel) ไม่สามารถเป็น completed ได้ (guard ด้านบน)
+      // ดังนั้นไม่ควรรีเซ็ต/รีคำนวณ quantity_delivered จาก completed trips อื่น
+      // แค่คำนวณ orders.status จาก quantity_picked_up_at_store + quantity_delivered ที่มีอยู่เดิม
+      const { error: rpcError } = await supabase.rpc(
+        'recalculate_orders_status_from_fulfillment_quantities',
+        { p_order_ids: orderIds }
+      );
 
       if (rpcError) {
-        console.error('[deliveryTripService] recalculate_quantity_delivered_after_order_unassign:', rpcError);
+        console.error('[deliveryTripService] recalculate_orders_status_from_fulfillment_quantities:', rpcError);
         throw new Error(
-          rpcError.message || 'ไม่สามารถรีแคล์ยอดจัดส่งหลังถอดออเดอร์จากทริปได้ (ตรวจสอบว่า migration RPC ถูก apply แล้ว)'
+          rpcError.message || 'ไม่สามารถรีคำนวณ orders.status หลังยกเลิกทริปได้ (ตรวจสอบว่า migration RPC ถูก apply แล้ว)'
         );
       }
     }

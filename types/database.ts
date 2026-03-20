@@ -6298,6 +6298,10 @@ export type Database = {
         Args: { p_excluded_trip_id?: string | null; p_order_ids: string[] }
         Returns: undefined
       }
+      recalculate_orders_status_from_fulfillment_quantities: {
+        Args: { p_order_ids: string[] }
+        Returns: undefined
+      }
       calculate_layout_similarity: {
         Args: { p_trip_a_id: string; p_trip_b_id: string }
         Returns: number

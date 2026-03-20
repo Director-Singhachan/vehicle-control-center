@@ -513,7 +513,6 @@ export const tripCrudService = {
       driver_id: data.driver_id || user.id,
       planned_date: data.planned_date,
       odometer_start: data.odometer_start,
-      manual_distance_km: data.manual_distance_km,
       notes: data.notes,
       sequence_order: sequenceOrder,
       branch: vehicleBranch,
@@ -1415,6 +1414,19 @@ export const tripCrudService = {
       throw new Error('User not authenticated');
     }
 
+    // เช็คสถานะทริปก่อนว่าเป็น completed หรือไม่
+    // - ถ้าไม่ completed: ไม่ควรรีเซ็ต/รีคำนวณ quantity_delivered จาก completed trips อื่น
+    // - ถ้าเป็น completed: ค่อยรีคำนวณ quantity_delivered เพื่อ rollback ตาม FIFO
+    const { data: trip, error: tripError } = await supabase
+      .from('delivery_trips')
+      .select('id, status')
+      .eq('id', id)
+      .single();
+
+    if (tripError || !trip) {
+      throw tripError || new Error('ไม่พบ delivery_trip');
+    }
+
     // 1. หาออเดอร์ทั้งหมดที่เชื่อมกับทริปนี้
     const { data: orders, error: ordersError } = await supabase
       .from('orders')
@@ -1445,21 +1457,49 @@ export const tripCrudService = {
         throw updateOrdersError;
       }
 
-      // 3. รีแคล์ quantity_delivered แบบ FIFO ต่อร้าน+สินค้า (RPC) — ไม่ใช้ยอดรวมเดียวกับทุกบรรทัดออเดอร์
-      //    p_excluded_trip_id = ทริปนี้ (กรณีลบทริป completed จะไม่นับยอดจากทริปนี้ใน pool)
-      const { error: rpcError } = await supabase.rpc('recalculate_quantity_delivered_after_order_unassign', {
-        p_order_ids: orderIds,
-        p_excluded_trip_id: id,
-      });
+      if (trip.status === 'completed') {
+        // rollback เฉพาะเมื่อทริปนั้น completed
+        const { error: rpcError } = await supabase.rpc('recalculate_quantity_delivered_after_order_unassign', {
+          p_order_ids: orderIds,
+          p_excluded_trip_id: id,
+        });
 
-      if (rpcError) {
-        console.error('[tripCrudService] recalculate_quantity_delivered_after_order_unassign:', rpcError);
-        throw new Error(
-          rpcError.message || 'ไม่สามารถรีแคล์ยอดจัดส่งหลังถอดออเดอร์จากทริปได้ (ตรวจสอบว่า migration RPC ถูก apply แล้ว)'
-        );
+        if (rpcError) {
+          console.error('[tripCrudService] recalculate_quantity_delivered_after_order_unassign:', rpcError);
+          throw new Error(
+            rpcError.message || 'ไม่สามารถรีแคล์ยอดจัดส่งหลังถอดออเดอร์จากทริปได้ (ตรวจสอบว่า migration RPC ถูก apply แล้ว)'
+          );
+        }
+
+        console.log(`[tripCrudService] Reset ${orderIds.length} orders (FIFO rollback quantity_delivered)`);
+      } else {
+        // ทริปยังไม่ completed: ล้าง quantity_delivered ก่อน แล้วค่อยรีคำนวณ orders.status
+        // เหตุผล: ค่า quantity_delivered ใน order_items อาจค้างมาจากทริป completed อื่น
+        //         ที่ระบบเคยเขียนไว้ (trigger/backfill) ต้องล้างก่อนเสมอเมื่อถอดออเดอร์จากทริปที่ไม่ completed
+        const { error: resetQtyError } = await supabase
+          .from('order_items')
+          .update({ quantity_delivered: 0, updated_at: new Date().toISOString() })
+          .in('order_id', orderIds)
+          .neq('fulfillment_method', 'pickup');
+
+        if (resetQtyError) {
+          console.error('[tripCrudService] Error resetting quantity_delivered before recalc:', resetQtyError);
+          // ไม่ throw — ให้ RPC ทำการ reset อีกรอบ (RPC มี logic reset ของตัวเองแล้ว)
+        }
+
+        const { error: rpcError } = await supabase.rpc('recalculate_orders_status_from_fulfillment_quantities', {
+          p_order_ids: orderIds,
+        });
+
+        if (rpcError) {
+          console.error('[tripCrudService] recalculate_orders_status_from_fulfillment_quantities:', rpcError);
+          throw new Error(
+            rpcError.message || 'ไม่สามารถรีคำนวณ orders.status หลังลบทริปได้ (ตรวจสอบว่า migration RPC ถูก apply แล้ว)'
+          );
+        }
+
+        console.log(`[tripCrudService] Reset quantity_delivered + recalc ${orderIds.length} orders.status (trip not completed)`);
       }
-
-      console.log(`[tripCrudService] Reset ${orderIds.length} orders (cleared delivery_trip_id, order_number, FIFO recalc quantity_delivered)`);
     }
 
     // 5. ลบทริป (CASCADE จะลบข้อมูลที่เกี่ยวข้องอัตโนมัติ)
