@@ -272,6 +272,10 @@ export const CreateOrderView: React.FC<CreateOrderViewProps> = ({
 
       // เก็บ recent product
       addToRecentProducts(product.id);
+
+      // ซ่อนการเลือกสินค้าอัตโนมัติเมื่อกดเพิ่ม
+      setShowProductBrowser(false);
+      setProductSearch('');
     } catch (error: any) {
       error('ไม่สามารถดึงราคาสินค้าได้');
     }
