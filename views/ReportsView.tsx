@@ -1,7 +1,7 @@
 // Reports View - Tab orchestrator for all report types
 import React, { useState, useEffect } from 'react';
 import type { LucideIcon } from 'lucide-react';
-import { Droplet, Route, Wrench, DollarSign, Truck, FileText, Package, MapPin, TrendingUp, BarChart3 } from 'lucide-react';
+import { Droplet, Route, Wrench, DollarSign, Truck, FileText, Package, MapPin, TrendingUp, BarChart3, Users } from 'lucide-react';
 import { PageLayout } from '../components/layout/PageLayout';
 
 import { VehicleUsageReport } from './reports/VehicleUsageReport';
@@ -15,6 +15,7 @@ import { DeliveryReport } from './reports/DeliveryReport';
 import { VehicleTripUsageReport } from './reports/VehicleTripUsageReport';
 import { TripPnlReport } from './reports/TripPnlReport';
 import { FleetPnlReport } from './reports/FleetPnlReport';
+import { TransportTeamPnlReport } from './reports/TransportTeamPnlReport';
 import { ExecutivePnlDashboard } from './reports/ExecutivePnlDashboard';
 import { usePermissions } from '../hooks';
 import { useReportFilters } from '../hooks/useReportFilters';
@@ -66,6 +67,7 @@ export type ReportTab =
   | 'vehicle-trip-usage'
   | 'trip-pnl'
   | 'fleet-pnl'
+  | 'transport-team-pnl'
   | 'fleet-pnl-executive';
 
 const TAB_CONFIG: { id: ReportTab; label: string; Icon: LucideIcon }[] = [
@@ -73,6 +75,7 @@ const TAB_CONFIG: { id: ReportTab; label: string; Icon: LucideIcon }[] = [
   { id: 'trip', label: 'รายงานการเดินทาง', Icon: Route },
   { id: 'trip-pnl', label: 'กำไร/ขาดทุนต่อเที่ยว (P&L)', Icon: TrendingUp },
   { id: 'fleet-pnl', label: 'Fleet P&L (ภาพรวมกองรถ)', Icon: BarChart3 },
+  { id: 'transport-team-pnl', label: 'ทีมขนส่งหน้างาน', Icon: Users },
   { id: 'fleet-pnl-executive', label: 'Executive Fleet P&L', Icon: BarChart3 },
   { id: 'maintenance', label: 'รายงานการซ่อม', Icon: Wrench },
   { id: 'cost', label: 'วิเคราะห์ค่าใช้จ่าย', Icon: DollarSign },
@@ -85,6 +88,7 @@ const TAB_CONFIG: { id: ReportTab; label: string; Icon: LucideIcon }[] = [
 
 export const ReportsView: React.FC<ReportsViewProps> = ({ isDark = false, onNavigateToStoreDetail, onNavigateToVehicleDetail, onNavigateToTrip, initialTab }) => {
   const { canViewTripPnl, canViewVehiclePnl, canViewFleetPnl, businessRole } = usePermissions();
+  const canViewTransportTeamPnl = canViewTripPnl || canViewFleetPnl;
 
   const [activeTab, setActiveTab] = useState<ReportTab>(initialTab ?? 'fuel');
 
@@ -118,6 +122,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ isDark = false, onNavi
         {TAB_CONFIG.map(({ id, label, Icon }) => {
           if (id === 'trip-pnl' && !canViewTripPnl) return null;
           if (id === 'fleet-pnl' && !canViewFleetPnl) return null;
+          if (id === 'transport-team-pnl' && !canViewTransportTeamPnl) return null;
           if (id === 'fleet-pnl-executive' && businessRole !== 'ROLE_TOP_MANAGEMENT') return null;
           return (
             <button
@@ -189,6 +194,9 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ isDark = false, onNavi
       )}
       {activeTab === 'fleet-pnl' && canViewFleetPnl && (
         <FleetPnlReport isDark={isDark} onNavigateToVehicleDetail={onNavigateToVehicleDetail} />
+      )}
+      {activeTab === 'transport-team-pnl' && canViewTransportTeamPnl && (
+        <TransportTeamPnlReport isDark={isDark} />
       )}
       {activeTab === 'fleet-pnl-executive' && businessRole === 'ROLE_TOP_MANAGEMENT' && (
         <ExecutivePnlDashboard isDark={isDark} />
