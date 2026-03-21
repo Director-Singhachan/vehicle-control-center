@@ -78,6 +78,42 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
 
   const showSplitFuel = wizard.splitIntoTwoTrips || wizard.splitIntoThreeTrips;
 
+  /** จำนวนชิ้นต่อเที่ยว — สอดคล้องกับ payload สร้างทริป (รวมถึงคอลัมน์นำไปส่งในทริปนี้) */
+  const qtyTrip1 = useMemo(() => {
+    if (wizard.splitIntoTwoTrips || wizard.splitIntoThreeTrips) {
+      return wizard.getItemsForVehicle(1).reduce((s, i) => s + Number(i.quantity), 0);
+    }
+    let sum = 0;
+    for (const delivery of wizard.storeDeliveries) {
+      const orderItems = wizard.orderItemsMap.get(delivery.order_id) || [];
+      for (const item of orderItems) {
+        const remaining = wizard.getRemaining(item);
+        const key = splitKey(delivery.order_id, item.id);
+        const qtyInTrip = wizard.quantityInThisTripMap[key] ?? remaining;
+        sum += Math.max(0, Math.min(remaining, qtyInTrip));
+      }
+    }
+    return sum;
+  }, [
+    wizard.splitIntoTwoTrips,
+    wizard.splitIntoThreeTrips,
+    wizard.storeDeliveries,
+    wizard.orderItemsMap,
+    wizard.quantityInThisTripMap,
+    wizard.getItemsForVehicle,
+    wizard.getRemaining,
+  ]);
+
+  const qtyTrip2 = useMemo(
+    () => wizard.getItemsForVehicle(2).reduce((s, i) => s + Number(i.quantity), 0),
+    [wizard.storeDeliveries, wizard.orderItemsMap, wizard.itemSplitMap, wizard.splitMode]
+  );
+
+  const qtyTrip3 = useMemo(
+    () => wizard.getItemsForVehicle(3).reduce((s, i) => s + Number(i.quantity), 0),
+    [wizard.storeDeliveries, wizard.orderItemsMap, wizard.itemSplitMap, wizard.splitMode]
+  );
+
   const trip1Estimate = useTripContributionEstimate({
     enabled: Boolean(wizard.selectedVehicleId) && !wizard.vehiclesLoading,
     vehicleId: wizard.selectedVehicleId,
@@ -88,6 +124,7 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
     crewStaffIds: staffId1 ? [staffId1] : [],
     tripRevenueStr: revenuePerTripStr,
     estimatedFuelStr: fuelPerTripStr,
+    totalItemQuantity: qtyTrip1,
     excludeTripId: undefined,
   });
 
@@ -104,6 +141,7 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
     crewStaffIds: staffId2 ? [staffId2] : [],
     tripRevenueStr: revenuePerTripStr,
     estimatedFuelStr: fuelPerTripStr,
+    totalItemQuantity: qtyTrip2,
     excludeTripId: undefined,
   });
 
@@ -117,6 +155,7 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
     crewStaffIds: staffId3 ? [staffId3] : [],
     tripRevenueStr: revenuePerTripStr,
     estimatedFuelStr: fuelPerTripStr,
+    totalItemQuantity: qtyTrip3,
     excludeTripId: undefined,
   });
 

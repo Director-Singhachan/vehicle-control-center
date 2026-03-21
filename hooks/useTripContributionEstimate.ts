@@ -17,6 +17,8 @@ export interface UseTripContributionEstimateParams {
   tripRevenueStr: string;
   /** สตริงน้ำมันโดยประมาณ */
   estimatedFuelStr: string;
+  /** จำนวนชิ้นสินค้าในทริป — ใช้ประมาณค่าคอม (ชิ้น × อัตรา commission_rates) */
+  totalItemQuantity?: number;
   excludeTripId?: string | null;
 }
 
@@ -37,6 +39,7 @@ export function useTripContributionEstimate(params: UseTripContributionEstimateP
     crewStaffIds,
     tripRevenueStr,
     estimatedFuelStr,
+    totalItemQuantity = 0,
     excludeTripId,
   } = params;
 
@@ -56,6 +59,7 @@ export function useTripContributionEstimate(params: UseTripContributionEstimateP
         crewStaffIds,
         tripRevenueStr,
         estimatedFuelStr,
+        totalItemQuantity,
         excludeTripId: excludeTripId ?? null,
       }),
     [
@@ -68,6 +72,7 @@ export function useTripContributionEstimate(params: UseTripContributionEstimateP
       crewStaffIds,
       tripRevenueStr,
       estimatedFuelStr,
+      totalItemQuantity,
       excludeTripId,
     ]
   );
@@ -105,6 +110,7 @@ export function useTripContributionEstimate(params: UseTripContributionEstimateP
         crewStaffIds,
         revenue: revenueParsed,
         estimatedFuelBaht: fuelParsed,
+        totalItemQuantity,
         excludeTripId: excludeTripId ?? undefined,
       })
         .then((res) => {

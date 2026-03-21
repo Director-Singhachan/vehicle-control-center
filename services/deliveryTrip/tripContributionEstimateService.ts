@@ -11,6 +11,7 @@ import {
   computeContributionTotals,
   computePersonnelCostForTrip,
 } from '../../utils/tripContributionEstimate';
+import { getPlannedCommissionForItems } from './plannedCommissionEstimate';
 
 export interface TripContributionEstimateInput {
   vehicleId: string;
@@ -21,6 +22,8 @@ export interface TripContributionEstimateInput {
   crewStaffIds: string[];
   revenue: number | null;
   estimatedFuelBaht: number;
+  /** จำนวนชิ้นสินค้าในทริป (รวม) — ใช้ประมาณค่าคอม ชิ้น × rate จาก commission_rates */
+  totalItemQuantity?: number;
   excludeTripId?: string | null;
 }
 
@@ -29,8 +32,12 @@ export interface TripContributionEstimateResult {
   revenue: number;
   fixedCost: number;
   fuelCost: number;
+  /** ค่าคอมโดยประมาณ (จำนวนชิ้น × อัตราต่อหน่วย) */
+  commissionCost: number;
+  /** อัตราค่าคอมต่อชิ้นที่ใช้ (บาท/ชิ้น) ถ้ามี */
+  commissionRatePerUnit: number | null;
   personnelCost: number;
-  /** ค่าคอมไม่รวมในการประมาณการ — ใช้ข้อความอธิบาย */
+  /** คำอธิบาย / หมายเหตุค่าคอมและต้นทุนผันแปร */
   commissionNote: string;
   tripDays: number;
   dailyFixedCost: number;
@@ -92,8 +99,11 @@ export async function getTripContributionEstimate(
     crewStaffIds,
     revenue: revenueInput,
     estimatedFuelBaht,
+    totalItemQuantity: totalItemQtyInput,
     excludeTripId,
   } = input;
+
+  const totalItemQuantity = Math.max(0, Number(totalItemQtyInput) || 0);
 
   const revenue = revenueInput != null && !Number.isNaN(revenueInput) ? Number(revenueInput) : 0;
   if (revenueInput == null || Number.isNaN(Number(revenueInput))) {
@@ -107,14 +117,18 @@ export async function getTripContributionEstimate(
       fixedCost: 0,
       fuelCost: Math.max(0, estimatedFuelBaht),
       personnelCost: 0,
+      commissionCost: 0,
     });
     return {
       estimatedContribution,
       revenue,
       fixedCost: 0,
       fuelCost: Math.max(0, estimatedFuelBaht),
+      commissionCost: 0,
+      commissionRatePerUnit: null,
       personnelCost: 0,
-      commissionNote: 'ค่าคอมคิดจากระบบหลังปิดทริป — ไม่รวมในการประมาณการนี้',
+      commissionNote:
+        'เลือกรถเพื่อประมาณค่าคอมจากจำนวนชิ้น — หลังปิดทริประบบจะปันค่าคอมต่อคนตามเวลางานจริง',
       tripDays: 1,
       dailyFixedCost: 0,
       totalCost,
@@ -198,11 +212,26 @@ export async function getTripContributionEstimate(
   const fixedCost = dailyFixedCost * tripDays;
   const fuelCost = Math.max(0, Number(estimatedFuelBaht) || 0);
 
+  const plannedComm = await getPlannedCommissionForItems(vehicleId, totalItemQuantity);
+  const commissionCost = plannedComm.commissionTotal;
+  if (plannedComm.warning) {
+    warnings.push(plannedComm.warning);
+  }
+  if (totalItemQuantity <= 0) {
+    warnings.push('ยังไม่มีจำนวนชิ้นสินค้าในทริป — ค่าคอมประมาณจะเป็น 0');
+  }
+
+  const commissionNote =
+    totalItemQuantity > 0 && plannedComm.ratePerUnit != null
+      ? `ค่าคอมประมาณ = ${totalItemQuantity.toLocaleString('th-TH')} ชิ้น × ${plannedComm.ratePerUnit.toLocaleString('th-TH')} บาท/ชิ้น — ยอดรวมทริปเทียบกับหลังปิดทริป ส่วนการปันต่อพนักงานตามเวลางานอาจต่างจากยอดต่อคน`
+      : 'ค่าคอมประมาณจากจำนวนชิ้น × อัตราในระบบ — หลังปิดทริปจะบันทึกตาม commission_logs';
+
   const { estimatedContribution, totalCost } = computeContributionTotals({
     revenue,
     fixedCost,
     fuelCost,
     personnelCost,
+    commissionCost,
   });
 
   return {
@@ -210,8 +239,10 @@ export async function getTripContributionEstimate(
     revenue,
     fixedCost,
     fuelCost,
+    commissionCost,
+    commissionRatePerUnit: plannedComm.ratePerUnit,
     personnelCost,
-    commissionNote: 'ค่าคอมคิดจากระบบหลังปิดทริป — ไม่รวมในการประมาณการนี้',
+    commissionNote,
     tripDays,
     dailyFixedCost,
     totalCost,

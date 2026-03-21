@@ -541,6 +541,16 @@ export function useDeliveryTripForm({ tripId, onSave, onCancel }: UseDeliveryTri
     return Array.from(ids);
   }, [selectedDriverStaffId, selectedHelpers]);
 
+  const totalItemQtyForEstimate = useMemo(() => {
+    let sum = 0;
+    for (const store of selectedStores) {
+      for (const item of store.items) {
+        sum += Number(item.quantity) || 0;
+      }
+    }
+    return sum;
+  }, [selectedStores]);
+
   const tripContributionEstimate = useTripContributionEstimate({
     enabled: Boolean(formData.vehicle_id) && !loadingTrip,
     vehicleId: formData.vehicle_id,
@@ -551,6 +561,7 @@ export function useDeliveryTripForm({ tripId, onSave, onCancel }: UseDeliveryTri
     crewStaffIds: crewStaffIdsForEstimate,
     tripRevenueStr: formData.trip_revenue,
     estimatedFuelStr: estimatedFuelBaht,
+    totalItemQuantity: totalItemQtyForEstimate,
     excludeTripId: tripId,
   });
 

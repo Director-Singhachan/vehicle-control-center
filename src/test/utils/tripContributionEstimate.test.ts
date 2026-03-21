@@ -65,6 +65,18 @@ describe('tripContributionEstimate', () => {
       expect(r.totalCost).toBe(4000);
       expect(r.estimatedContribution).toBe(6000);
     });
+
+    it('includes commission in total cost', () => {
+      const r = computeContributionTotals({
+        revenue: 10000,
+        fixedCost: 2000,
+        fuelCost: 500,
+        personnelCost: 1500,
+        commissionCost: 300,
+      });
+      expect(r.totalCost).toBe(4300);
+      expect(r.estimatedContribution).toBe(5700);
+    });
   });
 
   describe('computePersonnelCostForTrip', () => {

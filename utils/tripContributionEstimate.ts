@@ -72,6 +72,8 @@ export interface ContributionTotalsInput {
   fixedCost: number;
   fuelCost: number;
   personnelCost: number;
+  /** ค่าคอมโดยประมาณ (ต้นทุนผันแปร) */
+  commissionCost?: number;
 }
 
 export interface ContributionTotalsResult {
@@ -80,11 +82,11 @@ export interface ContributionTotalsResult {
 }
 
 /**
- * กำไรขั้นต้นโดยประมาณ = รายได้ − ต้นทุนคงที่ − น้ำมัน − บุคลากร (ไม่รวมค่าคอมในเฟสนี้)
+ * กำไรขั้นต้นโดยประมาณ = รายได้ − ต้นทุนคงที่ − น้ำมัน − ค่าคอม (ถ้ามี) − บุคลากร
  */
 export function computeContributionTotals(input: ContributionTotalsInput): ContributionTotalsResult {
-  const { revenue, fixedCost, fuelCost, personnelCost } = input;
-  const totalCost = fixedCost + fuelCost + personnelCost;
+  const { revenue, fixedCost, fuelCost, personnelCost, commissionCost = 0 } = input;
+  const totalCost = fixedCost + fuelCost + personnelCost + commissionCost;
   return {
     estimatedContribution: revenue - totalCost,
     totalCost,

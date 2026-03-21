@@ -1,4 +1,4 @@
-// การ์ดประมาณการกำไรขั้นต้นรายเที่ยว (Layer 1 + 2) — ไม่รวมออฟฟิศ / ไม่รวมค่าคอมจริง
+// การ์ดประมาณการกำไรขั้นต้นรายเที่ยว (Layer 1 + 2) — ไม่รวมออฟฟิศ; ค่าคอมเป็นประมาณการจากจำนวนชิ้น × อัตรา
 import React from 'react';
 import { Calculator, AlertCircle } from 'lucide-react';
 import { Card } from '../ui/Card';
@@ -40,10 +40,10 @@ export const TripContributionEstimateCard: React.FC<TripContributionEstimateCard
         {title}
       </h3>
       <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">
-        คำนวณจากรายได้เที่ยว ต้นทุนรถต่อวัน × วันเที่ยว น้ำมันโดยประมาณ และเงินเดือนลูกเรือปันตามจำนวนเที่ยวในสาขา{' '}
+        คำนวณจากรายได้เที่ยว ต้นทุนรถต่อวัน × วันเที่ยว น้ำมันโดยประมาณ ค่าคอมโดยประมาณ (ชิ้น × อัตราต่อชิ้น) และเงินเดือนลูกเรือปันตามจำนวนเที่ยวในสาขา{' '}
         <span className="font-medium text-slate-600 dark:text-slate-300">{getBranchLabel(branchCode)}</span>
         {' — '}
-        <span className="text-amber-700 dark:text-amber-400">ไม่รวมค่าออฟฟิศและค่าคอมจริง (คิดหลังปิดทริป)</span>
+        <span className="text-amber-700 dark:text-amber-400">ไม่รวมค่าออฟฟิศ — ค่าคอมจริงอาจต่างหลังปิดทริป (เช่น แบ่งตามชั่วโมง)</span>
       </p>
 
       {showFuelInput && (
@@ -109,7 +109,19 @@ export const TripContributionEstimateCard: React.FC<TripContributionEstimateCard
               <dd className="font-medium text-slate-900 dark:text-slate-100">฿{formatMoney(data.fuelCost)}</dd>
             </div>
             <div className="flex justify-between gap-2 p-2 rounded bg-slate-50 dark:bg-slate-800/80">
-              <dt className="text-slate-600 dark:text-slate-400">ต้นทุนบุคลากร (ปันส่วน)</dt>
+              <dt className="text-slate-600 dark:text-slate-400">
+                ค่าคอม (ประมาณ){data.commissionRatePerUnit != null ? ` @ ${formatMoney(data.commissionRatePerUnit)}/ชิ้น` : ''}
+              </dt>
+              <dd className="font-medium text-slate-900 dark:text-slate-100">฿{formatMoney(data.commissionCost ?? 0)}</dd>
+            </div>
+            <div className="sm:col-span-2 flex justify-between gap-2 p-2 rounded bg-blue-50/80 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-900/40">
+              <dt className="text-slate-600 dark:text-slate-400">ต้นทุนผันแปรรวม (น้ำมัน + ค่าคอม)</dt>
+              <dd className="font-medium text-slate-900 dark:text-slate-100">
+                ฿{formatMoney(data.fuelCost + (data.commissionCost ?? 0))}
+              </dd>
+            </div>
+            <div className="flex justify-between gap-2 p-2 rounded bg-slate-50 dark:bg-slate-800/80">
+              <dt className="text-slate-600 dark:text-slate-400">ต้นทุนบุคลากร (ปันส่วนเงินเดือน)</dt>
               <dd className="font-medium text-slate-900 dark:text-slate-100">฿{formatMoney(data.personnelCost)}</dd>
             </div>
             <div className="sm:col-span-2 flex justify-between gap-2 p-2 rounded bg-slate-100 dark:bg-slate-800/60">
