@@ -13,6 +13,7 @@ import { TripBasicInfoForm } from '../components/trip/TripBasicInfoForm';
 import { TripCrewSection } from '../components/trip/TripCrewSection';
 import { TripOrdersSection } from '../components/trip/TripOrdersSection';
 import { TripItemsSection } from '../components/trip/TripItemsSection';
+import { TripContributionEstimateCard } from '../components/trip/TripContributionEstimateCard';
 import { PageLayout } from '../components/layout/PageLayout';
 import { useDeliveryTripForm } from '../hooks/useDeliveryTripForm';
 
@@ -106,6 +107,9 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
     setEditReason,
     capacitySummary,
     palletPackingResult,
+    estimatedFuelBaht,
+    setEstimatedFuelBaht,
+    tripContributionEstimate,
   } = useDeliveryTripForm({ tripId, onSave, onCancel });
 
   if (loadingTrip) {
@@ -168,6 +172,17 @@ export const DeliveryTripFormView: React.FC<DeliveryTripFormViewProps> = ({
           helperDropdownPosition={helperDropdownPosition}
           setHelperDropdownPosition={setHelperDropdownPosition}
         />
+
+        {formData.vehicle_id && (
+          <TripContributionEstimateCard
+            estimatedFuelStr={estimatedFuelBaht}
+            onEstimatedFuelChange={setEstimatedFuelBaht}
+            data={tripContributionEstimate.data}
+            loading={tripContributionEstimate.loading}
+            error={tripContributionEstimate.error}
+            branchCode={tripBranch}
+          />
+        )}
 
         {/* Capacity Summary */}
         {formData.vehicle_id && selectedStores.length > 0 && (() => {

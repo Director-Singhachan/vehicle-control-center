@@ -16,6 +16,7 @@ import { serviceStaffService } from '../services/serviceStaffService';
 import { calculateTripCapacity } from '../utils/tripCapacityValidation';
 import { calculatePalletAllocation, type PalletPackingResult } from '../utils/palletPacking';
 import { type StoreWithItems, storesAndItemsEqual } from '../types/deliveryTripForm';
+import { useTripContributionEstimate } from './useTripContributionEstimate';
 
 export type { StoreWithItems };
 
@@ -181,6 +182,8 @@ export function useDeliveryTripForm({ tripId, onSave, onCancel }: UseDeliveryTri
   const [driverStaffDropdownPosition, setDriverStaffDropdownPosition] = useState<{ top: number; left: number; width: number } | null>(null);
 
   const [editReason, setEditReason] = useState('');
+  /** น้ำมันโดยประมาณ (บาท) — ใช้เฉพาะการ์ดประมาณการ ไม่บันทึก DB ในเฟสนี้ */
+  const [estimatedFuelBaht, setEstimatedFuelBaht] = useState('');
   const [capacitySummary, setCapacitySummary] = useState<{
     totalPallets: number;
     totalWeightKg: number;
@@ -526,6 +529,31 @@ export function useDeliveryTripForm({ tripId, onSave, onCancel }: UseDeliveryTri
     }
   }, []);
 
+  const branchForEstimate = useMemo(
+    () => (trip as { branch?: string | null } | null)?.branch ?? vehicles.find((v) => v.id === formData.vehicle_id)?.branch ?? null,
+    [trip, vehicles, formData.vehicle_id]
+  );
+
+  const crewStaffIdsForEstimate = useMemo(() => {
+    const ids = new Set<string>();
+    if (selectedDriverStaffId) ids.add(selectedDriverStaffId);
+    selectedHelpers.forEach((h) => ids.add(h));
+    return Array.from(ids);
+  }, [selectedDriverStaffId, selectedHelpers]);
+
+  const tripContributionEstimate = useTripContributionEstimate({
+    enabled: Boolean(formData.vehicle_id) && !loadingTrip,
+    vehicleId: formData.vehicle_id,
+    branch: branchForEstimate,
+    plannedDate: formData.planned_date,
+    tripStartDate: formData.trip_start_date,
+    tripEndDate: formData.trip_end_date,
+    crewStaffIds: crewStaffIdsForEstimate,
+    tripRevenueStr: formData.trip_revenue,
+    estimatedFuelStr: estimatedFuelBaht,
+    excludeTripId: tripId,
+  });
+
   const handleSubmit = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -686,7 +714,7 @@ export function useDeliveryTripForm({ tripId, onSave, onCancel }: UseDeliveryTri
     setError,
     success,
     latestOdometer,
-    tripBranch: vehicles.find(v => v.id === formData.vehicle_id)?.branch ?? null,
+    tripBranch: branchForEstimate,
     availableStaff,
     selectedHelpers,
     setSelectedHelpers,
@@ -710,6 +738,9 @@ export function useDeliveryTripForm({ tripId, onSave, onCancel }: UseDeliveryTri
     setEditReason,
     capacitySummary,
     palletPackingResult,
+    estimatedFuelBaht,
+    setEstimatedFuelBaht,
+    tripContributionEstimate,
     handleSelectVehicle,
     handleAddStore,
     handleRemoveStore,

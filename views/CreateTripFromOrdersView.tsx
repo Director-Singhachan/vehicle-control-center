@@ -1,15 +1,20 @@
-import React from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { ArrowLeft } from 'lucide-react';
 import { Button } from '../components/ui/Button';
 import { PageLayout } from '../components/ui/PageLayout';
 import { ToastContainer } from '../components/ui/Toast';
+import { Card } from '../components/ui/Card';
+import { Input } from '../components/ui/Input';
 import { useCreateTripWizard } from '../hooks/useCreateTripWizard';
 import { useToast } from '../hooks/useToast';
+import { useTripContributionEstimate } from '../hooks/useTripContributionEstimate';
 import { splitKey } from '../types/createTripWizard';
 import { OrderSelectionStep } from '../components/trip/OrderSelectionStep';
 import { VehicleSelectionStep } from '../components/trip/VehicleSelectionStep';
 import { CrewAssignmentStep } from '../components/trip/CrewAssignmentStep';
 import { TripConfirmationStep } from '../components/trip/TripConfirmationStep';
+import { TripContributionEstimateCard } from '../components/trip/TripContributionEstimateCard';
+import { serviceStaffService } from '../services/serviceStaffService';
 
 interface CreateTripFromOrdersViewProps {
   selectedOrders: any[];
@@ -20,6 +25,100 @@ interface CreateTripFromOrdersViewProps {
 export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: CreateTripFromOrdersViewProps) {
   const { toasts, dismissToast } = useToast();
   const wizard = useCreateTripWizard({ selectedOrders, onSuccess });
+
+  const [estimatedFuelBaht, setEstimatedFuelBaht] = useState('');
+  const [staffId1, setStaffId1] = useState<string | null>(null);
+  const [staffId2, setStaffId2] = useState<string | null>(null);
+  const [staffId3, setStaffId3] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!wizard.selectedDriverId) {
+      setStaffId1(null);
+      return;
+    }
+    void serviceStaffService.getLinkedByUserId(wizard.selectedDriverId).then((s) => setStaffId1(s?.id ?? null));
+  }, [wizard.selectedDriverId]);
+
+  useEffect(() => {
+    if (!wizard.selectedDriverId2) {
+      setStaffId2(null);
+      return;
+    }
+    void serviceStaffService.getLinkedByUserId(wizard.selectedDriverId2).then((s) => setStaffId2(s?.id ?? null));
+  }, [wizard.selectedDriverId2]);
+
+  useEffect(() => {
+    if (!wizard.selectedDriverId3) {
+      setStaffId3(null);
+      return;
+    }
+    void serviceStaffService.getLinkedByUserId(wizard.selectedDriverId3).then((s) => setStaffId3(s?.id ?? null));
+  }, [wizard.selectedDriverId3]);
+
+  const tripDenominator = wizard.splitIntoThreeTrips ? 3 : wizard.splitIntoTwoTrips ? 2 : 1;
+
+  const revenuePerTripStr = useMemo(() => {
+    const v = wizard.totals.totalAmount / tripDenominator;
+    return Number.isFinite(v) ? String(Math.round(v * 100) / 100) : '0';
+  }, [wizard.totals.totalAmount, tripDenominator]);
+
+  const fuelPerTripStr = useMemo(() => {
+    const f = parseFloat(estimatedFuelBaht) || 0;
+    const p = tripDenominator > 0 ? f / tripDenominator : 0;
+    return String(Math.round(p * 100) / 100);
+  }, [estimatedFuelBaht, tripDenominator]);
+
+  const branchForVehicle = useCallback(
+    (vehicleId: string) => {
+      const b = wizard.selectedBranch || wizard.vehicles.find((v: { id: string; branch?: string | null }) => v.id === vehicleId)?.branch;
+      return b || null;
+    },
+    [wizard.selectedBranch, wizard.vehicles]
+  );
+
+  const showSplitFuel = wizard.splitIntoTwoTrips || wizard.splitIntoThreeTrips;
+
+  const trip1Estimate = useTripContributionEstimate({
+    enabled: Boolean(wizard.selectedVehicleId) && !wizard.vehiclesLoading,
+    vehicleId: wizard.selectedVehicleId,
+    branch: branchForVehicle(wizard.selectedVehicleId),
+    plannedDate: wizard.tripDate,
+    tripStartDate: '',
+    tripEndDate: '',
+    crewStaffIds: staffId1 ? [staffId1] : [],
+    tripRevenueStr: revenuePerTripStr,
+    estimatedFuelStr: fuelPerTripStr,
+    excludeTripId: undefined,
+  });
+
+  const trip2Estimate = useTripContributionEstimate({
+    enabled:
+      Boolean(wizard.selectedVehicleId2) &&
+      (wizard.splitIntoTwoTrips || wizard.splitIntoThreeTrips) &&
+      !wizard.vehiclesLoading,
+    vehicleId: wizard.selectedVehicleId2,
+    branch: branchForVehicle(wizard.selectedVehicleId2),
+    plannedDate: wizard.tripDate,
+    tripStartDate: '',
+    tripEndDate: '',
+    crewStaffIds: staffId2 ? [staffId2] : [],
+    tripRevenueStr: revenuePerTripStr,
+    estimatedFuelStr: fuelPerTripStr,
+    excludeTripId: undefined,
+  });
+
+  const trip3Estimate = useTripContributionEstimate({
+    enabled: Boolean(wizard.selectedVehicleId3) && wizard.splitIntoThreeTrips && !wizard.vehiclesLoading,
+    vehicleId: wizard.selectedVehicleId3,
+    branch: branchForVehicle(wizard.selectedVehicleId3),
+    plannedDate: wizard.tripDate,
+    tripStartDate: '',
+    tripEndDate: '',
+    crewStaffIds: staffId3 ? [staffId3] : [],
+    tripRevenueStr: revenuePerTripStr,
+    estimatedFuelStr: fuelPerTripStr,
+    excludeTripId: undefined,
+  });
 
   return (
     <>
@@ -89,6 +188,103 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
               nextTripSequence2={wizard.nextTripSequence2}
               nextTripSequence3={wizard.nextTripSequence3}
             />
+
+            {wizard.selectedVehicleId && (
+              <div className="space-y-4">
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  รายได้ใช้ยอดรวมออเดอร์ในรายการ (total_amount)
+                  {tripDenominator > 1 ? ` — หาร ${tripDenominator} เที่ยวเพื่อประมาณการต่อเที่ยว` : ''}
+                </p>
+                {showSplitFuel && (
+                  <Card>
+                    <p className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                      น้ำมันรวมโดยประมาณ (แบ่งเท่าๆ ต่อเที่ยว)
+                    </p>
+                    <Input
+                      type="number"
+                      value={estimatedFuelBaht}
+                      onChange={(e) => setEstimatedFuelBaht(e.target.value)}
+                      placeholder="0"
+                      min={0}
+                      step={1}
+                      className="dark:bg-charcoal-900 dark:border-slate-600 dark:text-white"
+                    />
+                  </Card>
+                )}
+
+                {!wizard.splitIntoTwoTrips && !wizard.splitIntoThreeTrips && (
+                  <TripContributionEstimateCard
+                    estimatedFuelStr={estimatedFuelBaht}
+                    onEstimatedFuelChange={setEstimatedFuelBaht}
+                    data={trip1Estimate.data}
+                    loading={trip1Estimate.loading}
+                    error={trip1Estimate.error}
+                    branchCode={branchForVehicle(wizard.selectedVehicleId)}
+                  />
+                )}
+
+                {wizard.splitIntoTwoTrips && (
+                  <>
+                    <TripContributionEstimateCard
+                      title="ประมาณการ — คันที่ 1"
+                      showFuelInput={false}
+                      estimatedFuelStr=""
+                      onEstimatedFuelChange={() => {}}
+                      data={trip1Estimate.data}
+                      loading={trip1Estimate.loading}
+                      error={trip1Estimate.error}
+                      branchCode={branchForVehicle(wizard.selectedVehicleId)}
+                    />
+                    <TripContributionEstimateCard
+                      title="ประมาณการ — คันที่ 2"
+                      showFuelInput={false}
+                      estimatedFuelStr=""
+                      onEstimatedFuelChange={() => {}}
+                      data={trip2Estimate.data}
+                      loading={trip2Estimate.loading}
+                      error={trip2Estimate.error}
+                      branchCode={branchForVehicle(wizard.selectedVehicleId2)}
+                    />
+                  </>
+                )}
+
+                {wizard.splitIntoThreeTrips && (
+                  <>
+                    <TripContributionEstimateCard
+                      title="ประมาณการ — เที่ยวที่ 1"
+                      showFuelInput={false}
+                      estimatedFuelStr=""
+                      onEstimatedFuelChange={() => {}}
+                      data={trip1Estimate.data}
+                      loading={trip1Estimate.loading}
+                      error={trip1Estimate.error}
+                      branchCode={branchForVehicle(wizard.selectedVehicleId)}
+                    />
+                    <TripContributionEstimateCard
+                      title="ประมาณการ — เที่ยวที่ 2"
+                      showFuelInput={false}
+                      estimatedFuelStr=""
+                      onEstimatedFuelChange={() => {}}
+                      data={trip2Estimate.data}
+                      loading={trip2Estimate.loading}
+                      error={trip2Estimate.error}
+                      branchCode={branchForVehicle(wizard.selectedVehicleId2)}
+                    />
+                    <TripContributionEstimateCard
+                      title="ประมาณการ — เที่ยวที่ 3"
+                      showFuelInput={false}
+                      estimatedFuelStr=""
+                      onEstimatedFuelChange={() => {}}
+                      data={trip3Estimate.data}
+                      loading={trip3Estimate.loading}
+                      error={trip3Estimate.error}
+                      branchCode={branchForVehicle(wizard.selectedVehicleId3)}
+                    />
+                  </>
+                )}
+              </div>
+            )}
+
             <OrderSelectionStep
               storeDeliveries={wizard.storeDeliveries}
               orderItemsMap={wizard.orderItemsMap}
