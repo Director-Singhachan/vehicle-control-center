@@ -856,12 +856,14 @@ export function CreateOrderView() {
                   <div className="overflow-x-auto">
                     <table className="w-full table-fixed">
                       <colgroup>
-                        <col className="w-[30%]" />
-                        <col className="w-[10%]" />
-                        <col className="w-[15%]" />
-                        <col className="w-[15%]" />
-                        <col className="w-[15%]" />
-                        <col className="w-[15%]" />
+                        <col className="min-w-0 w-[26%]" />
+                        <col className="w-[9%]" />
+                        <col className="w-[13%]" />
+                        <col className="w-[13%]" />
+                        <col className="w-[13%]" />
+                        <col className="w-[13%]" />
+                        {/* คอลัมน์ลบ — ต้องมี col ครบทุกคอลัมน์ ไม่งั้น table-fixed จะให้ความกว้าง 0 ทำให้ปุ่มหาย */}
+                        <col className="w-12 shrink-0" />
                       </colgroup>
                       <thead>
                         <tr className="border-b border-gray-200 dark:border-slate-700">
