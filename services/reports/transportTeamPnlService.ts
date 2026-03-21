@@ -1,5 +1,6 @@
 /**
- * ผลประกอบการทีมขนส่งหน้างาน — รายได้จากทริป (ตาม planned_date) เทียบค่าจ้างทีมพนักงาน service_staff ที่ active
+ * ผลประกอบการทีมขนส่งหน้างาน — รายได้จากทริป (ตาม planned_date) เทียบค่าจ้างทีมพนักงานหน้างาน
+ * (service_staff active ที่เชื่อม profiles.role = driver | service_staff เท่านั้น)
  * ไม่รวมหลังบ้าน / ค่าใช้จ่ายอื่นขององค์กร
  */
 import { supabase } from '../../lib/supabase';
@@ -29,7 +30,7 @@ export interface TransportTeamPnlSummary {
   calendar_days: number;
   /** รายได้รวมจาก trip_revenue ของทริปที่ planned_date อยู่ในช่วง (ยกเว้น cancelled) */
   trip_revenue_total: number;
-  /** ค่าจ้างรวม: สำหรับแต่ละวันในช่วง รวม (เงินเดือนที่มีผล / 30) ต่อคนต่อวัน ของพนักงาน active */
+  /** ค่าจ้างรวม: สำหรับแต่ละวันในช่วง รวม (เงินเดือนที่มีผล / 30) ต่อคนต่อวัน — เฉพาะคนขับ/พนักงานบริการที่ active และเชื่อมบัญชี */
   field_team_payroll_total: number;
   net: number;
   trip_count: number;
@@ -44,6 +45,9 @@ type SalaryRow = {
   effective_to: string | null;
   monthly_salary: number;
 };
+
+/** บทบาทหน้างานที่นับในค่าจ้างทีมขนส่ง — คนขับ / พนักงานบริการ */
+const FRONTLINE_PAYROLL_ROLES = ['driver', 'service_staff'] as const;
 
 export async function getTransportTeamPnlSummary(
   options: TransportTeamPnlOptions
@@ -85,21 +89,48 @@ export async function getTransportTeamPnlSummary(
     revenueByDate.set(d, (revenueByDate.get(d) ?? 0) + rev);
   }
 
-  let staffQuery = supabase.from('service_staff').select('id').eq('status', 'active');
+  let staffQuery = supabase.from('service_staff').select('id, user_id').eq('status', 'active');
   if (branch) {
     staffQuery = staffQuery.eq('branch', branch);
   }
 
   const { data: staffRows, error: staffErr } = await staffQuery;
   if (staffErr) throw staffErr;
-  const rawIds: string[] = (staffRows ?? [])
-    .map((r) => String((r as { id: string }).id))
+
+  const staffList = (staffRows ?? []) as { id: string; user_id: string | null }[];
+  const distinctUserIds = Array.from(
+    new Set(
+      staffList
+        .map((r) => r.user_id)
+        .filter((uid): uid is string => typeof uid === 'string' && uid.length > 0)
+    )
+  );
+
+  let allowedUserIds = new Set<string>();
+  if (distinctUserIds.length > 0) {
+    const { data: profileRows, error: profileErr } = await supabase
+      .from('profiles')
+      .select('id')
+      .in('id', distinctUserIds)
+      .in('role', [...FRONTLINE_PAYROLL_ROLES]);
+    if (profileErr) throw profileErr;
+    for (const p of profileRows ?? []) {
+      const id = (p as { id: string }).id;
+      if (id) allowedUserIds.add(id);
+    }
+  }
+
+  const rawIds: string[] = staffList
+    .filter((r) => r.user_id && allowedUserIds.has(r.user_id))
+    .map((r) => String(r.id))
     .filter((id) => id.length > 0);
   const staffIds = Array.from(new Set(rawIds));
   const fieldStaffCount = staffIds.length;
 
   if (fieldStaffCount === 0) {
-    notes.push('ไม่พบพนักงาน service_staff สถานะ active ในขอบเขตสาขาที่เลือก — ค่าจ้างจะเป็น 0');
+    notes.push(
+      'ไม่พบพนักงานหน้างาน (profiles.role = คนขับหรือพนักงานบริการ) ที่ active และอยู่ในขอบเขตสาขา — ค่าจ้างจะเป็น 0'
+    );
   }
 
   let salaryRows: SalaryRow[] = [];
@@ -136,7 +167,7 @@ export async function getTransportTeamPnlSummary(
     'รายได้ = ผลรวม trip_revenue ของทริปที่ planned_date อยู่ในช่วง (ไม่รวมทริปยกเลิก)'
   );
   notes.push(
-    'ค่าจ้าง = พนักงาน service_staff สถานะ active ในสาขาที่เลือก (หรือทุกสาขา) × เงินเดือนที่มีผลต่อวัน (÷30) ทุกวันในช่วง — รวมวันที่ไม่มีทริป'
+    'ค่าจ้าง = พนักงาน service_staff สถานะ active ในสาขาที่เลือก (หรือทุกสาขา) เฉพาะที่เชื่อมบัญชีและ role เป็น คนขับ หรือ พนักงานบริการ × เงินเดือนที่มีผลต่อวัน (÷30) ทุกวันในช่วง — รวมวันที่ไม่มีทริป'
   );
 
   let daily: TransportTeamPnlDailyRow[] | undefined;
