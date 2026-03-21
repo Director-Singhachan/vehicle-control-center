@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { type Dispatch, type SetStateAction } from 'react';
 import { Users, Calendar } from 'lucide-react';
 import { Card } from '../ui/Card';
 import type { SplitMode } from '../../types/createTripWizard';
+import { CrewAssignmentHelperPickers } from './CrewAssignmentHelperPickers';
 
 export interface CrewAssignmentStepProps {
   splitIntoTwoTrips: boolean;
@@ -34,6 +35,12 @@ export interface CrewAssignmentStepProps {
   setNotes: (notes: string) => void;
   skipStockDeduction: boolean;
   setSkipStockDeduction: (v: boolean) => void;
+  helperStaffIds1: string[];
+  setHelperStaffIds1: Dispatch<SetStateAction<string[]>>;
+  helperStaffIds2: string[];
+  setHelperStaffIds2: Dispatch<SetStateAction<string[]>>;
+  helperStaffIds3: string[];
+  setHelperStaffIds3: Dispatch<SetStateAction<string[]>>;
   /** Next sequence for same vehicle+date */
   nextTripSequence1?: number;
   nextTripSequence2?: number;
@@ -46,6 +53,7 @@ export function CrewAssignmentStep({
   setSplitIntoTwoTripsWithExpanded,
   setSplitModeWithExpanded,
   driversLoading,
+  selectedBranch,
   filteredDrivers,
   selectedDriverId,
   setSelectedDriverId,
@@ -67,6 +75,12 @@ export function CrewAssignmentStep({
   setNotes,
   skipStockDeduction,
   setSkipStockDeduction,
+  helperStaffIds1,
+  setHelperStaffIds1,
+  helperStaffIds2,
+  setHelperStaffIds2,
+  helperStaffIds3,
+  setHelperStaffIds3,
   nextTripSequence1 = 1,
   nextTripSequence2 = 1,
   nextTripSequence3 = 1,
@@ -315,8 +329,23 @@ export function CrewAssignmentStep({
             </div>
           )}
 
+          <CrewAssignmentHelperPickers
+            filterBranchCode={selectedBranch}
+            splitIntoTwoTrips={splitIntoTwoTrips}
+            splitIntoThreeTrips={splitIntoThreeTrips}
+            selectedDriverId={selectedDriverId}
+            selectedDriverId2={selectedDriverId2}
+            selectedDriverId3={selectedDriverId3}
+            helperStaffIds1={helperStaffIds1}
+            setHelperStaffIds1={setHelperStaffIds1}
+            helperStaffIds2={helperStaffIds2}
+            setHelperStaffIds2={setHelperStaffIds2}
+            helperStaffIds3={helperStaffIds3}
+            setHelperStaffIds3={setHelperStaffIds3}
+          />
+
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
               <Calendar className="w-4 h-4 inline mr-1" />
               วันที่ส่ง *
             </label>

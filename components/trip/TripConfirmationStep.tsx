@@ -27,6 +27,10 @@ export interface TripConfirmationStepProps {
   capacitySummary2: CapacitySummary | null;
   capacitySummary3?: CapacitySummary | null;
   palletPackingResult: PalletPackingResult | null;
+  /** จำนวนพนักงานบริการ (ลูกเรือ) ต่อเที่ยว */
+  helperCount1?: number;
+  helperCount2?: number;
+  helperCount3?: number;
 }
 
 export function TripConfirmationStep({
@@ -50,6 +54,9 @@ export function TripConfirmationStep({
   capacitySummary2,
   capacitySummary3 = null,
   palletPackingResult,
+  helperCount1 = 0,
+  helperCount2 = 0,
+  helperCount3 = 0,
 }: TripConfirmationStepProps) {
   const hasItems = Array.from(orderItemsMap.values()).some((items: any[]) => Array.isArray(items) && items.length > 0);
   const items2Length = getItemsForVehicle(2).length;
@@ -90,6 +97,22 @@ export function TripConfirmationStep({
                 {new Intl.NumberFormat('th-TH').format(totals.totalAmount)} ฿
               </span>
             </div>
+            {(helperCount1 > 0 || helperCount2 > 0 || helperCount3 > 0) && (
+              <div className="pt-3 border-t border-gray-200 dark:border-slate-700 text-sm text-gray-600 dark:text-slate-400">
+                <span className="font-medium text-gray-800 dark:text-slate-200">พนักงานบริการ: </span>
+                {splitIntoThreeTrips ? (
+                  <>
+                    เที่ยว 1 — {helperCount1} คน, เที่ยว 2 — {helperCount2} คน, เที่ยว 3 — {helperCount3} คน
+                  </>
+                ) : splitIntoTwoTrips ? (
+                  <>
+                    คันที่ 1 — {helperCount1} คน, คันที่ 2 — {helperCount2} คน
+                  </>
+                ) : (
+                  <>{helperCount1} คน</>
+                )}
+              </div>
+            )}
           </div>
           <div className="mt-6 pt-6 border-t border-gray-200">
             <Button onClick={handleSubmit} disabled={submitDisabled} className="w-full">

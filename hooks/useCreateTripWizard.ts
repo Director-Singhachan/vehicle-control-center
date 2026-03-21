@@ -12,6 +12,7 @@ import { useAuth } from './useAuth';
 import { useToast } from './useToast';
 import { useVehicles } from './useVehicles';
 import { useDeliveryTrips } from './useDeliveryTrips';
+import { serviceStaffService } from '../services/serviceStaffService';
 import type { StoreDelivery, ItemSplitQty, CapacitySummary, SplitMode } from '../types/createTripWizard';
 import { splitKey } from '../types/createTripWizard';
 
@@ -43,6 +44,10 @@ export function useCreateTripWizard({ selectedOrders, onSuccess }: UseCreateTrip
   const [selectedDriverId2, setSelectedDriverId2] = useState('');
   const [selectedVehicleId3, setSelectedVehicleId3] = useState('');
   const [selectedDriverId3, setSelectedDriverId3] = useState('');
+  /** พนักงานบริการ (service_staff id) ต่อเที่ยว — บันทึกเป็น delivery_trip_crews role helper */
+  const [helperStaffIds1, setHelperStaffIds1] = useState<string[]>([]);
+  const [helperStaffIds2, setHelperStaffIds2] = useState<string[]>([]);
+  const [helperStaffIds3, setHelperStaffIds3] = useState<string[]>([]);
   const [itemSplitMap, setItemSplitMap] = useState<Record<string, ItemSplitQty>>({});
   const [quantityInThisTripMap, setQuantityInThisTripMap] = useState<Record<string, number>>({});
   const [expandedStores, setExpandedStores] = useState<Set<string>>(new Set());
@@ -94,6 +99,16 @@ export function useCreateTripWizard({ selectedOrders, onSuccess }: UseCreateTrip
     };
     fetchDrivers();
   }, []);
+
+  useEffect(() => {
+    if (!splitIntoTwoTrips && !splitIntoThreeTrips) {
+      setHelperStaffIds2([]);
+      setHelperStaffIds3([]);
+    }
+    if (!splitIntoThreeTrips) {
+      setHelperStaffIds3([]);
+    }
+  }, [splitMode, splitIntoTwoTrips, splitIntoThreeTrips]);
 
   useEffect(() => {
     const fetchOrderItems = async () => {
@@ -741,6 +756,14 @@ export function useCreateTripWizard({ selectedOrders, onSuccess }: UseCreateTrip
 
     setIsSubmitting(true);
     try {
+      const dedupeHelpers = async (driverProfileId: string, helpers: string[]) => {
+        if (helpers.length === 0) return [];
+        const linked = await serviceStaffService.getLinkedByUserId(driverProfileId);
+        const sid = linked?.id;
+        if (!sid) return helpers;
+        return helpers.filter((h) => h !== sid);
+      };
+
       const buildStoresPayload = (deliveries: StoreDelivery[]) =>
         deliveries.map((delivery) => {
           const orderItems = orderItemsMap.get(delivery.order_id) || [];
@@ -810,12 +833,15 @@ export function useCreateTripWizard({ selectedOrders, onSuccess }: UseCreateTrip
       if (splitIntoTwoTrips) {
         const stores1 = buildSplitStoresPayload(1);
         const stores2 = buildSplitStoresPayload(2);
+        const h1 = await dedupeHelpers(selectedDriverId, helperStaffIds1);
+        const h2 = await dedupeHelpers(selectedDriverId2, helperStaffIds2);
         const trip1 = await deliveryTripService.create({
           vehicle_id: selectedVehicleId,
           driver_id: selectedDriverId,
           planned_date: tripDate,
           notes: notes ? `[คัน 1] ${notes}` : '[คัน 1]',
           stores: stores1,
+          helpers: h1,
         });
         const trip2 = await deliveryTripService.create({
           vehicle_id: selectedVehicleId2,
@@ -823,6 +849,7 @@ export function useCreateTripWizard({ selectedOrders, onSuccess }: UseCreateTrip
           planned_date: tripDate,
           notes: notes ? `[คัน 2] ${notes}` : '[คัน 2]',
           stores: stores2,
+          helpers: h2,
         });
         const trip1StoreIds = new Set(stores1.map(s => s.store_id));
         const trip2StoreIds = new Set(stores2.map(s => s.store_id));
@@ -844,12 +871,16 @@ export function useCreateTripWizard({ selectedOrders, onSuccess }: UseCreateTrip
         const stores1 = buildSplitStoresPayload(1);
         const stores2 = buildSplitStoresPayload(2);
         const stores3 = buildSplitStoresPayload(3);
+        const h1 = await dedupeHelpers(selectedDriverId, helperStaffIds1);
+        const h2 = await dedupeHelpers(selectedDriverId2, helperStaffIds2);
+        const h3 = await dedupeHelpers(selectedDriverId3, helperStaffIds3);
         const trip1 = await deliveryTripService.create({
           vehicle_id: selectedVehicleId,
           driver_id: selectedDriverId,
           planned_date: tripDate,
           notes: notes ? `[เที่ยว 1] ${notes}` : '[เที่ยว 1]',
           stores: stores1,
+          helpers: h1,
         });
         const trip2 = await deliveryTripService.create({
           vehicle_id: selectedVehicleId2,
@@ -857,6 +888,7 @@ export function useCreateTripWizard({ selectedOrders, onSuccess }: UseCreateTrip
           planned_date: tripDate,
           notes: notes ? `[เที่ยว 2] ${notes}` : '[เที่ยว 2]',
           stores: stores2,
+          helpers: h2,
         });
         const trip3 = await deliveryTripService.create({
           vehicle_id: selectedVehicleId3,
@@ -864,6 +896,7 @@ export function useCreateTripWizard({ selectedOrders, onSuccess }: UseCreateTrip
           planned_date: tripDate,
           notes: notes ? `[เที่ยว 3] ${notes}` : '[เที่ยว 3]',
           stores: stores3,
+          helpers: h3,
         });
         const orderIds = [...new Set(storeDeliveries.map(d => d.order_id))];
         if (orderIds.length > 0) await ordersService.assignToTrip(orderIds, trip1.id, user?.id!);
@@ -875,12 +908,14 @@ export function useCreateTripWizard({ selectedOrders, onSuccess }: UseCreateTrip
           setIsSubmitting(false);
           return;
         }
+        const h1 = await dedupeHelpers(selectedDriverId, helperStaffIds1);
         const trip = await deliveryTripService.create({
           vehicle_id: selectedVehicleId,
           driver_id: selectedDriverId,
           planned_date: tripDate,
           notes: notes || undefined,
           stores,
+          helpers: h1,
         });
         const orderIds = [...new Set(stores.map((s) => storeDeliveries.find((d) => d.store_id === s.store_id)?.order_id).filter(Boolean) as string[])];
         if (orderIds.length > 0) await ordersService.assignToTrip(orderIds, trip.id, user?.id!);
@@ -916,6 +951,7 @@ export function useCreateTripWizard({ selectedOrders, onSuccess }: UseCreateTrip
     }
   }, [
     selectedVehicleId, selectedDriverId, selectedVehicleId2, selectedDriverId2, selectedVehicleId3, selectedDriverId3,
+    helperStaffIds1, helperStaffIds2, helperStaffIds3,
     storeDeliveries, orderItemsMap, splitIntoTwoTrips, splitIntoThreeTrips, splitMode, itemSplitMap, quantityInThisTripMap,
     splitValidationErrors, capacitySummary, capacitySummary2, capacitySummary3, palletPackingResult,
     getRemaining, getItemsForVehicle, user?.id, recommendationInput, aiHasFetched, aiRecommendations,
@@ -1047,6 +1083,12 @@ export function useCreateTripWizard({ selectedOrders, onSuccess }: UseCreateTrip
     setNotes,
     skipStockDeduction,
     setSkipStockDeduction,
+    helperStaffIds1,
+    setHelperStaffIds1,
+    helperStaffIds2,
+    setHelperStaffIds2,
+    helperStaffIds3,
+    setHelperStaffIds3,
     nextTripSequence1,
     nextTripSequence2,
     // Confirmation & submit

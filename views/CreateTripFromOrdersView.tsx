@@ -57,6 +57,19 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
 
   const tripDenominator = wizard.splitIntoThreeTrips ? 3 : wizard.splitIntoTwoTrips ? 2 : 1;
 
+  const crewStaffIdsTrip1 = useMemo(
+    () => [...new Set([staffId1, ...wizard.helperStaffIds1].filter(Boolean))] as string[],
+    [staffId1, wizard.helperStaffIds1]
+  );
+  const crewStaffIdsTrip2 = useMemo(
+    () => [...new Set([staffId2, ...wizard.helperStaffIds2].filter(Boolean))] as string[],
+    [staffId2, wizard.helperStaffIds2]
+  );
+  const crewStaffIdsTrip3 = useMemo(
+    () => [...new Set([staffId3, ...wizard.helperStaffIds3].filter(Boolean))] as string[],
+    [staffId3, wizard.helperStaffIds3]
+  );
+
   const revenuePerTripStr = useMemo(() => {
     const v = wizard.totals.totalAmount / tripDenominator;
     return Number.isFinite(v) ? String(Math.round(v * 100) / 100) : '0';
@@ -121,7 +134,7 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
     plannedDate: wizard.tripDate,
     tripStartDate: '',
     tripEndDate: '',
-    crewStaffIds: staffId1 ? [staffId1] : [],
+    crewStaffIds: crewStaffIdsTrip1,
     tripRevenueStr: revenuePerTripStr,
     estimatedFuelStr: fuelPerTripStr,
     totalItemQuantity: qtyTrip1,
@@ -138,7 +151,7 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
     plannedDate: wizard.tripDate,
     tripStartDate: '',
     tripEndDate: '',
-    crewStaffIds: staffId2 ? [staffId2] : [],
+    crewStaffIds: crewStaffIdsTrip2,
     tripRevenueStr: revenuePerTripStr,
     estimatedFuelStr: fuelPerTripStr,
     totalItemQuantity: qtyTrip2,
@@ -152,7 +165,7 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
     plannedDate: wizard.tripDate,
     tripStartDate: '',
     tripEndDate: '',
-    crewStaffIds: staffId3 ? [staffId3] : [],
+    crewStaffIds: crewStaffIdsTrip3,
     tripRevenueStr: revenuePerTripStr,
     estimatedFuelStr: fuelPerTripStr,
     totalItemQuantity: qtyTrip3,
@@ -226,6 +239,12 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
               nextTripSequence1={wizard.nextTripSequence1}
               nextTripSequence2={wizard.nextTripSequence2}
               nextTripSequence3={wizard.nextTripSequence3}
+              helperStaffIds1={wizard.helperStaffIds1}
+              setHelperStaffIds1={wizard.setHelperStaffIds1}
+              helperStaffIds2={wizard.helperStaffIds2}
+              setHelperStaffIds2={wizard.setHelperStaffIds2}
+              helperStaffIds3={wizard.helperStaffIds3}
+              setHelperStaffIds3={wizard.setHelperStaffIds3}
             />
 
             {wizard.selectedVehicleId && (
@@ -369,6 +388,9 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
             capacitySummary2={wizard.capacitySummary2}
             capacitySummary3={wizard.capacitySummary3}
             palletPackingResult={wizard.palletPackingResult}
+            helperCount1={wizard.helperStaffIds1.length}
+            helperCount2={wizard.helperStaffIds2.length}
+            helperCount3={wizard.helperStaffIds3.length}
           />
         </div>
       </PageLayout>
