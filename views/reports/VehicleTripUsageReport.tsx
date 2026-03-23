@@ -878,30 +878,56 @@ export const VehicleTripUsageReport: React.FC<VehicleTripUsageReportProps> = ({
                     </div>
                   </div>
                   <div className="border-t border-slate-200 dark:border-slate-700 pt-3">
-                    <p className="text-xs text-slate-500 dark:text-slate-400 mb-2">ตัวชี้จากต้นทุนเต็ม (คงที่+ผันแปร)</p>
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mb-2">
+                      ตัวชี้จาก P&amp;L เต็ม (คงที่+ผันแปร+บุคลากร) — ต้นทุน/ชิ้น ≠ กำไรขั้นต้นสินค้า (COGS)
+                    </p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                       {pnlSummary.cost_per_trip !== null && (
                         <div>
+                          <p className="text-xs text-slate-500 dark:text-slate-400 mb-0.5">ต้นทุนเต็ม / ทริป</p>
                           <p className="text-sm font-medium text-slate-900 dark:text-white">
-                            ฿{pnlSummary.cost_per_trip.toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 2 })} / ทริป
+                            ฿{pnlSummary.cost_per_trip.toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
                           </p>
                         </div>
                       )}
                       {pnlSummary.cost_per_km !== null && (
                         <div>
+                          <p className="text-xs text-slate-500 dark:text-slate-400 mb-0.5">ต้นทุนเต็ม / กม.</p>
                           <p className="text-sm font-medium text-slate-900 dark:text-white">
-                            ฿{pnlSummary.cost_per_km.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} / กม.
+                            ฿{pnlSummary.cost_per_km.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </p>
                         </div>
                       )}
                       {pnlSummary.cost_per_piece !== null && (
                         <div>
+                          <p className="text-xs text-slate-500 dark:text-slate-400 mb-0.5">ต้นทุนเต็ม / ชิ้นส่ง</p>
                           <p className="text-sm font-medium text-slate-900 dark:text-white">
-                            ฿{pnlSummary.cost_per_piece.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} / ชิ้น
+                            ฿{pnlSummary.cost_per_piece.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </p>
                         </div>
                       )}
-                      {pnlSummary.cost_per_trip === null && pnlSummary.cost_per_km === null && pnlSummary.cost_per_piece === null && (
+                      {pnlSummary.profit_per_piece !== null && (
+                        <div>
+                          <p className="text-xs text-slate-500 dark:text-slate-400 mb-0.5">กำไรสุทธิ / ชิ้นส่ง</p>
+                          <p
+                            className={`text-sm font-medium ${
+                              pnlSummary.profit_per_piece >= 0
+                                ? 'text-green-600 dark:text-green-400'
+                                : 'text-red-600 dark:text-red-400'
+                            }`}
+                          >
+                            {pnlSummary.profit_per_piece >= 0 ? '' : '−'}฿
+                            {Math.abs(pnlSummary.profit_per_piece).toLocaleString('th-TH', {
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 2,
+                            })}
+                          </p>
+                        </div>
+                      )}
+                      {pnlSummary.cost_per_trip === null &&
+                        pnlSummary.cost_per_km === null &&
+                        pnlSummary.cost_per_piece === null &&
+                        pnlSummary.profit_per_piece === null && (
                         <p className="text-sm text-slate-500 dark:text-slate-400">ไม่มีข้อมูลระยะทาง/ทริป/ชิ้นในช่วงนี้</p>
                       )}
                     </div>

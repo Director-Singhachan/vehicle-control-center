@@ -38,6 +38,8 @@ export interface VehiclePnlSummary {
   cost_per_km: number | null;
   cost_per_trip: number | null;
   cost_per_piece: number | null;
+  /** กำไรสุทธิ ÷ จำนวนชิ้นจัดส่ง (delivery_trip_items) — ไม่ใช่กำไรขั้นต้นสินค้าจากต้นทุนซื้อ */
+  profit_per_piece: number | null;
 }
 
 /**
@@ -55,14 +57,8 @@ export async function getVehiclePnlSummary(
   const days_in_filter = daysInRange(startStr, endStr);
   if (days_in_filter <= 0) return null;
 
-  const [costSummary, tripsRes, tripLogsRes, total_pieces] = await Promise.all([
+  const [costSummary, tripLogsRes, total_pieces] = await Promise.all([
     getVehicleCostSummaryPhase2({ vehicleId, startDate: startStr, endDate: endStr }),
-    supabase
-      .from('delivery_trips_ready_for_pnl')
-      .select('id, trip_revenue')
-      .eq('vehicle_id', vehicleId)
-      .gte('planned_date', startStr)
-      .lte('planned_date', endStr),
     supabase
       .from('trip_logs')
       .select('checkout_time, distance_km, manual_distance_km, odometer_start, odometer_end')
@@ -91,13 +87,6 @@ export async function getVehiclePnlSummary(
       return (items ?? []).reduce((sum, r) => sum + (Number(r.quantity) || 0), 0);
     })(),
   ]);
-
-  const revenue = (tripsRes.data ?? []).reduce(
-    (s, r) => s + (Number((r as { trip_revenue?: number | null }).trip_revenue) || 0),
-    0
-  );
-
-  const total_trips = tripsRes.data?.length ?? 0;
 
   const daysSet = new Set<string>();
   for (const log of tripLogsRes.data ?? []) {
@@ -132,6 +121,9 @@ export async function getVehiclePnlSummary(
     endDate: endStr,
     vehicleId,
   });
+  /** สอดคล้องกับ tripPnlService: trip_revenue > 0 ใช้ฟิลด์นั้น ไม่งั้นรวม orders.total_amount */
+  const revenue = tripRows.reduce((s, r) => s + r.revenue, 0);
+  const total_trips = tripRows.length;
   const total_personnel = tripRows.reduce((s, r) => s + r.personnel_cost, 0);
   const total_cost = total_fixed + total_variable + total_personnel;
   const daily_fixed_cost = costSummary.daily_fixed_cost;
@@ -143,6 +135,7 @@ export async function getVehiclePnlSummary(
     total_distance_km > 0 ? total_cost / total_distance_km : null;
   const cost_per_trip = total_trips > 0 ? total_cost / total_trips : null;
   const cost_per_piece = total_pieces > 0 ? total_cost / total_pieces : null;
+  const profit_per_piece = total_pieces > 0 ? net_profit / total_pieces : null;
 
   return {
     vehicle_id: vehicleId,
@@ -165,5 +158,6 @@ export async function getVehiclePnlSummary(
     cost_per_km,
     cost_per_trip,
     cost_per_piece,
+    profit_per_piece,
   };
 }
