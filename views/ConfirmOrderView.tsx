@@ -46,6 +46,10 @@ export const ConfirmOrderView: React.FC = () => {
     const [expandedOrders, setExpandedOrders] = useState<Set<string>>(new Set());
     const [splittingItem, setSplittingItem] = useState<any | null>(null);
     const [processingOrderIds, setProcessingOrderIds] = useState<Set<string>>(new Set());
+    
+    // Multi-selection State
+    const [selectedOrderIds, setSelectedOrderIds] = useState<Set<string>>(new Set());
+    const [isBulkProcessing, setIsBulkProcessing] = useState(false);
 
     // Pickup Tab States
     const [pickupItems, setPickupItems] = useState<PickupPendingItem[]>([]);
@@ -142,6 +146,54 @@ export const ConfirmOrderView: React.FC = () => {
         
         return orderNum.includes(search) || custName.includes(search) || storeName.includes(search);
     }) : [];
+
+    const toggleOrderSelection = (orderId: string, e?: React.MouseEvent) => {
+        if (e) e.stopPropagation();
+        const newSelected = new Set(selectedOrderIds);
+        if (newSelected.has(orderId)) {
+            newSelected.delete(orderId);
+        } else {
+            newSelected.add(orderId);
+        }
+        setSelectedOrderIds(newSelected);
+    };
+
+    const toggleSelectAll = () => {
+        if (selectedOrderIds.size === filteredOrders.length) {
+            setSelectedOrderIds(new Set());
+        } else {
+            setSelectedOrderIds(new Set(filteredOrders.map(o => o.id)));
+        }
+    };
+
+    const handleBulkMarkAsReady = async () => {
+        if (selectedOrderIds.size === 0) return;
+        setIsBulkProcessing(true);
+        try {
+            const { updated } = await ordersService.markMultipleAsReady(Array.from(selectedOrderIds), profile?.id || '');
+            success(`ยืนยันสำเร็จ ${updated} ออเดอร์`);
+            setSelectedOrderIds(new Set());
+            fetchOrders();
+        } catch (err: any) {
+            error('ไม่สามารถยืนยันออเดอร์ได้: ' + (err.message || 'Unknown error'));
+        } finally {
+            setIsBulkProcessing(false);
+        }
+    };
+
+    const handleBulkUpdateFulfillment = async (method: 'delivery' | 'pickup') => {
+        if (selectedOrderIds.size === 0) return;
+        setIsBulkProcessing(true);
+        try {
+            const { updated } = await ordersService.updateMultipleFulfillmentMethods(Array.from(selectedOrderIds), method);
+            success(`อัปเดตวิธีรับสินค้าสำเร็จ ${updated} รายการ`);
+            fetchOrders();
+        } catch (err: any) {
+            error('ไม่สามารถอัปเดตออเดอร์ได้: ' + (err.message || 'Unknown error'));
+        } finally {
+            setIsBulkProcessing(false);
+        }
+    };
 
     const formatDate = (dateStr: any) => {
         if (!dateStr) return '-';
@@ -275,6 +327,15 @@ export const ConfirmOrderView: React.FC = () => {
                             <option value="SD">{getBranchLabel('SD')}</option>
                         </select>
                     </div>
+                    <div className="flex items-center gap-3 pl-2">
+                        <input
+                            type="checkbox"
+                            checked={filteredOrders.length > 0 && selectedOrderIds.size === filteredOrders.length}
+                            onChange={toggleSelectAll}
+                            className="w-5 h-5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                        />
+                        <span className="text-xs font-black text-slate-500 uppercase tracking-wider">เลือกทั้งหมด</span>
+                    </div>
                     <Button
                         variant="outline"
                         onClick={currentTab === 'delivery' ? fetchOrders : (pickupSubTab === 'pending' ? fetchPickupItems : fetchPickupHistory)}
@@ -330,56 +391,64 @@ export const ConfirmOrderView: React.FC = () => {
                                         >
                                             {/* Order Header */}
                                             <div
-                                                className="p-6 cursor-pointer select-none"
+                                                className="p-4 cursor-pointer select-none"
                                                 onClick={() => toggleOrderExpansion(order.id)}
                                             >
-                                                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                                                    <div className="flex items-start gap-4">
-                                                        <div className={`p-3 rounded-2xl shadow-sm transition-colors ${isExpanded ? 'bg-blue-600 text-white' : 'bg-slate-100 dark:bg-charcoal-800 text-slate-400'
+                                                <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                                                    <div className="flex items-start gap-3">
+                                                        <div className="pt-1" onClick={(e) => e.stopPropagation()}>
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={selectedOrderIds.has(order.id)}
+                                                                onChange={() => toggleOrderSelection(order.id)}
+                                                                className="w-5 h-5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                                                            />
+                                                        </div>
+                                                        <div className={`p-2 rounded-xl shadow-sm transition-colors ${isExpanded ? 'bg-blue-600 text-white' : 'bg-slate-100 dark:bg-charcoal-800 text-slate-400'
                                                             }`}>
-                                                            <Package className="w-6 h-6" />
+                                                            <Package className="w-5 h-5" />
                                                         </div>
                                                         <div>
-                                                            <div className="flex items-center gap-3">
-                                                                <h3 className="text-lg font-black text-slate-900 dark:text-white tracking-tight">{order.order_number || 'ไม่มีเลขที่ออเดอร์'}</h3>
-                                                                <Badge variant="info" className="rounded-lg px-2 py-0.5 text-[10px] font-black uppercase">
+                                                            <div className="flex items-center gap-2">
+                                                                <h3 className="text-base font-black text-slate-900 dark:text-white tracking-tight">{order.order_number || 'ไม่มีเลขที่ออเดอร์'}</h3>
+                                                                <Badge variant="info" className="rounded-lg px-2 py-0.5 text-[9px] font-black uppercase">
                                                                     รอการยืนยัน
                                                                 </Badge>
                                                             </div>
-                                                            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1">
-                                                                <div className="flex items-center gap-1.5 text-sm font-bold text-slate-700 dark:text-slate-300">
-                                                                    <Building2 className="w-4 h-4 text-slate-400" />
+                                                            <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 mt-0.5">
+                                                                <div className="flex items-center gap-1 text-xs font-bold text-slate-700 dark:text-slate-300">
+                                                                    <Building2 className="w-3.5 h-3.5 text-slate-400" />
                                                                     {order.store_name || '-'}
                                                                 </div>
-                                                                <div className="flex items-center gap-1.5 text-sm font-medium text-slate-500">
-                                                                    <User className="w-4 h-4 text-slate-400" />
+                                                                <div className="flex items-center gap-1 text-xs font-medium text-slate-500">
+                                                                    <User className="w-3.5 h-3.5 text-slate-400" />
                                                                     {order.customer_name || '-'}
                                                                 </div>
-                                                                <div className="flex items-center gap-1.5 text-sm font-medium text-slate-500">
-                                                                    <MapPin className="w-4 h-4 text-slate-400" />
+                                                                <div className="flex items-center gap-1 text-xs font-medium text-slate-500">
+                                                                    <MapPin className="w-3.5 h-3.5 text-slate-400" />
                                                                     {order.district || '-'}, {order.province || '-'}
                                                                 </div>
                                                             </div>
                                                         </div>
                                                     </div>
 
-                                                    <div className="flex items-center gap-6 md:text-right">
+                                                    <div className="flex items-center gap-4 md:text-right">
                                                         <div className="hidden sm:block">
-                                                            <div className="flex items-center gap-1.5 text-xs font-black text-slate-400 uppercase tracking-widest mb-1">
-                                                                <Calendar className="w-3.5 h-3.5" />
+                                                            <div className="flex items-center gap-1 text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5">
+                                                                <Calendar className="w-3 h-3" />
                                                                 วันที่ออเดอร์
                                                             </div>
-                                                            <p className="text-sm font-bold text-slate-700 dark:text-slate-300">
+                                                            <p className="text-xs font-bold text-slate-700 dark:text-slate-300">
                                                                 {formatDate(order.order_date)}
                                                             </p>
                                                         </div>
-                                                        <div className="flex items-center gap-4">
+                                                        <div className="flex items-center gap-3">
                                                             <div className="flex flex-col items-end">
-                                                                <span className="text-xs font-black text-slate-400 uppercase tracking-widest mb-1">จำนวนรายการ</span>
-                                                                <span className="text-sm font-black text-slate-900 dark:text-white">{(order.items?.length || order.total_items || 0)} รายการ</span>
+                                                                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">รายการ</span>
+                                                                <span className="text-xs font-black text-slate-900 dark:text-white">{(order.items?.length || order.total_items || 0)}</span>
                                                             </div>
-                                                            <div className="p-2 rounded-xl bg-slate-50 dark:bg-charcoal-800 text-slate-400 transition-transform duration-300" style={{ transform: isExpanded ? 'rotate(180deg)' : 'none' }}>
-                                                                <ChevronDown className="w-5 h-5" />
+                                                            <div className="p-1.5 rounded-lg bg-slate-50 dark:bg-charcoal-800 text-slate-400 transition-transform duration-300" style={{ transform: isExpanded ? 'rotate(180deg)' : 'none' }}>
+                                                                <ChevronDown className="w-4 h-4" />
                                                             </div>
                                                         </div>
                                                     </div>
@@ -704,6 +773,58 @@ export const ConfirmOrderView: React.FC = () => {
             </div>
 
             <ToastContainer toasts={toasts} onDismiss={dismissToast} />
+
+            {/* Bulk Action Bar */}
+            {selectedOrderIds.size > 0 && currentTab === 'delivery' && (
+                <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-50 animate-in fade-in slide-in-from-bottom-8 duration-300">
+                    <div className="bg-white dark:bg-charcoal-900 border border-slate-200 dark:border-slate-800 rounded-[2rem] px-8 py-4 shadow-[0_20px_50px_rgba(0,0,0,0.15)] flex items-center gap-6">
+                        <div className="flex items-center gap-3 pr-6 border-r border-slate-100 dark:border-slate-800">
+                            <div className="w-10 h-10 rounded-full bg-blue-600 text-white flex items-center justify-center font-black text-sm shadow-lg shadow-blue-500/30">
+                                {selectedOrderIds.size}
+                            </div>
+                            <div className="flex flex-col">
+                                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">เลือกอยู่</span>
+                                <span className="text-sm font-black text-slate-900 dark:text-white leading-none">ออเดอร์</span>
+                            </div>
+                        </div>
+
+                        <div className="flex items-center gap-3">
+                            <Button
+                                variant="outline"
+                                onClick={() => handleBulkUpdateFulfillment('pickup')}
+                                disabled={isBulkProcessing}
+                                className="rounded-2xl px-6 h-12 text-xs font-black flex items-center gap-2 border-amber-200 text-amber-600 hover:bg-amber-50"
+                            >
+                                <Package className="w-4 h-4" />
+                                รับเองทั้งหมด
+                            </Button>
+                            <Button
+                                variant="outline"
+                                onClick={() => handleBulkUpdateFulfillment('delivery')}
+                                disabled={isBulkProcessing}
+                                className="rounded-2xl px-6 h-12 text-xs font-black flex items-center gap-2 border-blue-200 text-blue-600 hover:bg-blue-50"
+                            >
+                                <Truck className="w-4 h-4" />
+                                ส่งทั้งหมด
+                            </Button>
+                            <Button
+                                onClick={handleBulkMarkAsReady}
+                                disabled={isBulkProcessing}
+                                className="bg-blue-600 hover:bg-blue-700 text-white rounded-2xl px-8 h-12 text-xs font-black flex items-center gap-2 shadow-lg shadow-blue-500/20"
+                            >
+                                {isBulkProcessing ? (
+                                    <LoadingSpinner size={16} className="text-white" />
+                                ) : (
+                                    <>
+                                        <CheckCircle2 className="w-4 h-4" />
+                                        ยืนยันที่เลือก
+                                    </>
+                                )}
+                            </Button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {splittingItem && (
                 <OrderSplitModal

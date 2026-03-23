@@ -1098,6 +1098,26 @@ export const ordersService = {
   },
 
   /**
+   * ยืนยันหลายออเดอร์พร้อมกัน
+   */
+  async markMultipleAsReady(orderIds: string[], updatedBy: string) {
+    if (orderIds.length === 0) return { updated: 0 };
+    
+    const { data, error } = await supabase
+      .from('orders')
+      .update({
+        status: 'awaiting_dispatch',
+        updated_by: updatedBy,
+        updated_at: new Date().toISOString()
+      })
+      .in('id', orderIds)
+      .select('id');
+
+    if (error) throw error;
+    return { updated: data?.length || 0 };
+  },
+
+  /**
    * แตกรายการสินค้าออกเป็นหลายรายการ (Split)
    * ใช้เมื่อต้องการแบ่งจำนวนส่งไปหลายที่หรือหลายวิธี
    */
@@ -1144,6 +1164,23 @@ export const ordersService = {
 
     const { error: insertError } = await supabase.from('order_items').insert(newItems);
     if (insertError) throw insertError;
+  },
+
+  /**
+   * อัปเดตวิธีรับสินค้าสำหรับหลายออเดอร์พร้อมกัน
+   * (อัปเดตทุก item ใน orderIds)
+   */
+  async updateMultipleFulfillmentMethods(orderIds: string[], method: 'delivery' | 'pickup') {
+    if (orderIds.length === 0) return { updated: 0 };
+
+    const { data, error } = await supabase
+      .from('order_items')
+      .update({ fulfillment_method: method })
+      .in('order_id', orderIds)
+      .select('id');
+
+    if (error) throw error;
+    return { updated: data?.length || 0 };
   },
 };
 
