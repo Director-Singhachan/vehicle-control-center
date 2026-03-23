@@ -195,6 +195,24 @@ export const ConfirmOrderView: React.FC = () => {
         }
     };
 
+    const handleUpdateOrderFulfillment = async (orderId: string, method: 'delivery' | 'pickup', e?: React.MouseEvent) => {
+        if (e) e.stopPropagation();
+        setProcessingOrderIds(prev => new Set(prev).add(orderId));
+        try {
+            const { updated } = await ordersService.updateMultipleFulfillmentMethods([orderId], method);
+            success(`อัปเดตวิธีรับสินค้าสำเร็จ ${updated} รายการ`);
+            fetchOrders();
+        } catch (err: any) {
+            error('ไม่สามารถอัปเดตออเดอร์ได้: ' + (err.message || 'Unknown error'));
+        } finally {
+            setProcessingOrderIds(prev => {
+                const next = new Set(prev);
+                next.delete(orderId);
+                return next;
+            });
+        }
+    };
+
     const formatDate = (dateStr: any) => {
         if (!dateStr) return '-';
         try {
@@ -369,74 +387,99 @@ export const ConfirmOrderView: React.FC = () => {
                             </div>
                         ) : filteredOrders.length === 0 ? (
                             <div className="flex flex-col items-center justify-center py-20 bg-white dark:bg-charcoal-900 rounded-[2.5rem] border-2 border-dashed border-slate-200 dark:border-slate-800">
-                                <div className="w-20 h-20 rounded-full bg-slate-50 dark:bg-charcoal-800 flex items-center justify-center text-slate-300 mb-4">
-                                    <ClipboardCheck className="w-10 h-10" />
-                                </div>
-                                <h3 className="text-lg font-black text-slate-900 dark:text-white">ไม่มีออเดอร์ที่รอคอนเฟิร์ม</h3>
-                                <p className="text-sm font-medium text-slate-500 mt-1">ออเดอร์ใหม่ที่ถูกบันทึกหรืออัปโหลดจะแสดงที่นี่</p>
-                            </div>
-                        ) : (
-                            <div className="grid grid-cols-1 gap-4">
-                                {filteredOrders.map(order => {
-                                    if (!order || !order.id) return null;
-                                    const isExpanded = expandedOrders.has(order.id);
-
-                                    return (
-                                        <Card
-                                            key={order.id}
-                                            className={`overflow-hidden transition-all duration-300 border-2 ${isExpanded
-                                                ? 'border-blue-500/50 shadow-xl shadow-blue-500/5 ring-1 ring-blue-500/10'
-                                                : 'border-slate-100 dark:border-slate-800 hover:border-slate-200 dark:hover:border-slate-700'
-                                                }`}
-                                        >
-                                            {/* Order Header */}
+                                <div className="w-20 h-20 rounded-full bg-slate-50 dark:b                                            {/* Order Header */}
                                             <div
-                                                className="p-4 cursor-pointer select-none"
+                                                className="p-3 cursor-pointer select-none"
                                                 onClick={() => toggleOrderExpansion(order.id)}
                                             >
-                                                <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
-                                                    <div className="flex items-start gap-3">
-                                                        <div className="pt-1" onClick={(e) => e.stopPropagation()}>
-                                                            <input
-                                                                type="checkbox"
-                                                                checked={selectedOrderIds.has(order.id)}
-                                                                onChange={() => toggleOrderSelection(order.id)}
-                                                                className="w-5 h-5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
-                                                            />
-                                                        </div>
-                                                        <div className={`p-2 rounded-xl shadow-sm transition-colors ${isExpanded ? 'bg-blue-600 text-white' : 'bg-slate-100 dark:bg-charcoal-800 text-slate-400'
-                                                            }`}>
-                                                            <Package className="w-5 h-5" />
+                                                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-2">
+                                                    <div className="flex items-center gap-3">
+                                                        <div className="flex items-center gap-3">
+                                                            <div className="" onClick={(e) => e.stopPropagation()}>
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={selectedOrderIds.has(order.id)}
+                                                                    onChange={() => toggleOrderSelection(order.id)}
+                                                                    className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                                                                />
+                                                            </div>
+                                                            <div className={`p-1.5 rounded-lg shadow-sm transition-colors ${isExpanded ? 'bg-blue-600 text-white' : 'bg-slate-100 dark:bg-charcoal-800 text-slate-400'
+                                                                }`}>
+                                                                <Package className="w-4 h-4" />
+                                                            </div>
                                                         </div>
                                                         <div>
                                                             <div className="flex items-center gap-2">
-                                                                <h3 className="text-base font-black text-slate-900 dark:text-white tracking-tight">{order.order_number || 'ไม่มีเลขที่ออเดอร์'}</h3>
-                                                                <Badge variant="info" className="rounded-lg px-2 py-0.5 text-[9px] font-black uppercase">
+                                                                <h3 className="text-sm font-black text-slate-900 dark:text-white tracking-tight">{order.order_number || 'ไม่มีเลขที่ออเดอร์'}</h3>
+                                                                <Badge variant="info" className="rounded-lg px-2 py-0 text-[8px] font-black uppercase">
                                                                     รอการยืนยัน
                                                                 </Badge>
                                                             </div>
-                                                            <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 mt-0.5">
-                                                                <div className="flex items-center gap-1 text-xs font-bold text-slate-700 dark:text-slate-300">
-                                                                    <Building2 className="w-3.5 h-3.5 text-slate-400" />
+                                                            <div className="flex flex-wrap items-center gap-x-3 gap-y-0 mt-0.5">
+                                                                <div className="flex items-center gap-1 text-[11px] font-bold text-slate-700 dark:text-slate-300">
+                                                                    <Building2 className="w-3 h-3 text-slate-400" />
                                                                     {order.store_name || '-'}
                                                                 </div>
-                                                                <div className="flex items-center gap-1 text-xs font-medium text-slate-500">
-                                                                    <User className="w-3.5 h-3.5 text-slate-400" />
+                                                                <div className="flex items-center gap-1 text-[11px] font-medium text-slate-500">
+                                                                    <User className="w-3 h-3 text-slate-400" />
                                                                     {order.customer_name || '-'}
                                                                 </div>
-                                                                <div className="flex items-center gap-1 text-xs font-medium text-slate-500">
-                                                                    <MapPin className="w-3.5 h-3.5 text-slate-400" />
+                                                                <div className="flex items-center gap-1 text-[11px] font-medium text-slate-500">
+                                                                    <MapPin className="w-3 h-3 text-slate-400" />
                                                                     {order.district || '-'}, {order.province || '-'}
                                                                 </div>
                                                             </div>
                                                         </div>
                                                     </div>
 
-                                                    <div className="flex items-center gap-4 md:text-right">
-                                                        <div className="hidden sm:block">
-                                                            <div className="flex items-center gap-1 text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5">
-                                                                <Calendar className="w-3 h-3" />
-                                                                วันที่ออเดอร์
+                                                    <div className="flex items-center justify-between lg:justify-end gap-4">
+                                                        {/* Single Order Bulk Actions */}
+                                                        {order.items?.length > 1 && (
+                                                            <div className="flex items-center gap-1 p-1 bg-slate-50 dark:bg-charcoal-800 rounded-xl border border-slate-100 dark:border-slate-700" onClick={(e) => e.stopPropagation()}>
+                                                                <button
+                                                                    onClick={(e) => handleUpdateOrderFulfillment(order.id, 'pickup', e)}
+                                                                    disabled={processingOrderIds.has(order.id)}
+                                                                    className="px-3 py-1.5 rounded-lg text-[10px] font-black flex items-center gap-1.5 text-amber-600 hover:bg-amber-50 transition-colors"
+                                                                >
+                                                                    <Package className="w-3 h-3" />
+                                                                    รับเองทั้งหมด
+                                                                </button>
+                                                                <div className="w-px h-3 bg-slate-200 dark:bg-slate-700 mx-1"></div>
+                                                                <button
+                                                                    onClick={(e) => handleUpdateOrderFulfillment(order.id, 'delivery', e)}
+                                                                    disabled={processingOrderIds.has(order.id)}
+                                                                    className="px-3 py-1.5 rounded-lg text-[10px] font-black flex items-center gap-1.5 text-blue-600 hover:bg-blue-50 transition-colors"
+                                                                >
+                                                                    <Truck className="w-3 h-3" />
+                                                                    ส่งทั้งหมด
+                                                                </button>
+                                                            </div>
+                                                        )}
+
+                                                        <div className="flex items-center gap-6">
+                                                            <div className="hidden sm:block text-right">
+                                                                <div className="flex items-center justify-end gap-1 text-[9px] font-black text-slate-400 uppercase tracking-widest">
+                                                                    <Calendar className="w-2.5 h-2.5" />
+                                                                    วันที่
+                                                                </div>
+                                                                <p className="text-[11px] font-bold text-slate-700 dark:text-slate-300">
+                                                                    {formatDate(order.order_date)}
+                                                                </p>
+                                                            </div>
+                                                            <div className="flex items-center gap-3">
+                                                                <div className="flex flex-col items-end">
+                                                                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">รายการ</span>
+                                                                    <span className="text-xs font-black text-slate-900 dark:text-white">{(order.items?.length || order.total_items || 0)}</span>
+                                                                </div>
+                                                                <div className="p-1 rounded-md bg-slate-50 dark:bg-charcoal-800 text-slate-400 transition-transform duration-300" style={{ transform: isExpanded ? 'rotate(180deg)' : 'none' }}>
+                                                                    <ChevronDown className="w-3.5 h-3.5" />
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+��
                                                             </div>
                                                             <p className="text-xs font-bold text-slate-700 dark:text-slate-300">
                                                                 {formatDate(order.order_date)}
@@ -789,24 +832,6 @@ export const ConfirmOrderView: React.FC = () => {
                         </div>
 
                         <div className="flex items-center gap-3">
-                            <Button
-                                variant="outline"
-                                onClick={() => handleBulkUpdateFulfillment('pickup')}
-                                disabled={isBulkProcessing}
-                                className="rounded-2xl px-6 h-12 text-xs font-black flex items-center gap-2 border-amber-200 text-amber-600 hover:bg-amber-50"
-                            >
-                                <Package className="w-4 h-4" />
-                                รับเองทั้งหมด
-                            </Button>
-                            <Button
-                                variant="outline"
-                                onClick={() => handleBulkUpdateFulfillment('delivery')}
-                                disabled={isBulkProcessing}
-                                className="rounded-2xl px-6 h-12 text-xs font-black flex items-center gap-2 border-blue-200 text-blue-600 hover:bg-blue-50"
-                            >
-                                <Truck className="w-4 h-4" />
-                                ส่งทั้งหมด
-                            </Button>
                             <Button
                                 onClick={handleBulkMarkAsReady}
                                 disabled={isBulkProcessing}
