@@ -430,28 +430,41 @@ export const ConfirmOrderView: React.FC = () => {
                                                         </div>
 
                                                         {/* Per-order Bulk Actions (Only if > 1 item) */}
-                                                        {order.items?.length > 1 && (
-                                                            <div className="hidden lg:flex items-center gap-2 ml-4" onClick={(e) => e.stopPropagation()}>
-                                                                <Button
-                                                                    size="sm"
-                                                                    variant="outline"
-                                                                    onClick={() => handleBulkUpdateFulfillment('delivery', [order.id])}
-                                                                    disabled={isBulkProcessing}
-                                                                    className="h-7 px-2 text-[10px] font-black border-blue-100 text-blue-600 hover:bg-blue-50 bg-white/50"
-                                                                >
-                                                                    ส่งทั้งหมด
-                                                                </Button>
-                                                                <Button
-                                                                    size="sm"
-                                                                    variant="outline"
-                                                                    onClick={() => handleBulkUpdateFulfillment('pickup', [order.id])}
-                                                                    disabled={isBulkProcessing}
-                                                                    className="h-7 px-2 text-[10px] font-black border-amber-100 text-amber-600 hover:bg-amber-50 bg-white/50"
-                                                                >
-                                                                    รับเองทั้งหมด
-                                                                </Button>
-                                                            </div>
-                                                        )}
+                                                        {order.items?.length > 1 && (() => {
+                                                            const allDelivery = order.items?.every((item: any) => item.fulfillment_method === 'delivery');
+                                                            const allPickup = order.items?.every((item: any) => item.fulfillment_method === 'pickup');
+
+                                                            return (
+                                                                <div className="flex items-center gap-2 ml-4" onClick={(e) => e.stopPropagation()}>
+                                                                    <Button
+                                                                        size="sm"
+                                                                        variant={allDelivery ? 'primary' : 'outline'}
+                                                                        onClick={() => handleBulkUpdateFulfillment('delivery', [order.id])}
+                                                                        disabled={isBulkProcessing || allDelivery}
+                                                                        className={`h-7 px-3 text-[10px] font-black rounded-xl transition-all ${
+                                                                            allDelivery 
+                                                                            ? 'bg-blue-600 text-white border-transparent shadow-sm' 
+                                                                            : 'border-blue-100 text-blue-600 hover:bg-blue-50 bg-white/50'
+                                                                        }`}
+                                                                    >
+                                                                        ส่งทั้งหมด
+                                                                    </Button>
+                                                                    <Button
+                                                                        size="sm"
+                                                                        variant={allPickup ? 'primary' : 'outline'}
+                                                                        onClick={() => handleBulkUpdateFulfillment('pickup', [order.id])}
+                                                                        disabled={isBulkProcessing || allPickup}
+                                                                        className={`h-7 px-3 text-[10px] font-black rounded-xl transition-all ${
+                                                                            allPickup 
+                                                                            ? 'bg-amber-500 text-white border-transparent shadow-sm' 
+                                                                            : 'border-amber-100 text-amber-600 hover:bg-amber-50 bg-white/50'
+                                                                        }`}
+                                                                    >
+                                                                        รับเองทั้งหมด
+                                                                    </Button>
+                                                                </div>
+                                                            );
+                                                        })()}
                                                     </div>
 
                                                     <div className="flex items-center gap-4 text-right">
