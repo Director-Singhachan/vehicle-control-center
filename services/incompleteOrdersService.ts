@@ -79,6 +79,15 @@ export const incompleteOrdersService = {
     if (error) throw error;
   },
 
+  async deleteAll() {
+    const { error } = await supabase
+      .from('incomplete_orders')
+      .delete()
+      .neq('id', '00000000-0000-0000-0000-000000000000'); // Delete all records (dummy condition to satisfy Supabase safety)
+
+    if (error) throw error;
+  },
+
   async resolve(id: string) {
     return this.update(id, { status: 'resolved' });
   }

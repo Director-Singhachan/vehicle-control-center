@@ -16,6 +16,7 @@ import { Card } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
 import { LoadingSpinner } from '../components/ui/LoadingSpinner';
+import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { useToast } from '../hooks';
 import { incompleteOrdersService, IncompleteOrder } from '../services/incompleteOrdersService';
 import { ToastContainer } from '../components/ui/Toast';
@@ -28,6 +29,9 @@ export const PendingSalesView: React.FC<PendingSalesViewProps> = ({ onBack }) =>
   const [orders, setOrders] = useState<IncompleteOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [isDeleteAllOpen, setIsDeleteAllOpen] = useState(false);
+  const [orderToDelete, setOrderToDelete] = useState<string | null>(null);
   const { toasts, dismissToast, success, error, warning } = useToast();
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -47,15 +51,37 @@ export const PendingSalesView: React.FC<PendingSalesViewProps> = ({ onBack }) =>
     fetchOrders();
   }, [fetchOrders]);
 
-  const handleDelete = async (id: string) => {
-    if (!window.confirm('คุณต้องการลบรายการนี้ใช่หรือไม่? หลังจากลบแล้วจะไม่สามารถกู้คืนได้ (ควรลบหลังจากแก้ไขใน SML และอัพโหลดใหม่สำเร็จแล้ว)')) return;
+  const handleDelete = (id: string) => {
+    setOrderToDelete(id);
+    setIsDeleteDialogOpen(true);
+  };
+
+  const confirmDelete = async () => {
+    if (!orderToDelete) return;
     
     try {
-      await incompleteOrdersService.delete(id);
+      await incompleteOrdersService.delete(orderToDelete);
       success('ลบรายการเรียบร้อย');
       fetchOrders();
     } catch (err: any) {
       error('ลบไม่สำเร็จ: ' + err.message);
+    } finally {
+      setIsDeleteDialogOpen(false);
+      setOrderToDelete(null);
+    }
+  };
+
+  const confirmDeleteAll = async () => {
+    try {
+      setLoading(true);
+      await incompleteOrdersService.deleteAll();
+      success('ลบรายการทั้งหมดเรียบร้อยแล้ว');
+      fetchOrders();
+    } catch (err: any) {
+      error('ลบไม่สำเร็จ: ' + err.message);
+    } finally {
+      setIsDeleteAllOpen(false);
+      setLoading(false);
     }
   };
 
@@ -68,14 +94,50 @@ export const PendingSalesView: React.FC<PendingSalesViewProps> = ({ onBack }) =>
   return (
     <>
       <ToastContainer toasts={toasts} onDismiss={dismissToast} />
+      
+      <ConfirmDialog
+        isOpen={isDeleteDialogOpen}
+        title="ยืนยันการลบรายการ"
+        message="คุณต้องการลบรายการนี้ใช่หรือไม่? หลังจากลบแล้วจะไม่สามารถกู้คืนได้ (ควรลบหลังจากแก้ไขใน SML และอัพโหลดใหม่สำเร็จแล้ว)"
+        confirmText="ยืนยันการลบ"
+        cancelText="ยกเลิก"
+        onConfirm={confirmDelete}
+        onCancel={() => setIsDeleteDialogOpen(false)}
+        variant="danger"
+      />
+
+      <ConfirmDialog
+        isOpen={isDeleteAllOpen}
+        title="ยืนยันการลบทั้งหมด"
+        message={`คุณต้องการลบรายการทั้งหมด (${orders.length} รายการ) ใช่หรือไม่? หลังจากลบแล้วจะไม่สามารถกู้คืนได้`}
+        confirmText="ยืนยันการลบทั้งหมด"
+        cancelText="ยกเลิก"
+        onConfirm={confirmDeleteAll}
+        onCancel={() => setIsDeleteAllOpen(false)}
+        variant="danger"
+      />
+
       <PageLayout
         title="ใบขายคงค้าง (ที่มีข้อผิดพลาด)"
         onBack={onBack}
         actions={
-          <Button onClick={fetchOrders} variant="outline" size="sm" className="flex items-center gap-2">
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-            รีเฟรช
-          </Button>
+          <div className="flex items-center gap-2">
+            {orders.length > 0 && (
+                <Button 
+                    onClick={() => setIsDeleteAllOpen(true)} 
+                    variant="ghost" 
+                    size="sm" 
+                    className="flex items-center gap-2 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"
+                >
+                    <Trash2 className="w-4 h-4" />
+                    ลบทั้งหมด
+                </Button>
+            )}
+            <Button onClick={fetchOrders} variant="outline" size="sm" className="flex items-center gap-2">
+                <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+                รีเฟรช
+            </Button>
+          </div>
         }
       >
         <div className="mb-6">
