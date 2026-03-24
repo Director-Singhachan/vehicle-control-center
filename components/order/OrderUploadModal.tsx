@@ -4,6 +4,7 @@ import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
 import { Badge } from '../ui/Badge';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
+import { ToastContainer } from '../ui/Toast';
 import { useToast } from '../../hooks';
 import { orderUploadService, UploadedOrder } from '../../services/orderUploadService';
 import { ordersService } from '../../services/ordersService';
@@ -19,7 +20,7 @@ interface OrderUploadModalProps {
 
 export function OrderUploadModal({ isOpen, onClose, onSuccess, selectedWarehouse }: OrderUploadModalProps) {
   const { profile } = useAuth();
-  const { success, error, warning } = useToast();
+  const { toasts, dismissToast, success, error, warning } = useToast();
   
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingMessage, setProcessingMessage] = useState('กำลังประมวลผลข้อมูล...');
@@ -80,8 +81,10 @@ export function OrderUploadModal({ isOpen, onClose, onSuccess, selectedWarehouse
     }
 
     const validOrders = parsedOrders.filter(o => !o.error);
-    if (validOrders.length === 0) {
-      error('ไม่มีออเดอร์ที่สามารถบันทึกได้');
+    const invalidOrders = parsedOrders.filter(o => o.error);
+    
+    if (validOrders.length === 0 && invalidOrders.length === 0) {
+      error('ไม่มีออเดอร์ให้บันทึก');
       return;
     }
 
@@ -91,7 +94,6 @@ export function OrderUploadModal({ isOpen, onClose, onSuccess, selectedWarehouse
     try {
       // Batch create valid orders
       let successCount = 0;
-      const invalidOrders = parsedOrders.filter(o => o.error);
       const totalToProcess = validOrders.length + invalidOrders.length;
       let processedCount = 0;
 
@@ -176,6 +178,7 @@ export function OrderUploadModal({ isOpen, onClose, onSuccess, selectedWarehouse
 
   return (
     <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4">
+      <ToastContainer toasts={toasts} onDismiss={dismissToast} />
       <Card className="w-full max-w-4xl max-h-[90vh] flex flex-col bg-white dark:bg-slate-900 shadow-2xl overflow-hidden rounded-2xl">
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-slate-700">
