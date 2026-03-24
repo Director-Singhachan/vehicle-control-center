@@ -9,7 +9,11 @@ import {
   Package, 
   Calendar, 
   User, 
-  Search
+  Search,
+  CheckSquare,
+  Square,
+  Play,
+  CheckCircle2
 } from 'lucide-react';
 import { PageLayout } from '../components/ui/PageLayout';
 import { Card } from '../components/ui/Card';
@@ -17,8 +21,10 @@ import { Badge } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
 import { LoadingSpinner } from '../components/ui/LoadingSpinner';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
-import { useToast } from '../hooks';
+import { useAuth, useToast } from '../hooks';
 import { incompleteOrdersService, IncompleteOrder } from '../services/incompleteOrdersService';
+import { orderUploadService, UploadedOrder } from '../services/orderUploadService';
+import { ordersService } from '../services/ordersService';
 import { ToastContainer } from '../components/ui/Toast';
 
 interface PendingSalesViewProps {
@@ -26,13 +32,17 @@ interface PendingSalesViewProps {
 }
 
 export const PendingSalesView: React.FC<PendingSalesViewProps> = ({ onBack }) => {
+  const { profile } = useAuth();
   const [orders, setOrders] = useState<IncompleteOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [isDeleteAllOpen, setIsDeleteAllOpen] = useState(false);
+  const [isDeleteSelectedOpen, setIsDeleteSelectedOpen] = useState(false);
+  const [isProcessSelectedOpen, setIsProcessSelectedOpen] = useState(false);
   const [orderToDelete, setOrderToDelete] = useState<string | null>(null);
-  const { toasts, dismissToast, success, error, warning } = useToast();
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const { toasts, dismissToast, success, error, warning, info } = useToast();
   const [searchTerm, setSearchTerm] = useState('');
 
   const fetchOrders = useCallback(async () => {
@@ -40,6 +50,7 @@ export const PendingSalesView: React.FC<PendingSalesViewProps> = ({ onBack }) =>
     try {
       const data = await incompleteOrdersService.getAll();
       setOrders(data);
+      setSelectedIds([]);
     } catch (err: any) {
       error('ไม่สามารถโหลดข้อมูลได้: ' + err.message);
     } finally {
@@ -50,6 +61,21 @@ export const PendingSalesView: React.FC<PendingSalesViewProps> = ({ onBack }) =>
   useEffect(() => {
     fetchOrders();
   }, [fetchOrders]);
+
+  const toggleSelect = (id: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    setSelectedIds(prev => 
+      prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]
+    );
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedIds.length === filteredOrders.length) {
+      setSelectedIds([]);
+    } else {
+      setSelectedIds(filteredOrders.map(o => o.id));
+    }
+  };
 
   const handleDelete = (id: string) => {
     setOrderToDelete(id);
@@ -85,6 +111,126 @@ export const PendingSalesView: React.FC<PendingSalesViewProps> = ({ onBack }) =>
     }
   };
 
+  const confirmDeleteSelected = async () => {
+    try {
+      setLoading(true);
+      let successCount = 0;
+      for (const id of selectedIds) {
+        await incompleteOrdersService.delete(id);
+        successCount++;
+      }
+      success(`ลบ ${successCount} รายการเรียบร้อยแล้ว`);
+      fetchOrders();
+    } catch (err: any) {
+      error('ลบไม่สำเร็จบางรายการ: ' + err.message);
+      fetchOrders();
+    } finally {
+      setIsDeleteSelectedOpen(false);
+      setLoading(false);
+    }
+  };
+
+  const confirmProcessSelected = async () => {
+    const selectedOrders = orders.filter(o => selectedIds.includes(o.id));
+    if (selectedOrders.length === 0) return;
+
+    setIsProcessSelectedOpen(false);
+    setLoading(true);
+    info(`กำลังประมวลผล ${selectedOrders.length} รายการ...`);
+
+    try {
+      // 1. Map to UploadedOrder format for validation
+      const uploadFormatOrders: UploadedOrder[] = selectedOrders.map(o => ({
+        order_date: o.order_date,
+        doc_no: o.doc_no,
+        time: '',
+        customer_name: o.customer_name,
+        customer_code: o.customer_code,
+        doc_type: 'ใบสั่งขาย',
+        status: 'รอประมวลผล',
+        tax_exempt: 0,
+        tax_rate: 7,
+        vat: 0,
+        tax_type: 'แยกนอก',
+        net_value: o.net_value,
+        items: o.items.map(i => ({
+          product_code: i.product_code,
+          product_name: i.product_name,
+          unit: i.unit,
+          quantity: i.quantity,
+          unit_price: i.unit_price,
+          discount: 0,
+          total: i.quantity * i.unit_price,
+          required_date: o.order_date
+        }))
+      }));
+
+      // 2. Validate against current database
+      const validatedOrders = await orderUploadService.validateOrders(uploadFormatOrders);
+
+      let createdCount = 0;
+      let failedCount = 0;
+      let errorMsgs: string[] = [];
+
+      // 3. Process each validated order
+      for (let i = 0; i < validatedOrders.length; i++) {
+        const validated = validatedOrders[i];
+        const original = selectedOrders[i];
+
+        if (validated.error) {
+          failedCount++;
+          errorMsgs.push(`${validated.doc_no}: ${validated.error}`);
+          // Update error message in DB for visibility
+          await incompleteOrdersService.update(original.id, { error_message: validated.error });
+          continue;
+        }
+
+        // It's valid now! Create real order
+        try {
+          const orderInsert = {
+            order_number: validated.doc_no,
+            store_id: validated.store_id!,
+            order_date: validated.order_date,
+            status: 'awaiting_confirmation',
+            notes: `(นำเข้าจากใบขายคงค้าง)`,
+            created_by: profile?.id,
+            warehouse_id: original.warehouse_id,
+          };
+
+          const itemsToSubmit = validated.items.map(item => ({
+            product_id: item.product_id!,
+            quantity: item.quantity,
+            unit_price: item.unit_price,
+            discount_percent: 0,
+            is_bonus: item.unit_price === 0,
+            fulfillment_method: 'delivery' as const,
+          }));
+
+          await ordersService.createWithItems(orderInsert, itemsToSubmit, null, null);
+          
+          // Delete from incomplete orders
+          await incompleteOrdersService.delete(original.id);
+          createdCount++;
+        } catch (err: any) {
+          failedCount++;
+          errorMsgs.push(`${validated.doc_no}: ${err.message}`);
+        }
+      }
+
+      if (createdCount > 0) success(`นำเข้าสำเร็จ ${createdCount} รายการ`);
+      if (failedCount > 0) {
+        warning(`นำเข้าไม่สำเร็จ ${failedCount} รายการ (ตรวจสอบสาเหตุในรายการ)`);
+        console.log('Processing errors:', errorMsgs);
+      }
+      
+      fetchOrders();
+    } catch (err: any) {
+      error('เกิดข้อผิดพลาดในการประมวลผล: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const filteredOrders = orders.filter(order => 
     order.customer_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     order.doc_no?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -107,14 +253,25 @@ export const PendingSalesView: React.FC<PendingSalesViewProps> = ({ onBack }) =>
       />
 
       <ConfirmDialog
-        isOpen={isDeleteAllOpen}
-        title="ยืนยันการลบทั้งหมด"
-        message={`คุณต้องการลบรายการทั้งหมด (${orders.length} รายการ) ใช่หรือไม่? หลังจากลบแล้วจะไม่สามารถกู้คืนได้`}
-        confirmText="ยืนยันการลบทั้งหมด"
+        isOpen={isDeleteSelectedOpen}
+        title="ยืนยันการลบที่เลือก"
+        message={`คุณต้องการลบรายการที่เลือกจำนวน ${selectedIds.length} รายการใช่หรือไม่?`}
+        confirmText="ยืนยันการลบ"
         cancelText="ยกเลิก"
-        onConfirm={confirmDeleteAll}
-        onCancel={() => setIsDeleteAllOpen(false)}
+        onConfirm={confirmDeleteSelected}
+        onCancel={() => setIsDeleteSelectedOpen(false)}
         variant="danger"
+      />
+
+      <ConfirmDialog
+        isOpen={isProcessSelectedOpen}
+        title="ประมวลผลรายการที่เลือก"
+        message={`คุณต้องการนำเข้าข้อมูลที่เลือกจำนวน ${selectedIds.length} รายการใหม่อีกครั้งใช่หรือไม่? (ระบบจะตรวจสอบข้อมูลล่าสุดในฐานข้อมูล)`}
+        confirmText="เริ่มประมวลผล"
+        cancelText="ยกเลิก"
+        onConfirm={confirmProcessSelected}
+        onCancel={() => setIsProcessSelectedOpen(false)}
+        variant="info"
       />
 
       <PageLayout
@@ -140,7 +297,7 @@ export const PendingSalesView: React.FC<PendingSalesViewProps> = ({ onBack }) =>
           </div>
         }
       >
-        <div className="mb-6">
+        <div className="mb-6 flex flex-col gap-4">
             <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                 <input
@@ -151,6 +308,23 @@ export const PendingSalesView: React.FC<PendingSalesViewProps> = ({ onBack }) =>
                     className="w-full pl-10 pr-4 py-3 border border-gray-300 dark:border-slate-700 rounded-xl bg-white dark:bg-slate-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 shadow-sm"
                 />
             </div>
+
+            {filteredOrders.length > 0 && (
+                <div className="flex items-center justify-between px-2">
+                    <button 
+                        onClick={toggleSelectAll}
+                        className="flex items-center gap-2 text-sm font-medium text-gray-600 dark:text-gray-400 hover:text-blue-600 transition-colors"
+                    >
+                        {selectedIds.length === filteredOrders.length ? (
+                            <CheckSquare className="w-5 h-5 text-blue-500" />
+                        ) : (
+                            <Square className="w-5 h-5" />
+                        )}
+                        {selectedIds.length === filteredOrders.length ? 'ยกเลิกการเลือกทั้งหมด' : 'เลือกทั้งหมด'}
+                    </button>
+                    <span className="text-sm text-gray-500">พบ {filteredOrders.length} รายการ</span>
+                </div>
+            )}
         </div>
 
         {loading && orders.length === 0 ? (
@@ -166,16 +340,28 @@ export const PendingSalesView: React.FC<PendingSalesViewProps> = ({ onBack }) =>
             </div>
           </Card>
         ) : (
-          <div className="space-y-4">
+          <div className="space-y-4 pb-24">
             {filteredOrders.map((order) => (
-              <Card key={order.id} className="overflow-hidden border-l-4 border-l-red-500 hover:shadow-md transition-shadow">
+              <Card key={order.id} className={`overflow-hidden border-l-4 transition-all ${selectedIds.includes(order.id) ? 'border-l-blue-500 bg-blue-50/30 dark:bg-blue-900/10' : 'border-l-red-500 hover:shadow-md'}`}>
                 <div 
                   className="p-4 cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-800/50 transition-colors"
                   onClick={() => setExpandedId(expandedId === order.id ? null : order.id)}
                 >
                   <div className="flex flex-wrap items-start justify-between gap-4">
                     <div className="flex items-start gap-4">
-                      <div className="mt-1 p-2.5 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded-xl">
+                      {/* Checkbox */}
+                      <button 
+                        onClick={(e) => toggleSelect(order.id, e)}
+                        className="mt-1 p-1 rounded-md hover:bg-gray-200 dark:hover:bg-slate-700 transition-colors"
+                      >
+                        {selectedIds.includes(order.id) ? (
+                            <CheckSquare className="w-6 h-6 text-blue-500" />
+                        ) : (
+                            <Square className="w-6 h-6 text-gray-400" />
+                        )}
+                      </button>
+
+                      <div className="p-2.5 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded-xl">
                         <AlertCircle className="w-5 h-5" />
                       </div>
                       <div className="space-y-1">
@@ -250,7 +436,9 @@ export const PendingSalesView: React.FC<PendingSalesViewProps> = ({ onBack }) =>
                            <Package className="w-4 h-4" />
                            รายการสินค้าในเอกสาร
                         </h4>
-                        <span className="text-xs text-gray-400 italic">ตรวจสอบรายการสินค้าและแก้ไขใน SML</span>
+                        <div className="flex items-center gap-4">
+                            <span className="text-xs text-gray-400 italic">ตรวจสอบรายการสินค้าและแก้ไขใน SML</span>
+                        </div>
                       </div>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                         {order.items.map((item, idx) => (
@@ -281,6 +469,45 @@ export const PendingSalesView: React.FC<PendingSalesViewProps> = ({ onBack }) =>
               </Card>
             ))}
           </div>
+        )}
+
+        {/* Floating Bulk Action Bar */}
+        {selectedIds.length > 0 && (
+            <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-40 animate-in slide-in-from-bottom-10 duration-300">
+                <Card className="flex items-center gap-4 px-6 py-4 bg-slate-900 dark:bg-slate-800 text-white shadow-2xl rounded-2xl border-0">
+                    <div className="flex items-center gap-2 pr-4 border-r border-slate-700">
+                        <CheckCircle2 className="w-5 h-5 text-blue-400" />
+                        <span className="font-bold">เลือก {selectedIds.length} รายการ</span>
+                    </div>
+                    
+                    <div className="flex items-center gap-3">
+                        <Button 
+                            onClick={() => setIsProcessSelectedOpen(true)}
+                            className="bg-blue-600 hover:bg-blue-700 text-white border-0 flex items-center gap-2 px-6"
+                        >
+                            <Play className="w-4 h-4 fill-current" />
+                            นำเข้าใหม่อีกครั้ง
+                        </Button>
+                        
+                        <Button 
+                            onClick={() => setIsDeleteSelectedOpen(true)}
+                            variant="outline"
+                            className="bg-transparent border-slate-700 hover:bg-red-900/20 hover:text-red-400 hover:border-red-900/50 text-slate-300"
+                        >
+                            <Trash2 className="w-4 h-4" />
+                            ลบที่เลือก
+                        </Button>
+
+                        <Button 
+                            onClick={() => setSelectedIds([])}
+                            variant="ghost"
+                            className="text-slate-400 hover:text-white"
+                        >
+                            ยกเลิก
+                        </Button>
+                    </div>
+                </Card>
+            </div>
         )}
       </PageLayout>
     </>
