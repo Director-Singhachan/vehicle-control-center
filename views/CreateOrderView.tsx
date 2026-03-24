@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { ShoppingCart, Plus, Trash2, Search, Check, Grid3x3, Clock, Gift, Truck, Store, FileText, History } from 'lucide-react';
+import { useIncompleteOrdersCount } from '../hooks/useIncompleteOrdersCount';
 import { useProducts, useWarehouses, useProductCategories } from '../hooks/useInventory';
 import { ordersService } from '../services/ordersService';
 import { productTierPriceService } from '../services/customerTierService';
@@ -42,6 +43,7 @@ export const CreateOrderView: React.FC<CreateOrderViewProps> = ({
   const { products, loading: productsLoading } = useProducts();
   const { warehouses, loading: warehousesLoading } = useWarehouses();
   const { categories, loading: categoriesLoading } = useProductCategories();
+  const { count: incompleteCount } = useIncompleteOrdersCount();
   const { profile } = useAuth();
   const { toasts, success, error, warning, dismissToast } = useToast();
 
@@ -489,14 +491,21 @@ export const CreateOrderView: React.FC<CreateOrderViewProps> = ({
         title="สร้างออเดอร์ใหม่"
         actions={
           <div className="flex items-center gap-2">
-            <Button
-              onClick={onNavigateToPendingSales}
-              variant="outline"
-              className="flex items-center gap-2 bg-white text-orange-600 border-orange-200 hover:bg-orange-50 dark:bg-slate-800 dark:text-orange-400 dark:border-slate-700 dark:hover:bg-slate-700"
-            >
-              <FileText className="w-4 h-4" />
-              ใบขายคงค้าง
-            </Button>
+            <div className="relative">
+              <Button
+                onClick={onNavigateToPendingSales}
+                variant="outline"
+                className="flex items-center gap-2 bg-white text-orange-600 border-orange-200 hover:bg-orange-50 dark:bg-slate-800 dark:text-orange-400 dark:border-slate-700 dark:hover:bg-slate-700"
+              >
+                <FileText className="w-4 h-4" />
+                ใบขายคงค้าง
+              </Button>
+              {incompleteCount > 0 && (
+                <span className="absolute -top-2 -right-2 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white shadow-sm ring-2 ring-white dark:ring-slate-900 animate-in zoom-in duration-300">
+                  {incompleteCount > 99 ? '99+' : incompleteCount}
+                </span>
+              )}
+            </div>
             <Button
               onClick={() => setIsUploadModalOpen(true)}
               variant="outline"
