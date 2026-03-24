@@ -1,27 +1,29 @@
-import React, { useState, useRef } from 'react';
-import { Upload, X, FileText, CheckCircle2, AlertCircle, Info, ChevronDown, ChevronUp } from 'lucide-react';
+import React, { useState, useRef, useMemo, useEffect } from 'react';
+import { Upload, X, FileText, CheckCircle2, AlertCircle, Info, ChevronDown, ChevronUp, Boxes } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
 import { Badge } from '../ui/Badge';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
 import { ToastContainer } from '../ui/Toast';
-import { useToast } from '../../hooks';
+import { useAuth, useToast } from '../../hooks';
+import { useWarehouses } from '../../hooks/useInventory';
 import { orderUploadService, UploadedOrder } from '../../services/orderUploadService';
 import { ordersService } from '../../services/ordersService';
 import { incompleteOrdersService } from '../../services/incompleteOrdersService';
-import { useAuth } from '../../hooks';
 
 interface OrderUploadModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
-  selectedWarehouse: any;
+  selectedWarehouse?: any; // Optional now
 }
 
-export function OrderUploadModal({ isOpen, onClose, onSuccess, selectedWarehouse }: OrderUploadModalProps) {
+export function OrderUploadModal({ isOpen, onClose, onSuccess, selectedWarehouse: initialWarehouse }: OrderUploadModalProps) {
   const { profile } = useAuth();
   const { toasts, dismissToast, success, error, warning } = useToast();
+  const { warehouses, loading: warehousesLoading } = useWarehouses();
   
+  const [localSelectedWarehouse, setLocalSelectedWarehouse] = useState<any>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingMessage, setProcessingMessage] = useState('กำลังประมวลผลข้อมูล...');
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -29,6 +31,25 @@ export function OrderUploadModal({ isOpen, onClose, onSuccess, selectedWarehouse
   const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Filter warehouses based on user branch (Same logic as CreateOrderView)
+  const filteredWarehouses = useMemo(() => {
+    if (!warehouses) return [];
+    const isHighLevel = profile?.role === 'admin' || profile?.role === 'manager' || profile?.role === 'inspector' || profile?.role === 'executive';
+    if (isHighLevel || profile?.branch === 'HQ') {
+      return warehouses;
+    }
+    return warehouses.filter(w => w.branch === profile?.branch);
+  }, [warehouses, profile]);
+
+  // Sync initial warehouse OR set default if only one
+  useEffect(() => {
+    if (initialWarehouse) {
+      setLocalSelectedWarehouse(initialWarehouse);
+    } else if (filteredWarehouses.length === 1 && !localSelectedWarehouse) {
+      setLocalSelectedWarehouse(filteredWarehouses[0]);
+    }
+  }, [initialWarehouse, filteredWarehouses, localSelectedWarehouse]);
 
   if (!isOpen) return null;
 
@@ -75,8 +96,8 @@ export function OrderUploadModal({ isOpen, onClose, onSuccess, selectedWarehouse
   };
 
   const handleConfirmUpload = async () => {
-    if (!selectedWarehouse) {
-      error('กรุณาเลือกคลังสินค้าในหน้าหลักก่อนอัพโหลด');
+    if (!localSelectedWarehouse) {
+      error('กรุณาเลือกคลังสินค้าก่อนอัพโหลด');
       return;
     }
 
@@ -99,12 +120,13 @@ export function OrderUploadModal({ isOpen, onClose, onSuccess, selectedWarehouse
 
       for (const order of validOrders) {
         const orderInsert = {
+          order_number: order.doc_no,
           store_id: order.store_id!, // known valid since not error
           order_date: order.order_date,
           status: 'awaiting_confirmation',
-          notes: `(อัพโหลดจาก SML / ${order.doc_no})`,
+          notes: `(อัพโหลดจาก SML)`,
           created_by: profile?.id,
-          warehouse_id: selectedWarehouse.id,
+          warehouse_id: localSelectedWarehouse.id,
         };
 
         const itemsToSubmit = order.items.map(item => ({
@@ -139,7 +161,7 @@ export function OrderUploadModal({ isOpen, onClose, onSuccess, selectedWarehouse
                   unit: item.unit,
               })),
               error_message: order.error || 'Unknown error',
-              warehouse_id: selectedWarehouse.id,
+              warehouse_id: localSelectedWarehouse.id,
               branch: profile?.branch || null,
               created_by: profile?.id || null,
           });
@@ -204,20 +226,51 @@ export function OrderUploadModal({ isOpen, onClose, onSuccess, selectedWarehouse
         {/* Content */}
         <div className="p-6 overflow-y-auto flex-1 bg-gray-50/50 dark:bg-slate-900/50">
           
+          {/* Warehouse Selection (New) */}
+          <div className="mb-6 bg-white dark:bg-slate-800 p-4 rounded-xl border border-blue-100 dark:border-blue-900/30">
+            <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2 flex items-center gap-2">
+              <Boxes className="w-4 h-4 text-blue-500" />
+              1. เลือกคลังสินค้าที่จะนำเข้า
+            </label>
+            <select
+              value={localSelectedWarehouse?.id || ''}
+              onChange={(e) => {
+                const wh = filteredWarehouses.find(w => w.id === e.target.value);
+                setLocalSelectedWarehouse(wh);
+              }}
+              disabled={isProcessing}
+              className="w-full p-2.5 bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-lg text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">-- กรุณาเลือกคลังสินค้า --</option>
+              {filteredWarehouses.map((wh) => (
+                <option key={wh.id} value={wh.id}>
+                  {wh.name} {wh.branch ? `(${wh.branch})` : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+
           {/* Step 1: Upload Input */}
           {parsedOrders.length === 0 && !isProcessing && (
-             <div className="border-2 border-dashed border-gray-300 dark:border-slate-700 rounded-xl p-12 text-center hover:border-blue-500 dark:hover:border-blue-400 transition-colors bg-white dark:bg-slate-800">
+             <div className={`border-2 border-dashed rounded-xl p-12 text-center transition-colors bg-white dark:bg-slate-800 ${!localSelectedWarehouse ? 'border-gray-200 opacity-50 cursor-not-allowed' : 'border-gray-300 dark:border-slate-700 hover:border-blue-500 dark:hover:border-blue-400'}`}>
                  <Upload className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                 <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">ลากไฟล์ลงที่นี่ หรือคลิกเพื่อเลือกไฟล์</h3>
+                 <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">
+                    {localSelectedWarehouse ? '2. ลากไฟล์ลงที่นี่ หรือคลิกเพื่อเลือกไฟล์' : 'กรุณาเลือกคลังสินค้าก่อนเลือกไฟล์'}
+                 </h3>
                  <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">รูปแบบไฟล์ที่รองรับ: .xlsx, .xls</p>
                  <input
                     type="file"
                     ref={fileInputRef}
                     onChange={handleFileUpload}
                     accept=".xlsx, .xls"
+                    disabled={!localSelectedWarehouse || isProcessing}
                     className="hidden"
                   />
-                 <Button onClick={() => fileInputRef.current?.click()} className="mx-auto flex items-center gap-2">
+                 <Button 
+                    onClick={() => fileInputRef.current?.click()} 
+                    disabled={!localSelectedWarehouse || isProcessing}
+                    className="mx-auto flex items-center gap-2"
+                  >
                     <FileText className="w-4 h-4" />
                     เลือกไฟล์ Excel
                  </Button>

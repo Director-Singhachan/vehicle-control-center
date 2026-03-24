@@ -410,27 +410,37 @@ export const ConfirmOrderView: React.FC = () => {
                                                                 <Package className="w-4 h-4" />
                                                             </div>
                                                         </div>
-                                                        <div className="min-w-0">
+                                                        <div className="min-w-0 flex-1">
                                                             <div className="flex items-center gap-2">
                                                                 <h3 className="text-sm font-black text-slate-900 dark:text-white truncate">{order.order_number || 'ไม่มีเลขที่'}</h3>
                                                                 <Badge variant="info" className="rounded-lg px-1.5 py-0 text-[8px] font-black uppercase">
                                                                     รอคอนเฟิร์ม
                                                                 </Badge>
                                                             </div>
-                                                            <div className="flex items-center gap-x-2 mt-0.5">
+                                                            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-0.5">
+                                                                <div className="flex items-center gap-1 text-[10px] font-bold text-blue-600 dark:text-blue-400 truncate">
+                                                                    <User className="w-3 h-3" />
+                                                                    {order.customer_name || '-'}
+                                                                </div>
                                                                 <div className="flex items-center gap-1 text-[10px] font-bold text-slate-700 dark:text-slate-300 truncate">
                                                                     <Building2 className="w-3 h-3 text-slate-400" />
-                                                                    {order.store_name?.slice(0, 20) || '-'}
+                                                                    {order.store_name || '-'}
                                                                 </div>
                                                                 <div className="flex items-center gap-1 text-[10px] font-medium text-slate-500 truncate">
                                                                     <MapPin className="w-3 h-3 text-slate-400" />
                                                                     {order.district || '-'}
                                                                 </div>
                                                             </div>
+                                                            {order.notes && (
+                                                                <div className="mt-1 flex items-start gap-1 text-[10px] font-medium text-amber-600 dark:text-amber-500 bg-amber-50 dark:bg-amber-900/10 px-2 py-0.5 rounded-lg w-fit">
+                                                                    <Info className="w-3 h-3 mt-0.5" />
+                                                                    <span>หมายเหตุ: {order.notes}</span>
+                                                                </div>
+                                                            )}
                                                         </div>
 
-                                                        {/* Per-order Bulk Actions (Only if > 1 item) */}
-                                                        {order.items?.length > 1 && (() => {
+                                                        {/* Per-order Bulk Actions (Always show) */}
+                                                        {order.items?.length > 0 && (() => {
                                                             const allDelivery = order.items?.every((item: any) => item.fulfillment_method === 'delivery');
                                                             const allPickup = order.items?.every((item: any) => item.fulfillment_method === 'pickup');
 
