@@ -2815,7 +2815,12 @@ const AppContent = () => {
             ) : activeTab === 'customers' ? (
               <CustomerManagementView />
             ) : activeTab === 'create-order' ? (
-              <CreateOrderView onNavigateToConfirmOrders={() => setActiveTab('confirm-orders')} />
+              <CreateOrderView 
+                onNavigateToConfirmOrders={() => setActiveTab('confirm-orders')} 
+                onNavigateToPendingSales={() => setActiveTab('pending-sales')}
+              />
+            ) : activeTab === 'pending-sales' ? (
+              <PendingSalesView />
             ) : activeTab === 'track-orders' ? (
               <TrackOrdersView />
             ) : activeTab === 'confirm-orders' ? (
