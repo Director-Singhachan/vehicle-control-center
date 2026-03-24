@@ -22,6 +22,8 @@ export function OrderUploadModal({ isOpen, onClose, onSuccess, selectedWarehouse
   const { success, error, warning } = useToast();
   
   const [isProcessing, setIsProcessing] = useState(false);
+  const [processingMessage, setProcessingMessage] = useState('กำลังประมวลผลข้อมูล...');
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [parsedOrders, setParsedOrders] = useState<UploadedOrder[]>([]);
   const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
   
@@ -39,6 +41,8 @@ export function OrderUploadModal({ isOpen, onClose, onSuccess, selectedWarehouse
     }
 
     setIsProcessing(true);
+    setProcessingMessage('กำลังอ่านไฟล์ Excel...');
+    setUploadProgress(0);
     setParsedOrders([]);
     
     try {
@@ -46,6 +50,7 @@ export function OrderUploadModal({ isOpen, onClose, onSuccess, selectedWarehouse
       const rawOrders = await orderUploadService.parseExcel(file);
       
       // 2. Validate against DB
+      setProcessingMessage('กำลังตรวจสอบข้อมูลกับฐานข้อมูล...');
       const validatedOrders = await orderUploadService.validateOrders(rawOrders);
       
       setParsedOrders(validatedOrders);
@@ -81,9 +86,15 @@ export function OrderUploadModal({ isOpen, onClose, onSuccess, selectedWarehouse
     }
 
     setIsProcessing(true);
+    setProcessingMessage('กำลังบันทึกข้อมูล...');
+    setUploadProgress(0);
     try {
       // Batch create valid orders
       let successCount = 0;
+      const invalidOrders = parsedOrders.filter(o => o.error);
+      const totalToProcess = validOrders.length + invalidOrders.length;
+      let processedCount = 0;
+
       for (const order of validOrders) {
         const orderInsert = {
           store_id: order.store_id!, // known valid since not error
@@ -105,10 +116,11 @@ export function OrderUploadModal({ isOpen, onClose, onSuccess, selectedWarehouse
 
         await ordersService.createWithItems(orderInsert, itemsToSubmit, null, null);
         successCount++;
+        processedCount++;
+        setUploadProgress(Math.round((processedCount / totalToProcess) * 100));
       }
 
       // Save invalid orders to Pending Sales
-      const invalidOrders = parsedOrders.filter(o => o.error);
       let pendingCount = 0;
       for (const order of invalidOrders) {
           await incompleteOrdersService.create({
@@ -130,6 +142,8 @@ export function OrderUploadModal({ isOpen, onClose, onSuccess, selectedWarehouse
               created_by: profile?.id || null,
           });
           pendingCount++;
+          processedCount++;
+          setUploadProgress(Math.round((processedCount / totalToProcess) * 100));
       }
       
       if (successCount > 0 && pendingCount > 0) {
@@ -211,8 +225,27 @@ export function OrderUploadModal({ isOpen, onClose, onSuccess, selectedWarehouse
           {isProcessing && (
               <div className="flex flex-col items-center justify-center p-12">
                   <LoadingSpinner className="w-12 h-12 mb-4 text-blue-600" />
-                  <p className="text-lg font-medium text-gray-900 dark:text-white">กำลังประมวลผลข้อมูล...</p>
-                  <p className="text-sm text-gray-500 mt-2">โปรดรอสักครู่ ระบบกำลังตรวจสอบข้อมูลกับฐานข้อมูล</p>
+                  <p className="text-lg font-medium text-gray-900 dark:text-white">{processingMessage}</p>
+                  {uploadProgress > 0 && (
+                    <div className="w-full max-w-xs mt-6">
+                        <div className="flex justify-between mb-2">
+                             <span className="text-xs font-semibold inline-block text-blue-600 uppercase">
+                                กำลังดำเนินการ
+                             </span>
+                             <span className="text-xs font-semibold inline-block text-blue-600">
+                                {uploadProgress}%
+                             </span>
+                        </div>
+                        <div className="overflow-hidden h-2 mb-4 text-xs flex rounded bg-blue-100">
+                             <div 
+                                style={{ width: `${uploadProgress}%` }}
+                                className="shadow-none flex flex-col text-center whitespace-nowrap text-white justify-center bg-blue-500 transition-all duration-300"
+                             ></div>
+                        </div>
+                        <p className="text-center text-xs text-gray-400">ห้ามปิดหน้าต่างนี้จนกว่าจะเสร็จสิ้น</p>
+                    </div>
+                  )}
+                  {uploadProgress === 0 && <p className="text-sm text-gray-500 mt-2">โปรดรอสักครู่ ระบบกำลังสื่อสารกับฐานข้อมูล</p>}
               </div>
           )}
 
