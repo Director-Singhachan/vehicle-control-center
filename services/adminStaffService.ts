@@ -29,6 +29,7 @@ export interface UpdateStaffInput {
   department?: string;
   position?: string;
   phone?: string;
+  email?: string;
   /** ตั้งหรือแก้รหัสพนักงาน (กรณีใช้อีเมลจริงแต่ยังไม่มีรหัส) — ส่งค่าว่างเพื่อล้าง */
   employee_code?: string | null;
   is_banned?: boolean;
