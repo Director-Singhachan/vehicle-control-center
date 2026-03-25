@@ -811,11 +811,12 @@ const AppContent = () => {
   }, [isServiceStaff, activeTab]);
 
   // Redirect sales to create-order page when they access restricted areas
-  // Sales can access: create-order, track-orders, sales-trips, products, product-pricing, customer-tiers, profile, settings
+  // Sales can access: create-order, confirm-orders, track-orders, sales-trips, products, product-pricing, customer-tiers, profile, settings
   useEffect(() => {
     if (isSales) {
       const allowedTabs = [
         'create-order',
+        'confirm-orders',
         'track-orders',
         'sales-trips',
         'products',
@@ -1228,7 +1229,7 @@ const AppContent = () => {
                 <SidebarItem
                   icon={Boxes}
                   label={isSidebarOpen ? "คลังสินค้า" : ""}
-                  active={activeTab === 'stock-dashboard' || activeTab === 'warehouses' || activeTab === 'inventory-receipts'}
+                  active={activeTab === 'stock-dashboard' || activeTab === 'warehouses' || activeTab === 'inventory-receipts' || activeTab === 'confirm-orders'}
                   onClick={() => {
                     if (isMobile) {
                       setMobileStockExpanded(prev => !prev);
@@ -1246,6 +1247,7 @@ const AppContent = () => {
               {isMobile && mobileStockExpanded && isSidebarOpen && (
                 <div className="pl-2 pr-1 space-y-0.5 animate-in fade-in slide-in-from-top-1 duration-150">
                   <SubSidebarItem label="Stock Dashboard" active={activeTab === 'stock-dashboard'} onClick={() => navigateAndCloseMobile('stock-dashboard')} isCollapsed={false} isFlyout={false} />
+                  <SubSidebarItem label="ยืนยันและแบ่งส่ง" active={activeTab === 'confirm-orders'} onClick={() => navigateAndCloseMobile('confirm-orders')} isCollapsed={false} isFlyout={false} />
                   {(isAdmin || isManager) && (
                     <>
                       <SubSidebarItem label="จัดการคลัง" active={activeTab === 'warehouses'} onClick={() => navigateAndCloseMobile('warehouses')} isCollapsed={false} isFlyout={false} />
@@ -1278,6 +1280,16 @@ const AppContent = () => {
                         active={activeTab === 'stock-dashboard'}
                         onClick={() => {
                           setActiveTab('stock-dashboard');
+                          setIsStockHovered(false);
+                        }}
+                        isCollapsed={false}
+                        isFlyout={true}
+                      />
+                      <SubSidebarItem
+                        label="ยืนยันและแบ่งส่ง"
+                        active={activeTab === 'confirm-orders'}
+                        onClick={() => {
+                          setActiveTab('confirm-orders');
                           setIsStockHovered(false);
                         }}
                         isCollapsed={false}
