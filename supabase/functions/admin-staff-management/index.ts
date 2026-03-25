@@ -276,7 +276,7 @@ Deno.serve(async (req) => {
 
     // ─── update_profile ─────────────────────────────────────────────────────
     if (action === 'update_profile') {
-      const { user_id, full_name, name_prefix, role, branch, department, position, phone, employee_code: rawEmployeeCode, is_banned, resignation_date } = body;
+      const { user_id, full_name, name_prefix, role, branch, department, position, phone, email: rawEmail, employee_code: rawEmployeeCode, is_banned, resignation_date } = body;
       if (!user_id) return jsonError('user_id จำเป็นต้องระบุ', 400);
 
       const updates: Record<string, unknown> = {};
@@ -289,6 +289,37 @@ Deno.serve(async (req) => {
       if (phone !== undefined) updates.phone = phone;
       if (is_banned !== undefined) updates.is_banned = is_banned;
       if (resignation_date !== undefined) updates.resignation_date = resignation_date;
+
+      // รองรับการอัปเดต Email
+      if (rawEmail !== undefined) {
+        const email = typeof rawEmail === 'string' ? rawEmail.trim() : '';
+        if (email) {
+          const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+          if (!emailRegex.test(email)) {
+            return jsonError('รูปแบบ Email ไม่ถูกต้อง', 400);
+          }
+          // ตรวจ email ไม่ซ้ำ (ใน profiles)
+          const { data: existingEmail } = await adminClient
+            .from('profiles')
+            .select('id')
+            .eq('email', email)
+            .neq('id', user_id)
+            .limit(1)
+            .maybeSingle();
+          if (existingEmail) {
+            return jsonError('Email นี้มีในระบบแล้ว', 400);
+          }
+          
+          // อัปเดตใน Auth
+          const { error: authErr } = await adminClient.auth.admin.updateUserById(user_id, {
+            email,
+            email_confirm: true,
+          });
+          if (authErr) throw authErr;
+          
+          updates.email = email;
+        }
+      }
 
       // รองรับการตั้ง/แก้รหัสพนักงานโดย Admin (กรณีใช้อีเมลจริงแต่ยังไม่มีรหัส)
       if (rawEmployeeCode !== undefined) {

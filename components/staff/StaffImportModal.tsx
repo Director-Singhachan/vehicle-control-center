@@ -248,6 +248,7 @@ export const StaffImportModal: React.FC<StaffImportModalProps> = ({ isOpen, onCl
                         if (!checkVal(existing.department, dept)) changes.department = { old: existing.department, new: dept };
                         if (!checkVal(existing.position, pos)) changes.position = { old: existing.position, new: pos };
                         if (!checkVal(existing.phone, phone)) changes.phone = { old: existing.phone, new: phone };
+                        if (!checkVal(existing.email, email)) changes.email = { old: existing.email, new: email };
                         
                         // Check for resignation changes
                         if (isResigned && !existing.is_banned) {
@@ -328,6 +329,7 @@ export const StaffImportModal: React.FC<StaffImportModalProps> = ({ isOpen, onCl
                             department: row.department || undefined,
                             position: row.position || undefined,
                             phone: row.phone || undefined,
+                            email: row.email || undefined,
                             is_banned: row.is_resigned,
                             resignation_date: row.resignation_date,
                         });
@@ -604,7 +606,8 @@ export const StaffImportModal: React.FC<StaffImportModalProps> = ({ isOpen, onCl
                                                                                                     branch: 'สาขา',
                                                                                                     department: 'แผนก',
                                                                                                     position: 'ตำแหน่ง',
-                                                                                                    phone: 'เบอร์โทร'
+                                                                                                    phone: 'เบอร์โทร',
+                                                                                                    email: 'อีเมล'
                                                                                                 };
                                                                                                 return (
                                                                                                     <div key={key} className="group/diff p-4 bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 shadow-sm flex flex-col gap-2 transition-all hover:ring-2 hover:ring-blue-500/10 overflow-hidden">
