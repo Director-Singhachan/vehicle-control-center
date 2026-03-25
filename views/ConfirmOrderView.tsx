@@ -46,6 +46,10 @@ export const ConfirmOrderView: React.FC = () => {
     const [expandedOrders, setExpandedOrders] = useState<Set<string>>(new Set());
     const [splittingItem, setSplittingItem] = useState<any | null>(null);
     const [processingOrderIds, setProcessingOrderIds] = useState<Set<string>>(new Set());
+    
+    // Multi-selection State
+    const [selectedOrderIds, setSelectedOrderIds] = useState<Set<string>>(new Set());
+    const [isBulkProcessing, setIsBulkProcessing] = useState(false);
 
     // Pickup Tab States
     const [pickupItems, setPickupItems] = useState<PickupPendingItem[]>([]);
@@ -119,7 +123,7 @@ export const ConfirmOrderView: React.FC = () => {
         if (!orderId) return;
         setProcessingOrderIds(prev => new Set(prev).add(orderId));
         try {
-            await ordersService.markAsReady(orderId, 'SYSTEM'); 
+            await ordersService.markAsReady(orderId, profile?.id || ''); 
             success('ยืนยันออเดอร์เรียบร้อยแล้ว');
             fetchOrders();
         } catch (err: any) {
@@ -142,6 +146,56 @@ export const ConfirmOrderView: React.FC = () => {
         
         return orderNum.includes(search) || custName.includes(search) || storeName.includes(search);
     }) : [];
+
+    const toggleOrderSelection = (orderId: string, e?: React.MouseEvent) => {
+        if (e) e.stopPropagation();
+        const newSelected = new Set(selectedOrderIds);
+        if (newSelected.has(orderId)) {
+            newSelected.delete(orderId);
+        } else {
+            newSelected.add(orderId);
+        }
+        setSelectedOrderIds(newSelected);
+    };
+
+    const toggleSelectAll = () => {
+        if (selectedOrderIds.size === filteredOrders.length) {
+            setSelectedOrderIds(new Set());
+        } else {
+            setSelectedOrderIds(new Set(filteredOrders.map(o => o.id)));
+        }
+    };
+
+    const handleBulkMarkAsReady = async () => {
+        if (selectedOrderIds.size === 0) return;
+        setIsBulkProcessing(true);
+        try {
+            const { updated } = await ordersService.markMultipleAsReady(Array.from(selectedOrderIds), profile?.id || '');
+            success(`ยืนยันสำเร็จ ${updated} ออเดอร์`);
+            setSelectedOrderIds(new Set());
+            fetchOrders();
+        } catch (err: any) {
+            error('ไม่สามารถยืนยันออเดอร์ได้: ' + (err.message || 'Unknown error'));
+        } finally {
+            setIsBulkProcessing(false);
+        }
+    };
+
+    const handleBulkUpdateFulfillment = async (method: 'delivery' | 'pickup', targetIds?: string[]) => {
+        const idsToUpdate = targetIds || Array.from(selectedOrderIds);
+        if (idsToUpdate.length === 0) return;
+        
+        setIsBulkProcessing(true);
+        try {
+            const { updated } = await ordersService.updateMultipleFulfillmentMethods(idsToUpdate, method);
+            success(`อัปเดตวิธีรับสินค้าสำเร็จ ${updated} รายการ`);
+            fetchOrders();
+        } catch (err: any) {
+            error('ไม่สามารถอัปเดตออเดอร์ได้: ' + (err.message || 'Unknown error'));
+        } finally {
+            setIsBulkProcessing(false);
+        }
+    };
 
     const formatDate = (dateStr: any) => {
         if (!dateStr) return '-';
@@ -226,7 +280,7 @@ export const ConfirmOrderView: React.FC = () => {
     };
 
     return (
-        <PageLayout title="ยืนยันและแบ่งส่ง (Confirm & Split Delivery)">
+        <PageLayout title="ยืนยันและแบ่งส่งออเดอร์">
             <div className="space-y-6 max-w-7xl mx-auto pb-20">
                 {/* Tab Switcher */}
                 <div className="flex p-1.5 bg-slate-100 dark:bg-charcoal-800 rounded-3xl w-fit mx-auto shadow-inner border border-slate-200 dark:border-slate-800">
@@ -275,6 +329,15 @@ export const ConfirmOrderView: React.FC = () => {
                             <option value="SD">{getBranchLabel('SD')}</option>
                         </select>
                     </div>
+                    <div className="flex items-center gap-3 pl-2">
+                        <input
+                            type="checkbox"
+                            checked={filteredOrders.length > 0 && selectedOrderIds.size === filteredOrders.length}
+                            onChange={toggleSelectAll}
+                            className="w-5 h-5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                        />
+                        <span className="text-xs font-black text-slate-500 uppercase tracking-wider">เลือกทั้งหมด</span>
+                    </div>
                     <Button
                         variant="outline"
                         onClick={currentTab === 'delivery' ? fetchOrders : (pickupSubTab === 'pending' ? fetchPickupItems : fetchPickupHistory)}
@@ -295,7 +358,7 @@ export const ConfirmOrderView: React.FC = () => {
                             <div className="space-y-1">
                                 <h4 className="text-sm font-black text-blue-900 dark:text-blue-300 uppercase tracking-wider">คำแนะนำการใช้งาน</h4>
                                 <p className="text-sm font-medium text-blue-700/80 dark:text-blue-400/80 leading-relaxed">
-                                    หน้านี้รวบรวมออเดอร์ทั้งหมดที่เริมต้นบันทึกเข้าระบบ (Draft/Awaiting Dispatch) <br />
+                                    หน้านี้รวบรวมออเดอร์ทั้งหมดที่เริมต้นบันทึกเข้าระบบ (ฉบับร่าง/รอการส่งมอบ) <br />
                                     ท่านสามารถตรวจสอบรายการ แบ่งยอดส่ง (Split) หรือกำหนดให้ลูกค้ามารับเอง และกดปุ่ม <span className="font-black text-blue-600">"ยืนยันออเดอร์"</span> เพื่อส่งให้ฝ่ายขนส่งดำเนินการต่อ
                                 </p>
                             </div>
@@ -330,56 +393,104 @@ export const ConfirmOrderView: React.FC = () => {
                                         >
                                             {/* Order Header */}
                                             <div
-                                                className="p-6 cursor-pointer select-none"
+                                                className="px-4 py-2 cursor-pointer select-none"
                                                 onClick={() => toggleOrderExpansion(order.id)}
                                             >
-                                                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                                                    <div className="flex items-start gap-4">
-                                                        <div className={`p-3 rounded-2xl shadow-sm transition-colors ${isExpanded ? 'bg-blue-600 text-white' : 'bg-slate-100 dark:bg-charcoal-800 text-slate-400'
-                                                            }`}>
-                                                            <Package className="w-6 h-6" />
+                                                <div className="flex flex-col md:flex-row md:items-center justify-between gap-2">
+                                                    <div className="flex items-center gap-3 flex-1 min-w-0">
+                                                        <div className="flex items-center gap-3" onClick={(e) => e.stopPropagation()}>
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={selectedOrderIds.has(order.id)}
+                                                                onChange={() => toggleOrderSelection(order.id)}
+                                                                className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                                                            />
+                                                            <div className={`p-1.5 rounded-lg shadow-sm transition-colors ${isExpanded ? 'bg-blue-600 text-white' : 'bg-slate-100 dark:bg-charcoal-800 text-slate-400'
+                                                                }`}>
+                                                                <Package className="w-4 h-4" />
+                                                            </div>
                                                         </div>
-                                                        <div>
-                                                            <div className="flex items-center gap-3">
-                                                                <h3 className="text-lg font-black text-slate-900 dark:text-white tracking-tight">{order.order_number || 'No Number'}</h3>
-                                                                <Badge variant="info" className="rounded-lg px-2 py-0.5 text-[10px] font-black uppercase">
-                                                                    Awaiting Confirmation
+                                                        <div className="min-w-0 flex-1">
+                                                            <div className="flex items-center gap-2">
+                                                                <h3 className="text-sm font-black text-slate-900 dark:text-white truncate">{order.order_number || 'ไม่มีเลขที่'}</h3>
+                                                                <Badge variant="info" className="rounded-lg px-1.5 py-0 text-[8px] font-black uppercase">
+                                                                    รอคอนเฟิร์ม
                                                                 </Badge>
                                                             </div>
-                                                            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1">
-                                                                <div className="flex items-center gap-1.5 text-sm font-bold text-slate-700 dark:text-slate-300">
-                                                                    <Building2 className="w-4 h-4 text-slate-400" />
-                                                                    {order.store_name || '-'}
-                                                                </div>
-                                                                <div className="flex items-center gap-1.5 text-sm font-medium text-slate-500">
-                                                                    <User className="w-4 h-4 text-slate-400" />
+                                                            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-0.5">
+                                                                <div className="flex items-center gap-1 text-[10px] font-bold text-blue-600 dark:text-blue-400 truncate">
+                                                                    <User className="w-3 h-3" />
                                                                     {order.customer_name || '-'}
                                                                 </div>
-                                                                <div className="flex items-center gap-1.5 text-sm font-medium text-slate-500">
-                                                                    <MapPin className="w-4 h-4 text-slate-400" />
-                                                                    {order.district || '-'}, {order.province || '-'}
+                                                                <div className="flex items-center gap-1 text-[10px] font-bold text-slate-700 dark:text-slate-300 truncate">
+                                                                    <Building2 className="w-3 h-3 text-slate-400" />
+                                                                    {order.store_name || '-'}
+                                                                </div>
+                                                                <div className="flex items-center gap-1 text-[10px] font-medium text-slate-500 truncate">
+                                                                    <MapPin className="w-3 h-3 text-slate-400" />
+                                                                    {order.district || '-'}
                                                                 </div>
                                                             </div>
+                                                            {order.notes && (
+                                                                <div className="mt-1 flex items-start gap-1 text-[10px] font-medium text-amber-600 dark:text-amber-500 bg-amber-50 dark:bg-amber-900/10 px-2 py-0.5 rounded-lg w-fit">
+                                                                    <Info className="w-3 h-3 mt-0.5" />
+                                                                    <span>หมายเหตุ: {order.notes}</span>
+                                                                </div>
+                                                            )}
                                                         </div>
+
+                                                        {/* Per-order Bulk Actions (Always show) */}
+                                                        {order.items?.length > 0 && (() => {
+                                                            const allDelivery = order.items?.every((item: any) => item.fulfillment_method === 'delivery');
+                                                            const allPickup = order.items?.every((item: any) => item.fulfillment_method === 'pickup');
+
+                                                            return (
+                                                                <div className="flex items-center gap-2 ml-4" onClick={(e) => e.stopPropagation()}>
+                                                                    <Button
+                                                                        size="sm"
+                                                                        variant={allDelivery ? 'primary' : 'outline'}
+                                                                        onClick={() => handleBulkUpdateFulfillment('delivery', [order.id])}
+                                                                        disabled={isBulkProcessing || allDelivery}
+                                                                        className={`h-7 px-3 text-[10px] font-black rounded-xl transition-all ${
+                                                                            allDelivery 
+                                                                            ? 'bg-blue-600 text-white border-transparent shadow-sm' 
+                                                                            : 'border-blue-100 text-blue-600 hover:bg-blue-50 bg-white/50'
+                                                                        }`}
+                                                                    >
+                                                                        ส่งทั้งหมด
+                                                                    </Button>
+                                                                    <Button
+                                                                        size="sm"
+                                                                        variant={allPickup ? 'primary' : 'outline'}
+                                                                        onClick={() => handleBulkUpdateFulfillment('pickup', [order.id])}
+                                                                        disabled={isBulkProcessing || allPickup}
+                                                                        className={`h-7 px-3 text-[10px] font-black rounded-xl transition-all ${
+                                                                            allPickup 
+                                                                            ? 'bg-amber-500 text-white border-transparent shadow-sm' 
+                                                                            : 'border-amber-100 text-amber-600 hover:bg-amber-50 bg-white/50'
+                                                                        }`}
+                                                                    >
+                                                                        รับเองทั้งหมด
+                                                                    </Button>
+                                                                </div>
+                                                            );
+                                                        })()}
                                                     </div>
 
-                                                    <div className="flex items-center gap-6 md:text-right">
+                                                    <div className="flex items-center gap-4 text-right">
                                                         <div className="hidden sm:block">
-                                                            <div className="flex items-center gap-1.5 text-xs font-black text-slate-400 uppercase tracking-widest mb-1">
-                                                                <Calendar className="w-3.5 h-3.5" />
-                                                                วันที่ออเดอร์
-                                                            </div>
-                                                            <p className="text-sm font-bold text-slate-700 dark:text-slate-300">
+                                                            <p className="text-[10px] font-bold text-slate-500">
                                                                 {formatDate(order.order_date)}
                                                             </p>
                                                         </div>
-                                                        <div className="flex items-center gap-4">
+                                                        <div className="flex items-center gap-3">
                                                             <div className="flex flex-col items-end">
-                                                                <span className="text-xs font-black text-slate-400 uppercase tracking-widest mb-1">จำนวนรายการ</span>
-                                                                <span className="text-sm font-black text-slate-900 dark:text-white">{(order.items?.length || order.total_items || 0)} รายการ</span>
+                                                                <span className="text-[11px] font-black text-slate-900 dark:text-white">
+                                                                    {order.items?.length || 0} <span className="text-[9px] font-bold text-slate-400 uppercase ml-0.5">รายการ</span>
+                                                                </span>
                                                             </div>
-                                                            <div className="p-2 rounded-xl bg-slate-50 dark:bg-charcoal-800 text-slate-400 transition-transform duration-300" style={{ transform: isExpanded ? 'rotate(180deg)' : 'none' }}>
-                                                                <ChevronDown className="w-5 h-5" />
+                                                            <div className="p-1 rounded-md bg-slate-50 dark:bg-charcoal-800 text-slate-400 transition-transform duration-300" style={{ transform: isExpanded ? 'rotate(180deg)' : 'none' }}>
+                                                                <ChevronDown className="w-3.5 h-3.5" />
                                                             </div>
                                                         </div>
                                                     </div>
@@ -565,7 +676,7 @@ export const ConfirmOrderView: React.FC = () => {
                                                         </div>
                                                     </div>
                                                     <Badge variant="success" className="rounded-xl px-4 py-1.5 font-black uppercase tracking-wider text-[10px]">
-                                                        FULFILLED
+                                                        รับสินค้าแล้ว
                                                     </Badge>
                                                 </div>
                                                 {order.pickup_items?.length > 0 && (
@@ -704,6 +815,58 @@ export const ConfirmOrderView: React.FC = () => {
             </div>
 
             <ToastContainer toasts={toasts} onDismiss={dismissToast} />
+
+            {/* Bulk Action Bar */}
+            {selectedOrderIds.size > 0 && currentTab === 'delivery' && (
+                <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-50 animate-in fade-in slide-in-from-bottom-8 duration-300">
+                    <div className="bg-white dark:bg-charcoal-900 border border-slate-200 dark:border-slate-800 rounded-[2rem] px-8 py-4 shadow-[0_20px_50px_rgba(0,0,0,0.15)] flex items-center gap-6">
+                        <div className="flex items-center gap-3 pr-6 border-r border-slate-100 dark:border-slate-800">
+                            <div className="w-10 h-10 rounded-full bg-blue-600 text-white flex items-center justify-center font-black text-sm shadow-lg shadow-blue-500/30">
+                                {selectedOrderIds.size}
+                            </div>
+                            <div className="flex flex-col">
+                                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">เลือกอยู่</span>
+                                <span className="text-sm font-black text-slate-900 dark:text-white leading-none">ออเดอร์</span>
+                            </div>
+                        </div>
+
+                        <div className="flex items-center gap-3">
+                            <Button
+                                variant="outline"
+                                onClick={() => handleBulkUpdateFulfillment('pickup')}
+                                disabled={isBulkProcessing}
+                                className="rounded-2xl px-6 h-12 text-xs font-black flex items-center gap-2 border-amber-200 text-amber-600 hover:bg-amber-50"
+                            >
+                                <Package className="w-4 h-4" />
+                                รับเองทั้งหมด
+                            </Button>
+                            <Button
+                                variant="outline"
+                                onClick={() => handleBulkUpdateFulfillment('delivery')}
+                                disabled={isBulkProcessing}
+                                className="rounded-2xl px-6 h-12 text-xs font-black flex items-center gap-2 border-blue-200 text-blue-600 hover:bg-blue-50"
+                            >
+                                <Truck className="w-4 h-4" />
+                                ส่งทั้งหมด
+                            </Button>
+                            <Button
+                                onClick={handleBulkMarkAsReady}
+                                disabled={isBulkProcessing}
+                                className="bg-blue-600 hover:bg-blue-700 text-white rounded-2xl px-8 h-12 text-xs font-black flex items-center gap-2 shadow-lg shadow-blue-500/20"
+                            >
+                                {isBulkProcessing ? (
+                                    <LoadingSpinner size={16} className="text-white" />
+                                ) : (
+                                    <>
+                                        <CheckCircle2 className="w-4 h-4" />
+                                        ยืนยันที่เลือก
+                                    </>
+                                )}
+                            </Button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {splittingItem && (
                 <OrderSplitModal

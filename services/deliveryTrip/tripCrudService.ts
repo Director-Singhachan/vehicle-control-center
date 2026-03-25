@@ -513,7 +513,6 @@ export const tripCrudService = {
       driver_id: data.driver_id || user.id,
       planned_date: data.planned_date,
       odometer_start: data.odometer_start,
-      manual_distance_km: data.manual_distance_km,
       notes: data.notes,
       sequence_order: sequenceOrder,
       branch: vehicleBranch,
@@ -1076,30 +1075,31 @@ export const tripCrudService = {
       const insertChangeLog = async (params: {
         action: 'add' | 'update' | 'remove';
         delivery_trip_store_id: string | null;
+        store_id: string | null;  // เพิ่ม store_id โดยตรง เพื่อให้ดึงชื่อร้านค้าได้แม้หลัง delivery_trip_stores ถูกลบ
         delivery_trip_item_id: string | null;
         product_id: string | null;
         old_quantity: number | null;
         new_quantity: number | null;
       }) => {
-        const { action, delivery_trip_store_id, delivery_trip_item_id, product_id, old_quantity, new_quantity } = params;
+        const { action, delivery_trip_store_id, store_id, delivery_trip_item_id, product_id, old_quantity, new_quantity } = params;
         itemChangesOccurred = true;
         const { error: logError } = await supabase
           .from('delivery_trip_item_changes')
           .insert({
             delivery_trip_id: id,
             delivery_trip_store_id,
+            store_id,  // เพิ่ม store_id โดยตรง เพื่อให้ history lookup ทำงานได้แม้หลัง store ถูกลบ
             delivery_trip_item_id,
             product_id,
-            action: action, // Use 'action' column name to match database schema
+            action: action,
             old_quantity,
             new_quantity,
             reason: changeReason || null,
             created_by: user.id,
-          });
+          } as any);
 
         if (logError) {
           console.error('[tripCrudService] Error logging item change:', logError);
-          // ไม่ throw เพื่อไม่ให้การอัปเดตหลักล้มเหลวเพราะ log แต่จะพิมพ์เตือนใน console
         }
       };
 
@@ -1136,6 +1136,9 @@ export const tripCrudService = {
           }
         }
 
+        // Build map: delivery_trip_store.id -> store_id (for logging before delete)
+        const removedStoreIdMap = new Map<string, string>(storesToRemove.map((s: any) => [s.id as string, s.store_id as string]));
+
         // Load items for these stores to log removals
         const { data: removedStoreItems } = await supabase
           .from('delivery_trip_items')
@@ -1147,6 +1150,7 @@ export const tripCrudService = {
             await insertChangeLog({
               action: 'remove',
               delivery_trip_store_id: item.delivery_trip_store_id,
+              store_id: removedStoreIdMap.get(item.delivery_trip_store_id) || null,  // เพิ่ม store_id โดยตรง
               delivery_trip_item_id: item.id,
               product_id: item.product_id,
               old_quantity: Number(item.quantity),
@@ -1248,6 +1252,7 @@ export const tripCrudService = {
             await insertChangeLog({
               action: 'remove',
               delivery_trip_store_id: item.delivery_trip_store_id,
+              store_id: storeData.store_id,
               delivery_trip_item_id: item.id,
               product_id: item.product_id,
               old_quantity: Number(item.quantity),
@@ -1298,6 +1303,7 @@ export const tripCrudService = {
             await insertChangeLog({
               action: 'add',
               delivery_trip_store_id: tripStoreId,
+              store_id: storeData.store_id,
               delivery_trip_item_id: insertedItem.id,
               product_id: insertedItem.product_id,
               old_quantity: null,
@@ -1337,6 +1343,7 @@ export const tripCrudService = {
               await insertChangeLog({
                 action: 'update',
                 delivery_trip_store_id: existingItem.delivery_trip_store_id,
+                store_id: storeData.store_id,
                 delivery_trip_item_id: existingItem.id,
                 product_id: existingItem.product_id,
                 old_quantity: oldQty,
@@ -1415,6 +1422,19 @@ export const tripCrudService = {
       throw new Error('User not authenticated');
     }
 
+    // เช็คสถานะทริปก่อนว่าเป็น completed หรือไม่
+    // - ถ้าไม่ completed: ไม่ควรรีเซ็ต/รีคำนวณ quantity_delivered จาก completed trips อื่น
+    // - ถ้าเป็น completed: ค่อยรีคำนวณ quantity_delivered เพื่อ rollback ตาม FIFO
+    const { data: trip, error: tripError } = await supabase
+      .from('delivery_trips')
+      .select('id, status')
+      .eq('id', id)
+      .single();
+
+    if (tripError || !trip) {
+      throw tripError || new Error('ไม่พบ delivery_trip');
+    }
+
     // 1. หาออเดอร์ทั้งหมดที่เชื่อมกับทริปนี้
     const { data: orders, error: ordersError } = await supabase
       .from('orders')
@@ -1445,113 +1465,49 @@ export const tripCrudService = {
         throw updateOrdersError;
       }
 
-      // 3. รีเซ็ต quantity_delivered เป็น 0 ก่อน (ออเดอร์ที่ลบทริป = ยังไม่มีส่วนใดถูกจัดส่ง)
-      const { error: resetDeliveredError } = await supabase
-        .from('order_items')
-        .update({
-          quantity_delivered: 0,
-          updated_at: new Date().toISOString(),
-        })
-        .in('order_id', orderIds);
+      if (trip.status === 'completed') {
+        // rollback เฉพาะเมื่อทริปนั้น completed
+        const { error: rpcError } = await supabase.rpc('recalculate_quantity_delivered_after_order_unassign', {
+          p_order_ids: orderIds,
+          p_excluded_trip_id: id,
+        });
 
-      if (resetDeliveredError) {
-        console.error('[tripCrudService] Error resetting quantity_delivered:', resetDeliveredError);
-        throw resetDeliveredError;
-      }
-
-      // 4. คำนวณ quantity_delivered ใหม่จากทริป completed อื่น (ถ้ามี) ที่ส่งให้ร้านเหล่านี้
-      //    หมายเหตุ: ไม่รีเซ็ต quantity_picked_up_at_store — เป็นข้อมูลฝ่ายขายว่าลูกค้ารับที่ร้านแล้ว
-      const { data: orderItems, error: itemsError } = await supabase
-        .from('order_items')
-        .select('id, order_id, product_id, quantity')
-        .in('order_id', orderIds);
-
-      const { data: ordersWithStore } = await supabase
-        .from('orders')
-        .select('id, store_id')
-        .in('id', orderIds);
-
-      if (itemsError || !ordersWithStore) {
-        console.error('[tripCrudService] Error fetching data for recalculating quantity_delivered:', itemsError);
-        // Don't throw - เรารีเซ็ตเป็น 0 แล้ว ต่อให้ recalc ไม่สำเร็จก็ใช้ 0 ได้
-      } else if (orderItems && orderItems.length > 0) {
-        const storeIdByOrderId = new Map(ordersWithStore.map((o: any) => [o.id, o.store_id]));
-
-        // ดึงข้อมูล completed trips ที่ส่งให้ร้านเหล่านี้ (ไม่รวมทริปที่กำลังจะลบ)
-        const storeIds = [...new Set(ordersWithStore.map((o: any) => o.store_id).filter(Boolean))];
-
-        // ดึง completed trip IDs — ไม่รวมทริปนี้ (id) เพราะกำลังจะลบ
-        const { data: completedTrips } = await supabase
-          .from('delivery_trips')
-          .select('id')
-          .eq('status', 'completed')
-          .neq('id', id);
-
-        const completedTripIds = completedTrips ? completedTrips.map((t: any) => t.id) : [];
-
-        // ดึง delivery_trip_stores ของ completed trips ที่ส่งให้ร้านเหล่านี้
-        const { data: completedTripStores } = completedTripIds.length > 0 && storeIds.length > 0
-          ? await supabase
-            .from('delivery_trip_stores')
-            .select('id, store_id, delivery_trip_id')
-            .in('store_id', storeIds)
-            .in('delivery_trip_id', completedTripIds)
-          : { data: [] };
-
-        if (completedTripStores && completedTripStores.length > 0) {
-          const tripStoreIds = completedTripStores.map((ts: any) => ts.id);
-
-          // ดึง delivery_trip_items ของ completed trips (ใช้ quantity - quantity_picked_up_at_store = จำนวนที่จัดส่งจริง)
-          const { data: tripItems } = await supabase
-            .from('delivery_trip_items')
-            .select('delivery_trip_store_id, product_id, quantity, quantity_picked_up_at_store')
-            .in('delivery_trip_store_id', tripStoreIds);
-
-          // คำนวณ quantity_delivered ต่อ (store_id, product_id)
-          const deliveredByStoreProduct = new Map<string, number>();
-          if (tripItems) {
-            tripItems.forEach((ti: any) => {
-              const tripStore = completedTripStores.find((ts: any) => ts.id === ti.delivery_trip_store_id);
-              if (tripStore) {
-                const key = `${tripStore.store_id}_${ti.product_id}`;
-                const pickedUp = Number(ti.quantity_picked_up_at_store ?? 0);
-                const delivered = Math.max(0, Number(ti.quantity || 0) - pickedUp);
-                const current = deliveredByStoreProduct.get(key) || 0;
-                deliveredByStoreProduct.set(key, current + delivered);
-              }
-            });
-          }
-
-          // อัปเดต quantity_delivered สำหรับแต่ละ order_item
-          for (const item of orderItems) {
-            const storeId = storeIdByOrderId.get(item.order_id);
-            if (!storeId) continue;
-
-            const key = `${storeId}_${item.product_id}`;
-            const totalDelivered = deliveredByStoreProduct.get(key) || 0;
-
-            // อัปเดต quantity_delivered (ไม่เกิน quantity ที่สั่ง)
-            await supabase
-              .from('order_items')
-              .update({
-                quantity_delivered: Math.min(totalDelivered, Number(item.quantity || 0)),
-                updated_at: new Date().toISOString(),
-              })
-              .eq('id', item.id);
-          }
-        } else {
-          // ถ้าไม่มี completed trips ที่ส่งให้ร้านเหล่านี้ ให้รีเซ็ต quantity_delivered เป็น 0
-          await supabase
-            .from('order_items')
-            .update({
-              quantity_delivered: 0,
-              updated_at: new Date().toISOString(),
-            })
-            .in('id', orderItems.map((item: any) => item.id));
+        if (rpcError) {
+          console.error('[tripCrudService] recalculate_quantity_delivered_after_order_unassign:', rpcError);
+          throw new Error(
+            rpcError.message || 'ไม่สามารถรีแคล์ยอดจัดส่งหลังถอดออเดอร์จากทริปได้ (ตรวจสอบว่า migration RPC ถูก apply แล้ว)'
+          );
         }
-      }
 
-      console.log(`[tripCrudService] Reset ${orderIds.length} orders (cleared delivery_trip_id, order_number, recalculated quantity_delivered)`);
+        console.log(`[tripCrudService] Reset ${orderIds.length} orders (FIFO rollback quantity_delivered)`);
+      } else {
+        // ทริปยังไม่ completed: ล้าง quantity_delivered ก่อน แล้วค่อยรีคำนวณ orders.status
+        // เหตุผล: ค่า quantity_delivered ใน order_items อาจค้างมาจากทริป completed อื่น
+        //         ที่ระบบเคยเขียนไว้ (trigger/backfill) ต้องล้างก่อนเสมอเมื่อถอดออเดอร์จากทริปที่ไม่ completed
+        const { error: resetQtyError } = await supabase
+          .from('order_items')
+          .update({ quantity_delivered: 0, updated_at: new Date().toISOString() })
+          .in('order_id', orderIds)
+          .neq('fulfillment_method', 'pickup');
+
+        if (resetQtyError) {
+          console.error('[tripCrudService] Error resetting quantity_delivered before recalc:', resetQtyError);
+          // ไม่ throw — ให้ RPC ทำการ reset อีกรอบ (RPC มี logic reset ของตัวเองแล้ว)
+        }
+
+        const { error: rpcError } = await supabase.rpc('recalculate_orders_status_from_fulfillment_quantities', {
+          p_order_ids: orderIds,
+        });
+
+        if (rpcError) {
+          console.error('[tripCrudService] recalculate_orders_status_from_fulfillment_quantities:', rpcError);
+          throw new Error(
+            rpcError.message || 'ไม่สามารถรีคำนวณ orders.status หลังลบทริปได้ (ตรวจสอบว่า migration RPC ถูก apply แล้ว)'
+          );
+        }
+
+        console.log(`[tripCrudService] Reset quantity_delivered + recalc ${orderIds.length} orders.status (trip not completed)`);
+      }
     }
 
     // 5. ลบทริป (CASCADE จะลบข้อมูลที่เกี่ยวข้องอัตโนมัติ)

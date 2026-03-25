@@ -25,11 +25,11 @@
 
 ## 2. เมื่อลบหรือยกเลิกทริป
 
-- **Service:** `deliveryTripService` (delete / cancel)
+- **Service:** `deliveryTripService` / `tripCrudService` (delete / cancel)
 - ทำอะไร:
-  - เคลียร์ `delivery_trip_id`, `order_number`, `quantity_picked_up_at_store` ของออเดอร์ที่ผูกกับทริปนั้น
-  - คำนวณ `quantity_delivered` ใหม่จาก **เฉพาะทริปที่ยังมีอยู่และ status = completed**
-  - อัปเดต `order_items.quantity_delivered` ตามนั้น (หรือ 0 ถ้าไม่มีทริป completed อื่นส่งให้ร้านนั้น)
+  - เคลียร์ `delivery_trip_id`, `order_number` ของออเดอร์ที่ผูกกับทริปนั้น (ไม่รีเซ็ต `quantity_picked_up_at_store`)
+  - เรียก RPC `recalculate_quantity_delivered_after_order_unassign` — รีแคล์ `quantity_delivered` แบบ **FIFO ต่อร้าน+สินค้า** จากทริป `completed` (ตอน **ลบทริป** ส่ง `p_excluded_trip_id` เพื่อไม่นับทริปที่กำลังลบ)
+  - อัปเดต `orders.status` (confirmed / assigned / partial / delivered) ให้สอดคล้องยอดรวมบรรทัด
 
 ผลคือหลัง unlink + ลบทริป จำนวน "ส่งแล้ว" จะไม่ค้างจากทริปที่ถูกลบ
 

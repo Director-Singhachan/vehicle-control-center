@@ -220,7 +220,7 @@ export const ordersService = {
     let query = supabase
       .from('orders_with_details')
       .select('*')
-      .in('status', ['confirmed', 'partial', 'assigned'])
+      .in('status', ['awaiting_dispatch', 'confirmed', 'partial', 'assigned'])
       .is('delivery_trip_id', null) // เฉพาะออเดอร์ที่ยังไม่จัดทริป
       .order('created_at', { ascending: true });
 
@@ -283,7 +283,7 @@ export const ordersService = {
       .filter((o: any) => {
         if (this.isOldOrderNumberFormat(o.order_number)) return false;
         const orderStatus = (orderIdToStatus.get(o.id) ?? String(o.status ?? '')).toLowerCase();
-        if (orderStatus === 'delivered' || orderStatus === 'awaiting_dispatch') return false;
+        if (orderStatus === 'delivered') return false;
         const remaining = orderIdToRemaining.get(o.id) ?? 0;
         if (remaining <= 0) return false;
         return true;
@@ -292,13 +292,13 @@ export const ordersService = {
   },
 
   /**
-   * ดึงออเดอร์ที่รอการแบ่งยอด (awaiting_dispatch)
+   * ดึงออเดอร์ที่รอการยืนยัน (awaiting_confirmation)
    */
   async getAwaitingDispatchOrders(filters?: { branch?: string }) {
     let query = supabase
       .from('orders_with_details')
       .select('*')
-      .eq('status', 'awaiting_dispatch')
+      .eq('status', 'awaiting_confirmation')
       .is('delivery_trip_id', null)
       .order('created_at', { ascending: true });
 
@@ -891,7 +891,7 @@ export const ordersService = {
   async updateStatus(
     id: string,
     status: string,
-    updatedBy: string,
+    updatedBy?: string,
     reason?: string
   ) {
     const updates: any = {
@@ -911,7 +911,7 @@ export const ordersService = {
   /**
    * ยกเลิกออเดอร์
    */
-  async cancel(id: string, updatedBy: string, reason: string) {
+  async cancel(id: string, updatedBy?: string, reason?: string) {
     return this.updateStatus(id, 'cancelled', updatedBy, reason);
   },
 
@@ -1091,10 +1091,30 @@ export const ordersService = {
 
   /**
    * ยืนยันการจัดสรรเสร็จสิ้น (Dispatch ready)
-   * เปลี่ยนสถานะจาก awaiting_dispatch -> confirmed
+   * เปลี่ยนสถานะจาก awaiting_confirmation -> awaiting_dispatch
    */
   async markAsReady(orderId: string, updatedBy: string) {
-    return this.updateStatus(orderId, 'confirmed', updatedBy);
+    return this.updateStatus(orderId, 'awaiting_dispatch', updatedBy);
+  },
+
+  /**
+   * ยืนยันหลายออเดอร์พร้อมกัน
+   */
+  async markMultipleAsReady(orderIds: string[], updatedBy: string) {
+    if (orderIds.length === 0) return { updated: 0 };
+    
+    const { data, error } = await supabase
+      .from('orders')
+      .update({
+        status: 'awaiting_dispatch',
+        updated_by: updatedBy,
+        updated_at: new Date().toISOString()
+      })
+      .in('id', orderIds)
+      .select('id');
+
+    if (error) throw error;
+    return { updated: data?.length || 0 };
   },
 
   /**
@@ -1144,6 +1164,23 @@ export const ordersService = {
 
     const { error: insertError } = await supabase.from('order_items').insert(newItems);
     if (insertError) throw insertError;
+  },
+
+  /**
+   * อัปเดตวิธีรับสินค้าสำหรับหลายออเดอร์พร้อมกัน
+   * (อัปเดตทุก item ใน orderIds)
+   */
+  async updateMultipleFulfillmentMethods(orderIds: string[], method: 'delivery' | 'pickup') {
+    if (orderIds.length === 0) return { updated: 0 };
+
+    const { data, error } = await supabase
+      .from('order_items')
+      .update({ fulfillment_method: method })
+      .in('order_id', orderIds)
+      .select('id');
+
+    if (error) throw error;
+    return { updated: data?.length || 0 };
   },
 };
 

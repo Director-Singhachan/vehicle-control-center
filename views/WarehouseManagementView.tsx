@@ -125,7 +125,7 @@ export function WarehouseManagementView() {
         selectedWarehouse.id,
         stockInForm.product_id,
         stockInForm.quantity,
-        user?.id || 'system',
+        user?.id || '',
         stockInForm.note || undefined,
         stockInForm.ref_code || undefined
       );
