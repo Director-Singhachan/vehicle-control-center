@@ -456,7 +456,7 @@ export const CreateOrderView: React.FC<CreateOrderViewProps> = ({
         unit_price: item.is_bonus ? 0 : item.unit_price, // ของแถมราคาเป็น 0
         discount_percent: Number(item.discount_percent || 0),
         is_bonus: item.is_bonus || false,
-        fulfillment_method: 'delivery',
+        fulfillment_method: 'delivery' as const,
       }));
 
       await ordersService.createWithItems(
