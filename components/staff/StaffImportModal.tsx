@@ -316,6 +316,7 @@ export const StaffImportModal: React.FC<StaffImportModalProps> = ({ isOpen, onCl
         const toProcess = processedRows.filter(r => r.action !== 'skip');
         let successCount = 0;
         let failCount = 0;
+        let lastError = '';
 
         for (let i = 0; i < toProcess.length; i++) {
             const row = toProcess[i];
@@ -331,14 +332,13 @@ export const StaffImportModal: React.FC<StaffImportModalProps> = ({ isOpen, onCl
                         position: row.position || undefined,
                         phone: row.phone || undefined,
                         email: row.email || undefined,
-                        password: row.employee_code, // Default password as employee code
+                        password: row.employee_code,
                         is_banned: row.is_resigned,
                         resignation_date: row.resignation_date,
                     });
                 } else if (row.action === 'update') {
                     const existing = existingStaff.find(s => s.employee_code === row.employee_code);
                     if (existing && row.changes) {
-                        // สร้าง payload เฉพาะที่มีการเปลี่ยนแปลงจริงๆ
                         const updatePayload: any = {};
                         if (row.changes.full_name) updatePayload.full_name = row.full_name;
                         if (row.changes.name_prefix) updatePayload.name_prefix = row.name_prefix;
@@ -352,6 +352,7 @@ export const StaffImportModal: React.FC<StaffImportModalProps> = ({ isOpen, onCl
                         if (row.changes.resignation_date) updatePayload.resignation_date = row.resignation_date;
 
                         if (Object.keys(updatePayload).length > 0) {
+                            // ใช้ try-catch ครอบเฉพาะรายการเพื่อไม่ให้ขัดจังหวะรายการอื่น
                             await adminStaffService.updateProfile(existing.id, updatePayload);
                         }
                     }
@@ -359,16 +360,21 @@ export const StaffImportModal: React.FC<StaffImportModalProps> = ({ isOpen, onCl
                 successCount++;
             } catch (err: any) {
                 failCount++;
-                console.error(`Failed to ${row.action} ${row.employee_code}:`, err.message);
-                // ในอนาคตอาจเพิ่มการแสดง error รายบรรทัด
+                lastError = err.message;
+                console.error(`[Import Error] ${row.employee_code}:`, err);
             }
             setProgress(Math.round(((i + 1) / toProcess.length) * 100));
         }
 
         setImporting(false);
+        
         if (failCount > 0) {
-            alert(`นำเข้าเสร็จสิ้น: สำเร็จ ${successCount} รายการ, ล้มเหลว ${failCount} รายการ (ตรวจสอบ Console สำหรับรายละเอียด)`);
+            alert(`นำเข้าเสร็จสิ้น\n- สำเร็จ: ${successCount} รายการ\n- ล้มเหลว: ${failCount} รายการ\n\nสาเหตุล่าสุด: ${lastError}\n(กรุณาตรวจสอบ Console log เพื่อดูรายละเอียดแยกตามรายชื่อ)`);
+        } else if (successCount > 0) {
+            // กรณีสำเร็จทั้งหมด ให้แจ้งเตือนนิดนึงว่าสำเร็จกี่คน
+            alert(`นำเข้าข้อมูลพนักงานสำเร็จทั้งหมด ${successCount} รายการ`);
         }
+
         onSuccess();
         onClose();
     };
