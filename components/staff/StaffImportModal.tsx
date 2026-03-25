@@ -218,7 +218,19 @@ export const StaffImportModal: React.FC<StaffImportModalProps> = ({ isOpen, onCl
                     const nickname = row[colMap['ชื่อเล่น']]?.toString().trim() || '';
                     const fullName = `${firstName} ${lastName}${nickname ? ` (${nickname})` : ''}`.trim();
                     const phone = row[colMap['เบอร์โทร']]?.toString().trim() || null;
-                    const email = row[colMap['Email']]?.toString().trim() || null;
+                    
+                    // Email logic: 
+                    // 1. If contains 'domain' -> use {code}@staff.local
+                    // 2. If empty -> null
+                    // 3. Otherwise -> use the actual value
+                    const emailRaw = row[colMap['Email']]?.toString().trim() || '';
+                    let email: string | null = null;
+                    if (emailRaw.toLowerCase().includes('domain')) {
+                        email = `${code}@staff.local`;
+                    } else if (emailRaw !== '') {
+                        email = emailRaw;
+                    }
+
                     const dept = row[colMap['ชื่อแผนก']]?.toString().trim() || null;
                     const pos = row[colMap['ชื่อตำแหน่ง']]?.toString().trim() || null;
                     const branchCode = row[colMap['รหัสสาขา']]?.toString().trim() || '';
@@ -248,7 +260,11 @@ export const StaffImportModal: React.FC<StaffImportModalProps> = ({ isOpen, onCl
                         if (!checkVal(existing.department, dept)) changes.department = { old: existing.department, new: dept };
                         if (!checkVal(existing.position, pos)) changes.position = { old: existing.position, new: pos };
                         if (!checkVal(existing.phone, phone)) changes.phone = { old: existing.phone, new: phone };
-                        if (!checkVal(existing.email, email)) changes.email = { old: existing.email, new: email };
+                        
+                        // Only update email if it's NOT empty in Excel
+                        if (email !== null && !checkVal(existing.email, email)) {
+                            changes.email = { old: existing.email, new: email };
+                        }
                         
                         // Check for resignation changes
                         if (isResigned && !existing.is_banned) {
