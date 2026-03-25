@@ -315,6 +315,7 @@ export const StaffImportModal: React.FC<StaffImportModalProps> = ({ isOpen, onCl
         setProgress(0);
         const toProcess = processedRows.filter(r => r.action !== 'skip');
         let successCount = 0;
+        let failCount = 0;
 
         for (let i = 0; i < toProcess.length; i++) {
             const row = toProcess[i];
@@ -336,29 +337,38 @@ export const StaffImportModal: React.FC<StaffImportModalProps> = ({ isOpen, onCl
                     });
                 } else if (row.action === 'update') {
                     const existing = existingStaff.find(s => s.employee_code === row.employee_code);
-                    if (existing) {
-                        await adminStaffService.updateProfile(existing.id, {
-                            full_name: row.full_name,
-                            name_prefix: row.name_prefix,
-                            role: row.role,
-                            branch: row.branch || undefined,
-                            department: row.department || undefined,
-                            position: row.position || undefined,
-                            phone: row.phone || undefined,
-                            email: row.email || undefined,
-                            is_banned: row.is_resigned,
-                            resignation_date: row.resignation_date,
-                        });
+                    if (existing && row.changes) {
+                        // สร้าง payload เฉพาะที่มีการเปลี่ยนแปลงจริงๆ
+                        const updatePayload: any = {};
+                        if (row.changes.full_name) updatePayload.full_name = row.full_name;
+                        if (row.changes.name_prefix) updatePayload.name_prefix = row.name_prefix;
+                        if (row.changes.role) updatePayload.role = row.role;
+                        if (row.changes.branch) updatePayload.branch = row.branch;
+                        if (row.changes.department) updatePayload.department = row.department;
+                        if (row.changes.position) updatePayload.position = row.position;
+                        if (row.changes.phone) updatePayload.phone = row.phone;
+                        if (row.changes.email) updatePayload.email = row.email;
+                        if (row.changes.is_banned) updatePayload.is_banned = row.is_resigned;
+                        if (row.changes.resignation_date) updatePayload.resignation_date = row.resignation_date;
+
+                        if (Object.keys(updatePayload).length > 0) {
+                            await adminStaffService.updateProfile(existing.id, updatePayload);
+                        }
                     }
                 }
                 successCount++;
             } catch (err: any) {
+                failCount++;
                 console.error(`Failed to ${row.action} ${row.employee_code}:`, err.message);
+                // ในอนาคตอาจเพิ่มการแสดง error รายบรรทัด
             }
             setProgress(Math.round(((i + 1) / toProcess.length) * 100));
         }
 
         setImporting(false);
+        if (failCount > 0) {
+            alert(`นำเข้าเสร็จสิ้น: สำเร็จ ${successCount} รายการ, ล้มเหลว ${failCount} รายการ (ตรวจสอบ Console สำหรับรายละเอียด)`);
+        }
         onSuccess();
         onClose();
     };
