@@ -71,6 +71,7 @@ const ConfirmOrderView = lazy(() => import('./views/ConfirmOrderView').then(m =>
 const CreateOrderView = lazy(() => import('./views/CreateOrderView').then(m => ({ default: m.CreateOrderView })));
 const CustomerManagementView = lazy(() => import('./views/CustomerManagementView').then(m => ({ default: m.CustomerManagementView })));
 const PendingOrdersView = lazy(() => import('./views/PendingOrdersView').then(m => ({ default: m.PendingOrdersView })));
+const PendingSalesView = lazy(() => import('./views/PendingSalesView').then(m => ({ default: m.PendingSalesView })));
 
 const TrackOrdersView = lazy(() => import('./views/TrackOrdersView').then(m => ({ default: m.TrackOrdersView })));
 const SalesTripsView = lazy(() => import('./views/SalesTripsView').then(m => ({ default: m.SalesTripsView })));
@@ -2814,7 +2815,12 @@ const AppContent = () => {
             ) : activeTab === 'customers' ? (
               <CustomerManagementView />
             ) : activeTab === 'create-order' ? (
-              <CreateOrderView />
+              <CreateOrderView 
+                onNavigateToConfirmOrders={() => setActiveTab('confirm-orders')} 
+                onNavigateToPendingSales={() => setActiveTab('pending-sales')}
+              />
+            ) : activeTab === 'pending-sales' ? (
+              <PendingSalesView />
             ) : activeTab === 'track-orders' ? (
               <TrackOrdersView />
             ) : activeTab === 'confirm-orders' ? (

@@ -69,6 +69,52 @@ export const orderUploadService = {
              return idx >= 0 ? row[idx] : null;
           };
 
+          const formatADDate = (dateVal: any): string => {
+            if (dateVal instanceof Date) {
+              let year = dateVal.getFullYear();
+              if (year > 2400) year -= 543;
+              const month = String(dateVal.getMonth() + 1).padStart(2, '0');
+              const day = String(dateVal.getDate()).padStart(2, '0');
+              return `${year}-${month}-${day}`;
+            }
+            
+            const dateStr = String(dateVal || '').trim();
+            if (!dateStr) return '';
+            
+            // Handle various formats if it's a string
+            // Format: DD/MM/YYYY or YYYY-MM-DD
+            let day, month, year;
+            
+            if (dateStr.includes('/')) {
+              const parts = dateStr.split('/');
+              if (parts.length === 3) {
+                day = parts[0];
+                month = parts[1];
+                year = parseInt(parts[2]);
+              }
+            } else if (dateStr.includes('-')) {
+              const parts = dateStr.split('-');
+              if (parts.length === 3) {
+                if (parts[0].length === 4) { // YYYY-MM-DD
+                  year = parseInt(parts[0]);
+                  month = parts[1];
+                  day = parts[2];
+                } else { // DD-MM-YYYY
+                  day = parts[0];
+                  month = parts[1];
+                  year = parseInt(parts[2]);
+                }
+              }
+            }
+            
+            if (year && month && day) {
+              if (year > 2400) year -= 543;
+              return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+            }
+            
+            return dateStr;
+          };
+
           for (const row of rows) {
             const docDate = getCell(row, 'เอกสารวันที่');
             const docNo = getCell(row, 'เอกสารเลขที่');
@@ -88,7 +134,7 @@ export const orderUploadService = {
                }
 
                currentHeaderRow = {
-                 order_date: docDate instanceof Date ? docDate.toISOString().split('T')[0] : String(docDate),
+                 order_date: formatADDate(docDate),
                  doc_no: docNo,
                  time: getCell(row, 'เวลา'),
                  customer_name: rawCustomerName,

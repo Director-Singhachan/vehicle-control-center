@@ -250,6 +250,8 @@ export function CleanupTestOrdersView() {
   const getStatusBadge = (status: string) => {
     const statusMap: Record<string, { label: string; variant: 'default' | 'success' | 'warning' | 'error' | 'info' }> = {
       pending: { label: 'รออนุมัติ', variant: 'warning' },
+      awaiting_confirmation: { label: 'รอการยืนยัน', variant: 'warning' },
+      awaiting_dispatch: { label: 'รอจัดทริป', variant: 'info' },
       confirmed: { label: 'ยืนยันแล้ว', variant: 'info' },
       assigned: { label: 'จัดทริปแล้ว', variant: 'info' },
       in_delivery: { label: 'กำลังส่ง', variant: 'warning' },

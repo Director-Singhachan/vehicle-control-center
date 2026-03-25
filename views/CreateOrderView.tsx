@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { ShoppingCart, Plus, Trash2, Search, Check, Grid3x3, Clock, Gift, Truck, Store } from 'lucide-react';
+import { ShoppingCart, Plus, Trash2, Search, Check, Grid3x3, Clock, Gift, Truck, Store, FileText, History } from 'lucide-react';
+import { useIncompleteOrdersCount } from '../hooks/useIncompleteOrdersCount';
 import { useProducts, useWarehouses, useProductCategories } from '../hooks/useInventory';
 import { ordersService } from '../services/ordersService';
 import { productTierPriceService } from '../services/customerTierService';
@@ -30,10 +31,19 @@ type FulfillmentMode = 'delivery' | 'pickup' | 'mixed';
 const RECENT_PRODUCTS_KEY = 'recent_products';
 const MAX_RECENT_PRODUCTS = 20;
 
-export function CreateOrderView() {
+interface CreateOrderViewProps {
+  onNavigateToPendingSales?: () => void;
+  onNavigateToConfirmOrders?: () => void;
+}
+
+export const CreateOrderView: React.FC<CreateOrderViewProps> = ({ 
+  onNavigateToPendingSales,
+  onNavigateToConfirmOrders
+}) => {
   const { products, loading: productsLoading } = useProducts();
   const { warehouses, loading: warehousesLoading } = useWarehouses();
   const { categories, loading: categoriesLoading } = useProductCategories();
+  const { count: incompleteCount } = useIncompleteOrdersCount();
   const { profile } = useAuth();
   const { toasts, success, error, warning, dismissToast } = useToast();
 
@@ -264,6 +274,10 @@ export function CreateOrderView() {
 
       // เก็บ recent product
       addToRecentProducts(product.id);
+
+      // ซ่อนการเลือกสินค้าอัตโนมัติเมื่อกดเพิ่ม
+      setShowProductBrowser(false);
+      setProductSearch('');
     } catch (error: any) {
       error('ไม่สามารถดึงราคาสินค้าได้');
     }
@@ -427,7 +441,7 @@ export function CreateOrderView() {
       const orderInsert = {
         store_id: selectedStore.id,
         order_date: new Date().toISOString().split('T')[0],
-        status: 'confirmed',
+        status: 'awaiting_confirmation',
         notes: notes || null,
         delivery_address: selectedStore.address || null,
         // บันทึกวันที่ต้องการส่ง (ถ้าไม่ได้เลือก ให้เป็น null)
@@ -442,7 +456,7 @@ export function CreateOrderView() {
         unit_price: item.is_bonus ? 0 : item.unit_price, // ของแถมราคาเป็น 0
         discount_percent: Number(item.discount_percent || 0),
         is_bonus: item.is_bonus || false,
-        fulfillment_method: 'delivery',
+        fulfillment_method: 'delivery' as const,
       }));
 
       await ordersService.createWithItems(
@@ -453,6 +467,7 @@ export function CreateOrderView() {
       );
 
       success('สร้างออเดอร์เรียบร้อย');
+      onNavigateToConfirmOrders?.();
 
       // Reset form
       setSelectedStore(null);
@@ -475,14 +490,31 @@ export function CreateOrderView() {
       <PageLayout
         title="สร้างออเดอร์ใหม่"
         actions={
-          <Button
-            onClick={() => setIsUploadModalOpen(true)}
-            variant="outline"
-            className="flex items-center gap-2 bg-white text-blue-600 border-blue-200 hover:bg-blue-50 dark:bg-slate-800 dark:text-blue-400 dark:border-slate-700 dark:hover:bg-slate-700"
-          >
-            <Grid3x3 className="w-4 h-4" />
-            อัพโหลดใบขาย
-          </Button>
+          <div className="flex items-center gap-2">
+            <div className="relative">
+              <Button
+                onClick={onNavigateToPendingSales}
+                variant="outline"
+                className="flex items-center gap-2 bg-white text-orange-600 border-orange-200 hover:bg-orange-50 dark:bg-slate-800 dark:text-orange-400 dark:border-slate-700 dark:hover:bg-slate-700"
+              >
+                <FileText className="w-4 h-4" />
+                ใบขายคงค้าง
+              </Button>
+              {incompleteCount > 0 && (
+                <span className="absolute -top-2 -right-2 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white shadow-sm ring-2 ring-white dark:ring-slate-900 animate-in zoom-in duration-300">
+                  {incompleteCount > 99 ? '99+' : incompleteCount}
+                </span>
+              )}
+            </div>
+            <Button
+              onClick={() => setIsUploadModalOpen(true)}
+              variant="outline"
+              className="flex items-center gap-2 bg-white text-blue-600 border-blue-200 hover:bg-blue-50 dark:bg-slate-800 dark:text-blue-400 dark:border-slate-700 dark:hover:bg-slate-700"
+            >
+              <Grid3x3 className="w-4 h-4" />
+              อัพโหลดใบขาย
+            </Button>
+          </div>
         }
       >
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -1164,7 +1196,7 @@ export function CreateOrderView() {
         isOpen={isUploadModalOpen}
         onClose={() => setIsUploadModalOpen(false)}
         onSuccess={() => {
-          // TODO: Refresh orders list or redirect
+          onNavigateToConfirmOrders?.();
         }}
         selectedWarehouse={selectedWarehouse}
       />
