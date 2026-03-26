@@ -2,18 +2,19 @@ import React from 'react';
 import { Search, Building2, RefreshCw } from 'lucide-react';
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
-import { BRANCH_FILTER_OPTIONS, getBranchLabel } from '../../utils/branchLabels';
-
 interface TrackOrdersFilterBarProps {
   searchTerm: string;
   onSearchChange: (value: string) => void;
   branchFilter: string;
   onBranchChange: (value: string) => void;
+  /** ตัวเลือกสาขา (รวม ALL) จากการตั้งค่า / สิทธิ์ */
+  branchOptions: { value: string; label: string }[];
+  /** true = เหลือสาขาเดียวที่อนุญาต — ล็อก dropdown */
+  branchSelectDisabled?: boolean;
   statusFilter: string;
   onStatusChange: (value: string) => void;
   onRefresh: () => void;
   loading: boolean;
-  profile: any;
 }
 
 export const TrackOrdersFilterBar: React.FC<TrackOrdersFilterBarProps> = ({
@@ -21,14 +22,13 @@ export const TrackOrdersFilterBar: React.FC<TrackOrdersFilterBarProps> = ({
   onSearchChange,
   branchFilter,
   onBranchChange,
+  branchOptions,
+  branchSelectDisabled = false,
   statusFilter,
   onStatusChange,
   onRefresh,
   loading,
-  profile,
 }) => {
-  const isHighLevel = profile?.role === 'admin' || profile?.role === 'manager' || profile?.role === 'inspector' || profile?.role === 'executive' || profile?.branch === 'HQ';
-
   return (
     <Card className="mb-6 border-0 shadow-sm overflow-visible bg-white/80 dark:bg-charcoal-900/80 backdrop-blur-xl ring-1 ring-slate-200/50 dark:ring-slate-700/50 relative z-20">
       <div className="p-5">
@@ -55,15 +55,11 @@ export const TrackOrdersFilterBar: React.FC<TrackOrdersFilterBarProps> = ({
                 value={branchFilter}
                 onChange={(e) => onBranchChange(e.target.value)}
                 className="w-full pl-11 pr-10 py-2.5 appearance-none border border-slate-200 dark:border-slate-700 rounded-xl bg-slate-50 dark:bg-charcoal-950 text-slate-900 dark:text-white focus:ring-2 focus:ring-enterprise-500/50 dark:focus:ring-enterprise-400/50 hover:border-slate-300 dark:hover:border-slate-600 transition-all outline-none disabled:opacity-50 disabled:cursor-not-allowed"
-                disabled={!isHighLevel}
+                disabled={branchSelectDisabled}
               >
-                {isHighLevel ? (
-                  BRANCH_FILTER_OPTIONS.map((opt) => (
-                    <option key={opt.value} value={opt.value}>{opt.label}</option>
-                  ))
-                ) : (
-                  <option value="SD">{getBranchLabel('SD')}</option>
-                )}
+                {branchOptions.map((opt) => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
               </select>
               <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3.5 text-slate-400">
                 <svg className="h-4 w-4 fill-current" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">

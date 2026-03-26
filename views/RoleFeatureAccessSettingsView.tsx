@@ -9,12 +9,15 @@ import { RoleFeatureAccessMatrixSection } from '../components/settings/RoleFeatu
 import { useRoleFeatureAccessSettings } from '../hooks/useRoleFeatureAccessSettings';
 import { useAuth } from '../hooks/useAuth';
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
+import { useOrderBranchScope } from '../hooks/useOrderBranchScope';
+import { RoleOrderBranchSection } from '../components/settings/RoleOrderBranchSection';
 import { useToast } from '../hooks/useToast';
 import { builtInMatrixForRole } from '../types/featureAccess';
 
 export const RoleFeatureAccessSettingsView: React.FC = () => {
-  const { isAdmin } = useAuth();
+  const { isAdmin, profile } = useAuth();
   const { refetch: refetchFeatureAccess } = useFeatureAccess();
+  const { refetch: refetchOrderBranchScope } = useOrderBranchScope();
   const { toasts, success, error, dismissToast } = useToast();
   const [resetOpen, setResetOpen] = useState(false);
   const {
@@ -103,6 +106,14 @@ export const RoleFeatureAccessSettingsView: React.FC = () => {
         builtInLevels={builtInLevels}
         onLevelCommit={handleLevelCommit}
         loading={loading}
+      />
+      <RoleOrderBranchSection
+        selectedRole={selectedRole}
+        onAfterSave={() => {
+          if (profile?.role === selectedRole) {
+            void refetchOrderBranchScope();
+          }
+        }}
       />
       <ConfirmDialog
         isOpen={resetOpen}

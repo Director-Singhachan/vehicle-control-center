@@ -10,9 +10,11 @@ import { useStores } from '../hooks/useStores';
 import { storeService } from '../services/storeService';
 import { useNotification } from '../hooks/useNotification';
 import { useAuth } from '../hooks';
+import { useFeatureAccess } from '../hooks/useFeatureAccess';
 
 export function CustomerManagementView() {
-  const { isSales, isAdmin, isManager, isExecutive, isInspector, profile } = useAuth();
+  const { can } = useFeatureAccess();
+  const { isAdmin, isManager, isExecutive, isInspector, profile } = useAuth();
   const isHighLevel = isAdmin || isManager || isExecutive || isInspector;
   const userBranch = profile?.branch || 'HQ';
 
@@ -56,14 +58,13 @@ export function CustomerManagementView() {
   const startIndex = offset;
   const endIndex = Math.min(startIndex + itemsPerPage, totalCount);
 
-  // Restrict access to Sales & Admin only (ตาม requirement)
-  if (!isSales && !isAdmin) {
+  if (!can('tab.customers', 'view')) {
     return (
       <PageLayout title="จัดการลูกค้า">
         <div className="flex flex-col items-center justify-center h-64 text-slate-500 dark:text-slate-400">
           <AlertCircle className="w-12 h-12 mb-3 text-amber-500" />
           <p className="text-lg font-medium">คุณไม่มีสิทธิ์เข้าถึงหน้าจอนี้</p>
-          <p className="text-sm mt-1">หน้าจอนี้จำกัดเฉพาะผู้ใช้งานฝ่ายขายและผู้ดูแลระบบ (Sales, Admin)</p>
+          <p className="text-sm mt-1">ต้องได้รับสิทธิ์ &quot;ลูกค้า&quot; (tab.customers) จากการกำหนดสิทธิ์ตามฟีเจอร์</p>
         </div>
       </PageLayout>
     );
@@ -378,7 +379,7 @@ export function CustomerManagementView() {
                       <button
                         type="button"
                         onClick={async () => {
-                          if (!isAdmin && !isSales) return;
+                          if (!can('tab.customers', 'manage')) return;
                           if (!confirm(`ต้องการลบลูกค้า "${store.customer_name}" (${store.customer_code}) ใช่หรือไม่?`)) {
                             return;
                           }

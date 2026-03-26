@@ -11,6 +11,7 @@ import { PageLayout } from '../components/ui/PageLayout';
 import { LoadingSpinner } from '../components/ui/LoadingSpinner';
 import { ToastContainer } from '../components/ui/Toast';
 import { useAuth, useToast } from '../hooks';
+import { useOrderBranchScope } from '../hooks/useOrderBranchScope';
 import { supabase } from '../lib/supabase';
 import { PaymentStatusBadge, PaymentStatus } from '../components/order/PaymentStatusBadge';
 import { OrderUploadModal } from '../components/order/OrderUploadModal';
@@ -45,6 +46,7 @@ export const CreateOrderView: React.FC<CreateOrderViewProps> = ({
   const { categories, loading: categoriesLoading } = useProductCategories();
   const { count: incompleteCount } = useIncompleteOrdersCount();
   const { profile } = useAuth();
+  const orderScope = useOrderBranchScope();
   const { toasts, success, error, warning, dismissToast } = useToast();
 
   const [selectedStore, setSelectedStore] = useState<any>(null);
@@ -67,15 +69,12 @@ export const CreateOrderView: React.FC<CreateOrderViewProps> = ({
 
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
 
-  // Filter warehouses based on user branch
   const filteredWarehouses = useMemo(() => {
     if (!warehouses) return [];
-    const isHighLevel = profile?.role === 'admin' || profile?.role === 'manager' || profile?.role === 'inspector' || profile?.role === 'executive';
-    if (isHighLevel || profile?.branch === 'HQ') {
-      return warehouses;
-    }
-    return warehouses.filter(w => w.branch === profile?.branch);
-  }, [warehouses, profile]);
+    if (orderScope.loading) return warehouses;
+    if (orderScope.unrestricted) return warehouses;
+    return warehouses.filter((w) => w.branch && orderScope.allowedBranches.includes(w.branch));
+  }, [warehouses, orderScope]);
 
   // Set default warehouse if only one is available
   useEffect(() => {
@@ -130,10 +129,16 @@ export const CreateOrderView: React.FC<CreateOrderViewProps> = ({
         .or(`customer_name.ilike.%${query}%,customer_code.ilike.%${query}%`)
         .eq('is_active', true);
 
-      // Filter by branch for restricted users
-      const isHighLevel = profile?.role === 'admin' || profile?.role === 'manager' || profile?.role === 'inspector' || profile?.role === 'executive';
-      if (!isHighLevel && profile?.branch && profile?.branch !== 'HQ') {
-        queryBuilder = queryBuilder.eq('branch', profile.branch);
+      if (!orderScope.loading && !orderScope.unrestricted) {
+        if (orderScope.allowedBranches.length === 0) {
+          setStores([]);
+          return;
+        }
+        if (orderScope.allowedBranches.length === 1) {
+          queryBuilder = queryBuilder.eq('branch', orderScope.allowedBranches[0]);
+        } else {
+          queryBuilder = queryBuilder.in('branch', orderScope.allowedBranches);
+        }
       }
 
       const { data, error } = await queryBuilder.limit(10);

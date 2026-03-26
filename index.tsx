@@ -82,7 +82,7 @@ const PackingSimulationView = lazy(() => import('./views/PackingSimulationView')
 const ExcelImportView = lazy(() => import('./views/ExcelImportView').then(m => ({ default: m.ExcelImportView })));
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { FeatureAccessProvider, useFeatureAccess } from './hooks/useFeatureAccess';
-import { TAB_TO_PRIMARY_FEATURE } from './types/featureAccess';
+import { firstAccessibleTabId, NAV_FALLBACK_TAB_ORDER, TAB_TO_PRIMARY_FEATURE } from './types/featureAccess';
 import { useAuth, usePendingTickets } from './hooks';
 import { usePendingBillingTrips } from './hooks/usePendingBillingTrips';
 import { ticketService, type TicketWithRelations } from './services/ticketService';
@@ -132,7 +132,7 @@ const MenuSectionHeader = ({ label }: { label: string }) => (
 
 // Main App Content (wrapped in ProtectedRoute)
 const AppContent = () => {
-  const { user, profile, signOut, isAdmin, isManager, isInspector, isExecutive, isDriver, isSales, isServiceStaff, isHR, isWarehouse, loading: authLoading, refreshProfile } = useAuth();
+  const { user, profile, signOut, isAdmin, isManager, isInspector, isExecutive, isDriver, isSales, isHR, isWarehouse, loading: authLoading, refreshProfile } = useAuth();
   const { can, canAccessTab, loading: featureAccessLoading } = useFeatureAccess();
   const showHrMenu =
     can('tab.admin_staff', 'view') ||
@@ -159,14 +159,31 @@ const AppContent = () => {
   }, [isDriver, isSales, can]);
 
   const showStockNavGroup = React.useMemo(() => {
-    if (isDriver || isSales) return false;
+    if (isDriver) return false;
     return (
       can('tab.stock_dashboard', 'view') ||
       can('tab.confirm_orders', 'view') ||
       can('tab.warehouses', 'view') ||
       can('tab.inventory_receipts', 'view')
     );
-  }, [isDriver, isSales, can]);
+  }, [isDriver, can]);
+
+  /** ฝ่ายขายที่ได้รับสิทธิ์เมนูขนส่ง/รถ จาก matrix — แสดงกลุ่ม "ฝ่ายขนส่ง" ได้ */
+  const salesHasLogisticsMenu = React.useMemo(() => {
+    if (!isSales) return false;
+    return (
+      can('tab.dashboard', 'view') ||
+      can('tab.vehicles', 'view') ||
+      can('tab.maintenance', 'view') ||
+      can('tab.triplogs', 'view') ||
+      can('tab.fuellogs', 'view') ||
+      can('tab.approvals', 'view') ||
+      can('tab.daily_summary', 'view') ||
+      can('tab.delivery_trips', 'view') ||
+      can('tab.packing_simulation', 'view') ||
+      can('tab.pending_orders', 'view')
+    );
+  }, [isSales, can]);
 
   // Don't wait for profile - show UI immediately if user exists
   // Profile will load in background and update when ready
@@ -814,63 +831,20 @@ const AppContent = () => {
     isHighLevel,
   });
 
-  // Redirect drivers to trip log form page when they login (like maintenance form)
-  // Drivers can access: triplogs, fuellogs, maintenance, packing-simulation, profile, settings
+  // คนขับ: UX บันทึกเติมน้ำมันใช้แต่ฟอร์ม (ไม่ใช้ลิสต์)
   useEffect(() => {
-    if (isDriver) {
-      // If driver tries to access restricted areas, redirect to triplogs form
-      if (activeTab !== 'triplogs' && activeTab !== 'fuellogs' && activeTab !== 'maintenance' && activeTab !== 'packing-simulation' && activeTab !== 'profile' && activeTab !== 'settings') {
-        setActiveTab('triplogs');
-        setTripLogView('form');
-        setTripLogMode('checkout');
-      }
-      // If driver is on dashboard or other restricted pages, redirect to triplogs form
-      else if (activeTab === 'dashboard' || activeTab === 'vehicles' || activeTab === 'approvals' || activeTab === 'reports' || activeTab === 'daily-summary') {
-        setActiveTab('triplogs');
-        setTripLogView('form');
-        setTripLogMode('checkout');
-      }
-      // If driver tries to access fuel log list, redirect to form
-      else if (activeTab === 'fuellogs' && fuelLogView === 'list') {
-        setFuelLogView('form');
-      }
+    if (isDriver && activeTab === 'fuellogs' && fuelLogView === 'list') {
+      setFuelLogView('form');
     }
   }, [isDriver, activeTab, fuelLogView]);
 
-  // Redirect service staff to packing-simulation when they access restricted areas
-  // พนักงานบริการเข้าถึงได้: packing-simulation, profile, settings
+  // คนขับ: เปิดแท็บบันทึกเที่ยว → โหมดฟอร์ม (ตามเดิม)
   useEffect(() => {
-    if (isServiceStaff) {
-      const allowedTabs = ['packing-simulation', 'profile', 'settings'];
-      if (!allowedTabs.includes(activeTab)) {
-        setActiveTab('packing-simulation');
-      }
+    if (isDriver && activeTab === 'triplogs') {
+      setTripLogView('form');
+      setTripLogMode('checkout');
     }
-  }, [isServiceStaff, activeTab]);
-
-  // Redirect sales to create-order page when they access restricted areas
-  // Sales can access: create-order, confirm-orders, track-orders, sales-trips, products, product-pricing, customer-tiers, profile, settings
-  useEffect(() => {
-    if (isSales) {
-      const allowedTabs = [
-        'create-order',
-        'confirm-orders',
-        'track-orders',
-        'sales-trips',
-        'products',
-        'product-pricing',
-        'customer-tiers',
-        'customers',
-        'profile',
-        'settings'
-      ];
-
-      // If sales tries to access restricted areas, redirect to create-order
-      if (!allowedTabs.includes(activeTab)) {
-        setActiveTab('create-order');
-      }
-    }
-  }, [isSales, activeTab]);
+  }, [isDriver, activeTab]);
 
   // หน้า RLS test ถูกถอดออก — ถ้ามี navigation state เก่า
   useEffect(() => {
@@ -879,43 +853,32 @@ const AppContent = () => {
     }
   }, [activeTab]);
 
-  // ถ้า matrix / DB ไม่ให้สิทธิ์แท็บนี้ — อย่าให้ค้างอยู่หน้าที่เข้าไม่ได้ (เช่น warehouse เก็บ state เป็น create-order)
+  // แท็บปัจจุบันไม่มีสิทธิ์ view ตาม matrix → ย้ายไปแท็บแรกที่อนุญาต (ทุก role เดียวกัน ไม่ whitelist แยก sales / service_staff / คนขับ)
   useEffect(() => {
     if (!profile || featureAccessLoading) return;
     const feature = TAB_TO_PRIMARY_FEATURE[activeTab];
     if (!feature || can(feature, 'view')) return;
-    const fallbacks = [
-      'stock-dashboard',
-      'dashboard',
-      'confirm-orders',
-      'delivery-trips',
-      'profile',
-    ] as const;
-    for (const tab of fallbacks) {
-      const f = TAB_TO_PRIMARY_FEATURE[tab];
-      if (f && can(f, 'view')) {
-        setActiveTab(tab);
-        return;
-      }
-    }
-    if (can('tab.profile', 'view')) setActiveTab('profile');
+    const next = firstAccessibleTabId(can, NAV_FALLBACK_TAB_ORDER);
+    if (next) setActiveTab(next);
+    else if (can('tab.profile', 'view')) setActiveTab('profile');
   }, [profile, activeTab, can, featureAccessLoading]);
 
-  // Set initial tab for drivers when profile loads - go directly to form
+  // โหลดครั้งแรกที่ activeTab เป็น dashboard: คนขับ/ฝ่ายขายที่ไม่ได้รับสิทธิ์แดชบอร์ดยังพาไปหน้าเริ่มตามเดิม
   useEffect(() => {
-    if (isDriver && activeTab === 'dashboard') {
+    if (!isDriver || !profile || featureAccessLoading) return;
+    if (activeTab === 'dashboard' && !can('tab.dashboard', 'view')) {
       setActiveTab('triplogs');
       setTripLogView('form');
       setTripLogMode('checkout');
     }
-  }, [isDriver, profile]);
+  }, [isDriver, profile, activeTab, can, featureAccessLoading]);
 
-  // Set initial tab for sales when profile loads - go directly to create-order
   useEffect(() => {
-    if (isSales && activeTab === 'dashboard') {
+    if (!isSales || !profile || featureAccessLoading) return;
+    if (activeTab === 'dashboard' && !can('tab.dashboard', 'view')) {
       setActiveTab('create-order');
     }
-  }, [isSales, profile]);
+  }, [isSales, profile, activeTab, can, featureAccessLoading]);
 
   // Force refresh profile on mount to ensure role is up to date
   useEffect(() => {
@@ -1098,7 +1061,7 @@ const AppContent = () => {
 
         <div className="flex-1 min-h-0 px-3 space-y-1 mt-4 overflow-y-auto overflow-x-clip scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-700 scrollbar-track-transparent hover:scrollbar-thumb-gray-400 dark:hover:scrollbar-thumb-gray-600 [&:has(.group\/menu:hover)]:overflow-x-visible">
           {/* 1. รายงาน (Reports) */}
-          {can('tab.reports', 'view') && !isDriver && !isSales && (
+          {can('tab.reports', 'view') && (
             <SidebarItem
               icon={FileText}
               label={isSidebarOpen ? "รายงาน" : ""}
@@ -1483,8 +1446,8 @@ const AppContent = () => {
             </>
           )}
 
-          {/* 4. ฝ่ายขนส่ง (Logistics) - Consolidated */}
-          {!isSales && (
+          {/* 4. ฝ่ายขนส่ง (Logistics) - Consolidated — ฝ่ายขายแสดงได้ถ้ามีสิทธิ์แท็บในกลุ่มนี้อย่างน้อยหนึ่งรายการ */}
+          {(!isSales || salesHasLogisticsMenu) && (
             <>
               <div
                 ref={logisticsMenuRef}
@@ -1514,7 +1477,25 @@ const AppContent = () => {
                       setActiveTab('triplogs');
                       setTripLogView('form');
                     } else {
-                      setActiveTab('dashboard');
+                      const logisticsEntryOrder = [
+                        'dashboard',
+                        'pending-orders',
+                        'delivery-trips',
+                        'packing-simulation',
+                        'triplogs',
+                        'fuellogs',
+                        'maintenance',
+                        'vehicles',
+                        'approvals',
+                        'daily-summary',
+                      ] as const;
+                      for (const tab of logisticsEntryOrder) {
+                        const f = TAB_TO_PRIMARY_FEATURE[tab];
+                        if (f && can(f, 'view')) {
+                          setActiveTab(tab);
+                          return;
+                        }
+                      }
                     }
                   }}
                   isCollapsed={!isSidebarOpen}

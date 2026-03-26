@@ -2893,6 +2893,30 @@ export type Database = {
         }
         Relationships: []
       },
+      role_order_branch_scope: {
+        Row: {
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          profile_branch: string
+          visibility: Database["public"]["Enums"]["order_branch_visibility"]
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          role: Database["public"]["Enums"]["app_role"]
+          profile_branch: string
+          visibility?: Database["public"]["Enums"]["order_branch_visibility"]
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          profile_branch?: string
+          visibility?: Database["public"]["Enums"]["order_branch_visibility"]
+          updated_at?: string
+        }
+        Relationships: []
+      },
       profiles: {
         Row: {
           avatar_url: string | null
@@ -6603,6 +6627,7 @@ export type Database = {
         | "completed"
         | "rejected"
       urgency_level: "low" | "medium" | "high" | "critical"
+      order_branch_visibility: "all_branches" | "own_branch_only"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -6756,6 +6781,7 @@ export const Constants = {
         "rejected",
       ],
       urgency_level: ["low", "medium", "high", "critical"],
+      order_branch_visibility: ["all_branches", "own_branch_only"],
     },
   },
 } as const

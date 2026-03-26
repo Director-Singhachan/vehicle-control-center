@@ -90,6 +90,74 @@ export const TAB_TO_PRIMARY_FEATURE: Record<string, FeatureKey> = {
   'db-explorer': 'tab.db_explorer',
 };
 
+/**
+ * ลำดับแท็บสำหรับหาปลายทางเมื่อแท็บปัจจุบันไม่มีสิทธิ์ view — ใช้ร่วมทั้งแอป (สิทธิ์จริงมาจาก matrix เท่านั้น)
+ */
+const NAV_FALLBACK_PRIORITY: string[] = [
+  'dashboard',
+  'stock-dashboard',
+  'create-order',
+  'confirm-orders',
+  'track-orders',
+  'sales-trips',
+  'triplogs',
+  'packing-simulation',
+  'fuellogs',
+  'maintenance',
+  'vehicles',
+  'pending-orders',
+  'delivery-trips',
+  'approvals',
+  'daily-summary',
+  'products',
+  'customers',
+  'profile',
+  'settings',
+  'reports',
+  'excel-import',
+  'warehouses',
+  'inventory-receipts',
+  'cleanup-test-orders',
+  'product-pricing',
+  'customer-tiers',
+  'pending-sales',
+  'admin-staff',
+  'service-staff',
+  'commission',
+  'commission-rates',
+  'role-feature-access',
+  'db-explorer',
+];
+
+export const NAV_FALLBACK_TAB_ORDER: readonly string[] = [
+  ...NAV_FALLBACK_PRIORITY.filter((t) => t in TAB_TO_PRIMARY_FEATURE),
+  ...Object.keys(TAB_TO_PRIMARY_FEATURE).filter((t) => !NAV_FALLBACK_PRIORITY.includes(t)),
+];
+
+/** แท็บแรกในลำดับที่ผู้ใช้มีสิทธิ์ view (fallback: สแกนทุกแท็บในแมป) */
+export function firstAccessibleTabId(
+  can: (feature: FeatureKey, atLeast: AccessLevel) => boolean,
+  preferredOrder: readonly string[] = NAV_FALLBACK_TAB_ORDER,
+): string | null {
+  const hit = (tab: string): string | null => {
+    const f = TAB_TO_PRIMARY_FEATURE[tab];
+    if (f && can(f, 'view')) return tab;
+    return null;
+  };
+  const seen = new Set<string>();
+  for (const tab of preferredOrder) {
+    seen.add(tab);
+    const h = hit(tab);
+    if (h) return h;
+  }
+  for (const tab of Object.keys(TAB_TO_PRIMARY_FEATURE)) {
+    if (seen.has(tab)) continue;
+    const h = hit(tab);
+    if (h) return h;
+  }
+  return null;
+}
+
 export function accessLevelAtLeast(userLevel: AccessLevel, required: AccessLevel): boolean {
   return ACCESS_LEVEL_ORDER[userLevel] >= ACCESS_LEVEL_ORDER[required];
 }
