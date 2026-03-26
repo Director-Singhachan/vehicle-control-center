@@ -1,8 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import type { AppRole } from '../../types/database';
 import type { AccessLevel, FeatureKey } from '../../types/featureAccess';
+import { accessLevelAtLeast, FEATURE_KEYS } from '../../types/featureAccess';
 import { APP_ROLES } from '../../services/featureAccessService';
 import { ACCESS_LEVEL_OPTIONS } from '../../hooks/useRoleFeatureAccessSettings';
+import { Card } from '../ui/Card';
 
 const FEATURE_LABELS: Partial<Record<FeatureKey, string>> = {
   'tab.reports': 'รายงาน (ศูนย์กลาง)',
@@ -127,10 +129,14 @@ const FEATURE_GROUPS: FeatureGroup[] = [
   },
 ];
 
+type ListFilter = 'all' | 'diff' | 'none_only';
+
 interface RoleFeatureAccessMatrixSectionProps {
   selectedRole: AppRole;
   onRoleChange: (role: AppRole) => void;
   levels: Record<FeatureKey, AccessLevel>;
+  /** ค่าเริ่มต้นในโปรแกรม (เปรียบเทียบ override ใน DB) */
+  builtInLevels: Record<FeatureKey, AccessLevel>;
   /** บันทึกแถวเดียวแบบ optimistic (ผู้เรียกจัดการ toast / refetch) */
   onLevelCommit: (key: FeatureKey, level: AccessLevel) => Promise<void>;
   loading: boolean;
@@ -140,13 +146,16 @@ export const RoleFeatureAccessMatrixSection: React.FC<RoleFeatureAccessMatrixSec
   selectedRole,
   onRoleChange,
   levels,
+  builtInLevels,
   onLevelCommit,
   loading,
 }) => {
   const [activeGroupId, setActiveGroupId] = useState<string>(FEATURE_GROUPS[0]?.id ?? '');
+  const [listFilter, setListFilter] = useState<ListFilter>('all');
 
   useEffect(() => {
     setActiveGroupId(FEATURE_GROUPS[0]?.id ?? '');
+    setListFilter('all');
   }, [selectedRole]);
 
   const activeGroup = useMemo(
@@ -154,8 +163,89 @@ export const RoleFeatureAccessMatrixSection: React.FC<RoleFeatureAccessMatrixSec
     [activeGroupId],
   );
 
+  const groupSummaries = useMemo(
+    () =>
+      FEATURE_GROUPS.map((g) => {
+        let open = 0;
+        let none = 0;
+        let diff = 0;
+        for (const k of g.keys) {
+          const l = levels[k];
+          if (accessLevelAtLeast(l, 'view')) open += 1;
+          if (l === 'none') none += 1;
+          if (l !== builtInLevels[k]) diff += 1;
+        }
+        return { ...g, open, none, diff, total: g.keys.length };
+      }),
+    [levels, builtInLevels],
+  );
+
+  const totals = useMemo(() => {
+    let open = 0;
+    let none = 0;
+    let diff = 0;
+    for (const k of FEATURE_KEYS) {
+      const l = levels[k];
+      if (accessLevelAtLeast(l, 'view')) open += 1;
+      if (l === 'none') none += 1;
+      if (l !== builtInLevels[k]) diff += 1;
+    }
+    return { open, none, diff, total: FEATURE_KEYS.length };
+  }, [levels, builtInLevels]);
+
+  const visibleKeys = useMemo(() => {
+    const keys = activeGroup?.keys ?? [];
+    if (listFilter === 'diff') return keys.filter((k) => levels[k] !== builtInLevels[k]);
+    if (listFilter === 'none_only') return keys.filter((k) => levels[k] === 'none');
+    return keys;
+  }, [activeGroup, levels, builtInLevels, listFilter]);
+
   return (
     <div className="space-y-5">
+      <Card className="p-4 border-slate-200 dark:border-slate-700 bg-slate-50/80 dark:bg-charcoal-900/50">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">สรุปตามฝ่าย (คลิกการ์ดเพื่อไปแก้หมวดนั้น)</h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+              บทบาท: <span className="font-mono font-medium text-slate-700 dark:text-slate-300">{selectedRole}</span> — ทั้งหมด {totals.total}{' '}
+              ฟีเจอร์ — เข้าถึงได้ (ดูขึ้นไป){' '}
+              <span className="font-semibold text-enterprise-600 dark:text-enterprise-400">{totals.open}</span> — ปิดทั้งหมด{' '}
+              <span className="font-semibold text-slate-700 dark:text-slate-300">{totals.none}</span> — ต่างจากค่าเริ่มต้นในโปรแกรม{' '}
+              <span className="font-semibold text-amber-600 dark:text-amber-400">{totals.diff}</span> รายการ
+            </p>
+          </div>
+        </div>
+        <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+          {groupSummaries.map((row) => {
+            const active = row.id === activeGroup.id;
+            return (
+              <button
+                key={row.id}
+                type="button"
+                disabled={loading}
+                onClick={() => setActiveGroupId(row.id)}
+                className={`rounded-xl border px-3 py-2.5 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-enterprise-500 dark:focus-visible:ring-offset-charcoal-950 focus-visible:ring-offset-2 ${
+                  active
+                    ? 'border-enterprise-400 bg-enterprise-50 dark:bg-enterprise-950/50 dark:border-enterprise-700'
+                    : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-charcoal-900/40 hover:border-enterprise-200 dark:hover:border-enterprise-800'
+                }`}
+              >
+                <div className="font-semibold text-slate-800 dark:text-slate-100">{row.title}</div>
+                <div className="mt-1 flex flex-wrap gap-x-2 gap-y-0.5 text-[11px] text-slate-600 dark:text-slate-400">
+                  <span>
+                    เปิด {row.open}/{row.total}
+                  </span>
+                  <span>ปิด {row.none}</span>
+                  {row.diff > 0 && (
+                    <span className="text-amber-600 dark:text-amber-400">ต่างจากค่าเริ่มต้น {row.diff}</span>
+                  )}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </Card>
+
       <div className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-end">
         <label className="flex flex-col gap-1 text-sm">
           <span className="text-slate-600 dark:text-slate-400">บทบาท (Role)</span>
@@ -185,6 +275,19 @@ export const RoleFeatureAccessMatrixSection: React.FC<RoleFeatureAccessMatrixSec
                 {g.title} ({g.keys.length})
               </option>
             ))}
+          </select>
+        </label>
+        <label className="flex flex-col gap-1 text-sm w-full sm:w-auto min-w-[220px]">
+          <span className="text-slate-600 dark:text-slate-400">แสดงรายการในหมวด</span>
+          <select
+            value={listFilter}
+            onChange={(e) => setListFilter(e.target.value as ListFilter)}
+            disabled={loading}
+            className="rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-charcoal-900 px-3 py-2 text-slate-900 dark:text-white"
+          >
+            <option value="all">ทั้งหมดในหมวดนี้</option>
+            <option value="diff">เฉพาะที่ต่างจากค่าเริ่มต้นในโปรแกรม</option>
+            <option value="none_only">เฉพาะที่สิทธิ์ = ไม่มี</option>
           </select>
         </label>
         {loading && (
@@ -236,37 +339,54 @@ export const RoleFeatureAccessMatrixSection: React.FC<RoleFeatureAccessMatrixSec
         <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-800 bg-enterprise-50/60 dark:bg-enterprise-950/30">
           <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100">{activeGroup?.title}</h3>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-            {activeGroup?.keys.length} ฟีเจอร์ในหมวดนี้ — เลือกหมวดอื่นด้านบนได้โดยไม่ต้องเลื่อนหน้า
+            แสดง {visibleKeys.length} / {activeGroup?.keys.length ?? 0} ในหมวดนี้
+            {listFilter !== 'all' && ` (กรอง: ${listFilter === 'diff' ? 'ต่างจากค่าเริ่มต้น' : 'เฉพาะปิด'})`}
           </p>
         </div>
         <div className="divide-y divide-slate-100 dark:divide-slate-800">
-          {(activeGroup?.keys ?? []).map((key) => (
-            <div
-              key={key}
-              className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 px-4 py-3 bg-white dark:bg-charcoal-900/50"
-            >
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-slate-900 dark:text-white">
-                  {FEATURE_LABELS[key] ?? key}
-                </p>
-                <p className="text-xs text-slate-500 dark:text-slate-400 font-mono truncate">{key}</p>
-              </div>
-              <select
-                value={levels[key]}
-                onChange={(e) => {
-                  void onLevelCommit(key, e.target.value as AccessLevel);
-                }}
-                disabled={loading}
-                className="rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-charcoal-900 px-3 py-2 text-slate-900 dark:text-white text-sm min-w-[220px] w-full sm:w-auto"
-              >
-                {ACCESS_LEVEL_OPTIONS.map((opt) => (
-                  <option key={opt} value={opt}>
-                    {levelLabel(opt)}
-                  </option>
-                ))}
-              </select>
+          {visibleKeys.length === 0 ? (
+            <div className="px-4 py-10 text-center text-sm text-slate-500 dark:text-slate-400">
+              ไม่มีรายการในโหมดกรองนี้ — ลองเปลี่ยน &quot;แสดงรายการในหมวด&quot; หรือเลือกหมวดอื่น
             </div>
-          ))}
+          ) : (
+            visibleKeys.map((key) => {
+              const differs = levels[key] !== builtInLevels[key];
+              return (
+                <div
+                  key={key}
+                  className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 px-4 py-3 bg-white dark:bg-charcoal-900/50"
+                >
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className="text-sm font-medium text-slate-900 dark:text-white">
+                        {FEATURE_LABELS[key] ?? key}
+                      </p>
+                      {differs && (
+                        <span className="text-[10px] font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-400 bg-amber-100/90 dark:bg-amber-950/50 px-1.5 py-0.5 rounded">
+                          ต่างจากค่าเริ่มต้น
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 font-mono truncate">{key}</p>
+                  </div>
+                  <select
+                    value={levels[key]}
+                    onChange={(e) => {
+                      void onLevelCommit(key, e.target.value as AccessLevel);
+                    }}
+                    disabled={loading}
+                    className="rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-charcoal-900 px-3 py-2 text-slate-900 dark:text-white text-sm min-w-[220px] w-full sm:w-auto"
+                  >
+                    {ACCESS_LEVEL_OPTIONS.map((opt) => (
+                      <option key={opt} value={opt}>
+                        {levelLabel(opt)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              );
+            })
+          )}
         </div>
       </div>
     </div>

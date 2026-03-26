@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { ShieldAlert } from 'lucide-react';
 import { PageLayout } from '../components/layout/PageLayout';
 import { Card } from '../components/ui/Card';
@@ -10,6 +10,7 @@ import { useRoleFeatureAccessSettings } from '../hooks/useRoleFeatureAccessSetti
 import { useAuth } from '../hooks/useAuth';
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
 import { useToast } from '../hooks/useToast';
+import { builtInMatrixForRole } from '../types/featureAccess';
 
 export const RoleFeatureAccessSettingsView: React.FC = () => {
   const { isAdmin } = useAuth();
@@ -28,6 +29,8 @@ export const RoleFeatureAccessSettingsView: React.FC = () => {
     error: loadError,
     reload,
   } = useRoleFeatureAccessSettings();
+
+  const builtInLevels = useMemo(() => builtInMatrixForRole(selectedRole), [selectedRole]);
 
   const handleLevelCommit = async (key: Parameters<typeof commitLevel>[0], level: Parameters<typeof commitLevel>[1]) => {
     try {
@@ -73,7 +76,7 @@ export const RoleFeatureAccessSettingsView: React.FC = () => {
   return (
     <PageLayout
       title="กำหนดสิทธิ์ตามฟีเจอร์"
-      subtitle="เปลี่ยนระดับต่อแถวได้ทันที (บันทึกอัตโนมัติ) — ระดับ: ไม่มี / ดู / แก้ไข / จัดการเต็ม"
+      subtitle="สรุปตามฝ่ายด้านล่างช่วยไล่ตรวจเร็ว — กรอง «เฉพาะที่ต่างจากค่าเริ่มต้น» ได้ — ระดับ: ไม่มี / ดู / แก้ไข / จัดการเต็ม"
       actions={
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" onClick={() => void reload()} disabled={loading || saving}>
@@ -97,6 +100,7 @@ export const RoleFeatureAccessSettingsView: React.FC = () => {
         selectedRole={selectedRole}
         onRoleChange={setSelectedRole}
         levels={levels}
+        builtInLevels={builtInLevels}
         onLevelCommit={handleLevelCommit}
         loading={loading}
       />

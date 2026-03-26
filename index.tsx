@@ -83,6 +83,7 @@ const PackingSimulationView = lazy(() => import('./views/PackingSimulationView')
 const ExcelImportView = lazy(() => import('./views/ExcelImportView').then(m => ({ default: m.ExcelImportView })));
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { FeatureAccessProvider, useFeatureAccess } from './hooks/useFeatureAccess';
+import { TAB_TO_PRIMARY_FEATURE } from './types/featureAccess';
 import { useAuth, usePendingTickets } from './hooks';
 import { usePendingBillingTrips } from './hooks/usePendingBillingTrips';
 import { ticketService, type TicketWithRelations } from './services/ticketService';
@@ -133,12 +134,40 @@ const MenuSectionHeader = ({ label }: { label: string }) => (
 // Main App Content (wrapped in ProtectedRoute)
 const AppContent = () => {
   const { user, profile, signOut, isAdmin, isManager, isInspector, isExecutive, isDriver, isSales, isServiceStaff, isHR, isWarehouse, loading: authLoading, refreshProfile } = useAuth();
-  const { can, canAccessTab } = useFeatureAccess();
+  const { can, canAccessTab, loading: featureAccessLoading } = useFeatureAccess();
   const showHrMenu =
     can('tab.admin_staff', 'view') ||
     can('tab.service_staff', 'view') ||
     can('tab.commission', 'view') ||
     can('tab.commission_rates', 'view');
+
+  /** เมนูฝ่ายขาย: อย่าใช้แค่ !isDriver — ต้องมีสิทธิ์ฟีเจอร์อย่างน้อยหนึ่งรายการ (ยกเว้น isSales ที่อาจมีแค่ confirm_orders) */
+  const showSalesNavGroup = React.useMemo(() => {
+    const salesExtras =
+      can('tab.create_order', 'view') ||
+      can('tab.track_orders', 'view') ||
+      can('tab.sales_trips', 'view') ||
+      can('tab.customers', 'view') ||
+      can('tab.cleanup_test_orders', 'view') ||
+      can('tab.products', 'view') ||
+      can('tab.product_pricing', 'view') ||
+      can('tab.customer_tiers', 'view');
+    if (isDriver && !isSales) return false;
+    if (!isDriver || isSales) {
+      return isSales ? salesExtras || can('tab.confirm_orders', 'view') : salesExtras;
+    }
+    return false;
+  }, [isDriver, isSales, can]);
+
+  const showStockNavGroup = React.useMemo(() => {
+    if (isDriver || isSales) return false;
+    return (
+      can('tab.stock_dashboard', 'view') ||
+      can('tab.confirm_orders', 'view') ||
+      can('tab.warehouses', 'view') ||
+      can('tab.inventory_receipts', 'view')
+    );
+  }, [isDriver, isSales, can]);
 
   // Don't wait for profile - show UI immediately if user exists
   // Profile will load in background and update when ready
@@ -844,6 +873,28 @@ const AppContent = () => {
     }
   }, [isSales, activeTab]);
 
+  // ถ้า matrix / DB ไม่ให้สิทธิ์แท็บนี้ — อย่าให้ค้างอยู่หน้าที่เข้าไม่ได้ (เช่น warehouse เก็บ state เป็น create-order)
+  useEffect(() => {
+    if (!profile || featureAccessLoading) return;
+    const feature = TAB_TO_PRIMARY_FEATURE[activeTab];
+    if (!feature || can(feature, 'view')) return;
+    const fallbacks = [
+      'stock-dashboard',
+      'dashboard',
+      'confirm-orders',
+      'delivery-trips',
+      'profile',
+    ] as const;
+    for (const tab of fallbacks) {
+      const f = TAB_TO_PRIMARY_FEATURE[tab];
+      if (f && can(f, 'view')) {
+        setActiveTab(tab);
+        return;
+      }
+    }
+    if (can('tab.profile', 'view')) setActiveTab('profile');
+  }, [profile, activeTab, can, featureAccessLoading]);
+
   // Set initial tab for drivers when profile loads - go directly to form
   useEffect(() => {
     if (isDriver && activeTab === 'dashboard') {
@@ -1041,7 +1092,7 @@ const AppContent = () => {
 
         <div className="flex-1 min-h-0 px-3 space-y-1 mt-4 overflow-y-auto overflow-x-clip scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-700 scrollbar-track-transparent hover:scrollbar-thumb-gray-400 dark:hover:scrollbar-thumb-gray-600 [&:has(.group\/menu:hover)]:overflow-x-visible">
           {/* 1. รายงาน (Reports) */}
-          {!isDriver && !isSales && (
+          {can('tab.reports', 'view') && !isDriver && !isSales && (
             <SidebarItem
               icon={FileText}
               label={isSidebarOpen ? "รายงาน" : ""}
@@ -1051,8 +1102,8 @@ const AppContent = () => {
             />
           )}
 
-          {/* 2. ฝ่ายขาย (Orders/Sales) */}
-          {(!isDriver || isSales) && (
+          {/* 2. ฝ่ายขาย (Orders/Sales) — ต้องผ่านสิทธิ์ฟีเจอร์อย่างน้อยหนึ่งรายการ */}
+          {showSalesNavGroup && (
             <>
               <div
                 ref={ordersMenuRef}
@@ -1065,20 +1116,40 @@ const AppContent = () => {
                   label={isSidebarOpen ? "ฝ่ายขาย" : ""}
                   active={
                     activeTab === 'create-order' ||
+                    activeTab === 'confirm-orders' ||
                     activeTab === 'track-orders' ||
                     activeTab === 'sales-trips' ||
                     activeTab === 'products' ||
                     activeTab === 'product-pricing' ||
                     activeTab === 'customer-tiers' ||
                     activeTab === 'customers' ||
-                    activeTab === 'excel-import' ||
                     activeTab === 'cleanup-test-orders'
                   }
                   onClick={() => {
                     if (isMobile) {
                       setMobileOrdersExpanded(prev => !prev);
-                    } else if (activeTab !== 'create-order') {
-                      setActiveTab('create-order');
+                    } else {
+                      const first =
+                        can('tab.create_order', 'view')
+                          ? 'create-order'
+                          : can('tab.confirm_orders', 'view')
+                            ? 'confirm-orders'
+                            : can('tab.track_orders', 'view')
+                              ? 'track-orders'
+                              : can('tab.sales_trips', 'view')
+                                ? 'sales-trips'
+                                : can('tab.customers', 'view')
+                                  ? 'customers'
+                                  : can('tab.cleanup_test_orders', 'view')
+                                    ? 'cleanup-test-orders'
+                                    : can('tab.products', 'view')
+                                      ? 'products'
+                                      : can('tab.product_pricing', 'view')
+                                        ? 'product-pricing'
+                                        : can('tab.customer_tiers', 'view')
+                                          ? 'customer-tiers'
+                                          : null;
+                      if (first && activeTab !== first) setActiveTab(first);
                     }
                   }}
                   isCollapsed={!isSidebarOpen}
@@ -1090,18 +1161,39 @@ const AppContent = () => {
               {/* Mobile inline submenu for Orders */}
               {isMobile && mobileOrdersExpanded && isSidebarOpen && (
                 <div className="pl-2 pr-1 space-y-0.5 animate-in fade-in slide-in-from-top-1 duration-150">
-                  <SubSidebarItem label="สร้างออเดอร์" active={activeTab === 'create-order'} onClick={() => navigateAndCloseMobile('create-order')} isCollapsed={false} isFlyout={false} />
-                  <SubSidebarItem label="ยืนยันและแบ่งส่ง" active={activeTab === 'confirm-orders'} onClick={() => navigateAndCloseMobile('confirm-orders')} isCollapsed={false} isFlyout={false} />
-                  <SubSidebarItem label="ติดตามออเดอร์" active={activeTab === 'track-orders'} onClick={() => navigateAndCloseMobile('track-orders')} isCollapsed={false} isFlyout={false} />
-                  <SubSidebarItem label="ออกใบแจ้งหนี้" active={activeTab === 'sales-trips'} onClick={() => navigateAndCloseMobile('sales-trips')} isCollapsed={false} isFlyout={false} />
+                  {can('tab.create_order', 'view') && (
+                    <SubSidebarItem label="สร้างออเดอร์" active={activeTab === 'create-order'} onClick={() => navigateAndCloseMobile('create-order')} isCollapsed={false} isFlyout={false} />
+                  )}
+                  {can('tab.confirm_orders', 'view') && (
+                    <SubSidebarItem label="ยืนยันและแบ่งส่ง" active={activeTab === 'confirm-orders'} onClick={() => navigateAndCloseMobile('confirm-orders')} isCollapsed={false} isFlyout={false} />
+                  )}
+                  {can('tab.track_orders', 'view') && (
+                    <SubSidebarItem label="ติดตามออเดอร์" active={activeTab === 'track-orders'} onClick={() => navigateAndCloseMobile('track-orders')} isCollapsed={false} isFlyout={false} />
+                  )}
+                  {can('tab.sales_trips', 'view') && (
+                    <SubSidebarItem label="ออกใบแจ้งหนี้" active={activeTab === 'sales-trips'} onClick={() => navigateAndCloseMobile('sales-trips')} isCollapsed={false} isFlyout={false} />
+                  )}
+                  {(can('tab.cleanup_test_orders', 'view') ||
+                    can('tab.customers', 'view') ||
+                    can('tab.products', 'view') ||
+                    can('tab.product_pricing', 'view') ||
+                    can('tab.customer_tiers', 'view')) && (
+                    <MenuSectionHeader label="เฉพาะเจ้าหน้าที่ / Manager" />
+                  )}
+                  {can('tab.cleanup_test_orders', 'view') && (
+                    <SubSidebarItem label="จัดการออเดอร์" active={activeTab === 'cleanup-test-orders'} onClick={() => navigateAndCloseMobile('cleanup-test-orders')} isCollapsed={false} isFlyout={false} />
+                  )}
                   {can('tab.customers', 'view') && (
-                    <>
-                      <SubSidebarItem label="จัดการออเดอร์" active={activeTab === 'cleanup-test-orders'} onClick={() => navigateAndCloseMobile('cleanup-test-orders')} isCollapsed={false} isFlyout={false} />
-                      <SubSidebarItem label="จัดการลูกค้า" active={activeTab === 'customers'} onClick={() => navigateAndCloseMobile('customers')} isCollapsed={false} isFlyout={false} />
-                      <SubSidebarItem label="จัดการสินค้า / ราคา" active={activeTab === 'products'} onClick={() => navigateAndCloseMobile('products')} isCollapsed={false} isFlyout={false} />
-                      <SubSidebarItem label="กำหนดราคาตามลูกค้า" active={activeTab === 'product-pricing'} onClick={() => navigateAndCloseMobile('product-pricing')} isCollapsed={false} isFlyout={false} />
-                      <SubSidebarItem label="ระดับลูกค้า" active={activeTab === 'customer-tiers'} onClick={() => navigateAndCloseMobile('customer-tiers')} isCollapsed={false} isFlyout={false} />
-                    </>
+                    <SubSidebarItem label="จัดการลูกค้า" active={activeTab === 'customers'} onClick={() => navigateAndCloseMobile('customers')} isCollapsed={false} isFlyout={false} />
+                  )}
+                  {can('tab.products', 'view') && (
+                    <SubSidebarItem label="จัดการสินค้า / ราคา" active={activeTab === 'products'} onClick={() => navigateAndCloseMobile('products')} isCollapsed={false} isFlyout={false} />
+                  )}
+                  {can('tab.product_pricing', 'view') && (
+                    <SubSidebarItem label="กำหนดราคาตามลูกค้า" active={activeTab === 'product-pricing'} onClick={() => navigateAndCloseMobile('product-pricing')} isCollapsed={false} isFlyout={false} />
+                  )}
+                  {can('tab.customer_tiers', 'view') && (
+                    <SubSidebarItem label="ระดับลูกค้า" active={activeTab === 'customer-tiers'} onClick={() => navigateAndCloseMobile('customer-tiers')} isCollapsed={false} isFlyout={false} />
                   )}
                 </div>
               )}
@@ -1123,102 +1215,125 @@ const AppContent = () => {
                       <div className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"></div>
                     </div>
                     <div className="px-2 space-y-0.5">
-                      <MenuSectionHeader label="รายการออเดอร์" />
-                      <SubSidebarItem
-                        label="สร้างออเดอร์"
-                        active={activeTab === 'create-order'}
-                        onClick={() => {
-                          setActiveTab('create-order');
-                          setIsOrdersHovered(false);
-                        }}
-                        isCollapsed={false}
-                        isFlyout={true}
-                      />
-                      <SubSidebarItem
-                        label="ยืนยันและแบ่งส่ง"
-                        active={activeTab === 'confirm-orders'}
-                        onClick={() => {
-                          setActiveTab('confirm-orders');
-                          setIsOrdersHovered(false);
-                        }}
-                        isCollapsed={false}
-                        isFlyout={true}
-                      />
-                      <SubSidebarItem
-                        label="ติดตามออเดอร์"
-                        active={activeTab === 'track-orders'}
-                        onClick={() => {
-                          setActiveTab('track-orders');
-                          setIsOrdersHovered(false);
-                        }}
-                        isCollapsed={false}
-                        isFlyout={true}
-                      />
-                      <SubSidebarItem
-                        label="ออกใบแจ้งหนี้"
-                        active={activeTab === 'sales-trips'}
-                        onClick={() => {
-                          setActiveTab('sales-trips');
-                          setIsOrdersHovered(false);
-                        }}
-                        isCollapsed={false}
-                        isFlyout={true}
-                      />
+                      {(can('tab.create_order', 'view') ||
+                        can('tab.confirm_orders', 'view') ||
+                        can('tab.track_orders', 'view') ||
+                        can('tab.sales_trips', 'view')) && <MenuSectionHeader label="รายการออเดอร์" />}
+                      {can('tab.create_order', 'view') && (
+                        <SubSidebarItem
+                          label="สร้างออเดอร์"
+                          active={activeTab === 'create-order'}
+                          onClick={() => {
+                            setActiveTab('create-order');
+                            setIsOrdersHovered(false);
+                          }}
+                          isCollapsed={false}
+                          isFlyout={true}
+                        />
+                      )}
+                      {can('tab.confirm_orders', 'view') && (
+                        <SubSidebarItem
+                          label="ยืนยันและแบ่งส่ง"
+                          active={activeTab === 'confirm-orders'}
+                          onClick={() => {
+                            setActiveTab('confirm-orders');
+                            setIsOrdersHovered(false);
+                          }}
+                          isCollapsed={false}
+                          isFlyout={true}
+                        />
+                      )}
+                      {can('tab.track_orders', 'view') && (
+                        <SubSidebarItem
+                          label="ติดตามออเดอร์"
+                          active={activeTab === 'track-orders'}
+                          onClick={() => {
+                            setActiveTab('track-orders');
+                            setIsOrdersHovered(false);
+                          }}
+                          isCollapsed={false}
+                          isFlyout={true}
+                        />
+                      )}
+                      {can('tab.sales_trips', 'view') && (
+                        <SubSidebarItem
+                          label="ออกใบแจ้งหนี้"
+                          active={activeTab === 'sales-trips'}
+                          onClick={() => {
+                            setActiveTab('sales-trips');
+                            setIsOrdersHovered(false);
+                          }}
+                          isCollapsed={false}
+                          isFlyout={true}
+                        />
+                      )}
 
+                      {(can('tab.cleanup_test_orders', 'view') ||
+                        can('tab.customers', 'view') ||
+                        can('tab.products', 'view') ||
+                        can('tab.product_pricing', 'view') ||
+                        can('tab.customer_tiers', 'view')) && (
+                        <MenuSectionHeader label="เฉพาะเจ้าหน้าที่ / Manager" />
+                      )}
+                      {can('tab.cleanup_test_orders', 'view') && (
+                        <SubSidebarItem
+                          label="จัดการออเดอร์"
+                          active={activeTab === 'cleanup-test-orders'}
+                          onClick={() => {
+                            setActiveTab('cleanup-test-orders');
+                            setIsOrdersHovered(false);
+                          }}
+                          isCollapsed={false}
+                          isFlyout={true}
+                        />
+                      )}
                       {can('tab.customers', 'view') && (
-                        <>
-                          <MenuSectionHeader label="เฉพาะเจ้าหน้าที่ / Manager" />
-                          <SubSidebarItem
-                            label="จัดการออเดอร์"
-                            active={activeTab === 'cleanup-test-orders'}
-                            onClick={() => {
-                              setActiveTab('cleanup-test-orders');
-                              setIsOrdersHovered(false);
-                            }}
-                            isCollapsed={false}
-                            isFlyout={true}
-                          />
-                          <SubSidebarItem
-                            label="จัดการลูกค้า"
-                            active={activeTab === 'customers'}
-                            onClick={() => {
-                              setActiveTab('customers');
-                              setIsOrdersHovered(false);
-                            }}
-                            isCollapsed={false}
-                            isFlyout={true}
-                          />
-                          <SubSidebarItem
-                            label="จัดการสินค้า / ราคา"
-                            active={activeTab === 'products'}
-                            onClick={() => {
-                              setActiveTab('products');
-                              setIsOrdersHovered(false);
-                            }}
-                            isCollapsed={false}
-                            isFlyout={true}
-                          />
-                          <SubSidebarItem
-                            label="กำหนดราคาตามลูกค้า"
-                            active={activeTab === 'product-pricing'}
-                            onClick={() => {
-                              setActiveTab('product-pricing');
-                              setIsOrdersHovered(false);
-                            }}
-                            isCollapsed={false}
-                            isFlyout={true}
-                          />
-                          <SubSidebarItem
-                            label="ระดับลูกค้า"
-                            active={activeTab === 'customer-tiers'}
-                            onClick={() => {
-                              setActiveTab('customer-tiers');
-                              setIsOrdersHovered(false);
-                            }}
-                            isCollapsed={false}
-                            isFlyout={true}
-                          />
-                        </>
+                        <SubSidebarItem
+                          label="จัดการลูกค้า"
+                          active={activeTab === 'customers'}
+                          onClick={() => {
+                            setActiveTab('customers');
+                            setIsOrdersHovered(false);
+                          }}
+                          isCollapsed={false}
+                          isFlyout={true}
+                        />
+                      )}
+                      {can('tab.products', 'view') && (
+                        <SubSidebarItem
+                          label="จัดการสินค้า / ราคา"
+                          active={activeTab === 'products'}
+                          onClick={() => {
+                            setActiveTab('products');
+                            setIsOrdersHovered(false);
+                          }}
+                          isCollapsed={false}
+                          isFlyout={true}
+                        />
+                      )}
+                      {can('tab.product_pricing', 'view') && (
+                        <SubSidebarItem
+                          label="กำหนดราคาตามลูกค้า"
+                          active={activeTab === 'product-pricing'}
+                          onClick={() => {
+                            setActiveTab('product-pricing');
+                            setIsOrdersHovered(false);
+                          }}
+                          isCollapsed={false}
+                          isFlyout={true}
+                        />
+                      )}
+                      {can('tab.customer_tiers', 'view') && (
+                        <SubSidebarItem
+                          label="ระดับลูกค้า"
+                          active={activeTab === 'customer-tiers'}
+                          onClick={() => {
+                            setActiveTab('customer-tiers');
+                            setIsOrdersHovered(false);
+                          }}
+                          isCollapsed={false}
+                          isFlyout={true}
+                        />
                       )}
                     </div>
                   </div>
@@ -1228,7 +1343,7 @@ const AppContent = () => {
           )}
 
           {/* 3. คลังสินค้า (Stock) */}
-          {!isDriver && !isSales && (
+          {showStockNavGroup && (
             <>
               <div
                 ref={stockMenuRef}
@@ -1243,8 +1358,18 @@ const AppContent = () => {
                   onClick={() => {
                     if (isMobile) {
                       setMobileStockExpanded(prev => !prev);
-                    } else if (activeTab !== 'stock-dashboard') {
-                      setActiveTab('stock-dashboard');
+                    } else {
+                      const firstStock =
+                        can('tab.stock_dashboard', 'view')
+                          ? 'stock-dashboard'
+                          : can('tab.confirm_orders', 'view')
+                            ? 'confirm-orders'
+                            : can('tab.warehouses', 'view')
+                              ? 'warehouses'
+                              : can('tab.inventory_receipts', 'view')
+                                ? 'inventory-receipts'
+                                : null;
+                      if (firstStock && activeTab !== firstStock) setActiveTab(firstStock);
                     }
                   }}
                   isCollapsed={!isSidebarOpen}
@@ -1256,13 +1381,17 @@ const AppContent = () => {
               {/* Mobile inline submenu for Stock */}
               {isMobile && mobileStockExpanded && isSidebarOpen && (
                 <div className="pl-2 pr-1 space-y-0.5 animate-in fade-in slide-in-from-top-1 duration-150">
-                  <SubSidebarItem label="Stock Dashboard" active={activeTab === 'stock-dashboard'} onClick={() => navigateAndCloseMobile('stock-dashboard')} isCollapsed={false} isFlyout={false} />
-                  <SubSidebarItem label="ยืนยันและแบ่งส่ง" active={activeTab === 'confirm-orders'} onClick={() => navigateAndCloseMobile('confirm-orders')} isCollapsed={false} isFlyout={false} />
+                  {can('tab.stock_dashboard', 'view') && (
+                    <SubSidebarItem label="Stock Dashboard" active={activeTab === 'stock-dashboard'} onClick={() => navigateAndCloseMobile('stock-dashboard')} isCollapsed={false} isFlyout={false} />
+                  )}
+                  {can('tab.confirm_orders', 'view') && (
+                    <SubSidebarItem label="ยืนยันและแบ่งส่ง" active={activeTab === 'confirm-orders'} onClick={() => navigateAndCloseMobile('confirm-orders')} isCollapsed={false} isFlyout={false} />
+                  )}
                   {can('tab.warehouses', 'view') && (
-                    <>
-                      <SubSidebarItem label="จัดการคลัง" active={activeTab === 'warehouses'} onClick={() => navigateAndCloseMobile('warehouses')} isCollapsed={false} isFlyout={false} />
-                      <SubSidebarItem label="ประวัติรับสินค้า" active={activeTab === 'inventory-receipts'} onClick={() => navigateAndCloseMobile('inventory-receipts')} isCollapsed={false} isFlyout={false} />
-                    </>
+                    <SubSidebarItem label="จัดการคลัง" active={activeTab === 'warehouses'} onClick={() => navigateAndCloseMobile('warehouses')} isCollapsed={false} isFlyout={false} />
+                  )}
+                  {can('tab.inventory_receipts', 'view') && (
+                    <SubSidebarItem label="ประวัติรับสินค้า" active={activeTab === 'inventory-receipts'} onClick={() => navigateAndCloseMobile('inventory-receipts')} isCollapsed={false} isFlyout={false} />
                   )}
                 </div>
               )}
@@ -1284,51 +1413,61 @@ const AppContent = () => {
                       <div className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"></div>
                     </div>
                     <div className="px-2 space-y-1">
-                      <MenuSectionHeader label="ข้อมูลคลังสินค้า" />
-                      <SubSidebarItem
-                        label="Stock Dashboard"
-                        active={activeTab === 'stock-dashboard'}
-                        onClick={() => {
-                          setActiveTab('stock-dashboard');
-                          setIsStockHovered(false);
-                        }}
-                        isCollapsed={false}
-                        isFlyout={true}
-                      />
-                      <SubSidebarItem
-                        label="ยืนยันและแบ่งส่ง"
-                        active={activeTab === 'confirm-orders'}
-                        onClick={() => {
-                          setActiveTab('confirm-orders');
-                          setIsStockHovered(false);
-                        }}
-                        isCollapsed={false}
-                        isFlyout={true}
-                      />
+                      {(can('tab.stock_dashboard', 'view') || can('tab.confirm_orders', 'view')) && (
+                        <MenuSectionHeader label="ข้อมูลคลังสินค้า" />
+                      )}
+                      {can('tab.stock_dashboard', 'view') && (
+                        <SubSidebarItem
+                          label="Stock Dashboard"
+                          active={activeTab === 'stock-dashboard'}
+                          onClick={() => {
+                            setActiveTab('stock-dashboard');
+                            setIsStockHovered(false);
+                          }}
+                          isCollapsed={false}
+                          isFlyout={true}
+                        />
+                      )}
+                      {can('tab.confirm_orders', 'view') && (
+                        <SubSidebarItem
+                          label="ยืนยันและแบ่งส่ง"
+                          active={activeTab === 'confirm-orders'}
+                          onClick={() => {
+                            setActiveTab('confirm-orders');
+                            setIsStockHovered(false);
+                          }}
+                          isCollapsed={false}
+                          isFlyout={true}
+                        />
+                      )}
 
-                      {can('tab.warehouses', 'view') && (
+                      {(can('tab.warehouses', 'view') || can('tab.inventory_receipts', 'view')) && (
                         <>
                           <MenuSectionHeader label="จัดการระบบคลัง" />
-                          <SubSidebarItem
-                            label="จัดการคลัง"
-                            active={activeTab === 'warehouses'}
-                            onClick={() => {
-                              setActiveTab('warehouses');
-                              setIsStockHovered(false);
-                            }}
-                            isCollapsed={false}
-                            isFlyout={true}
-                          />
-                          <SubSidebarItem
-                            label="ประวัติรับสินค้า"
-                            active={activeTab === 'inventory-receipts'}
-                            onClick={() => {
-                              setActiveTab('inventory-receipts');
-                              setIsStockHovered(false);
-                            }}
-                            isCollapsed={false}
-                            isFlyout={true}
-                          />
+                          {can('tab.warehouses', 'view') && (
+                            <SubSidebarItem
+                              label="จัดการคลัง"
+                              active={activeTab === 'warehouses'}
+                              onClick={() => {
+                                setActiveTab('warehouses');
+                                setIsStockHovered(false);
+                              }}
+                              isCollapsed={false}
+                              isFlyout={true}
+                            />
+                          )}
+                          {can('tab.inventory_receipts', 'view') && (
+                            <SubSidebarItem
+                              label="ประวัติรับสินค้า"
+                              active={activeTab === 'inventory-receipts'}
+                              onClick={() => {
+                                setActiveTab('inventory-receipts');
+                                setIsStockHovered(false);
+                              }}
+                              isCollapsed={false}
+                              isFlyout={true}
+                            />
+                          )}
                         </>
                       )}
                     </div>
