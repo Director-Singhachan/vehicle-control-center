@@ -34,7 +34,6 @@ import {
 // Lazy load views เพื่อลด initial bundle และให้หน้าแรกโหลดเร็วขึ้น
 const DashboardView = lazy(() => import('./views/DashboardView').then(m => ({ default: m.DashboardView })));
 const ProfileView = lazy(() => import('./views/ProfileView').then(m => ({ default: m.ProfileView })));
-const RLSTestView = lazy(() => import('./views/RLSTestView').then(m => ({ default: m.RLSTestView })));
 const DatabaseExplorerView = lazy(() => import('./views/DatabaseExplorerView').then(m => ({ default: m.DatabaseExplorerView })));
 const VehiclesView = lazy(() => import('./views/VehiclesView').then(m => ({ default: m.VehiclesView })));
 const VehicleDetailView = lazy(() => import('./views/VehicleDetailView').then(m => ({ default: m.VehicleDetailView })));
@@ -872,6 +871,13 @@ const AppContent = () => {
       }
     }
   }, [isSales, activeTab]);
+
+  // หน้า RLS test ถูกถอดออก — ถ้ามี navigation state เก่า
+  useEffect(() => {
+    if (activeTab === 'rls-test') {
+      setActiveTab('profile');
+    }
+  }, [activeTab]);
 
   // ถ้า matrix / DB ไม่ให้สิทธิ์แท็บนี้ — อย่าให้ค้างอยู่หน้าที่เข้าไม่ได้ (เช่น warehouse เก็บ state เป็น create-order)
   useEffect(() => {
@@ -2065,7 +2071,6 @@ const AppContent = () => {
                 label={isSidebarOpen ? "ตั้งค่า" : ""}
                 active={
                   activeTab === 'profile' ||
-                  activeTab === 'rls-test' ||
                   activeTab === 'settings' ||
                   activeTab === 'role-feature-access'
                 }
@@ -2090,15 +2095,6 @@ const AppContent = () => {
                   isCollapsed={false}
                   isFlyout={false}
                 />
-                {can('tab.rls_test', 'view') && (
-                  <SubSidebarItem
-                    label="ทดสอบ RLS"
-                    active={activeTab === 'rls-test'}
-                    onClick={() => navigateAndCloseMobile('rls-test')}
-                    isCollapsed={false}
-                    isFlyout={false}
-                  />
-                )}
                 {can('tab.role_feature_access', 'view') && (
                   <SubSidebarItem
                     label="สิทธิ์ตามฟีเจอร์"
@@ -2147,18 +2143,6 @@ const AppContent = () => {
                       isCollapsed={false}
                       isFlyout={true}
                     />
-                    {can('tab.rls_test', 'view') && (
-                      <SubSidebarItem
-                        label="ทดสอบ RLS"
-                        active={activeTab === 'rls-test'}
-                        onClick={() => {
-                          setActiveTab('rls-test');
-                          setIsSettingsHovered(false);
-                        }}
-                        isCollapsed={false}
-                        isFlyout={true}
-                      />
-                    )}
                     {can('tab.role_feature_access', 'view') && (
                       <SubSidebarItem
                         label="สิทธิ์ตามฟีเจอร์"
@@ -2830,8 +2814,6 @@ const AppContent = () => {
               })()
             ) : activeTab === 'profile' ? (
               <ProfileView />
-            ) : activeTab === 'rls-test' ? (
-              <RLSTestView />
             ) : activeTab === 'role-feature-access' ? (
               <RoleFeatureAccessSettingsView />
             ) : activeTab === 'daily-summary' ? (

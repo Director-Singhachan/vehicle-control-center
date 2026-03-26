@@ -84,7 +84,6 @@ CROSS JOIN (
     ('tab.commission'),
     ('tab.commission_rates'),
     ('tab.profile'),
-    ('tab.rls_test'),
     ('tab.settings'),
     ('tab.role_feature_access'),
     ('tab.db_explorer')

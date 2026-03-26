@@ -40,7 +40,6 @@ const FEATURE_LABELS: Partial<Record<FeatureKey, string>> = {
   'tab.commission': 'ค่าคอมมิชชั่น',
   'tab.commission_rates': 'อัตราค่าคอมมิชชั่น',
   'tab.profile': 'โปรไฟล์',
-  'tab.rls_test': 'ทดสอบ RLS',
   'tab.settings': 'ตั้งค่าแจ้งเตือน',
   'tab.role_feature_access': 'หน้านี้ — สิทธิ์ตามฟีเจอร์',
   'tab.db_explorer': 'สำรวจฐานข้อมูล (DB)',
@@ -121,7 +120,6 @@ const FEATURE_GROUPS: FeatureGroup[] = [
     keys: [
       'tab.excel_import',
       'tab.profile',
-      'tab.rls_test',
       'tab.settings',
       'tab.role_feature_access',
       'tab.db_explorer',
