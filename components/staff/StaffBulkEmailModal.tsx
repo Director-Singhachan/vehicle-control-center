@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useCallback, useEffect, useRef } from 'react';
-import { Mail, Plus, Trash2, ClipboardPaste, Info, Loader2, FileSpreadsheet } from 'lucide-react';
+import { Mail, Plus, Trash2, Info, Loader2, FileSpreadsheet } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { Modal } from '../ui/Modal';
 import { Button } from '../ui/Button';
@@ -80,8 +80,6 @@ export const StaffBulkEmailModal: React.FC<StaffBulkEmailModalProps> = ({
   onBatchComplete,
 }) => {
   const [rows, setRows] = useState<Row[]>([{ id: newId(), employee_code: '', new_email: '' }]);
-  const [pasteOpen, setPasteOpen] = useState(false);
-  const [pasteText, setPasteText] = useState('');
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState(0);
   const [excelHint, setExcelHint] = useState<string | null>(null);
@@ -93,8 +91,6 @@ export const StaffBulkEmailModal: React.FC<StaffBulkEmailModalProps> = ({
   useEffect(() => {
     if (isOpen) {
       setRows([{ id: newId(), employee_code: '', new_email: '' }]);
-      setPasteOpen(false);
-      setPasteText('');
       setRunning(false);
       setProgress(0);
       setExcelHint(null);
@@ -187,22 +183,6 @@ export const StaffBulkEmailModal: React.FC<StaffBulkEmailModalProps> = ({
   const updateRow = useCallback((id: string, patch: Partial<Pick<Row, 'employee_code' | 'new_email'>>) => {
     setRows((r) => r.map((row) => (row.id === id ? { ...row, ...patch } : row)));
   }, []);
-
-  const applyPaste = useCallback(() => {
-    const lines = pasteText.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-    const parsed: Row[] = [];
-    for (const line of lines) {
-      const parts = line.split(/[\t,]/).map((p) => p.trim());
-      if (parts.length >= 2) {
-        parsed.push({ id: newId(), employee_code: parts[0], new_email: parts[1] });
-      }
-    }
-    if (parsed.length) {
-      setRows(parsed);
-      setPasteOpen(false);
-      setPasteText('');
-    }
-  }, [pasteText]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -348,16 +328,6 @@ export const StaffBulkEmailModal: React.FC<StaffBulkEmailModalProps> = ({
             <Plus className="w-4 h-4 mr-1" />
             เพิ่มแถว
           </Button>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => setPasteOpen((v) => !v)}
-            disabled={running}
-          >
-            <ClipboardPaste className="w-4 h-4 mr-1" />
-            วางจากข้อความ
-          </Button>
         </div>
         <p className="text-xs text-slate-500 dark:text-slate-400">
           ไฟล์ .xlsx ใช้ได้เฉพาะคอลัมน์ <span className="font-mono">รหัสพนักงาน</span> + อีเมล (Email / อีเมล / E-mail)
@@ -368,25 +338,6 @@ export const StaffBulkEmailModal: React.FC<StaffBulkEmailModalProps> = ({
         )}
         {excelError && (
           <p className="text-xs text-red-600 dark:text-red-400">{excelError}</p>
-        )}
-
-        {pasteOpen && (
-          <div className="space-y-2 p-3 border border-slate-200 dark:border-slate-700 rounded-lg bg-slate-50 dark:bg-slate-900/40">
-            <p className="text-xs text-slate-600 dark:text-slate-400">
-              วางทีละบรรทัด: <span className="font-mono">รหัสพนักงาน,อีเมลใหม่</span> หรือคั่นด้วย Tab
-            </p>
-            <textarea
-              value={pasteText}
-              onChange={(e) => setPasteText(e.target.value)}
-              rows={5}
-              className={`${inputCls} font-mono text-xs`}
-              placeholder={'00001,newmail@example.com\n00002,other@example.com'}
-              disabled={running}
-            />
-            <Button type="button" size="sm" onClick={applyPaste} disabled={running || !pasteText.trim()}>
-              แทนที่ตารางด้วยข้อความนี้
-            </Button>
-          </div>
         )}
 
         <div className="max-h-[360px] overflow-auto rounded-lg border border-slate-200 dark:border-slate-700">

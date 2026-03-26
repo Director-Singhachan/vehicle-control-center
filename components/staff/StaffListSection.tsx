@@ -35,6 +35,7 @@ const ROLE_LABEL: Record<AppRole, string> = {
 
 const ROLE_COLOR: Partial<Record<AppRole, string>> = {
   admin: 'bg-red-100 text-red-700 dark:bg-red-900/60 dark:text-red-300',
+  executive: 'bg-violet-100 text-violet-800 dark:bg-violet-900/50 dark:text-violet-200',
   manager: 'bg-purple-100 text-purple-700 dark:bg-purple-900/60 dark:text-purple-300',
   hr: 'bg-pink-100 text-pink-700 dark:bg-pink-900/60 dark:text-pink-300',
   accounting: 'bg-green-100 text-green-700 dark:bg-green-900/60 dark:text-green-300',
@@ -42,18 +43,28 @@ const ROLE_COLOR: Partial<Record<AppRole, string>> = {
   driver: 'bg-blue-100 text-blue-700 dark:bg-blue-900/60 dark:text-blue-300',
   service_staff: 'bg-cyan-100 text-cyan-700 dark:bg-cyan-900/60 dark:text-cyan-300',
   sales: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/60 dark:text-yellow-300',
+  inspector: 'bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-200',
+  user: 'bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-300',
 };
+
+/** ลำดับเดียวกับ StaffCreateModal — ครบทุก app_role สำหรับกรองรายการ */
+const FILTER_ROLE_ORDER: AppRole[] = [
+  'admin',
+  'executive',
+  'manager',
+  'hr',
+  'accounting',
+  'warehouse',
+  'driver',
+  'service_staff',
+  'sales',
+  'inspector',
+  'user',
+];
 
 const FILTER_ROLES: { value: AppRole | ''; label: string }[] = [
   { value: '', label: 'ทุกบทบาท' },
-  { value: 'admin', label: 'Admin' },
-  { value: 'manager', label: 'Manager' },
-  { value: 'hr', label: 'HR' },
-  { value: 'accounting', label: 'บัญชี' },
-  { value: 'warehouse', label: 'คลัง' },
-  { value: 'driver', label: 'คนขับ' },
-  { value: 'service_staff', label: 'บริการ' },
-  { value: 'sales', label: 'ขาย' },
+  ...FILTER_ROLE_ORDER.map((value) => ({ value, label: ROLE_LABEL[value] })),
 ];
 
 interface StaffListSectionProps {
