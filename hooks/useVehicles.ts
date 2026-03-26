@@ -100,7 +100,7 @@ export const useVehicle = (id: string | null) => {
   };
 };
 
-export const useVehiclesWithStatus = () => {
+export const useVehiclesWithStatus = (options: UseVehiclesOptions = { autoFetch: true }) => {
   const [vehicles, setVehicles] = useState<VehicleWithStatus[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
@@ -119,8 +119,14 @@ export const useVehiclesWithStatus = () => {
   };
 
   useEffect(() => {
+    if (!options.autoFetch) {
+      setVehicles([]);
+      setLoading(false);
+      setError(null);
+      return;
+    }
     fetchVehicles();
-  }, []);
+  }, [options.autoFetch]);
 
   return {
     vehicles,
