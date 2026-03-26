@@ -18,6 +18,7 @@ export const AdminStaffManagementView: React.FC = () => {
   const { isAdmin, isHR } = useAuth();
   const {
     staffList,
+    staffDirectoryFull,
     listLoading,
     listError,
     filters,
@@ -145,7 +146,7 @@ export const AdminStaffManagementView: React.FC = () => {
       <StaffBulkEmailModal
         isOpen={modals.bulkEmail}
         onClose={closeBulkEmail}
-        existingStaff={staffList}
+        existingStaff={staffDirectoryFull}
         onSuccessRefetch={refetch}
         onBatchComplete={(r) => {
           if (r.total === 0) {
@@ -182,7 +183,7 @@ export const AdminStaffManagementView: React.FC = () => {
 
       <StaffImportModal
         isOpen={modals.import}
-        existingStaff={staffList}
+        existingStaff={staffDirectoryFull}
         onClose={closeImport}
         onSuccess={refetch}
         onImportBatchComplete={({ success: ok, failed, errors, total }) => {

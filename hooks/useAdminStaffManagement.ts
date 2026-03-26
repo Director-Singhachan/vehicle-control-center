@@ -29,8 +29,8 @@ interface ModalState {
 export function useAdminStaffManagement() {
   const { toasts, success, error: showError, warning, dismissToast } = useToast();
 
-  // ─── List state ──────────────────────────────────────────────────────────
-  const [staffList, setStaffList] = useState<StaffProfile[]>([]);
+  // ─── List state — staffDirectory = ทุกคนที่โหลดจาก API (นำเข้า/เปลี่ยนอีเมลต้องใช้ชุดนี้) ─
+  const [staffDirectory, setStaffDirectory] = useState<StaffProfile[]>([]);
   const [listLoading, setListLoading] = useState(false);
   const [listError, setListError] = useState<string | null>(null);
   const [filters, setFilters] = useState<StaffListFilters>({ search: '', role: '', branch: '' });
@@ -55,15 +55,35 @@ export function useAdminStaffManagement() {
   // ─── Unique branch list (derived from loaded staff) ─────────────────────
   const branches = useMemo(() => {
     const set = new Set<string>();
-    staffList.forEach((s) => { if (s.branch) set.add(s.branch); });
+    staffDirectory.forEach((s) => { if (s.branch) set.add(s.branch); });
     return Array.from(set).sort();
-  }, [staffList]);
+  }, [staffDirectory]);
 
-  // ─── Client-side filtered list (respect branch filter) ───────────────────
+  // ─── กรองฝั่ง client — โหลดครั้งเดียวทั้งหมด เพื่อให้ modal จับรหัสพนักงานได้เสมอ
   const filteredStaffList = useMemo(() => {
-    if (!filters.branch) return staffList;
-    return staffList.filter((s) => s.branch === filters.branch);
-  }, [staffList, filters.branch]);
+    let rows = staffDirectory;
+    if (filters.branch) {
+      rows = rows.filter((s) => s.branch === filters.branch);
+    }
+    if (filters.role) {
+      rows = rows.filter((s) => s.role === filters.role);
+    }
+    if (filters.department?.trim()) {
+      const d = filters.department.trim().toLowerCase();
+      rows = rows.filter((s) => (s.department || '').toLowerCase().includes(d));
+    }
+    if (filters.search?.trim()) {
+      const q = filters.search.trim().toLowerCase();
+      rows = rows.filter(
+        (s) =>
+          (s.full_name || '').toLowerCase().includes(q) ||
+          (s.email || '').toLowerCase().includes(q) ||
+          (s.employee_code || '').toLowerCase().includes(q) ||
+          (s.phone || '').toLowerCase().includes(q),
+      );
+    }
+    return rows;
+  }, [staffDirectory, filters]);
 
   // ─── รายชื่อ service_staff ที่ยังไม่มีบัญชี (สำหรับผูกบัญชีกับรายชื่อเดิม) ─
   const [unlinkedServiceStaff, setUnlinkedServiceStaff] = useState<ServiceStaffRow[]>([]);
@@ -78,16 +98,14 @@ export function useAdminStaffManagement() {
     setListLoading(true);
     setListError(null);
     try {
-      // ดึงรายการพนักงานจากฝั่ง server ตามตัวกรองอื่น ๆ
-      // แต่ไม่ล็อค branch ที่ server เพื่อให้ dropdown สาขาแสดงครบ
-      const data = await adminStaffService.getAll({ ...filters, branch: '' });
-      setStaffList(data);
+      const data = await adminStaffService.getAll({});
+      setStaffDirectory(data);
     } catch (err: any) {
       setListError(err.message || 'โหลดข้อมูลพนักงานไม่สำเร็จ');
     } finally {
       setListLoading(false);
     }
-  }, [filters]);
+  }, []);
 
   useEffect(() => {
     fetchStaff();
@@ -268,6 +286,8 @@ export function useAdminStaffManagement() {
   return {
     // list
     staffList: filteredStaffList,
+    /** รายชื่อทั้งหมดไม่ผ่านตัวกรองตาราง — ใช้ใน modal นำเข้า/เปลี่ยนอีเมลเท่านั้น */
+    staffDirectoryFull: staffDirectory,
     listLoading,
     listError,
     filters,

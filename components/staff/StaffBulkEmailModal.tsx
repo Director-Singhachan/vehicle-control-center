@@ -45,6 +45,33 @@ function normalizeEmail(s: string): string {
   return s.trim().toLowerCase();
 }
 
+/** Excel มักอ่านรหัสเป็นตัวเลข (เช่น 1) ในของที่ DB เป็น 000001 */
+function buildStaffCodeIndex(staffList: StaffProfile[]): Map<string, StaffProfile> {
+  const m = new Map<string, StaffProfile>();
+  for (const s of staffList) {
+    const c = s.employee_code?.trim();
+    if (!c) continue;
+    m.set(c, s);
+    if (/^\d+$/.test(c)) {
+      const compact = String(parseInt(c, 10));
+      if (!m.has(compact)) {
+        m.set(compact, s);
+      }
+    }
+  }
+  return m;
+}
+
+function lookupStaffByCode(m: Map<string, StaffProfile>, rawCode: string): StaffProfile | undefined {
+  const t = rawCode.trim();
+  if (!t) return undefined;
+  if (m.has(t)) return m.get(t);
+  if (/^\d+$/.test(t)) {
+    return m.get(String(parseInt(t, 10)));
+  }
+  return undefined;
+}
+
 export const StaffBulkEmailModal: React.FC<StaffBulkEmailModalProps> = ({
   isOpen,
   onClose,
@@ -61,14 +88,7 @@ export const StaffBulkEmailModal: React.FC<StaffBulkEmailModalProps> = ({
   const [excelError, setExcelError] = useState<string | null>(null);
   const excelInputRef = useRef<HTMLInputElement>(null);
 
-  const byCode = useMemo(() => {
-    const m = new Map<string, StaffProfile>();
-    existingStaff.forEach((s) => {
-      const c = s.employee_code?.trim();
-      if (c) m.set(c, s);
-    });
-    return m;
-  }, [existingStaff]);
+  const byCode = useMemo(() => buildStaffCodeIndex(existingStaff), [existingStaff]);
 
   useEffect(() => {
     if (isOpen) {
@@ -219,7 +239,7 @@ export const StaffBulkEmailModal: React.FC<StaffBulkEmailModalProps> = ({
         preErrors.push(`รหัส ${code}: รูปแบบอีเมลไม่ถูกต้อง`);
         continue;
       }
-      const staff = byCode.get(code);
+      const staff = lookupStaffByCode(byCode, code);
       if (!staff) {
         preErrors.push(`รหัส ${code}: ไม่พบในระบบหรือยังไม่มีรหัสพนักงาน`);
         continue;
@@ -381,7 +401,9 @@ export const StaffBulkEmailModal: React.FC<StaffBulkEmailModalProps> = ({
             </thead>
             <tbody>
               {rows.map((row) => {
-                const st = row.employee_code.trim() ? byCode.get(row.employee_code.trim()) : undefined;
+                const st = row.employee_code.trim()
+                  ? lookupStaffByCode(byCode, row.employee_code)
+                  : undefined;
                 return (
                   <tr key={row.id} className="border-t border-slate-100 dark:border-slate-800">
                     <td className="px-3 py-2 align-top">

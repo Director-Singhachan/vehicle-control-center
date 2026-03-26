@@ -344,6 +344,10 @@ Deno.serve(async (req) => {
         }
       }
 
+      if (Object.keys(updates).length === 0) {
+        return jsonError('ไม่มีฟิลด์ที่จะอัปเดตใน profiles — ตรวจสอบค่า email/ฟิลด์ที่ส่งมา', 400);
+      }
+
       const { error } = await adminClient.from('profiles').update(updates).eq('id', user_id);
       if (error) throw error;
 
