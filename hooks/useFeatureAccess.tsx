@@ -13,6 +13,9 @@ import type { AccessLevel, FeatureKey } from '../types/featureAccess';
 import {
   accessLevelAtLeast,
   FEATURE_KEYS,
+  FEATURE_MATRIX_SURVIVAL_KEYS,
+  builtInLevel,
+  isPrivilegedRole,
   resolveAccessLevel,
   TAB_TO_PRIMARY_FEATURE,
 } from '../types/featureAccess';
@@ -34,10 +37,12 @@ function useFeatureAccessState(): UseFeatureAccessResult {
   const appRole = (profile?.role as AppRole) ?? null;
   const [dbMap, setDbMap] = useState<Partial<Record<FeatureKey, AccessLevel>>>({});
   const [loading, setLoading] = useState(true);
+  const [fetchFailed, setFetchFailed] = useState(false);
 
   const load = useCallback(async () => {
     if (!appRole) {
       setDbMap({});
+      setFetchFailed(false);
       setLoading(false);
       return;
     }
@@ -51,6 +56,7 @@ function useFeatureAccessState(): UseFeatureAccessResult {
       if (error) {
         console.warn('[useFeatureAccess] fetch skipped or failed:', error.message);
         setDbMap({});
+        setFetchFailed(true);
         return;
       }
       const next: Partial<Record<FeatureKey, AccessLevel>> = {};
@@ -61,6 +67,7 @@ function useFeatureAccessState(): UseFeatureAccessResult {
         }
       }
       setDbMap(next);
+      setFetchFailed(false);
     } finally {
       setLoading(false);
     }
@@ -78,11 +85,17 @@ function useFeatureAccessState(): UseFeatureAccessResult {
 
   const levelFor = useCallback(
     (feature: FeatureKey): AccessLevel => {
+      if (fetchFailed && appRole && !isPrivilegedRole(appRole)) {
+        if (FEATURE_MATRIX_SURVIVAL_KEYS.includes(feature)) {
+          return builtInLevel(appRole, feature);
+        }
+        return 'none';
+      }
       return resolveAccessLevel(appRole, feature, dbMap[feature], {
         roleHasDbCustomization,
       });
     },
-    [appRole, dbMap, roleHasDbCustomization],
+    [appRole, dbMap, fetchFailed, roleHasDbCustomization],
   );
 
   const can = useCallback(

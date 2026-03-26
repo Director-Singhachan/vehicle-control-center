@@ -2085,7 +2085,7 @@ const AppContent = () => {
                     isFlyout={false}
                   />
                 )}
-                {(!isDriver || isAdmin || isManager || isInspector || isExecutive) && (
+                {can('tab.settings', 'view') && (
                   <SubSidebarItem
                     label="ตั้งค่าแจ้งเตือน"
                     active={activeTab === 'settings'}
@@ -2136,7 +2136,7 @@ const AppContent = () => {
                         isFlyout={true}
                       />
                     )}
-                    {(!isDriver || isAdmin || isManager || isInspector || isExecutive) && (
+                    {can('tab.settings', 'view') && (
                       <SubSidebarItem
                         label="ตั้งค่าแจ้งเตือน"
                         active={activeTab === 'settings'}
