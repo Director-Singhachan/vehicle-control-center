@@ -6,15 +6,27 @@ import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
 import { Badge } from '../ui/Badge';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
-import { useAuth } from '../../hooks/useAuth';
 import { adminStaffService, type StaffProfile } from '../../services/adminStaffService';
 import type { AppRole } from '../../types/database';
+import {
+  staffColumnIndex,
+  STAFF_EMAIL_HEADER_CANDIDATES,
+} from '../../utils/staffExcelHeaders';
+
+export interface StaffImportBatchResult {
+    success: number;
+    failed: number;
+    errors: string[];
+    total: number;
+}
 
 interface StaffImportModalProps {
     isOpen: boolean;
     onClose: () => void;
     onSuccess: () => void;
     existingStaff: StaffProfile[];
+    /** สรุปหลังนำเข้า (ใช้แสดง toast — ก่อนหน้านี้แถวที่ error ถูกกลืนเงียบ) */
+    onImportBatchComplete?: (result: StaffImportBatchResult) => void;
 }
 
 interface ProcessedRow {
@@ -89,14 +101,21 @@ function inferBranch(position: string, branchCode: string): string {
     return 'HQ';
 }
 
-export const StaffImportModal: React.FC<StaffImportModalProps> = ({ isOpen, onClose, onSuccess, existingStaff }) => {
-    const { profile } = useAuth();
+export const StaffImportModal: React.FC<StaffImportModalProps> = ({
+    isOpen,
+    onClose,
+    onSuccess,
+    existingStaff,
+    onImportBatchComplete,
+}) => {
     const [file, setFile] = useState<File | null>(null);
     const [processedRows, setProcessedRows] = useState<ProcessedRow[]>([]);
     const [loading, setLoading] = useState(false);
     const [importing, setImporting] = useState(false);
     const [progress, setProgress] = useState(0);
     const [expandedRow, setExpandedRow] = useState<number | null>(null);
+    const [parseError, setParseError] = useState<string | null>(null);
+    const [missingEmailColumn, setMissingEmailColumn] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     // Filter and Sort states
@@ -168,6 +187,8 @@ export const StaffImportModal: React.FC<StaffImportModalProps> = ({ isOpen, onCl
         const f = e.target.files?.[0];
         if (f) {
             setFile(f);
+            setParseError(null);
+            setMissingEmailColumn(false);
             parseFile(f);
         }
     };
@@ -202,6 +223,9 @@ export const StaffImportModal: React.FC<StaffImportModalProps> = ({ isOpen, onCl
                 const colMap: Record<string, number> = {};
                 headers.forEach((h, idx) => { colMap[h] = idx; });
 
+                const emailCol = staffColumnIndex(colMap, STAFF_EMAIL_HEADER_CANDIDATES);
+                setMissingEmailColumn(emailCol === undefined);
+
                 const results: ProcessedRow[] = [];
                 const staffMap = new Map(existingStaff.map(s => [s.employee_code, s]));
 
@@ -218,7 +242,10 @@ export const StaffImportModal: React.FC<StaffImportModalProps> = ({ isOpen, onCl
                     const nickname = row[colMap['ชื่อเล่น']]?.toString().trim() || '';
                     const fullName = `${firstName} ${lastName}${nickname ? ` (${nickname})` : ''}`.trim();
                     const phone = row[colMap['เบอร์โทร']]?.toString().trim() || null;
-                    const email = row[colMap['Email']]?.toString().trim() || null;
+                    const email =
+                        emailCol !== undefined
+                            ? row[emailCol]?.toString().trim() || null
+                            : null;
                     const dept = row[colMap['ชื่อแผนก']]?.toString().trim() || null;
                     const pos = row[colMap['ชื่อตำแหน่ง']]?.toString().trim() || null;
                     const branchCode = row[colMap['รหัสสาขา']]?.toString().trim() || '';
@@ -285,8 +312,11 @@ export const StaffImportModal: React.FC<StaffImportModalProps> = ({ isOpen, onCl
                 }
 
                 setProcessedRows(results);
-            } catch (err: any) {
-                alert(err.message);
+            } catch (err: unknown) {
+                const message = err instanceof Error ? err.message : 'อ่านไฟล์ไม่สำเร็จ';
+                setParseError(message);
+                setProcessedRows([]);
+                setMissingEmailColumn(false);
             } finally {
                 setLoading(false);
             }
@@ -299,6 +329,7 @@ export const StaffImportModal: React.FC<StaffImportModalProps> = ({ isOpen, onCl
         setProgress(0);
         const toProcess = processedRows.filter(r => r.action !== 'skip');
         let successCount = 0;
+        const rowErrors: string[] = [];
 
         for (let i = 0; i < toProcess.length; i++) {
             const row = toProcess[i];
@@ -333,18 +364,33 @@ export const StaffImportModal: React.FC<StaffImportModalProps> = ({ isOpen, onCl
                             is_banned: row.is_resigned,
                             resignation_date: row.resignation_date,
                         });
+                    } else {
+                        throw new Error('ไม่พบผู้ใช้รหัสนี้ในระบบ');
                     }
                 }
                 successCount++;
-            } catch (err: any) {
-                console.error(`Failed to ${row.action} ${row.employee_code}:`, err.message);
+            } catch (err: unknown) {
+                const msg = err instanceof Error ? err.message : String(err);
+                console.error(`Failed to ${row.action} ${row.employee_code}:`, msg);
+                rowErrors.push(`รหัส ${row.employee_code}: ${msg}`);
             }
             setProgress(Math.round(((i + 1) / toProcess.length) * 100));
         }
 
+        const failedCount = toProcess.length - successCount;
         setImporting(false);
-        onSuccess();
-        onClose();
+        onImportBatchComplete?.({
+            success: successCount,
+            failed: failedCount,
+            errors: rowErrors,
+            total: toProcess.length,
+        });
+        if (successCount > 0) {
+            onSuccess();
+        }
+        if (successCount > 0 || toProcess.length === 0) {
+            onClose();
+        }
     };
 
     const renderSortIcon = (key: any) => {
@@ -369,6 +415,10 @@ export const StaffImportModal: React.FC<StaffImportModalProps> = ({ isOpen, onCl
                         <p className="text-sm text-slate-500 dark:text-slate-400 mb-8 text-center max-w-sm px-6">
                             รองรับไฟล์ <span className="font-bold">.xlsx (Sheet: Simple)</span><br />
                             ระบบจะเปรียบเทียบข้อมูลด้วยรหัสพนักงานเป็นหลัก
+                            <br />
+                            <span className="text-xs text-slate-400 dark:text-slate-500 mt-2 inline-block">
+                                คอลัมน์อีเมลรองรับชื่อ: Email / อีเมล / E-mail
+                            </span>
                         </p>
                         <input
                             type="file"
@@ -399,7 +449,17 @@ export const StaffImportModal: React.FC<StaffImportModalProps> = ({ isOpen, onCl
                                     <span className="text-[10px] text-slate-500 font-medium">ขนาด {(file.size / 1024).toFixed(1)} KB</span>
                                 </div>
                             </div>
-                            <Button variant="ghost" size="sm" onClick={() => { setFile(null); setProcessedRows([]); }} className="text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 font-bold text-xs px-4">
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => {
+                                    setFile(null);
+                                    setProcessedRows([]);
+                                    setParseError(null);
+                                    setMissingEmailColumn(false);
+                                }}
+                                className="text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 font-bold text-xs px-4"
+                            >
                                 เปลี่ยนไฟล์
                             </Button>
                         </div>
@@ -419,6 +479,28 @@ export const StaffImportModal: React.FC<StaffImportModalProps> = ({ isOpen, onCl
                             </div>
                         ) : (
                             <>
+                                {parseError && (
+                                    <div className="p-4 rounded-xl border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 flex items-start gap-3">
+                                        <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400 shrink-0 mt-0.5" />
+                                        <div>
+                                            <p className="text-sm font-semibold text-red-800 dark:text-red-200">อ่านไฟล์ไม่สำเร็จ</p>
+                                            <p className="text-xs text-red-700 dark:text-red-300 mt-1">{parseError}</p>
+                                        </div>
+                                    </div>
+                                )}
+                                {!parseError && missingEmailColumn && (
+                                    <div className="p-4 rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 flex items-start gap-3">
+                                        <Info className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                                        <div>
+                                            <p className="text-sm font-semibold text-amber-800 dark:text-amber-200">ไม่พบคอลัมน์อีเมลในไฟล์</p>
+                                            <p className="text-xs text-amber-700 dark:text-amber-300 mt-1">
+                                                ตั้งหัวคอลัมน์เป็น <span className="font-mono">Email</span>,{' '}
+                                                <span className="font-mono">อีเมล</span>, <span className="font-mono">email</span> หรือ{' '}
+                                                <span className="font-mono">E-mail</span> — ไม่เช่นนั้นอีเมลจะว่างและจะไม่ถูกอัปเดตจากไฟล์นี้
+                                            </p>
+                                        </div>
+                                    </div>
+                                )}
                                 {/* Stats & Integrated Filters Ribbon */}
                                 <div className="space-y-4">
                                     <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">

@@ -23,10 +23,11 @@ interface ModalState {
   confirmToggle: StaffProfile | null;
   confirmDelete: StaffProfile | null;
   import: boolean;
+  bulkEmail: boolean;
 }
 
 export function useAdminStaffManagement() {
-  const { toasts, success, error: showError, dismissToast } = useToast();
+  const { toasts, success, error: showError, warning, dismissToast } = useToast();
 
   // ─── List state ──────────────────────────────────────────────────────────
   const [staffList, setStaffList] = useState<StaffProfile[]>([]);
@@ -42,6 +43,7 @@ export function useAdminStaffManagement() {
     confirmToggle: null,
     confirmDelete: null,
     import: false,
+    bulkEmail: false,
   });
 
   // ─── Operation loading ───────────────────────────────────────────────────
@@ -296,12 +298,14 @@ export function useAdminStaffManagement() {
     openConfirmToggle: (staff: StaffProfile) => setModals((m) => ({ ...m, confirmToggle: staff })),
     openConfirmDelete: (staff: StaffProfile) => setModals((m) => ({ ...m, confirmDelete: staff })),
     openImport: () => setModals((m) => ({ ...m, import: true })),
+    openBulkEmail: () => setModals((m) => ({ ...m, bulkEmail: true })),
     closeCreate: () => { setCreateError(null); setModals((m) => ({ ...m, create: false })); },
     closeEdit: () => setModals((m) => ({ ...m, edit: null })),
     closeResetPassword: () => setModals((m) => ({ ...m, resetPassword: null })),
     closeConfirmToggle: () => setModals((m) => ({ ...m, confirmToggle: null })),
     closeConfirmDelete: () => setModals((m) => ({ ...m, confirmDelete: null })),
     closeImport: () => setModals((m) => ({ ...m, import: false })),
+    closeBulkEmail: () => setModals((m) => ({ ...m, bulkEmail: false })),
 
     // operations
     submitting,
@@ -322,5 +326,8 @@ export function useAdminStaffManagement() {
     // toast
     toasts,
     dismissToast,
+    notifySuccess: success,
+    notifyError: showError,
+    notifyWarning: warning,
   };
 }

@@ -1,5 +1,5 @@
 import React from 'react';
-import { UserPlus, ShieldAlert, Upload } from 'lucide-react';
+import { UserPlus, ShieldAlert, Upload, Mail } from 'lucide-react';
 import { PageLayout } from '../components/layout/PageLayout';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
@@ -9,6 +9,7 @@ import { StaffCreateModal } from '../components/staff/StaffCreateModal';
 import { StaffEditModal } from '../components/staff/StaffEditModal';
 import { StaffResetPasswordModal } from '../components/staff/StaffResetPasswordModal';
 import { StaffImportModal } from '../components/staff/StaffImportModal';
+import { StaffBulkEmailModal } from '../components/staff/StaffBulkEmailModal';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { useAdminStaffManagement } from '../hooks/useAdminStaffManagement';
 import { useAuth } from '../hooks';
@@ -31,12 +32,14 @@ export const AdminStaffManagementView: React.FC = () => {
     openConfirmToggle,
     openConfirmDelete,
     openImport,
+    openBulkEmail,
     closeCreate,
     closeEdit,
     closeResetPassword,
     closeConfirmToggle,
     closeConfirmDelete,
     closeImport,
+    closeBulkEmail,
     submitting,
     createError,
     handleCreate,
@@ -52,6 +55,9 @@ export const AdminStaffManagementView: React.FC = () => {
     relinkLoading,
     toasts,
     dismissToast,
+    notifySuccess,
+    notifyError,
+    notifyWarning,
   } = useAdminStaffManagement();
 
   // ─── Access guard ─────────────────────────────────────────────────────────
@@ -77,6 +83,10 @@ export const AdminStaffManagementView: React.FC = () => {
           <Button variant="outline" onClick={openImport}>
             <Upload size={16} className="mr-1.5" />
             นำเข้าพนักงาน (Excel)
+          </Button>
+          <Button variant="outline" onClick={openBulkEmail}>
+            <Mail size={16} className="mr-1.5" />
+            เปลี่ยนอีเมล
           </Button>
           <Button onClick={openCreate}>
             <UserPlus size={16} className="mr-1.5" />
@@ -132,11 +142,70 @@ export const AdminStaffManagementView: React.FC = () => {
         onClose={closeResetPassword}
       />
       
+      <StaffBulkEmailModal
+        isOpen={modals.bulkEmail}
+        onClose={closeBulkEmail}
+        existingStaff={staffList}
+        onSuccessRefetch={refetch}
+        onBatchComplete={(r) => {
+          if (r.total === 0) {
+            notifyWarning('กรุณากรอกอย่างน้อยหนึ่งแถว (รหัสพนักงาน + อีเมลใหม่)');
+            return;
+          }
+          if (r.errors.length > 0 && r.success === 0 && r.failed === 0) {
+            notifyError(r.errors[0], 12000);
+            return;
+          }
+          if (r.failed > 0 && r.success === 0) {
+            notifyError(
+              `เปลี่ยนอีเมลไม่สำเร็จ ${r.failed} รายการ${r.errors[0] ? ` — ${r.errors[0]}` : ''}`,
+              12000,
+            );
+            return;
+          }
+          if (r.failed > 0) {
+            notifyWarning(
+              `เปลี่ยนอีเมลสำเร็จ ${r.success} รายการ · ล้มเหลว ${r.failed}${r.errors[0] ? ` — ${r.errors[0]}` : ''}`,
+              12000,
+            );
+            return;
+          }
+          if (r.success > 0) {
+            notifySuccess(`เปลี่ยนอีเมลสำเร็จ ${r.success} รายการ`);
+            return;
+          }
+          if (r.skipped > 0 && r.skipped === r.total) {
+            notifyWarning('ทุกแถวเป็นอีเมลเดิมอยู่แล้ว — ไม่มีการบันทึก');
+          }
+        }}
+      />
+
       <StaffImportModal
         isOpen={modals.import}
         existingStaff={staffList}
         onClose={closeImport}
         onSuccess={refetch}
+        onImportBatchComplete={({ success: ok, failed, errors, total }) => {
+          if (total === 0) {
+            notifyWarning('ไม่มีรายการที่ต้องบันทึก (ทุกแถวถูกข้าม)');
+            return;
+          }
+          if (failed > 0 && ok === 0) {
+            notifyError(
+              `นำเข้าไม่สำเร็จทั้งหมด ${failed} รายการ${errors[0] ? ` — ${errors[0]}` : ''}`,
+              12000,
+            );
+            return;
+          }
+          if (failed > 0) {
+            notifyWarning(
+              `นำเข้าสำเร็จ ${ok} รายการ · ล้มเหลว ${failed} รายการ${errors[0] ? ` — ${errors[0]}` : ''}`,
+              12000,
+            );
+            return;
+          }
+          notifySuccess(`นำเข้าสำเร็จ ${ok} รายการ`);
+        }}
       />
 
       <ConfirmDialog
