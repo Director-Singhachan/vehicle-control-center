@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { AppRole } from '../types/database';
 import type { AccessLevel, FeatureKey } from '../types/featureAccess';
-import { builtInMatrixForRole, FEATURE_KEYS } from '../types/featureAccess';
+import { builtInMatrixForRole, FEATURE_KEYS, matrixForAdminEditor } from '../types/featureAccess';
 import {
   clearRoleFeatureOverrides,
   fetchRoleFeatureMatrix,
@@ -24,14 +24,8 @@ export function useRoleFeatureAccessSettings() {
     setLoading(true);
     setError(null);
     try {
-      const base = builtInMatrixForRole(role);
       const rows = await fetchRoleFeatureMatrix(role);
-      const next = { ...base };
-      for (const r of rows) {
-        const k = r.feature_key as FeatureKey;
-        if (FEATURE_KEYS.includes(k)) next[k] = r.access_level;
-      }
-      setLevels(next);
+      setLevels(matrixForAdminEditor(role, rows));
     } catch (e) {
       setError(e instanceof Error ? e.message : 'โหลดข้อมูลไม่สำเร็จ');
       setLevels(builtInMatrixForRole(role));
@@ -54,6 +48,8 @@ export function useRoleFeatureAccessSettings() {
       });
       try {
         await upsertSingleRoleFeature(selectedRole, key, level);
+        const rows = await fetchRoleFeatureMatrix(selectedRole);
+        setLevels(matrixForAdminEditor(selectedRole, rows));
       } catch (e) {
         if (rollback !== undefined) {
           setLevels((p) => ({ ...p, [key]: rollback }));

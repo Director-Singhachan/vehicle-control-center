@@ -53,6 +53,17 @@ export const FEATURE_KEYS = [
 
 export type FeatureKey = (typeof FEATURE_KEYS)[number];
 
+/**
+ * เมื่อ role มีแถวใน role_feature_access อย่างน้อยหนึ่งแถว — ฟีเจอร์ที่ไม่มีใน DB จะเป็น none (ไม่ fallback built-in เต็มรายการ)
+ * ยกเว้นกลุ่มนี้ที่ยังใช้ built-in เพื่อให้เข้าโปรไฟล์ / ตั้งค่าพื้นฐานได้ (ยังตั้งเป็น none ใน matrix ได้ถ้าต้องการปิดจริง ๆ)
+ */
+export const FEATURE_MATRIX_SURVIVAL_KEYS: readonly FeatureKey[] = ['tab.profile', 'tab.settings'];
+
+export interface ResolveAccessLevelOptions {
+  /** true เมื่อโหลด matrix แล้วและ role นี้มีอย่างน้อยหนึ่งแถวใน DB */
+  roleHasDbCustomization?: boolean;
+}
+
 /** แมปแท็บหลัก (activeTab) → ฟีเจอร์หลักสำหรับ guard เมนู/หน้า */
 export const TAB_TO_PRIMARY_FEATURE: Record<string, FeatureKey> = {
   reports: 'tab.reports',
@@ -305,13 +316,24 @@ export function builtInPnlFlags(role: AppRole | null): {
   };
 }
 
-/** merge DB row ทับ built-in */
+/** merge DB row ทับ built-in — ถ้ามี roleHasDbCustomization และไม่ใช่ admin/hr ช่องที่ไม่มีแถวใน DB = none */
 export function resolveAccessLevel(
   role: AppRole | null,
   feature: FeatureKey,
   dbLevel: AccessLevel | undefined,
+  options?: ResolveAccessLevelOptions,
 ): AccessLevel {
   if (dbLevel !== undefined) return dbLevel;
+  const strict =
+    options?.roleHasDbCustomization === true &&
+    role != null &&
+    !isPrivilegedRole(role);
+  if (strict) {
+    if (FEATURE_MATRIX_SURVIVAL_KEYS.includes(feature)) {
+      return builtInLevel(role, feature);
+    }
+    return 'none';
+  }
   return builtInLevel(role, feature);
 }
 
@@ -320,4 +342,34 @@ export function builtInMatrixForRole(role: AppRole | null): Record<FeatureKey, A
   return Object.fromEntries(
     FEATURE_KEYS.map((k) => [k, builtInLevel(role, k)]),
   ) as Record<FeatureKey, AccessLevel>;
+}
+
+/**
+ * Matrix เต็มสำหรับหน้าแก้สิทธิ์ — สอดคล้อง resolveAccessLevel แบบ strict:
+ * ถ้ามีแถวใน DB อย่างน้อยหนึ่งแถว ฟีเจอร์ที่ไม่มีแถว = none (ยกเว้น profile/settings ใช้ built-in)
+ */
+export function matrixForAdminEditor(
+  role: AppRole,
+  rows: { feature_key: string; access_level: AccessLevel }[],
+): Record<FeatureKey, AccessLevel> {
+  const base = builtInMatrixForRole(role);
+  const rowMap: Partial<Record<FeatureKey, AccessLevel>> = {};
+  for (const r of rows) {
+    const k = r.feature_key as FeatureKey;
+    if (FEATURE_KEYS.includes(k)) rowMap[k] = r.access_level;
+  }
+  const hasDbRows = Object.keys(rowMap).length > 0;
+  const next = {} as Record<FeatureKey, AccessLevel>;
+  for (const k of FEATURE_KEYS) {
+    if (rowMap[k] !== undefined) {
+      next[k] = rowMap[k]!;
+    } else if (!hasDbRows) {
+      next[k] = base[k];
+    } else if (FEATURE_MATRIX_SURVIVAL_KEYS.includes(k)) {
+      next[k] = base[k];
+    } else {
+      next[k] = 'none';
+    }
+  }
+  return next;
 }

@@ -4,6 +4,7 @@ import {
   builtInLevel,
   builtInMatrixForRole,
   isPrivilegedRole,
+  matrixForAdminEditor,
   resolveAccessLevel,
 } from '../../../types/featureAccess';
 
@@ -30,9 +31,52 @@ describe('featureAccess', () => {
     expect(resolveAccessLevel('manager', 'tab.admin_staff', undefined)).toBe('none');
   });
 
+  it('resolveAccessLevel strict matrix: unset features are none when role has DB rows', () => {
+    expect(
+      resolveAccessLevel('sales', 'tab.create_order', undefined, { roleHasDbCustomization: true }),
+    ).toBe('none');
+    expect(
+      resolveAccessLevel('sales', 'tab.vehicles', 'view', { roleHasDbCustomization: true }),
+    ).toBe('view');
+    expect(
+      resolveAccessLevel('sales', 'tab.profile', undefined, { roleHasDbCustomization: true }),
+    ).toBe('manage');
+    expect(
+      resolveAccessLevel('sales', 'tab.settings', undefined, { roleHasDbCustomization: true }),
+    ).toBe('view');
+  });
+
+  it('resolveAccessLevel strict matrix does not apply to privileged roles', () => {
+    expect(
+      resolveAccessLevel('admin', 'tab.create_order', undefined, { roleHasDbCustomization: true }),
+    ).toBe('manage');
+  });
+
+  it('resolveAccessLevel without strict uses built-in for missing DB cell', () => {
+    expect(resolveAccessLevel('sales', 'tab.create_order', undefined, { roleHasDbCustomization: false })).toBe(
+      'manage',
+    );
+    expect(resolveAccessLevel('sales', 'tab.create_order', undefined)).toBe('manage');
+  });
+
   it('builtInMatrixForRole returns all keys', () => {
     const m = builtInMatrixForRole('driver');
     expect(m['tab.triplogs']).toBe('manage');
     expect(m['tab.reports']).toBe('none');
+  });
+
+  it('matrixForAdminEditor uses none for missing keys when DB has rows', () => {
+    const m = matrixForAdminEditor('sales', [
+      { feature_key: 'tab.vehicles', access_level: 'view' },
+    ]);
+    expect(m['tab.vehicles']).toBe('view');
+    expect(m['tab.create_order']).toBe('none');
+    expect(m['tab.profile']).toBe('manage');
+    expect(m['tab.settings']).toBe('view');
+  });
+
+  it('matrixForAdminEditor uses full built-in when DB empty', () => {
+    const m = matrixForAdminEditor('sales', []);
+    expect(m['tab.create_order']).toBe('manage');
   });
 });

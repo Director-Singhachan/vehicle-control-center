@@ -70,11 +70,19 @@ function useFeatureAccessState(): UseFeatureAccessResult {
     void load();
   }, [load]);
 
+  /** มีแถวใน DB อย่างน้อยหนึ่งแถว = ใช้ matrix แบบครบ: ช่องว่าง = none (ไม่ดึง built-in ทั้งบทบาท) */
+  const roleHasDbCustomization = useMemo(
+    () => !loading && Object.keys(dbMap).length > 0,
+    [loading, dbMap],
+  );
+
   const levelFor = useCallback(
     (feature: FeatureKey): AccessLevel => {
-      return resolveAccessLevel(appRole, feature, dbMap[feature]);
+      return resolveAccessLevel(appRole, feature, dbMap[feature], {
+        roleHasDbCustomization,
+      });
     },
-    [appRole, dbMap],
+    [appRole, dbMap, roleHasDbCustomization],
   );
 
   const can = useCallback(

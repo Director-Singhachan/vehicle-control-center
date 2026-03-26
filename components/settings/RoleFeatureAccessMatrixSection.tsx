@@ -211,6 +211,10 @@ export const RoleFeatureAccessMatrixSection: React.FC<RoleFeatureAccessMatrixSec
               <span className="font-semibold text-slate-700 dark:text-slate-300">{totals.none}</span> — ต่างจากค่าเริ่มต้นในโปรแกรม{' '}
               <span className="font-semibold text-amber-600 dark:text-amber-400">{totals.diff}</span> รายการ
             </p>
+            <p className="text-xs text-slate-600 dark:text-slate-400 mt-2 leading-relaxed border-t border-slate-200/80 dark:border-slate-700/80 pt-2">
+              เมื่อบันทึกสิทธิ์ลงระบบอย่างน้อยหนึ่งรายการต่อบทบาทนี้ ผู้ใช้จะเห็นเฉพาะฟีเจอร์ที่เปิดในรายการนี้เท่านั้น — ช่องที่ไม่ได้บันทึกจะไม่แสดงเมนู
+              (โปรไฟล์ / ตั้งค่า ใช้ค่าเริ่มต้นของบทบาทจนกว่าจะตั้งในนี้) หากลบแถวของบทบาทนั้นหมดจากฐานข้อมูลจะกลับไปใช้สิทธิ์เริ่มต้นของโปรแกรมทั้งบทบาท
+            </p>
           </div>
         </div>
         <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
