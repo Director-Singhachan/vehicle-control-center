@@ -1,16 +1,24 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import { getAreaGroupKey, getDistrictKey } from '../utils/parseThaiAddress';
+import type { OrderBranchScope } from '../utils/orderUserScope';
 
 interface UsePendingOrdersFiltersOptions {
     orders: any[] | null;
     profile: { role?: string; branch?: string } | null;
+    scope?: OrderBranchScope;
 }
 
-export function usePendingOrdersFilters({ orders, profile }: UsePendingOrdersFiltersOptions) {
+export function usePendingOrdersFilters({ orders, profile, scope }: UsePendingOrdersFiltersOptions) {
     // ── Filter State ──
     const [searchQuery, setSearchQuery] = useState('');
     const [dateFilter, setDateFilter] = useState('');
     const [branchFilter, setBranchFilter] = useState<string>(() => {
+        if (scope?.loading) return 'ALL';
+        if (scope && !scope.unrestricted) {
+            if (scope.allowedBranches.length === 1) return scope.allowedBranches[0];
+            if (scope.allowedBranches.length > 1) return 'ALL';
+            return 'ALL';
+        }
         const isHighLevel = profile?.role === 'admin' || profile?.role === 'manager' || profile?.role === 'inspector' || profile?.role === 'executive';
         if (isHighLevel || profile?.branch === 'HQ') {
             return 'ALL';
@@ -25,9 +33,24 @@ export function usePendingOrdersFilters({ orders, profile }: UsePendingOrdersFil
     const [districtFilter, setDistrictFilter] = useState<string>('ALL');
     const [subDistrictFilter, setSubDistrictFilter] = useState<string>('ALL');
 
+    useEffect(() => {
+        if (!scope || scope.loading || scope.unrestricted) return;
+        const allowed = scope.allowedBranches;
+        if (allowed.length === 1) {
+            setBranchFilter((prev) => (prev !== allowed[0] ? allowed[0] : prev));
+            return;
+        }
+        if (allowed.length > 1 && branchFilter !== 'ALL' && !allowed.includes(branchFilter)) {
+            setBranchFilter('ALL');
+        }
+    }, [scope, branchFilter]);
+
     // ── Computed: Filtered Orders ──
     const filteredOrders = useMemo(() => {
         if (!orders) return [];
+
+        const scopeAllowedBranches = scope?.allowedBranches ?? [];
+        const scopeRestrictionActive = !!scope && !scope.loading && !scope.unrestricted;
 
         return orders.filter((order: any) => {
             const matchesSearch = !searchQuery ||
@@ -37,12 +60,24 @@ export function usePendingOrdersFilters({ orders, profile }: UsePendingOrdersFil
 
             const matchesDate = !dateFilter || order.delivery_date === dateFilter;
 
-            const matchesBranch = !branchFilter || branchFilter === 'ALL' ||
+            let matchesBranch = !branchFilter || branchFilter === 'ALL' ||
                 (order.branch && order.branch === branchFilter);
+
+            if (scope?.loading) {
+                matchesBranch = false;
+            } else if (scopeRestrictionActive) {
+                if (!branchFilter || branchFilter === 'ALL') {
+                    matchesBranch = !!order.branch && scopeAllowedBranches.includes(order.branch);
+                } else {
+                    matchesBranch =
+                        scopeAllowedBranches.includes(branchFilter) &&
+                        order.branch === branchFilter;
+                }
+            }
 
             return matchesSearch && matchesDate && matchesBranch;
         });
-    }, [orders, searchQuery, dateFilter, branchFilter]);
+    }, [orders, searchQuery, dateFilter, branchFilter, scope]);
 
     // ── Computed: Filtered Orders Total ──
     const filteredOrdersTotal = useMemo(() => {

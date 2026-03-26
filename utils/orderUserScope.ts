@@ -38,7 +38,7 @@ export function resolveOrderBranchScope(
   loading: boolean,
 ): OrderBranchScope {
   if (loading) {
-    return { loading: true, unrestricted: true, allowedBranches: [] };
+    return { loading: true, unrestricted: false, allowedBranches: [] };
   }
 
   if (dbVisibility === 'all_branches') {
@@ -66,7 +66,8 @@ export function filterByOrderBranchScope<T extends { branch?: string | null }>(
   rows: T[],
   scope: OrderBranchScope,
 ): T[] {
-  if (scope.loading || scope.unrestricted) return rows;
+  if (scope.loading) return [];
+  if (scope.unrestricted) return rows;
   const set = new Set(scope.allowedBranches);
   return rows.filter((r) => r.branch != null && set.has(String(r.branch)));
 }
@@ -78,7 +79,7 @@ export function orderQueryFiltersForUiBranch(
   allSentinel: string,
 ): { branch?: string; branchesIn?: string[] } | undefined {
   const isAll = !uiBranchValue || uiBranchValue === allSentinel;
-  if (scope.loading) return undefined;
+  if (scope.loading) return { branchesIn: [] };
 
   if (scope.unrestricted) {
     return isAll ? undefined : { branch: uiBranchValue };

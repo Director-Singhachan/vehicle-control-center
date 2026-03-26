@@ -30,6 +30,7 @@ import { Card } from '../components/ui/Card';
 import { PageLayout } from '../components/layout/PageLayout';
 import { ImageModal } from '../components/ui/ImageModal';
 import { useDeliveryTrips, useVehicles, useAuth } from '../hooks';
+import { useFeatureAccess } from '../hooks/useFeatureAccess';
 import { deliveryTripService, type DeliveryTripWithRelations } from '../services/deliveryTripService';
 import { tripMetricsService } from '../services/tripMetricsService';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
@@ -45,6 +46,7 @@ export const DeliveryTripListView: React.FC<DeliveryTripListViewProps> = ({
 }) => {
   const { vehicles } = useVehicles();
   const { isReadOnly, profile } = useAuth(); // Get user profile for branch info
+  const { can } = useFeatureAccess();
   // State for filters and pagination
   // Initialize from sessionStorage if available to persist state across navigation (e.g. back button)
   const getInitialState = <T,>(key: string, defaultValue: T): T => {
@@ -108,9 +110,9 @@ export const DeliveryTripListView: React.FC<DeliveryTripListViewProps> = ({
   const [isCancelling, setIsCancelling] = useState(false);
   const [deleteTripId, setDeleteTripId] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
-  const { isAdmin, isManager } = useAuth();
   const [selectedImage, setSelectedImage] = useState<{ url: string; alt: string } | null>(null);
   const [tripsWithLayout, setTripsWithLayout] = useState<Set<string>>(new Set());
+  const canDeleteTrips = can('tab.delivery_trips', 'manage');
 
   const { trips, total, loading, error, refetch, prefetch } = useDeliveryTrips({
     status: statusFilter !== 'all' && Array.isArray(statusFilter) ? statusFilter : undefined,
@@ -559,7 +561,7 @@ export const DeliveryTripListView: React.FC<DeliveryTripListViewProps> = ({
                         ยกเลิก
                       </Button>
                     )}
-                    {(isAdmin || isManager) && trip.status !== 'completed' && (
+                    {canDeleteTrips && trip.status !== 'completed' && (
                       <Button
                         variant="outline"
                         size="sm"

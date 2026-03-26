@@ -1717,7 +1717,7 @@ const AppContent = () => {
                             can('tab.vehicles', 'view') ||
                             can('tab.daily_summary', 'view'))) ||
                           can('tab.approvals', 'view') ||
-                          (isAdmin && can('tab.service_staff', 'view'))) && (
+                          can('tab.service_staff', 'view')) && (
                           <MenuSectionHeader label="เฉพาะเจ้าหน้าที่ / Manager" />
                         )}
 
@@ -1773,7 +1773,7 @@ const AppContent = () => {
                           />
                         )}
 
-                        {isAdmin && can('tab.service_staff', 'view') && (
+                        {can('tab.service_staff', 'view') && (
                           <SubSidebarItem
                             label="จัดการพนักงาน"
                             active={activeTab === 'service-staff'}

@@ -221,7 +221,11 @@ export const ordersService = {
    * แสดงเมื่อ: delivery_trip_id IS NULL, remaining > 0, status ไม่ใช่ delivered, ไม่ใช้รหัสเก่า (-ORD-)
    * remaining = สั่ง - รับที่ร้าน - ส่งแล้ว (จาก order_items)
    */
-  async getPendingOrders(filters?: { branch?: string }) {
+  async getPendingOrders(filters?: { branch?: string; branchesIn?: string[] }) {
+    if (filters?.branchesIn !== undefined && filters.branchesIn.length === 0) {
+      return [];
+    }
+
     let query = supabase
       .from('orders_with_details')
       .select('*')
@@ -229,7 +233,9 @@ export const ordersService = {
       .is('delivery_trip_id', null) // เฉพาะออเดอร์ที่ยังไม่จัดทริป
       .order('created_at', { ascending: true });
 
-    if (filters?.branch && filters.branch !== 'ALL') {
+    if (filters?.branchesIn !== undefined) {
+      query = query.in('branch', filters.branchesIn);
+    } else if (filters?.branch && filters.branch !== 'ALL') {
       query = query.eq('branch', filters.branch);
     }
 
