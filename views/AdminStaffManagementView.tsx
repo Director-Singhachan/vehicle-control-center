@@ -12,10 +12,14 @@ import { StaffImportModal } from '../components/staff/StaffImportModal';
 import { StaffBulkEmailModal } from '../components/staff/StaffBulkEmailModal';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { useAdminStaffManagement } from '../hooks/useAdminStaffManagement';
-import { useAuth } from '../hooks';
+import { useFeatureAccess } from '../hooks/useFeatureAccess';
 
 export const AdminStaffManagementView: React.FC = () => {
-  const { isAdmin, isHR } = useAuth();
+  const { can } = useFeatureAccess();
+  const canView = can('tab.admin_staff', 'view');
+  const canEdit = can('tab.admin_staff', 'edit');
+  const canManage = can('tab.admin_staff', 'manage');
+
   const {
     staffList,
     staffDirectoryFull,
@@ -61,15 +65,12 @@ export const AdminStaffManagementView: React.FC = () => {
     notifyWarning,
   } = useAdminStaffManagement();
 
-  // ─── Access guard ─────────────────────────────────────────────────────────
-  if (!isAdmin && !isHR) {
+  if (!canView) {
     return (
       <PageLayout title="จัดการบัญชีพนักงาน">
         <Card className="p-10 text-center">
           <ShieldAlert size={40} className="mx-auto mb-4 text-red-400" />
-          <p className="text-slate-600 dark:text-slate-400">
-            คุณไม่มีสิทธิ์เข้าถึงหน้านี้ (ต้องเป็น Admin หรือ HR)
-          </p>
+          <p className="text-slate-600 dark:text-slate-400">คุณไม่มีสิทธิ์เข้าถึงหน้านี้</p>
         </Card>
       </PageLayout>
     );
@@ -80,23 +81,24 @@ export const AdminStaffManagementView: React.FC = () => {
       title="จัดการบัญชีพนักงาน"
       subtitle={`พนักงานทั้งหมด ${staffList.length} คน`}
       actions={
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={openImport}>
-            <Upload size={16} className="mr-1.5" />
-            นำเข้าพนักงาน (Excel)
-          </Button>
-          <Button variant="outline" onClick={openBulkEmail}>
-            <Mail size={16} className="mr-1.5" />
-            เปลี่ยนอีเมล
-          </Button>
-          <Button onClick={openCreate}>
-            <UserPlus size={16} className="mr-1.5" />
-            สร้างพนักงานใหม่
-          </Button>
-        </div>
+        canEdit ? (
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={openImport}>
+              <Upload size={16} className="mr-1.5" />
+              นำเข้าพนักงาน (Excel)
+            </Button>
+            <Button variant="outline" onClick={openBulkEmail}>
+              <Mail size={16} className="mr-1.5" />
+              เปลี่ยนอีเมล
+            </Button>
+            <Button onClick={openCreate}>
+              <UserPlus size={16} className="mr-1.5" />
+              สร้างพนักงานใหม่
+            </Button>
+          </div>
+        ) : undefined
       }
     >
-      {/* ── Staff list ─────────────────────────────────────────────── */}
       <StaffListSection
         staffList={staffList}
         loading={listLoading}
@@ -106,13 +108,12 @@ export const AdminStaffManagementView: React.FC = () => {
         onFilterChange={setFilters}
         onRefetch={refetch}
         onExport={handleExport}
-        onEdit={openEdit}
-        onResetPassword={openResetPassword}
-        onToggleStatus={openConfirmToggle}
-        onDeleteUser={isAdmin || isHR ? openConfirmDelete : undefined}
+        onEdit={canEdit ? openEdit : undefined}
+        onResetPassword={canEdit ? openResetPassword : undefined}
+        onToggleStatus={canEdit ? openConfirmToggle : undefined}
+        onDeleteUser={canManage ? openConfirmDelete : undefined}
       />
 
-      {/* ── Modals ─────────────────────────────────────────────────── */}
       <StaffCreateModal
         isOpen={modals.create}
         branches={branches}
@@ -142,7 +143,7 @@ export const AdminStaffManagementView: React.FC = () => {
         onSubmit={handleResetPassword}
         onClose={closeResetPassword}
       />
-      
+
       <StaffBulkEmailModal
         isOpen={modals.bulkEmail}
         onClose={closeBulkEmail}
@@ -212,17 +213,17 @@ export const AdminStaffManagementView: React.FC = () => {
       <ConfirmDialog
         isOpen={!!modals.confirmToggle}
         title={
-          (modals.confirmToggle as any)?.is_banned
+          (modals.confirmToggle as { is_banned?: boolean })?.is_banned
             ? `เปิดบัญชี "${modals.confirmToggle?.full_name}"?`
             : `ปิดบัญชี "${modals.confirmToggle?.full_name}"?`
         }
         message={
-          (modals.confirmToggle as any)?.is_banned
+          (modals.confirmToggle as { is_banned?: boolean })?.is_banned
             ? 'พนักงานจะสามารถ login เข้าระบบได้อีกครั้ง'
             : 'พนักงานจะไม่สามารถ login เข้าระบบได้จนกว่าจะเปิดบัญชีอีกครั้ง'
         }
-        confirmText={(modals.confirmToggle as any)?.is_banned ? 'เปิดบัญชี' : 'ปิดบัญชี'}
-        variant={(modals.confirmToggle as any)?.is_banned ? 'info' : 'danger'}
+        confirmText={(modals.confirmToggle as { is_banned?: boolean })?.is_banned ? 'เปิดบัญชี' : 'ปิดบัญชี'}
+        variant={(modals.confirmToggle as { is_banned?: boolean })?.is_banned ? 'info' : 'danger'}
         onConfirm={() => modals.confirmToggle && handleToggleStatus(modals.confirmToggle)}
         onCancel={closeConfirmToggle}
       />

@@ -60,6 +60,9 @@ const AdminStaffManagementView = lazy(() => import('./views/AdminStaffManagement
 const StaffVehicleUsageView = lazy(() => import('./views/StaffVehicleUsageView').then(m => ({ default: m.StaffVehicleUsageView })));
 const CommissionManagementView = lazy(() => import('./views/CommissionManagementView').then(m => ({ default: m.CommissionManagementView })));
 const CommissionRatesView = lazy(() => import('./views/CommissionRatesView').then(m => ({ default: m.CommissionRatesView })));
+const RoleFeatureAccessSettingsView = lazy(() =>
+  import('./views/RoleFeatureAccessSettingsView').then(m => ({ default: m.RoleFeatureAccessSettingsView })),
+);
 const StockDashboardView = lazy(() => import('./views/StockDashboardView').then(m => ({ default: m.StockDashboardView })));
 const ProductsManagementView = lazy(() => import('./views/ProductsManagementView').then(m => ({ default: m.ProductsManagementView })));
 const WarehouseManagementView = lazy(() => import('./views/WarehouseManagementView').then(m => ({ default: m.WarehouseManagementView })));
@@ -79,6 +82,7 @@ const CleanupTestOrdersView = lazy(() => import('./views/CleanupTestOrdersView')
 const PackingSimulationView = lazy(() => import('./views/PackingSimulationView').then(m => ({ default: m.PackingSimulationView })));
 const ExcelImportView = lazy(() => import('./views/ExcelImportView').then(m => ({ default: m.ExcelImportView })));
 import { ProtectedRoute } from './components/ProtectedRoute';
+import { FeatureAccessProvider, useFeatureAccess } from './hooks/useFeatureAccess';
 import { useAuth, usePendingTickets } from './hooks';
 import { usePendingBillingTrips } from './hooks/usePendingBillingTrips';
 import { ticketService, type TicketWithRelations } from './services/ticketService';
@@ -129,6 +133,12 @@ const MenuSectionHeader = ({ label }: { label: string }) => (
 // Main App Content (wrapped in ProtectedRoute)
 const AppContent = () => {
   const { user, profile, signOut, isAdmin, isManager, isInspector, isExecutive, isDriver, isSales, isServiceStaff, isHR, isWarehouse, loading: authLoading, refreshProfile } = useAuth();
+  const { can, canAccessTab } = useFeatureAccess();
+  const showHrMenu =
+    can('tab.admin_staff', 'view') ||
+    can('tab.service_staff', 'view') ||
+    can('tab.commission', 'view') ||
+    can('tab.commission_rates', 'view');
 
   // Don't wait for profile - show UI immediately if user exists
   // Profile will load in background and update when ready
@@ -1084,7 +1094,7 @@ const AppContent = () => {
                   <SubSidebarItem label="ยืนยันและแบ่งส่ง" active={activeTab === 'confirm-orders'} onClick={() => navigateAndCloseMobile('confirm-orders')} isCollapsed={false} isFlyout={false} />
                   <SubSidebarItem label="ติดตามออเดอร์" active={activeTab === 'track-orders'} onClick={() => navigateAndCloseMobile('track-orders')} isCollapsed={false} isFlyout={false} />
                   <SubSidebarItem label="ออกใบแจ้งหนี้" active={activeTab === 'sales-trips'} onClick={() => navigateAndCloseMobile('sales-trips')} isCollapsed={false} isFlyout={false} />
-                  {(isAdmin || isManager) && (
+                  {can('tab.customers', 'view') && (
                     <>
                       <SubSidebarItem label="จัดการออเดอร์" active={activeTab === 'cleanup-test-orders'} onClick={() => navigateAndCloseMobile('cleanup-test-orders')} isCollapsed={false} isFlyout={false} />
                       <SubSidebarItem label="จัดการลูกค้า" active={activeTab === 'customers'} onClick={() => navigateAndCloseMobile('customers')} isCollapsed={false} isFlyout={false} />
@@ -1155,7 +1165,7 @@ const AppContent = () => {
                         isFlyout={true}
                       />
 
-                      {(isAdmin || isManager) && (
+                      {can('tab.customers', 'view') && (
                         <>
                           <MenuSectionHeader label="เฉพาะเจ้าหน้าที่ / Manager" />
                           <SubSidebarItem
@@ -1248,7 +1258,7 @@ const AppContent = () => {
                 <div className="pl-2 pr-1 space-y-0.5 animate-in fade-in slide-in-from-top-1 duration-150">
                   <SubSidebarItem label="Stock Dashboard" active={activeTab === 'stock-dashboard'} onClick={() => navigateAndCloseMobile('stock-dashboard')} isCollapsed={false} isFlyout={false} />
                   <SubSidebarItem label="ยืนยันและแบ่งส่ง" active={activeTab === 'confirm-orders'} onClick={() => navigateAndCloseMobile('confirm-orders')} isCollapsed={false} isFlyout={false} />
-                  {(isAdmin || isManager) && (
+                  {can('tab.warehouses', 'view') && (
                     <>
                       <SubSidebarItem label="จัดการคลัง" active={activeTab === 'warehouses'} onClick={() => navigateAndCloseMobile('warehouses')} isCollapsed={false} isFlyout={false} />
                       <SubSidebarItem label="ประวัติรับสินค้า" active={activeTab === 'inventory-receipts'} onClick={() => navigateAndCloseMobile('inventory-receipts')} isCollapsed={false} isFlyout={false} />
@@ -1296,7 +1306,7 @@ const AppContent = () => {
                         isFlyout={true}
                       />
 
-                      {(isAdmin || isManager) && (
+                      {can('tab.warehouses', 'view') && (
                         <>
                           <MenuSectionHeader label="จัดการระบบคลัง" />
                           <SubSidebarItem
@@ -1399,61 +1409,59 @@ const AppContent = () => {
                     isCollapsed={false}
                     isFlyout={false}
                   />
-                  {(isAdmin || isManager || isInspector || isExecutive) && (
-                    <>
-                      {!isDriver && (
-                        <SubSidebarItem
-                          label="เดชบอร์ด(ฝ่ายขนส่ง)"
-                          active={activeTab === 'dashboard'}
-                          onClick={() => navigateAndCloseMobile('dashboard')}
-                          isCollapsed={false}
-                          isFlyout={false}
-                        />
-                      )}
-                      {!isDriver && (
-                        <SubSidebarItem
-                          label="ยานพาหนะ"
-                          active={activeTab === 'vehicles'}
-                          onClick={() => navigateAndCloseMobile('vehicles')}
-                          isCollapsed={false}
-                          isFlyout={false}
-                        />
-                      )}
-                      <SubSidebarItem
-                        label="ภาพรวมการอนุมัติ"
-                        active={activeTab === 'approvals'}
-                        onClick={() => navigateAndCloseMobile('approvals')}
-                        isCollapsed={false}
-                        isFlyout={false}
-                      />
-                      {!isDriver && (
-                        <SubSidebarItem
-                          label="สรุปการใช้รถรายวัน"
-                          active={activeTab === 'daily-summary'}
-                          onClick={() => navigateAndCloseMobile('daily-summary')}
-                          isCollapsed={false}
-                          isFlyout={false}
-                        />
-                      )}
-                      {!isDriver && (
-                        <>
-                          <SubSidebarItem
-                            label="ทริปส่งสินค้า"
-                            active={activeTab === 'delivery-trips'}
-                            onClick={() => navigateAndCloseMobile('delivery-trips', () => { setDeliveryTripView('list'); setSelectedDeliveryTripId(null); })}
-                            isCollapsed={false}
-                            isFlyout={false}
-                          />
-                          <SubSidebarItem
-                            label="ออเดอร์รอจัดส่ง"
-                            active={activeTab === 'pending-orders'}
-                            onClick={() => navigateAndCloseMobile('pending-orders')}
-                            isCollapsed={false}
-                            isFlyout={false}
-                          />
-                        </>
-                      )}
-                    </>
+                  {!isDriver && can('tab.dashboard', 'view') && (
+                    <SubSidebarItem
+                      label="เดชบอร์ด(ฝ่ายขนส่ง)"
+                      active={activeTab === 'dashboard'}
+                      onClick={() => navigateAndCloseMobile('dashboard')}
+                      isCollapsed={false}
+                      isFlyout={false}
+                    />
+                  )}
+                  {!isDriver && can('tab.vehicles', 'view') && (
+                    <SubSidebarItem
+                      label="ยานพาหนะ"
+                      active={activeTab === 'vehicles'}
+                      onClick={() => navigateAndCloseMobile('vehicles')}
+                      isCollapsed={false}
+                      isFlyout={false}
+                    />
+                  )}
+                  {can('tab.approvals', 'view') && (
+                    <SubSidebarItem
+                      label="ภาพรวมการอนุมัติ"
+                      active={activeTab === 'approvals'}
+                      onClick={() => navigateAndCloseMobile('approvals')}
+                      isCollapsed={false}
+                      isFlyout={false}
+                    />
+                  )}
+                  {!isDriver && can('tab.daily_summary', 'view') && (
+                    <SubSidebarItem
+                      label="สรุปการใช้รถรายวัน"
+                      active={activeTab === 'daily-summary'}
+                      onClick={() => navigateAndCloseMobile('daily-summary')}
+                      isCollapsed={false}
+                      isFlyout={false}
+                    />
+                  )}
+                  {!isDriver && can('tab.delivery_trips', 'view') && (
+                    <SubSidebarItem
+                      label="ทริปส่งสินค้า"
+                      active={activeTab === 'delivery-trips'}
+                      onClick={() => navigateAndCloseMobile('delivery-trips', () => { setDeliveryTripView('list'); setSelectedDeliveryTripId(null); })}
+                      isCollapsed={false}
+                      isFlyout={false}
+                    />
+                  )}
+                  {!isDriver && can('tab.pending_orders', 'view') && (
+                    <SubSidebarItem
+                      label="ออเดอร์รอจัดส่ง"
+                      active={activeTab === 'pending-orders'}
+                      onClick={() => navigateAndCloseMobile('pending-orders')}
+                      isCollapsed={false}
+                      isFlyout={false}
+                    />
                   )}
                 </div>
               )}
@@ -1487,7 +1495,7 @@ const AppContent = () => {
 
 
 
-                        {!isDriver && (
+                        {!isDriver && can('tab.pending_orders', 'view') && (
                           <SubSidebarItem
                             label="ออเดอร์รอจัดส่ง"
                             active={activeTab === 'pending-orders'}
@@ -1500,7 +1508,7 @@ const AppContent = () => {
                           />
                         )}
 
-                        {!isDriver && (
+                        {!isDriver && can('tab.delivery_trips', 'view') && (
                           <SubSidebarItem
                             label="ทริปส่งสินค้า"
                             active={activeTab === 'delivery-trips'}
@@ -1578,74 +1586,78 @@ const AppContent = () => {
                           isFlyout={true}
                         />
 
-                        {(isAdmin || isManager || isInspector || isExecutive) && (
-                          <>
-                            <MenuSectionHeader label="เฉพาะเจ้าหน้าที่ / Manager" />
+                        {((!isDriver &&
+                          (can('tab.dashboard', 'view') ||
+                            can('tab.vehicles', 'view') ||
+                            can('tab.daily_summary', 'view'))) ||
+                          can('tab.approvals', 'view') ||
+                          (isAdmin && can('tab.service_staff', 'view'))) && (
+                          <MenuSectionHeader label="เฉพาะเจ้าหน้าที่ / Manager" />
+                        )}
 
-                            {!isDriver && (
-                              <SubSidebarItem
-                                label="เดชบอร์ด(ฝ่ายขนส่ง)"
-                                active={activeTab === 'dashboard'}
-                                onClick={() => {
-                                  setActiveTab('dashboard');
-                                  setIsLogisticsHovered(false);
-                                }}
-                                isCollapsed={false}
-                                isFlyout={true}
-                              />
-                            )}
+                        {!isDriver && can('tab.dashboard', 'view') && (
+                          <SubSidebarItem
+                            label="เดชบอร์ด(ฝ่ายขนส่ง)"
+                            active={activeTab === 'dashboard'}
+                            onClick={() => {
+                              setActiveTab('dashboard');
+                              setIsLogisticsHovered(false);
+                            }}
+                            isCollapsed={false}
+                            isFlyout={true}
+                          />
+                        )}
 
-                            {!isDriver && (
-                              <SubSidebarItem
-                                label="ยานพาหนะ"
-                                active={activeTab === 'vehicles'}
-                                onClick={() => {
-                                  setActiveTab('vehicles');
-                                  setIsLogisticsHovered(false);
-                                }}
-                                isCollapsed={false}
-                                isFlyout={true}
-                              />
-                            )}
+                        {!isDriver && can('tab.vehicles', 'view') && (
+                          <SubSidebarItem
+                            label="ยานพาหนะ"
+                            active={activeTab === 'vehicles'}
+                            onClick={() => {
+                              setActiveTab('vehicles');
+                              setIsLogisticsHovered(false);
+                            }}
+                            isCollapsed={false}
+                            isFlyout={true}
+                          />
+                        )}
 
-                            <SubSidebarItem
-                              label="ภาพรวมการอนุมัติ"
-                              active={activeTab === 'approvals'}
-                              onClick={() => {
-                                setActiveTab('approvals');
-                                setIsLogisticsHovered(false);
-                              }}
-                              isCollapsed={false}
-                              isFlyout={true}
-                            />
+                        {can('tab.approvals', 'view') && (
+                          <SubSidebarItem
+                            label="ภาพรวมการอนุมัติ"
+                            active={activeTab === 'approvals'}
+                            onClick={() => {
+                              setActiveTab('approvals');
+                              setIsLogisticsHovered(false);
+                            }}
+                            isCollapsed={false}
+                            isFlyout={true}
+                          />
+                        )}
 
-                            {!isDriver && (
-                              <SubSidebarItem
-                                label="สรุปการใช้รถรายวัน"
-                                active={activeTab === 'daily-summary'}
-                                onClick={() => {
-                                  setActiveTab('daily-summary');
-                                  setIsLogisticsHovered(false);
-                                }}
-                                isCollapsed={false}
-                                isFlyout={true}
-                              />
-                            )}
+                        {!isDriver && can('tab.daily_summary', 'view') && (
+                          <SubSidebarItem
+                            label="สรุปการใช้รถรายวัน"
+                            active={activeTab === 'daily-summary'}
+                            onClick={() => {
+                              setActiveTab('daily-summary');
+                              setIsLogisticsHovered(false);
+                            }}
+                            isCollapsed={false}
+                            isFlyout={true}
+                          />
+                        )}
 
-
-                            {isAdmin && (
-                              <SubSidebarItem
-                                label="จัดการพนักงาน"
-                                active={activeTab === 'service-staff'}
-                                onClick={() => {
-                                  setActiveTab('service-staff');
-                                  setIsLogisticsHovered(false);
-                                }}
-                                isCollapsed={false}
-                                isFlyout={true}
-                              />
-                            )}
-                          </>
+                        {isAdmin && can('tab.service_staff', 'view') && (
+                          <SubSidebarItem
+                            label="จัดการพนักงาน"
+                            active={activeTab === 'service-staff'}
+                            onClick={() => {
+                              setActiveTab('service-staff');
+                              setIsLogisticsHovered(false);
+                            }}
+                            isCollapsed={false}
+                            isFlyout={true}
+                          />
                         )}
                       </div>
                     </div>
@@ -1657,7 +1669,7 @@ const AppContent = () => {
 
           {/* 5. 
            */}
-          {(isAdmin || isHR) && (
+          {showHrMenu && (
             <>
               <div
                 ref={hrMenuRef}
@@ -1690,34 +1702,42 @@ const AppContent = () => {
               {/* Mobile inline submenu for HR */}
               {isMobile && mobileHRExpanded && isSidebarOpen && (
                 <div className="pl-2 pr-1 space-y-0.5 animate-in fade-in slide-in-from-top-1 duration-150">
-                  <SubSidebarItem
-                    label="บัญชีพนักงาน"
-                    active={activeTab === 'admin-staff'}
-                    onClick={() => navigateAndCloseMobile('admin-staff')}
-                    isCollapsed={false}
-                    isFlyout={false}
-                  />
-                  <SubSidebarItem
-                    label="ประวัติการปฏิบัติงาน"
-                    active={activeTab === 'service-staff'}
-                    onClick={() => navigateAndCloseMobile('service-staff')}
-                    isCollapsed={false}
-                    isFlyout={false}
-                  />
-                  <SubSidebarItem
-                    label="ค่าคอมมิชชั่น"
-                    active={activeTab === 'commission'}
-                    onClick={() => navigateAndCloseMobile('commission')}
-                    isCollapsed={false}
-                    isFlyout={false}
-                  />
-                  <SubSidebarItem
-                    label="ตั้งค่าอัตราค่าคอมมิชชั่น"
-                    active={activeTab === 'commission-rates'}
-                    onClick={() => navigateAndCloseMobile('commission-rates')}
-                    isCollapsed={false}
-                    isFlyout={false}
-                  />
+                  {can('tab.admin_staff', 'view') && (
+                    <SubSidebarItem
+                      label="บัญชีพนักงาน"
+                      active={activeTab === 'admin-staff'}
+                      onClick={() => navigateAndCloseMobile('admin-staff')}
+                      isCollapsed={false}
+                      isFlyout={false}
+                    />
+                  )}
+                  {can('tab.service_staff', 'view') && (
+                    <SubSidebarItem
+                      label="ประวัติการปฏิบัติงาน"
+                      active={activeTab === 'service-staff'}
+                      onClick={() => navigateAndCloseMobile('service-staff')}
+                      isCollapsed={false}
+                      isFlyout={false}
+                    />
+                  )}
+                  {can('tab.commission', 'view') && (
+                    <SubSidebarItem
+                      label="ค่าคอมมิชชั่น"
+                      active={activeTab === 'commission'}
+                      onClick={() => navigateAndCloseMobile('commission')}
+                      isCollapsed={false}
+                      isFlyout={false}
+                    />
+                  )}
+                  {can('tab.commission_rates', 'view') && (
+                    <SubSidebarItem
+                      label="ตั้งค่าอัตราค่าคอมมิชชั่น"
+                      active={activeTab === 'commission-rates'}
+                      onClick={() => navigateAndCloseMobile('commission-rates')}
+                      isCollapsed={false}
+                      isFlyout={false}
+                    />
+                  )}
                 </div>
               )}
 
@@ -1741,36 +1761,48 @@ const AppContent = () => {
                       <div className="w-1.5 h-1.5 rounded-full bg-pink-500 animate-pulse"></div>
                     </div>
                     <div className="px-2 space-y-0.5">
-                      <MenuSectionHeader label="จัดการพนักงาน" />
-                      <SubSidebarItem
-                        label="บัญชีพนักงาน"
-                        active={activeTab === 'admin-staff'}
-                        onClick={() => { setActiveTab('admin-staff'); setIsHRHovered(false); }}
-                        isCollapsed={false}
-                        isFlyout={true}
-                      />
-                      <SubSidebarItem
-                        label="ประวัติการปฏิบัติงาน"
-                        active={activeTab === 'service-staff'}
-                        onClick={() => { setActiveTab('service-staff'); setIsHRHovered(false); }}
-                        isCollapsed={false}
-                        isFlyout={true}
-                      />
-                      <MenuSectionHeader label="ค่าตอบแทน" />
-                      <SubSidebarItem
-                        label="ค่าคอมมิชชั่น"
-                        active={activeTab === 'commission'}
-                        onClick={() => { setActiveTab('commission'); setIsHRHovered(false); }}
-                        isCollapsed={false}
-                        isFlyout={true}
-                      />
-                      <SubSidebarItem
-                        label="ตั้งค่าอัตราค่าคอมมิชชั่น"
-                        active={activeTab === 'commission-rates'}
-                        onClick={() => { setActiveTab('commission-rates'); setIsHRHovered(false); }}
-                        isCollapsed={false}
-                        isFlyout={true}
-                      />
+                      {(can('tab.admin_staff', 'view') || can('tab.service_staff', 'view')) && (
+                        <MenuSectionHeader label="จัดการพนักงาน" />
+                      )}
+                      {can('tab.admin_staff', 'view') && (
+                        <SubSidebarItem
+                          label="บัญชีพนักงาน"
+                          active={activeTab === 'admin-staff'}
+                          onClick={() => { setActiveTab('admin-staff'); setIsHRHovered(false); }}
+                          isCollapsed={false}
+                          isFlyout={true}
+                        />
+                      )}
+                      {can('tab.service_staff', 'view') && (
+                        <SubSidebarItem
+                          label="ประวัติการปฏิบัติงาน"
+                          active={activeTab === 'service-staff'}
+                          onClick={() => { setActiveTab('service-staff'); setIsHRHovered(false); }}
+                          isCollapsed={false}
+                          isFlyout={true}
+                        />
+                      )}
+                      {(can('tab.commission', 'view') || can('tab.commission_rates', 'view')) && (
+                        <MenuSectionHeader label="ค่าตอบแทน" />
+                      )}
+                      {can('tab.commission', 'view') && (
+                        <SubSidebarItem
+                          label="ค่าคอมมิชชั่น"
+                          active={activeTab === 'commission'}
+                          onClick={() => { setActiveTab('commission'); setIsHRHovered(false); }}
+                          isCollapsed={false}
+                          isFlyout={true}
+                        />
+                      )}
+                      {can('tab.commission_rates', 'view') && (
+                        <SubSidebarItem
+                          label="ตั้งค่าอัตราค่าคอมมิชชั่น"
+                          active={activeTab === 'commission-rates'}
+                          onClick={() => { setActiveTab('commission-rates'); setIsHRHovered(false); }}
+                          isCollapsed={false}
+                          isFlyout={true}
+                        />
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1781,7 +1813,7 @@ const AppContent = () => {
 
         <div className="p-3 border-t border-slate-200 dark:border-slate-800/50 space-y-1">
           {/* Import Data - Admin Only */}
-          {isAdmin && (
+          {can('tab.excel_import', 'view') && (
             <div
               ref={importMenuRef}
               className="relative group/menu"
@@ -1871,8 +1903,8 @@ const AppContent = () => {
             </div>
           )}
 
-          {/* Database Explorer - Admin Only */}
-          {isAdmin && (
+          {/* Database Explorer */}
+          {can('tab.db_explorer', 'view') && (
             <SidebarItem
               icon={Database}
               label={isSidebarOpen ? "เมนูหลังบ้าน (DB)" : ""}
@@ -1892,7 +1924,12 @@ const AppContent = () => {
               <SidebarItem
                 icon={Settings}
                 label={isSidebarOpen ? "ตั้งค่า" : ""}
-                active={activeTab === 'profile' || activeTab === 'rls-test' || activeTab === 'settings'}
+                active={
+                  activeTab === 'profile' ||
+                  activeTab === 'rls-test' ||
+                  activeTab === 'settings' ||
+                  activeTab === 'role-feature-access'
+                }
                 onClick={() => {
                   if (isMobile) {
                     setMobileSettingsExpanded(prev => !prev);
@@ -1914,11 +1951,20 @@ const AppContent = () => {
                   isCollapsed={false}
                   isFlyout={false}
                 />
-                {(isAdmin || isManager) && (
+                {can('tab.rls_test', 'view') && (
                   <SubSidebarItem
                     label="ทดสอบ RLS"
                     active={activeTab === 'rls-test'}
                     onClick={() => navigateAndCloseMobile('rls-test')}
+                    isCollapsed={false}
+                    isFlyout={false}
+                  />
+                )}
+                {can('tab.role_feature_access', 'view') && (
+                  <SubSidebarItem
+                    label="สิทธิ์ตามฟีเจอร์"
+                    active={activeTab === 'role-feature-access'}
+                    onClick={() => navigateAndCloseMobile('role-feature-access')}
                     isCollapsed={false}
                     isFlyout={false}
                   />
@@ -1962,12 +2008,24 @@ const AppContent = () => {
                       isCollapsed={false}
                       isFlyout={true}
                     />
-                    {(isAdmin || isManager) && (
+                    {can('tab.rls_test', 'view') && (
                       <SubSidebarItem
                         label="ทดสอบ RLS"
                         active={activeTab === 'rls-test'}
                         onClick={() => {
                           setActiveTab('rls-test');
+                          setIsSettingsHovered(false);
+                        }}
+                        isCollapsed={false}
+                        isFlyout={true}
+                      />
+                    )}
+                    {can('tab.role_feature_access', 'view') && (
+                      <SubSidebarItem
+                        label="สิทธิ์ตามฟีเจอร์"
+                        active={activeTab === 'role-feature-access'}
+                        onClick={() => {
+                          setActiveTab('role-feature-access');
                           setIsSettingsHovered(false);
                         }}
                         isCollapsed={false}
@@ -2585,12 +2643,7 @@ const AppContent = () => {
                 }
 
                 // Check role directly from profile (more reliable than isManager flags)
-                const userRole = profile?.role?.toLowerCase();
-                const hasPermission = userRole === 'admin' ||
-                  userRole === 'manager' ||
-                  userRole === 'inspector' ||
-                  userRole === 'executive' ||
-                  isAdmin || isInspector || isManager || isExecutive; // Fallback to flags
+                const hasPermission = can('tab.approvals', 'view');
 
                 if (hasPermission) {
                   return (
@@ -2640,6 +2693,8 @@ const AppContent = () => {
               <ProfileView />
             ) : activeTab === 'rls-test' ? (
               <RLSTestView />
+            ) : activeTab === 'role-feature-access' ? (
+              <RoleFeatureAccessSettingsView />
             ) : activeTab === 'daily-summary' ? (
               <DailySummaryView
                 isDark={isDark}
@@ -2885,9 +2940,11 @@ const AppContent = () => {
 // Main App with Authentication
 const App = () => {
   return (
-    <ProtectedRoute>
-      <AppContent />
-    </ProtectedRoute>
+    <FeatureAccessProvider>
+      <ProtectedRoute>
+        <AppContent />
+      </ProtectedRoute>
+    </FeatureAccessProvider>
   );
 };
 

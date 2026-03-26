@@ -2869,6 +2869,30 @@ export type Database = {
           },
         ]
       }
+      role_feature_access: {
+        Row: {
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          feature_key: string
+          access_level: Database["public"]["Enums"]["feature_access_level"]
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          role: Database["public"]["Enums"]["app_role"]
+          feature_key: string
+          access_level: Database["public"]["Enums"]["feature_access_level"]
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          feature_key?: string
+          access_level?: Database["public"]["Enums"]["feature_access_level"]
+          updated_at?: string
+        }
+        Relationships: []
+      },
       profiles: {
         Row: {
           avatar_url: string | null
@@ -6557,6 +6581,7 @@ export type Database = {
       }
     }
     Enums: {
+      feature_access_level: "none" | "view" | "edit" | "manage";
       app_role:
         | "user"
         | "inspector"
@@ -6707,6 +6732,7 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
+      feature_access_level: ["none", "view", "edit", "manage"],
       app_role: [
         "user",
         "inspector",

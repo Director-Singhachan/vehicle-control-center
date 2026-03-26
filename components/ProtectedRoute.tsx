@@ -1,14 +1,19 @@
 // Protected Route - Route guard with role-based access control
 import React from 'react';
 import { useAuth } from '../hooks';
+import { useFeatureAccess } from '../hooks/useFeatureAccess';
 import { LoginView } from '../views/LoginView';
 import { AlertCircle, Shield } from 'lucide-react';
 import { Card } from './ui/Card';
+import type { AccessLevel, FeatureKey } from '../types/featureAccess';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
   requiredRole?: 'user' | 'inspector' | 'manager' | 'executive' | 'admin' | 'sales';
   requiredRoles?: ('user' | 'inspector' | 'manager' | 'executive' | 'admin' | 'sales')[];
+  /** ต้องอยู่ภายใต้ FeatureAccessProvider */
+  requiredFeature?: FeatureKey;
+  minFeatureAccess?: AccessLevel;
   fallback?: React.ReactNode;
 }
 
@@ -16,9 +21,12 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   children,
   requiredRole,
   requiredRoles,
+  requiredFeature,
+  minFeatureAccess = 'view',
   fallback,
 }) => {
   const { user, profile, loading, error, isAuthenticated, isAdmin, isManager, isInspector } = useAuth();
+  const { can } = useFeatureAccess();
   const [showTimeout, setShowTimeout] = React.useState(false);
 
   // Debug logging
@@ -105,6 +113,27 @@ VITE_SUPABASE_ANON_KEY=your-anon-key-here`}
   if (user && !profile) {
     console.log('[ProtectedRoute] User exists but profile not loaded yet - showing app anyway');
     // Continue to show app - profile will load in background
+  }
+
+  if (requiredFeature && user && profile && !can(requiredFeature, minFeatureAccess)) {
+    return fallback || (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-charcoal-950 px-4">
+        <Card className="w-full max-w-md p-8 text-center">
+          <div className="inline-flex items-center justify-center w-16 h-16 bg-red-100 dark:bg-red-900 rounded-full mb-4">
+            <Shield className="w-8 h-8 text-red-600 dark:text-red-400" />
+          </div>
+          <h1 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">
+            ไม่มีสิทธิ์เข้าถึง
+          </h1>
+          <p className="text-slate-600 dark:text-slate-400 mb-6">
+            บทบาทของคุณไม่มีสิทธิ์ในโมดูลนี้ ({requiredFeature})
+          </p>
+          <p className="text-sm text-slate-500 dark:text-slate-400">
+            บทบาทปัจจุบัน: {profile?.role || 'ไม่ระบุ'}
+          </p>
+        </Card>
+      </div>
+    );
   }
 
   // Check role requirements

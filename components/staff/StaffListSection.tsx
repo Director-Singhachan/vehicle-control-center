@@ -65,9 +65,9 @@ interface StaffListSectionProps {
   onFilterChange: (filters: StaffListFilters) => void;
   onRefetch: () => void;
   onExport: () => void;
-  onEdit: (staff: StaffProfile) => void;
-  onResetPassword: (staff: StaffProfile) => void;
-  onToggleStatus: (staff: StaffProfile) => void;
+  onEdit?: (staff: StaffProfile) => void;
+  onResetPassword?: (staff: StaffProfile) => void;
+  onToggleStatus?: (staff: StaffProfile) => void;
   onDeleteUser?: (staff: StaffProfile) => void;
 }
 
@@ -79,9 +79,9 @@ function ActionMenu({
   onDelete,
 }: {
   staff: StaffProfile;
-  onEdit: () => void;
-  onResetPassword: () => void;
-  onToggleStatus: () => void;
+  onEdit?: () => void;
+  onResetPassword?: () => void;
+  onToggleStatus?: () => void;
   onDelete?: () => void;
 }) {
   const [open, setOpen] = React.useState(false);
@@ -128,31 +128,39 @@ function ActionMenu({
       }}
       className="w-48 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-lg py-1"
     >
-      <button
-        onClick={() => { onEdit(); setOpen(false); }}
-        className="flex items-center gap-2 w-full px-4 py-2.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50"
-      >
-        <UserCog size={14} />
-        แก้ไขข้อมูล
-      </button>
-      <button
-        onClick={() => { onResetPassword(); setOpen(false); }}
-        className="flex items-center gap-2 w-full px-4 py-2.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50"
-      >
-        <KeyRound size={14} />
-        รีเซ็ตรหัสผ่าน
-      </button>
-      <div className="border-t border-slate-100 dark:border-slate-700 my-1" />
-      <button
-        onClick={() => { onToggleStatus(); setOpen(false); }}
-        className={`flex items-center gap-2 w-full px-4 py-2.5 text-sm hover:bg-slate-50 dark:hover:bg-slate-700/50 ${isBanned
-          ? 'text-green-600 dark:text-green-400'
-          : 'text-red-600 dark:text-red-400'
-          }`}
-      >
-        {isBanned ? <ShieldCheck size={14} /> : <ShieldOff size={14} />}
-        {isBanned ? 'เปิดบัญชี' : 'ปิดบัญชี'}
-      </button>
+      {onEdit && (
+        <button
+          onClick={() => { onEdit(); setOpen(false); }}
+          className="flex items-center gap-2 w-full px-4 py-2.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50"
+        >
+          <UserCog size={14} />
+          แก้ไขข้อมูล
+        </button>
+      )}
+      {onResetPassword && (
+        <button
+          onClick={() => { onResetPassword(); setOpen(false); }}
+          className="flex items-center gap-2 w-full px-4 py-2.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50"
+        >
+          <KeyRound size={14} />
+          รีเซ็ตรหัสผ่าน
+        </button>
+      )}
+      {(onEdit || onResetPassword) && (onToggleStatus || onDelete) && (
+        <div className="border-t border-slate-100 dark:border-slate-700 my-1" />
+      )}
+      {onToggleStatus && (
+        <button
+          onClick={() => { onToggleStatus(); setOpen(false); }}
+          className={`flex items-center gap-2 w-full px-4 py-2.5 text-sm hover:bg-slate-50 dark:hover:bg-slate-700/50 ${isBanned
+            ? 'text-green-600 dark:text-green-400'
+            : 'text-red-600 dark:text-red-400'
+            }`}
+        >
+          {isBanned ? <ShieldCheck size={14} /> : <ShieldOff size={14} />}
+          {isBanned ? 'เปิดบัญชี' : 'ปิดบัญชี'}
+        </button>
+      )}
       {onDelete && (
         <>
           <div className="border-t border-slate-100 dark:border-slate-700 my-1" />
@@ -192,12 +200,13 @@ function StaffTable({
   showBannedStyle,
 }: {
   list: StaffProfile[];
-  onEdit: (s: StaffProfile) => void;
-  onResetPassword: (s: StaffProfile) => void;
-  onToggleStatus: (s: StaffProfile) => void;
+  onEdit?: (s: StaffProfile) => void;
+  onResetPassword?: (s: StaffProfile) => void;
+  onToggleStatus?: (s: StaffProfile) => void;
   onDeleteUser?: (s: StaffProfile) => void;
   showBannedStyle?: boolean;
 }) {
+  const showActions = !!(onEdit || onResetPassword || onToggleStatus || onDeleteUser);
   if (list.length === 0) {
     return (
       <div className="p-10 text-center text-sm text-slate-400 dark:text-slate-500">
@@ -235,7 +244,7 @@ function StaffTable({
             <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 hidden lg:table-cell">
               เบอร์โทร
             </th>
-            <th className="px-4 py-3 w-12" />
+            {showActions && <th className="px-4 py-3 w-12" />}
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-50 dark:divide-slate-800/60">
@@ -288,15 +297,17 @@ function StaffTable({
                 <td className="px-4 py-3 text-slate-600 dark:text-slate-400 hidden lg:table-cell">
                   {staff.phone || '—'}
                 </td>
-                <td className="px-4 py-3">
-                  <ActionMenu
-                    staff={staff}
-                    onEdit={() => onEdit(staff)}
-                    onResetPassword={() => onResetPassword(staff)}
-                    onToggleStatus={() => onToggleStatus(staff)}
-                    onDelete={onDeleteUser ? () => onDeleteUser(staff) : undefined}
-                  />
-                </td>
+                {showActions && (
+                  <td className="px-4 py-3">
+                    <ActionMenu
+                      staff={staff}
+                      onEdit={onEdit ? () => onEdit(staff) : undefined}
+                      onResetPassword={onResetPassword ? () => onResetPassword(staff) : undefined}
+                      onToggleStatus={onToggleStatus ? () => onToggleStatus(staff) : undefined}
+                      onDelete={onDeleteUser ? () => onDeleteUser(staff) : undefined}
+                    />
+                  </td>
+                )}
               </tr>
             );
           })}
