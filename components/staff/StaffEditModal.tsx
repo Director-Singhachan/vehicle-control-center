@@ -60,7 +60,7 @@ export const StaffEditModal: React.FC<StaffEditModalProps> = ({
   onRelink,
   onClose,
 }) => {
-  const [form, setForm] = useState({ name_prefix: '', full_name: '', role: 'user' as AppRole, branch: '', department: '', position: '', phone: '', employee_code: '' });
+  const [form, setForm] = useState({ name_prefix: '', full_name: '', role: 'user' as AppRole, branch: '', department: '', position: '', phone: '', employee_code: '', email: '' });
   const [migrateCode, setMigrateCode] = useState('');
   const [showMigrateForm, setShowMigrateForm] = useState(false);
 
@@ -80,6 +80,7 @@ export const StaffEditModal: React.FC<StaffEditModalProps> = ({
         position: (staff as any).position || '',
         phone: staff.phone || '',
         employee_code: staff.employee_code || '',
+        email: staff.email || '',
       });
       setMigrateCode('');
       setShowMigrateForm(false);
@@ -101,6 +102,12 @@ export const StaffEditModal: React.FC<StaffEditModalProps> = ({
       position: form.position.trim() || undefined,
       phone: form.phone.trim() || undefined,
     };
+    
+    // Add email update (Auth + Profile sync handled by Edge Function)
+    if (form.email.trim() !== (staff?.email || '')) {
+      payload.email = form.email.trim() || undefined;
+    }
+    
     // ส่ง name_prefix เฉพาะเมื่อมีค่าจาก server หรือผู้ใช้เลือกแล้ว (ไม่ส่ง null ไปทับค่าที่มีอยู่)
     if (staff?.name_prefix !== undefined || form.name_prefix !== '') {
       payload.name_prefix = form.name_prefix || null;
@@ -236,11 +243,15 @@ export const StaffEditModal: React.FC<StaffEditModalProps> = ({
           </div>
           <div>
             <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">
-              Email
+              Email (อัปเดตเข้า Auth โดยตรง)
             </label>
-            <div className="px-3 py-2 text-sm bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-500 dark:text-slate-400 truncate">
-              {staff.email || '—'}
-            </div>
+            <input
+              type="email"
+              value={form.email}
+              onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
+              placeholder="example@email.com"
+              className={inputCls}
+            />
           </div>
         </div>
 
