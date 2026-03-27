@@ -120,9 +120,10 @@ export function OrderUploadModal({ isOpen, onClose, onSuccess, selectedWarehouse
   };
 
   const handleConfirmUpload = async () => {
-    const validOrders = filteredOrders.filter(o => !o.error && o.action !== 'skip');
-    const invalidOrders = filteredOrders.filter(o => o.error);
+    const validOrders = filteredOrders.filter(o => !o.error && o.action !== 'skip' && o.action !== 'locked');
+    const invalidOrders = filteredOrders.filter(o => o.error && o.action !== 'locked');
     const skippedOrders = filteredOrders.filter(o => !o.error && o.action === 'skip');
+    const lockedOrders = filteredOrders.filter(o => o.action === 'locked');
     
     if (validOrders.length === 0 && invalidOrders.length === 0) {
       success(`ข้อมูลเหมือนเดิม ไม่มีการอัพเดต (ข้าม ${skippedOrders.length} รายการ)`);
@@ -142,8 +143,8 @@ export function OrderUploadModal({ isOpen, onClose, onSuccess, selectedWarehouse
 
       for (const order of validOrders) {
         const orderInsert = {
-          order_number: order.doc_no,
-          store_id: order.store_id!, // known valid since not error
+          sml_doc_no: order.doc_no, // เก็บรหัส SML หลังบ้าน
+          store_id: order.store_id!,
           order_date: order.order_date,
           status: 'awaiting_confirmation',
           notes: `(อัพโหลดจาก SML)`,
@@ -221,8 +222,9 @@ export function OrderUploadModal({ isOpen, onClose, onSuccess, selectedWarehouse
   const newCount = filteredOrders.filter(o => !o.error && (o.action === 'new' || !o.action)).length;
   const updateCount = filteredOrders.filter(o => !o.error && o.action === 'update').length;
   const skipCount = filteredOrders.filter(o => !o.error && o.action === 'skip').length;
+  const lockedCount = filteredOrders.filter(o => o.action === 'locked').length;
   const validToSaveCount = newCount + updateCount;
-  const invalidCount = filteredOrders.filter(o => o.error).length;
+  const invalidCount = filteredOrders.filter(o => o.error && o.action !== 'locked').length;
 
   return (
     <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4">
@@ -333,7 +335,7 @@ export function OrderUploadModal({ isOpen, onClose, onSuccess, selectedWarehouse
                  </div>
 
                  {/* Summary Cards */}
-                 <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                 <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                     <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-gray-200 dark:border-slate-700">
                         <p className="text-sm text-gray-500 dark:text-gray-400">ทั้งหมด (กรอง)</p>
                         <p className="text-2xl font-bold text-gray-900 dark:text-white">{filteredOrders.length}</p>
@@ -354,6 +356,12 @@ export function OrderUploadModal({ isOpen, onClose, onSuccess, selectedWarehouse
                         <p className="text-sm text-red-600 dark:text-red-400">พบข้อผิดพลาด</p>
                         <p className="text-2xl font-bold text-red-700 dark:text-red-300">{invalidCount}</p>
                     </div>
+                    {lockedCount > 0 && (
+                    <div className="bg-orange-50 dark:bg-orange-900/20 p-4 rounded-xl border border-orange-200 dark:border-orange-800/50">
+                        <p className="text-sm text-orange-600 dark:text-orange-400">ล็อก (ออกรถแล้ว)</p>
+                        <p className="text-2xl font-bold text-orange-700 dark:text-orange-300">{lockedCount}</p>
+                    </div>
+                    )}
                  </div>
 
                  {/* Order List */}
@@ -382,10 +390,18 @@ export function OrderUploadModal({ isOpen, onClose, onSuccess, selectedWarehouse
                                            </Badge>
                                            {!order.error && (
                                                <Badge 
-                                                    variant={order.action === 'new' ? 'success' : order.action === 'update' ? 'warning' : 'secondary'} 
+                                                    variant={order.action === 'new' ? 'success' : order.action === 'update' ? 'warning' : 'default'} 
                                                     className="text-[11px] px-2 py-0.5 border border-transparent dark:border-slate-700"
                                                 >
                                                    {order.action === 'new' ? 'ใหม่' : order.action === 'update' ? 'อัพเดต' : 'ข้าม'}
+                                               </Badge>
+                                           )}
+                                           {order.action === 'locked' && (
+                                               <Badge 
+                                                    variant="error" 
+                                                    className="text-[11px] px-2 py-0.5 border border-transparent dark:border-slate-700"
+                                                >
+                                                   ล็อก (ออกรถแล้ว)
                                                </Badge>
                                            )}
                                        </div>

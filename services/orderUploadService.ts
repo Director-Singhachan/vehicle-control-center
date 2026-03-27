@@ -32,7 +32,7 @@ export interface UploadedOrder {
   net_value: number;
   items: UploadedOrderItem[];
   error?: string; // e.g. Store not found
-  action?: 'new' | 'update' | 'skip'; // To track if this order should be created, updated, or skipped
+  action?: 'new' | 'update' | 'skip' | 'locked'; // To track if this order should be created, updated, skipped, or locked
 }
 
 export const orderUploadService = {
@@ -247,12 +247,27 @@ export const orderUploadService = {
     
     const productMap = new Map((products ?? []).map(p => [p.product_code, p]));
 
-    // 2.5 Fetch existing orders and items for diff checking
+    // 2.5 Fetch existing orders by sml_doc_no for diff checking
     const docNos = [...new Set(orders.map(o => o.doc_no).filter(Boolean))];
     const { data: existingOrders } = docNos.length > 0 ? await supabase
         .from('orders')
-        .select('id, order_number')
-        .in('order_number', docNos) : { data: [] };
+        .select('id, sml_doc_no, delivery_trip_id')
+        .in('sml_doc_no', docNos) : { data: [] };
+    
+    // Fetch trip statuses for orders that have a trip
+    let tripStatusMap = new Map<string, string>();
+    if (existingOrders && existingOrders.length > 0) {
+        const tripIds = [...new Set(existingOrders.map(o => o.delivery_trip_id).filter(Boolean))];
+        if (tripIds.length > 0) {
+            const { data: trips } = await supabase
+                .from('delivery_trips')
+                .select('id, status')
+                .in('id', tripIds);
+            for (const t of trips ?? []) {
+                tripStatusMap.set(t.id, t.status);
+            }
+        }
+    }
         
     let existingItems: any[] = [];
     if (existingOrders && existingOrders.length > 0) {
@@ -271,8 +286,6 @@ export const orderUploadService = {
         // Find store
         if (stores) {
             const searchCode = normalizeCode(order.customer_code);
-            
-            // Strictly Match by Code only as per user request
             const matchedStore = searchCode ? stores.find(s => normalizeCode(s.customer_code) === searchCode) : undefined;
 
             if (matchedStore) {
@@ -302,32 +315,37 @@ export const orderUploadService = {
             validatedOrder.error = 'มีรายการสินค้าที่ไม่ถูกต้อง';
         }
 
-        // If no errors, determine action (new, update, skip)
+        // If no errors, determine action (new, update, skip, locked)
         if (!validatedOrder.error) {
-            const existingOrder = existingOrders?.find(o => o.order_number === validatedOrder.doc_no);
+            const existingOrder = existingOrders?.find(o => o.sml_doc_no === validatedOrder.doc_no);
             
             if (!existingOrder) {
                 validatedOrder.action = 'new';
             } else {
-                // Order exists, check items for differences
+                // Check if the order's trip has departed (in_progress or completed)
+                if (existingOrder.delivery_trip_id) {
+                    const tripStatus = tripStatusMap.get(existingOrder.delivery_trip_id);
+                    if (tripStatus === 'in_progress' || tripStatus === 'completed') {
+                        validatedOrder.action = 'locked';
+                        validatedOrder.error = `ออเดอร์นี้อยู่ในทริปที่ออกรถแล้ว (สถานะ: ${tripStatus === 'in_progress' ? 'กำลังจัดส่ง' : 'เสร็จสิ้น'}) ไม่สามารถอัพเดตได้`;
+                        return validatedOrder;
+                    }
+                }
+
+                // Order exists but trip is editable, check items for differences
                 const orderExistingItems = existingItems.filter(i => i.order_id === existingOrder.id);
                 
-                // Diff check: same number of items?
                 let isIdentical = true;
                 if (orderExistingItems.length !== validatedOrder.items.length) {
                     isIdentical = false;
                 } else {
-                    // Check each item
                     for (const vItem of validatedOrder.items) {
                         const actualUnitPrice = vItem.unit_price === 0 ? 0 : vItem.unit_price;
-                        
-                        // Find matching item in DB
                         const matchingDbItem = orderExistingItems.find(dbItem => 
                             dbItem.product_id === vItem.product_id && 
                             Number(dbItem.quantity) === Number(vItem.quantity) &&
                             Number(dbItem.unit_price) === Number(actualUnitPrice)
                         );
-                        
                         if (!matchingDbItem) {
                             isIdentical = false;
                             break;

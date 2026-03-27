@@ -870,10 +870,11 @@ export const ordersService = {
 
   /**
    * สร้างหรืออัปเดตออเดอร์ที่มาจาก SML (UPSERT)
-   * หากมี order_number อยู่แล้ว ให้เคลียร์ข้อมูลเก่าแล้วสร้างรายการใหม่
+   * ใช้ sml_doc_no เป็น key ในการ match (ไม่ใช่ order_number)
+   * order_number จะถูก Gen ตาม Logic ปกติเมื่อจัดทริป
    */
   async upsertSmlOrder(
-    orderData: Omit<OrderInsert, 'id' | 'created_at' | 'updated_at'> & { warehouse_id?: string },
+    orderData: Omit<OrderInsert, 'id' | 'created_at' | 'updated_at'> & { warehouse_id?: string; sml_doc_no?: string },
     items: Array<{
       product_id: string;
       quantity: number;
@@ -885,20 +886,21 @@ export const ordersService = {
     payment_status?: string | null,
     delivery_time_slot?: string | null
   ) {
-    if (!orderData.order_number) {
+    const smlDocNo = orderData.sml_doc_no;
+    if (!smlDocNo) {
         return this.createWithItems(orderData, items, payment_status, delivery_time_slot);
     }
 
-    // ตรวจสอบว่ามีออเดอร์ที่มีเลขที่นี้หรือไม่ (เฉพาะที่ไม่ได้ลบ หรือเฉพาะในระบบ)
+    // ตรวจสอบว่ามีออเดอร์ที่มี sml_doc_no นี้หรือไม่
     const { data: existingOrder } = await supabase
       .from('orders')
       .select('id')
-      .eq('order_number', orderData.order_number)
+      .eq('sml_doc_no', smlDocNo)
       .maybeSingle();
 
     if (existingOrder) {
-      // 1. UPDATE ข้อมูลออเดอร์เดิม + เคลียร์ trip/สถานะให้กลับมารอคอนเฟิร์ม
-      const updatePayload = {
+      // 1. UPDATE ข้อมูลออเดอร์เดิม + เคลียร์ trip/order_number/สถานะให้กลับมารอคอนเฟิร์ม
+      const updatePayload: Record<string, unknown> = {
         store_id: orderData.store_id,
         order_date: orderData.order_date,
         status: 'awaiting_confirmation',
@@ -908,11 +910,12 @@ export const ordersService = {
         payment_status: payment_status && payment_status.trim() ? payment_status.trim() : null,
         delivery_time_slot: delivery_time_slot && delivery_time_slot.trim() ? delivery_time_slot.trim() : null,
         delivery_trip_id: null, // ดึงกลับมาจากทริป
+        order_number: null, // ล้าง order_number เพื่อให้ Gen ใหม่ตอนจัดทริป
         updated_at: new Date().toISOString(),
       };
 
       Object.keys(updatePayload).forEach((k) => {
-        if ((updatePayload as any)[k] === undefined) delete (updatePayload as any)[k];
+        if (updatePayload[k] === undefined) delete updatePayload[k];
       });
 
       const { error: updateError } = await supabase
@@ -957,8 +960,14 @@ export const ordersService = {
       // 4. คืนค่า
       return existingOrder;
     } else {
-      // ไม่มี ให้สร้างใหม่
-      return this.createWithItems(orderData, items, payment_status, delivery_time_slot);
+      // ไม่มี ให้สร้างใหม่ — ไม่ใส่ order_number (ให้ Gen ตอนจัดทริป)
+      const { sml_doc_no: _smlDocNo, order_number: _orderNum, ...restData } = orderData as any;
+      const createPayload = {
+        ...restData,
+        order_number: null, // ปล่อยให้ Gen ตอนจัดทริป
+        sml_doc_no: smlDocNo, // เก็บรหัส SML ไว้หลังบ้าน
+      };
+      return this.createWithItems(createPayload, items, payment_status, delivery_time_slot);
     }
   },
 
