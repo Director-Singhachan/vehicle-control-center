@@ -15,6 +15,7 @@ import { useToast } from '../../hooks/useToast';
 
 interface RoleOrderBranchSectionProps {
   selectedRole: AppRole;
+  readOnly?: boolean;
   onAfterSave?: () => void;
 }
 
@@ -48,6 +49,7 @@ function formatUpdatedAt(iso: string): string {
  */
 export const RoleOrderBranchSection: React.FC<RoleOrderBranchSectionProps> = ({
   selectedRole,
+  readOnly = false,
   onAfterSave,
 }) => {
   const { success, error } = useToast();
@@ -96,6 +98,9 @@ export const RoleOrderBranchSection: React.FC<RoleOrderBranchSectionProps> = ({
   }, [scopeRows]);
 
   const handleSave = async () => {
+    if (readOnly) {
+      return;
+    }
     setSaving(true);
     try {
       await upsertRoleOrderBranchScope(selectedRole, profileBranchKey, visibilityChoice);
@@ -112,6 +117,9 @@ export const RoleOrderBranchSection: React.FC<RoleOrderBranchSectionProps> = ({
   };
 
   const handleClearPair = async () => {
+    if (readOnly) {
+      return;
+    }
     if (!scopeByProfileBranch[profileBranchKey]) {
       success('คู่นี้ยังไม่มีการกำหนดพิเศษ');
       return;
@@ -250,7 +258,7 @@ export const RoleOrderBranchSection: React.FC<RoleOrderBranchSectionProps> = ({
                     name="order-branch-visibility"
                     checked={visibilityChoice === opt.value}
                     onChange={() => setVisibilityChoice(opt.value)}
-                    disabled={saving}
+                    disabled={saving || readOnly}
                     className="mt-1 w-4 h-4 border-slate-300 text-enterprise-600 focus:ring-enterprise-500 dark:border-slate-600 dark:bg-charcoal-800"
                   />
                   <span>
@@ -265,14 +273,14 @@ export const RoleOrderBranchSection: React.FC<RoleOrderBranchSectionProps> = ({
           </div>
 
           <div className="flex flex-col sm:flex-row gap-2 mt-5">
-            <Button type="button" onClick={() => void handleSave()} disabled={saving}>
+            <Button type="button" onClick={() => void handleSave()} disabled={saving || readOnly}>
               {saving ? 'กำลังบันทึก…' : `บันทึก (${selectedRole} + โปรไฟล์ ${profileBranchKey})`}
             </Button>
             <Button
               type="button"
               variant="secondary"
               onClick={() => void handleClearPair()}
-              disabled={saving}
+              disabled={saving || readOnly}
             >
               ล้างการตั้งค่าคู่นี้
             </Button>

@@ -138,6 +138,7 @@ interface RoleFeatureAccessMatrixSectionProps {
   /** บันทึกแถวเดียวแบบ optimistic (ผู้เรียกจัดการ toast / refetch) */
   onLevelCommit: (key: FeatureKey, level: AccessLevel) => Promise<void>;
   loading: boolean;
+  readOnly?: boolean;
 }
 
 export const RoleFeatureAccessMatrixSection: React.FC<RoleFeatureAccessMatrixSectionProps> = ({
@@ -147,6 +148,7 @@ export const RoleFeatureAccessMatrixSection: React.FC<RoleFeatureAccessMatrixSec
   builtInLevels,
   onLevelCommit,
   loading,
+  readOnly = false,
 }) => {
   const [activeGroupId, setActiveGroupId] = useState<string>(FEATURE_GROUPS[0]?.id ?? '');
   const [listFilter, setListFilter] = useState<ListFilter>('all');
@@ -376,7 +378,7 @@ export const RoleFeatureAccessMatrixSection: React.FC<RoleFeatureAccessMatrixSec
                     onChange={(e) => {
                       void onLevelCommit(key, e.target.value as AccessLevel);
                     }}
-                    disabled={loading}
+                    disabled={loading || readOnly}
                     className="rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-charcoal-900 px-3 py-2 text-slate-900 dark:text-white text-sm min-w-[220px] w-full sm:w-auto"
                   >
                     {ACCESS_LEVEL_OPTIONS.map((opt) => (
