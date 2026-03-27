@@ -32,6 +32,7 @@ export interface UploadedOrder {
   net_value: number;
   items: UploadedOrderItem[];
   error?: string; // e.g. Store not found
+  action?: 'new' | 'update' | 'skip'; // To track if this order should be created, updated, or skipped
 }
 
 export const orderUploadService = {
@@ -246,7 +247,24 @@ export const orderUploadService = {
     
     const productMap = new Map((products ?? []).map(p => [p.product_code, p]));
 
-    // 3. Apply validation
+    // 2.5 Fetch existing orders and items for diff checking
+    const docNos = [...new Set(orders.map(o => o.doc_no).filter(Boolean))];
+    const { data: existingOrders } = docNos.length > 0 ? await supabase
+        .from('orders')
+        .select('id, order_number')
+        .in('order_number', docNos) : { data: [] };
+        
+    let existingItems: any[] = [];
+    if (existingOrders && existingOrders.length > 0) {
+        const orderIds = existingOrders.map(o => o.id);
+        const { data: items } = await supabase
+            .from('order_items')
+            .select('order_id, product_id, quantity, unit_price')
+            .in('order_id', orderIds);
+        existingItems = items || [];
+    }
+
+    // 3. Apply validation and diff checking
     return orders.map(order => {
         const validatedOrder = { ...order };
         
@@ -282,6 +300,43 @@ export const orderUploadService = {
         // Check if order has item errors
         if (!validatedOrder.error && validatedOrder.items.some(i => i.error)) {
             validatedOrder.error = 'มีรายการสินค้าที่ไม่ถูกต้อง';
+        }
+
+        // If no errors, determine action (new, update, skip)
+        if (!validatedOrder.error) {
+            const existingOrder = existingOrders?.find(o => o.order_number === validatedOrder.doc_no);
+            
+            if (!existingOrder) {
+                validatedOrder.action = 'new';
+            } else {
+                // Order exists, check items for differences
+                const orderExistingItems = existingItems.filter(i => i.order_id === existingOrder.id);
+                
+                // Diff check: same number of items?
+                let isIdentical = true;
+                if (orderExistingItems.length !== validatedOrder.items.length) {
+                    isIdentical = false;
+                } else {
+                    // Check each item
+                    for (const vItem of validatedOrder.items) {
+                        const actualUnitPrice = vItem.unit_price === 0 ? 0 : vItem.unit_price;
+                        
+                        // Find matching item in DB
+                        const matchingDbItem = orderExistingItems.find(dbItem => 
+                            dbItem.product_id === vItem.product_id && 
+                            Number(dbItem.quantity) === Number(vItem.quantity) &&
+                            Number(dbItem.unit_price) === Number(actualUnitPrice)
+                        );
+                        
+                        if (!matchingDbItem) {
+                            isIdentical = false;
+                            break;
+                        }
+                    }
+                }
+                
+                validatedOrder.action = isIdentical ? 'skip' : 'update';
+            }
         }
         
         return validatedOrder;

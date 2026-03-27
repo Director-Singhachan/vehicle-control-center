@@ -120,11 +120,14 @@ export function OrderUploadModal({ isOpen, onClose, onSuccess, selectedWarehouse
   };
 
   const handleConfirmUpload = async () => {
-    const validOrders = filteredOrders.filter(o => !o.error);
+    const validOrders = filteredOrders.filter(o => !o.error && o.action !== 'skip');
     const invalidOrders = filteredOrders.filter(o => o.error);
+    const skippedOrders = filteredOrders.filter(o => !o.error && o.action === 'skip');
     
     if (validOrders.length === 0 && invalidOrders.length === 0) {
-      error('ไม่มีออเดอร์ให้บันทึก');
+      success(`ข้อมูลเหมือนเดิม ไม่มีการอัพเดต (ข้าม ${skippedOrders.length} รายการ)`);
+      onSuccess();
+      onClose();
       return;
     }
 
@@ -157,7 +160,7 @@ export function OrderUploadModal({ isOpen, onClose, onSuccess, selectedWarehouse
           fulfillment_method: 'delivery' as const,
         }));
 
-        await ordersService.createWithItems(orderInsert, itemsToSubmit, null, null);
+        await ordersService.upsertSmlOrder(orderInsert, itemsToSubmit, null, null);
         successCount++;
         processedCount++;
         setUploadProgress(Math.round((processedCount / totalToProcess) * 100));
@@ -190,11 +193,11 @@ export function OrderUploadModal({ isOpen, onClose, onSuccess, selectedWarehouse
       }
       
       if (successCount > 0 && pendingCount > 0) {
-          success(`บันทึกสำเร็จ ${successCount} ออเดอร์ และส่งไปใบขายคงค้าง ${pendingCount} ออเดอร์`);
+          success(`อัพเดต/บันทึกใหม่ ${successCount} ออเดอร์, ข้าม ${skippedOrders.length} ออเดอร์ และพบข้อผิดพลาด ${pendingCount} ออเดอร์`);
       } else if (successCount > 0) {
-          success(`อัพโหลดสำเร็จ ${successCount} ออเดอร์`);
+          success(`อัพเดต/บันทึกใหม่ ${successCount} ออเดอร์สำเร็จ (ข้าม ${skippedOrders.length} ออเดอร์)`);
       } else if (pendingCount > 0) {
-          success(`ส่งข้อมูลไปใบขายคงค้าง ${pendingCount} ออเดอร์สำเร็จ`);
+          success(`ส่งข้อมูลไปใบขายคงค้าง ${pendingCount} ออเดอร์สำเร็จ (ข้าม ${skippedOrders.length} ออเดอร์)`);
       }
 
       onSuccess();
@@ -215,7 +218,10 @@ export function OrderUploadModal({ isOpen, onClose, onSuccess, selectedWarehouse
     setExpandedOrderId(expandedOrderId === docNo ? null : docNo);
   };
 
-  const validCount = filteredOrders.filter(o => !o.error).length;
+  const newCount = filteredOrders.filter(o => !o.error && (o.action === 'new' || !o.action)).length;
+  const updateCount = filteredOrders.filter(o => !o.error && o.action === 'update').length;
+  const skipCount = filteredOrders.filter(o => !o.error && o.action === 'skip').length;
+  const validToSaveCount = newCount + updateCount;
   const invalidCount = filteredOrders.filter(o => o.error).length;
 
   return (
@@ -327,14 +333,22 @@ export function OrderUploadModal({ isOpen, onClose, onSuccess, selectedWarehouse
                  </div>
 
                  {/* Summary Cards */}
-                 <div className="grid grid-cols-3 gap-4">
+                 <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
                     <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-gray-200 dark:border-slate-700">
-                        <p className="text-sm text-gray-500 dark:text-gray-400">ออเดอร์ทั้งหมด (กรอง)</p>
+                        <p className="text-sm text-gray-500 dark:text-gray-400">ทั้งหมด (กรอง)</p>
                         <p className="text-2xl font-bold text-gray-900 dark:text-white">{filteredOrders.length}</p>
                     </div>
                     <div className="bg-green-50 dark:bg-green-900/20 p-4 rounded-xl border border-green-200 dark:border-green-800/50">
-                        <p className="text-sm text-green-600 dark:text-green-400">พร้อมบันทึก</p>
-                        <p className="text-2xl font-bold text-green-700 dark:text-green-300">{validCount}</p>
+                        <p className="text-sm text-green-600 dark:text-green-400">ออเดอร์ใหม่</p>
+                        <p className="text-2xl font-bold text-green-700 dark:text-green-300">{newCount}</p>
+                    </div>
+                    <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-xl border border-blue-200 dark:border-blue-800/50">
+                        <p className="text-sm text-blue-600 dark:text-blue-400">อัพเดตข้อมูล</p>
+                        <p className="text-2xl font-bold text-blue-700 dark:text-blue-300">{updateCount}</p>
+                    </div>
+                    <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700">
+                        <p className="text-sm text-gray-500 dark:text-gray-400">ข้อมูลเดิม (ข้าม)</p>
+                        <p className="text-2xl font-bold text-gray-600 dark:text-gray-300">{skipCount}</p>
                     </div>
                     <div className="bg-red-50 dark:bg-red-900/20 p-4 rounded-xl border border-red-200 dark:border-red-800/50">
                         <p className="text-sm text-red-600 dark:text-red-400">พบข้อผิดพลาด</p>
@@ -366,6 +380,14 @@ export function OrderUploadModal({ isOpen, onClose, onSuccess, selectedWarehouse
                                            <Badge variant={order.store_branch === 'SD' ? 'success' : order.store_branch === 'HQ' ? 'info' : 'default'} className="text-[11px] px-2 py-0.5 border border-transparent dark:border-slate-700">
                                                {order.store_branch ? getBranchLabel(order.store_branch) : 'ไม่ระบุสาขา'}
                                            </Badge>
+                                           {!order.error && (
+                                               <Badge 
+                                                    variant={order.action === 'new' ? 'success' : order.action === 'update' ? 'warning' : 'secondary'} 
+                                                    className="text-[11px] px-2 py-0.5 border border-transparent dark:border-slate-700"
+                                                >
+                                                   {order.action === 'new' ? 'ใหม่' : order.action === 'update' ? 'อัพเดต' : 'ข้าม'}
+                                               </Badge>
+                                           )}
                                        </div>
                                        {order.error && (
                                            <p className="text-xs text-red-500 mt-1">{order.error}</p>
@@ -431,11 +453,11 @@ export function OrderUploadModal({ isOpen, onClose, onSuccess, selectedWarehouse
                   </Button>
                    <Button 
                       onClick={handleConfirmUpload} 
-                      disabled={isProcessing || parsedOrders.length === 0}
+                      disabled={isProcessing || (validToSaveCount === 0 && invalidCount === 0 && skipCount > 0)}
                       className="flex items-center gap-2"
                   >
                       <CheckCircle2 className="w-4 h-4" />
-                      บันทึก {parsedOrders.length} ออเดอร์
+                      บันทึก {validToSaveCount} ออเดอร์
                   </Button>
                </>
            ) : (
