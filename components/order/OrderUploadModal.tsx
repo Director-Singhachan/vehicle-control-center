@@ -23,12 +23,28 @@ export function OrderUploadModal({ isOpen, onClose, onSuccess, selectedWarehouse
   const { toasts, dismissToast, success, error, warning } = useToast();
   const { warehouses, loading: warehousesLoading } = useWarehouses();
   
-  const [localSelectedWarehouse, setLocalSelectedWarehouse] = useState<any>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingMessage, setProcessingMessage] = useState('กำลังประมวลผลข้อมูล...');
   const [uploadProgress, setUploadProgress] = useState(0);
   const [parsedOrders, setParsedOrders] = useState<UploadedOrder[]>([]);
+  const [selectedBranch, setSelectedBranch] = useState<string>('all');
   const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
+
+  const filteredOrders = useMemo(() => {
+    if (selectedBranch === 'all') return parsedOrders;
+    if (selectedBranch === 'unknown') return parsedOrders.filter(o => !o.store_branch);
+    return parsedOrders.filter(o => o.store_branch === selectedBranch);
+  }, [parsedOrders, selectedBranch]);
+
+  const branchesList = useMemo(() => {
+    return Array.from(new Set(parsedOrders.map(o => o.store_branch).filter(Boolean)));
+  }, [parsedOrders]);
+
+  const getBranchLabel = (code: string) => {
+    if (code === 'SD') return 'สาขาสอยดาว (SD)';
+    if (code === 'HQ') return 'สำนักงานใหญ่ (HQ)';
+    return code;
+  };
   
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -41,15 +57,6 @@ export function OrderUploadModal({ isOpen, onClose, onSuccess, selectedWarehouse
     }
     return warehouses.filter(w => w.branch === profile?.branch);
   }, [warehouses, profile]);
-
-  // Sync initial warehouse OR set default if only one
-  useEffect(() => {
-    if (initialWarehouse) {
-      setLocalSelectedWarehouse(initialWarehouse);
-    } else if (filteredWarehouses.length === 1 && !localSelectedWarehouse) {
-      setLocalSelectedWarehouse(filteredWarehouses[0]);
-    }
-  }, [initialWarehouse, filteredWarehouses, localSelectedWarehouse]);
 
   if (!isOpen) return null;
 
@@ -73,7 +80,24 @@ export function OrderUploadModal({ isOpen, onClose, onSuccess, selectedWarehouse
       
       // 2. Validate against DB
       setProcessingMessage('กำลังตรวจสอบข้อมูลกับฐานข้อมูล...');
-      const validatedOrders = await orderUploadService.validateOrders(rawOrders);
+      let validatedOrders = await orderUploadService.validateOrders(rawOrders);
+      
+      // 3. Match warehouse from store branch
+      validatedOrders = validatedOrders.map(order => {
+        if (!order.error) {
+            if (order.store_branch) {
+                const matchedWh = warehouses.find(w => w.branch === order.store_branch);
+                if (matchedWh) {
+                   order.warehouse_id = matchedWh.id;
+                } else {
+                   order.error = `ไม่พบคลังสินค้าสำหรับสาขา "${order.store_branch}"`;
+                }
+            } else {
+                order.error = `ไม่พบข้อมูลสาขาของร้านค้า (Store ID: ${order.store_id})`;
+            }
+        }
+        return order;
+      });
       
       setParsedOrders(validatedOrders);
       
@@ -96,13 +120,8 @@ export function OrderUploadModal({ isOpen, onClose, onSuccess, selectedWarehouse
   };
 
   const handleConfirmUpload = async () => {
-    if (!localSelectedWarehouse) {
-      error('กรุณาเลือกคลังสินค้าก่อนอัพโหลด');
-      return;
-    }
-
-    const validOrders = parsedOrders.filter(o => !o.error);
-    const invalidOrders = parsedOrders.filter(o => o.error);
+    const validOrders = filteredOrders.filter(o => !o.error);
+    const invalidOrders = filteredOrders.filter(o => o.error);
     
     if (validOrders.length === 0 && invalidOrders.length === 0) {
       error('ไม่มีออเดอร์ให้บันทึก');
@@ -126,7 +145,7 @@ export function OrderUploadModal({ isOpen, onClose, onSuccess, selectedWarehouse
           status: 'awaiting_confirmation',
           notes: `(อัพโหลดจาก SML)`,
           created_by: profile?.id,
-          warehouse_id: localSelectedWarehouse.id,
+          warehouse_id: order.warehouse_id!,
         };
 
         const itemsToSubmit = order.items.map(item => ({
@@ -161,7 +180,7 @@ export function OrderUploadModal({ isOpen, onClose, onSuccess, selectedWarehouse
                   unit: item.unit,
               })),
               error_message: order.error || 'Unknown error',
-              warehouse_id: localSelectedWarehouse.id,
+              warehouse_id: order.warehouse_id || warehouses[0]?.id,
               branch: profile?.branch || null,
               created_by: profile?.id || null,
           });
@@ -189,14 +208,15 @@ export function OrderUploadModal({ isOpen, onClose, onSuccess, selectedWarehouse
 
   const resetUpload = () => {
     setParsedOrders([]);
+    setSelectedBranch('all');
   };
 
   const toggleExpand = (docNo: string) => {
     setExpandedOrderId(expandedOrderId === docNo ? null : docNo);
   };
 
-  const validCount = parsedOrders.filter(o => !o.error).length;
-  const invalidCount = parsedOrders.filter(o => o.error).length;
+  const validCount = filteredOrders.filter(o => !o.error).length;
+  const invalidCount = filteredOrders.filter(o => o.error).length;
 
   return (
     <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4">
@@ -223,39 +243,15 @@ export function OrderUploadModal({ isOpen, onClose, onSuccess, selectedWarehouse
           </button>
         </div>
 
-        {/* Content */}
+          {/* Content */}
         <div className="p-6 overflow-y-auto flex-1 bg-gray-50/50 dark:bg-slate-900/50">
-          
-          {/* Warehouse Selection (New) */}
-          <div className="mb-6 bg-white dark:bg-slate-800 p-4 rounded-xl border border-blue-100 dark:border-blue-900/30">
-            <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2 flex items-center gap-2">
-              <Boxes className="w-4 h-4 text-blue-500" />
-              1. เลือกคลังสินค้าที่จะนำเข้า
-            </label>
-            <select
-              value={localSelectedWarehouse?.id || ''}
-              onChange={(e) => {
-                const wh = filteredWarehouses.find(w => w.id === e.target.value);
-                setLocalSelectedWarehouse(wh);
-              }}
-              disabled={isProcessing}
-              className="w-full p-2.5 bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-lg text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="">-- กรุณาเลือกคลังสินค้า --</option>
-              {filteredWarehouses.map((wh) => (
-                <option key={wh.id} value={wh.id}>
-                  {wh.name} {wh.branch ? `(${wh.branch})` : ''}
-                </option>
-              ))}
-            </select>
-          </div>
 
           {/* Step 1: Upload Input */}
           {parsedOrders.length === 0 && !isProcessing && (
-             <div className={`border-2 border-dashed rounded-xl p-12 text-center transition-colors bg-white dark:bg-slate-800 ${!localSelectedWarehouse ? 'border-gray-200 opacity-50 cursor-not-allowed' : 'border-gray-300 dark:border-slate-700 hover:border-blue-500 dark:hover:border-blue-400'}`}>
+             <div className="border-2 border-dashed rounded-xl p-12 text-center transition-colors bg-white dark:bg-slate-800 border-gray-300 dark:border-slate-700 hover:border-blue-500 dark:hover:border-blue-400">
                  <Upload className="w-12 h-12 text-gray-400 mx-auto mb-4" />
                  <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">
-                    {localSelectedWarehouse ? '2. ลากไฟล์ลงที่นี่ หรือคลิกเพื่อเลือกไฟล์' : 'กรุณาเลือกคลังสินค้าก่อนเลือกไฟล์'}
+                    ลากไฟล์ลงที่นี่ หรือคลิกเพื่อเลือกไฟล์
                  </h3>
                  <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">รูปแบบไฟล์ที่รองรับ: .xlsx, .xls</p>
                  <input
@@ -263,12 +259,12 @@ export function OrderUploadModal({ isOpen, onClose, onSuccess, selectedWarehouse
                     ref={fileInputRef}
                     onChange={handleFileUpload}
                     accept=".xlsx, .xls"
-                    disabled={!localSelectedWarehouse || isProcessing}
+                    disabled={isProcessing || !warehouses || warehouses.length === 0}
                     className="hidden"
                   />
                  <Button 
                     onClick={() => fileInputRef.current?.click()} 
-                    disabled={!localSelectedWarehouse || isProcessing}
+                    disabled={isProcessing || !warehouses || warehouses.length === 0}
                     className="mx-auto flex items-center gap-2"
                   >
                     <FileText className="w-4 h-4" />
@@ -308,11 +304,33 @@ export function OrderUploadModal({ isOpen, onClose, onSuccess, selectedWarehouse
           {/* Step 2: Verification */}
           {parsedOrders.length > 0 && !isProcessing && (
               <div className="space-y-6">
+
+                 {/* Filters */}
+                 <div className="flex items-center gap-4 bg-white dark:bg-slate-800 p-4 rounded-xl border border-gray-200 dark:border-slate-700 shadow-sm">
+                     <label className="text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap">กรองตามสาขา:</label>
+                     <select
+                         value={selectedBranch}
+                         onChange={(e) => setSelectedBranch(e.target.value)}
+                         className="flex-1 max-w-xs p-2.5 bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-lg text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500"
+                     >
+                         <option value="all">ทุกสาขา ({parsedOrders.length})</option>
+                         {branchesList.map(b => (
+                             <option key={b} value={b}>{getBranchLabel(b)} ({parsedOrders.filter(o => o.store_branch === b).length})</option>
+                         ))}
+                         {parsedOrders.some(o => !o.store_branch) && (
+                             <option value="unknown">ไม่ระบุสาขา ({parsedOrders.filter(o => !o.store_branch).length})</option>
+                         )}
+                     </select>
+                     <div className="ml-auto text-sm text-gray-500 dark:text-gray-400">
+                         แสดงอยู่: <span className="font-bold text-gray-900 dark:text-white">{filteredOrders.length}</span> รายการ
+                     </div>
+                 </div>
+
                  {/* Summary Cards */}
                  <div className="grid grid-cols-3 gap-4">
                     <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-gray-200 dark:border-slate-700">
-                        <p className="text-sm text-gray-500 dark:text-gray-400">ออเดอร์ทั้งหมด</p>
-                        <p className="text-2xl font-bold text-gray-900 dark:text-white">{parsedOrders.length}</p>
+                        <p className="text-sm text-gray-500 dark:text-gray-400">ออเดอร์ทั้งหมด (กรอง)</p>
+                        <p className="text-2xl font-bold text-gray-900 dark:text-white">{filteredOrders.length}</p>
                     </div>
                     <div className="bg-green-50 dark:bg-green-900/20 p-4 rounded-xl border border-green-200 dark:border-green-800/50">
                         <p className="text-sm text-green-600 dark:text-green-400">พร้อมบันทึก</p>
@@ -326,7 +344,7 @@ export function OrderUploadModal({ isOpen, onClose, onSuccess, selectedWarehouse
 
                  {/* Order List */}
                  <div className="space-y-3">
-                    {parsedOrders.map((order, index) => (
+                    {filteredOrders.map((order, index) => (
                         <div key={index} className={`bg-white dark:bg-slate-800 border rounded-xl overflow-hidden transition-colors ${order.error ? 'border-red-300 dark:border-red-800/50' : 'border-gray-200 dark:border-slate-700'}`}>
                            {/* Order Header / Accordion trigger */}
                            <div 
@@ -342,8 +360,11 @@ export function OrderUploadModal({ isOpen, onClose, onSuccess, selectedWarehouse
                                    <div>
                                        <div className="flex items-center gap-2">
                                            <span className="font-semibold text-gray-900 dark:text-white">{order.customer_name}</span>
-                                           <Badge className="text-xs bg-gray-100 dark:bg-slate-700">
+                                           <Badge className="text-xs bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-gray-300">
                                                {order.doc_no}
+                                           </Badge>
+                                           <Badge variant={order.store_branch === 'SD' ? 'success' : order.store_branch === 'HQ' ? 'info' : 'default'} className="text-[11px] px-2 py-0.5 border border-transparent dark:border-slate-700">
+                                               {order.store_branch ? getBranchLabel(order.store_branch) : 'ไม่ระบุสาขา'}
                                            </Badge>
                                        </div>
                                        {order.error && (

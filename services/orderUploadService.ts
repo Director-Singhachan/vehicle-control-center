@@ -21,6 +21,8 @@ export interface UploadedOrder {
   customer_name: string;
   customer_code?: string;
   store_id?: string;
+  store_branch?: string;
+  warehouse_id?: string;
   doc_type: string;
   status: string;
   tax_exempt: number;
@@ -215,7 +217,7 @@ export const orderUploadService = {
     // This bypasses the 1000-row limit issue
     const { data: stores, error: storesError } = await supabase
        .from('stores')
-       .select('id, customer_name, customer_code')
+       .select('id, customer_name, customer_code, branch')
        .in('customer_code', uniqueCustomerCodes) as { data: any[] | null, error: any };
        
     if (storesError) {
@@ -257,6 +259,7 @@ export const orderUploadService = {
 
             if (matchedStore) {
                validatedOrder.store_id = matchedStore.id;
+               validatedOrder.store_branch = matchedStore.branch;
             } else {
                validatedOrder.error = `ไม่พบรหัสร้านค้า "${order.customer_code || '-'}" ในระบบ (ตรวจสอบจากวงเล็บสุดท้ายในชื่อ)`;
             }
