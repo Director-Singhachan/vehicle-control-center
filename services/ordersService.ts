@@ -109,6 +109,7 @@ type OrderItem = {
   // computed (from view or service):
   quantity_remaining?: number;          // = quantity - picked_up - delivered
   unit_price: number | null;
+  unit: string | null;
   discount_percent: number | null;
   discount_amount: number | null;
   line_total: number | null;
@@ -323,6 +324,7 @@ export const ordersService = {
         quantity_delivered,
         fulfillment_method,
         notes,
+        unit,
         product:products(product_name, product_code, unit)
       `)
       .in('order_id', orderIds);
@@ -337,7 +339,7 @@ export const ordersService = {
           ...i,
           product_name: i.product?.product_name || 'ไม่ระบุชื่อสินค้า',
           product_code: i.product?.product_code || '-',
-          unit_name: i.product?.unit || 'หน่วย'
+          unit_name: i.unit || i.product?.unit || 'หน่วย'
         })),
         total_items: orderItems.length,
         isAwaitingDispatch: true
@@ -388,6 +390,7 @@ export const ordersService = {
         product_id,
         quantity,
         quantity_picked_up_at_store,
+        unit,
         order:orders(
           id,
           order_number,
@@ -454,7 +457,7 @@ export const ordersService = {
           product_code: product?.product_code ?? '-',
           product_name: product?.product_name ?? '-',
           category: product?.category ?? null,
-          unit: product?.unit ?? '',
+          unit: row.unit || product?.unit || '',
         },
       };
     });
@@ -539,7 +542,7 @@ export const ordersService = {
   async getPickupFulfilledOrders(filters?: { branch?: string }): Promise<any[]> {
     const { data: pickupItems, error: itemsError } = await supabase
       .from('order_items')
-      .select('order_id, product_id, quantity, quantity_picked_up_at_store, fulfillment_method, updated_at, is_bonus')
+      .select('order_id, product_id, quantity, quantity_picked_up_at_store, fulfillment_method, updated_at, is_bonus, unit')
       .eq('fulfillment_method', 'pickup');
 
     if (itemsError) throw itemsError;
@@ -599,7 +602,7 @@ export const ordersService = {
         return {
           product_code: p?.product_code ?? '-',
           product_name: p?.product_name ?? '-',
-          unit: p?.unit ?? 'ชิ้น',
+          unit: r.unit || p?.unit || 'ชิ้น',
           quantity: Number(r.quantity ?? r.quantity_picked_up_at_store ?? 0),
           is_bonus: Boolean(r.is_bonus),
         };
@@ -639,7 +642,7 @@ export const ordersService = {
     const orderIds = orders.map((o: any) => o.id);
     const { data: items, error: itemsError } = await supabase
       .from('order_items')
-      .select('product_id, quantity, quantity_picked_up_at_store, is_bonus')
+      .select('product_id, quantity, quantity_picked_up_at_store, is_bonus, unit')
       .in('order_id', orderIds);
 
     if (itemsError) throw itemsError;
@@ -647,7 +650,7 @@ export const ordersService = {
 
     const map = new Map<string, { ordered: number; pickedUp: number }>();
     for (const row of items) {
-      const key = `${row.product_id}_${row.is_bonus ? 'bonus' : 'normal'}`;
+      const key = `${row.product_id}_${row.is_bonus ? 'bonus' : 'normal'}_${row.unit || ''}`;
       const ordered = Number(row.quantity ?? 0);
       const pickedUp = Number(row.quantity_picked_up_at_store ?? 0);
       const existing = map.get(key);
@@ -696,7 +699,7 @@ export const ordersService = {
 
     const { data: items, error: itemsError } = await supabase
       .from('order_items')
-      .select('order_id, product_id, quantity_picked_up_at_store, is_bonus')
+      .select('order_id, product_id, quantity_picked_up_at_store, is_bonus, unit')
       .in('order_id', orderIds)
       .eq('fulfillment_method', 'pickup');
 
@@ -750,7 +753,7 @@ export const ordersService = {
         return {
           product_code: p?.product_code ?? '-',
           product_name: p?.product_name ?? '-',
-          unit: p?.unit ?? 'ชิ้น',
+          unit: r.unit || p?.unit || 'ชิ้น',
           quantity_picked_up: Number(r.quantity_picked_up_at_store ?? 0),
           is_bonus: Boolean(r.is_bonus),
         };
@@ -791,6 +794,7 @@ export const ordersService = {
       product_id: string;
       quantity: number;
       unit_price: number;
+      unit?: string;
       discount_percent?: number;
       is_bonus?: boolean;
       fulfillment_method?: 'delivery' | 'pickup';
@@ -834,6 +838,7 @@ export const ordersService = {
         product_id: item.product_id,
         quantity: item.quantity,
         unit_price: actualUnitPrice,
+        unit: item.unit || null,
         discount_percent: item.discount_percent || 0,
         discount_amount: discountAmount,
         line_total: lineTotal,
@@ -879,6 +884,7 @@ export const ordersService = {
       product_id: string;
       quantity: number;
       unit_price: number;
+      unit?: string;
       discount_percent?: number;
       is_bonus?: boolean;
       fulfillment_method?: 'delivery' | 'pickup';
@@ -927,35 +933,88 @@ export const ordersService = {
         throw mapOrdersError(updateError, 'update');
       }
 
-      // 2. ลบรายการ order_items เดิมทิ้ง
-      await supabase.from('order_items').delete().eq('order_id', existingOrder.id);
+      // 2. SURGICAL UPDATE รายการ order_items
+      // ดึงรายการที่มีอยู่เดิม
+      const { data: existingItems } = await supabase
+        .from('order_items')
+        .select('*')
+        .eq('order_id', existingOrder.id);
+      
+      const dbItems = existingItems || [];
+      
+      // รวมยอดสินค้าเดิมตาม (product_id, is_bonus, unit)
+      const aggregatedDb = new Map<string, { quantity: number, unit_price: number, unit: string | null, items: any[] }>();
+      for (const item of dbItems) {
+          const key = `${item.product_id}_${item.is_bonus ? 'bonus' : 'normal'}_${item.unit || ''}`;
+          const existing = aggregatedDb.get(key);
+          if (existing) {
+              existing.quantity += Number(item.quantity);
+              existing.items.push(item);
+          } else {
+              aggregatedDb.set(key, { 
+                  quantity: Number(item.quantity), 
+                  unit_price: Number(item.unit_price),
+                  unit: item.unit,
+                  items: [item]
+              });
+          }
+      }
 
-      // 3. สร้างรายการสินค้าใหม่
-      const orderItems = items.map((item) => {
-        const actualUnitPrice = item.is_bonus ? 0 : item.unit_price;
-        const discountAmount = (actualUnitPrice * item.quantity * (item.discount_percent || 0)) / 100;
-        const lineTotal = (actualUnitPrice * item.quantity) - discountAmount;
+      // เตรียมรายการใหม่ และหาว่าอะไรที่ต้องเปลี่ยน
+      const newAggregated = new Map<string, typeof items[0]>();
+      for (const item of items) {
+          const key = `${item.product_id}_${item.is_bonus ? 'bonus' : 'normal'}_${item.unit || ''}`;
+          const existing = newAggregated.get(key);
+          if (existing) {
+              existing.quantity += item.quantity;
+          } else {
+              newAggregated.set(key, { ...item });
+          }
+      }
 
-        const orderItem: any = {
-          order_id: existingOrder.id,
-          product_id: item.product_id,
-          quantity: item.quantity,
-          unit_price: actualUnitPrice,
-          discount_percent: item.discount_percent || 0,
-          discount_amount: discountAmount,
-          line_total: lineTotal,
-          fulfillment_method: item.fulfillment_method || 'delivery',
-        };
+      // วนลูปรายการใหม่เพื่อตรวจสอบความเปลี่ยนแปลง
+      for (const [key, newItem] of newAggregated.entries()) {
+          const dbAgg = aggregatedDb.get(key);
+          const actualUnitPrice = newItem.is_bonus ? 0 : newItem.unit_price;
 
-        if (item.is_bonus !== undefined) {
-          orderItem.is_bonus = item.is_bonus;
-        }
+          // ถ้าไม่มีใน DB หรือ ยอดรวม/ราคา/หน่วย เปลี่ยน -> ลบของเดิมเฉพาะสินค้านี้ แล้วเพิ่มใหม่
+          if (!dbAgg || 
+              Math.abs(dbAgg.quantity - newItem.quantity) > 0.001 || 
+              Math.abs(dbAgg.unit_price - actualUnitPrice) > 0.001) {
+              
+              if (dbAgg) {
+                  // ลบเฉพาะรายการที่เป็นสินค้านี้
+                  const itemIdsToDelete = dbAgg.items.map(i => i.id);
+                  await supabase.from('order_items').delete().in('id', itemIdsToDelete);
+              }
 
-        return orderItem;
-      });
+              // เพิ่มรายการใหม่
+              const discountAmount = (actualUnitPrice * newItem.quantity * (newItem.discount_percent || 0)) / 100;
+              const lineTotal = (actualUnitPrice * newItem.quantity) - discountAmount;
 
-      const { error: itemsError } = await supabase.from('order_items').insert(orderItems);
-      if (itemsError) throw itemsError;
+              await supabase.from('order_items').insert({
+                  order_id: existingOrder.id,
+                  product_id: newItem.product_id,
+                  quantity: newItem.quantity,
+                  unit_price: actualUnitPrice,
+                  unit: newItem.unit || null,
+                  discount_percent: newItem.discount_percent || 0,
+                  discount_amount: discountAmount,
+                  line_total: lineTotal,
+                  fulfillment_method: newItem.fulfillment_method || 'delivery',
+                  is_bonus: newItem.is_bonus || false,
+              });
+          }
+          // ถ้าเหมือนเดิม -> ไม่ทำอะไร (เก็บ splits เดิมไว้)
+      }
+
+      // ลบรายการที่มีใน DB แต่ไม่มีในรายการใหม่
+      for (const [key, dbAgg] of aggregatedDb.entries()) {
+          if (!newAggregated.has(key)) {
+              const itemIdsToDelete = dbAgg.items.map(i => i.id);
+              await supabase.from('order_items').delete().in('id', itemIdsToDelete);
+          }
+      }
 
       // 4. คืนค่า
       return existingOrder;
@@ -1252,6 +1311,7 @@ export const ordersService = {
         product_id: original.product_id,
         quantity: quantity,
         unit_price: unitPrice,
+        unit: original.unit,
         discount_percent: discountPercent,
         discount_amount: discountAmount,
         line_total: lineTotal,
@@ -1458,4 +1518,3 @@ export const orderStatsService = {
     return data;
   },
 };
-
