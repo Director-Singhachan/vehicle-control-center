@@ -62,14 +62,16 @@ export const PageLayout: React.FC<PageLayoutProps> = ({
   return (
     <div className="space-y-6 animate-fade-in min-w-0">
       {/* Page Header */}
-      <div className="flex justify-between items-center">
-        <div>
+      <div className="flex flex-col gap-4 min-w-0 lg:flex-row lg:justify-between lg:items-start">
+        <div className="min-w-0 flex-1">
           <h2 className={componentStyles.pageHeader.title}>{title}</h2>
           {subtitle && (
             <p className={componentStyles.pageHeader.subtitle}>{subtitle}</p>
           )}
         </div>
-        {actions && <div className="flex space-x-3">{actions}</div>}
+        {actions && (
+          <div className="flex flex-wrap gap-2 sm:gap-3 shrink-0 lg:justify-end">{actions}</div>
+        )}
       </div>
 
       {/* Page Content */}
