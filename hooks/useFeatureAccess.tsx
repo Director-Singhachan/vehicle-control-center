@@ -4,6 +4,7 @@ import React, {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react';
 import { useAuth } from './useAuth';
@@ -38,14 +39,23 @@ function useFeatureAccessState(): UseFeatureAccessResult {
   const [dbMap, setDbMap] = useState<Partial<Record<FeatureKey, AccessLevel>>>({});
   const [loading, setLoading] = useState(true);
   const [fetchFailed, setFetchFailed] = useState(false);
+  /** role ที่โหลด matrix สำเร็จล่าสุด — ใช้ไม่ให้ล้าง dbMap เมื่อ refetch ชั่วคราวล้มเหลว (กันเด้งแท็บ) */
+  const successfulMatrixRoleRef = useRef<AppRole | null>(null);
 
   const load = useCallback(async () => {
     if (!appRole) {
+      successfulMatrixRoleRef.current = null;
       setDbMap({});
       setFetchFailed(false);
       setLoading(false);
       return;
     }
+
+    if (successfulMatrixRoleRef.current !== appRole) {
+      successfulMatrixRoleRef.current = null;
+      setDbMap({});
+    }
+
     setLoading(true);
     try {
       const { data, error } = await supabase
@@ -55,8 +65,11 @@ function useFeatureAccessState(): UseFeatureAccessResult {
 
       if (error) {
         console.warn('[useFeatureAccess] fetch skipped or failed:', error.message);
-        setDbMap({});
-        setFetchFailed(true);
+        if (successfulMatrixRoleRef.current === appRole) {
+          setFetchFailed(false);
+        } else {
+          setFetchFailed(true);
+        }
         return;
       }
       const next: Partial<Record<FeatureKey, AccessLevel>> = {};
@@ -68,6 +81,7 @@ function useFeatureAccessState(): UseFeatureAccessResult {
       }
       setDbMap(next);
       setFetchFailed(false);
+      successfulMatrixRoleRef.current = appRole;
     } finally {
       setLoading(false);
     }
