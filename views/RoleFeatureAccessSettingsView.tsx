@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { ShieldAlert } from 'lucide-react';
+import { RefreshCw, RotateCcw, ShieldAlert } from 'lucide-react';
 import { PageLayout } from '../components/layout/PageLayout';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
@@ -30,7 +30,6 @@ export const RoleFeatureAccessSettingsView: React.FC = () => {
     levels,
     commitLevel,
     resetToBuiltIn,
-    saveAll,
     loading,
     saving,
     error: loadError,
@@ -71,21 +70,6 @@ export const RoleFeatureAccessSettingsView: React.FC = () => {
     }
   };
 
-  const handleSaveAll = async () => {
-    if (!canEditRoleFeatureAccess) {
-      return;
-    }
-    try {
-      await saveAll();
-      success('บันทึกทุกฟีเจอร์สำเร็จ');
-      if (profile?.role === selectedRole) {
-        await refetchFeatureAccess();
-      }
-    } catch (e) {
-      error(e instanceof Error ? e.message : 'บันทึกไม่สำเร็จ');
-    }
-  };
-
   if (featureAccessLoading) {
     return (
       <PageLayout title="สิทธิ์ตามฟีเจอร์">
@@ -110,20 +94,33 @@ export const RoleFeatureAccessSettingsView: React.FC = () => {
   return (
     <PageLayout
       title="กำหนดสิทธิ์ตามฟีเจอร์"
-      subtitle="สรุปตามฝ่ายด้านล่างช่วยไล่ตรวจเร็ว — กรอง «เฉพาะที่ต่างจากค่าเริ่มต้น» ได้ — ระดับ: ไม่มี / ดู / แก้ไข / จัดการเต็ม"
+      subtitle="แต่ละฟีเจอร์บันทึกลงฐานข้อมูลทันทีเมื่อเปลี่ยนระดับ — เลือกหมวดฝ่ายแล้วตั้งระดับด้านล่าง"
       actions={
-        <div className="flex flex-wrap gap-2">
-          <Button variant="outline" onClick={() => void reload()} disabled={loading || saving}>
-            โหลดใหม่
+        <div className="flex flex-col items-stretch sm:flex-row sm:flex-wrap sm:items-center gap-2 min-w-0 max-w-full">
+          <Button
+            type="button"
+            variant="secondary"
+            size="md"
+            className="inline-flex items-center justify-center gap-2 shrink-0 min-h-[44px] sm:min-h-0"
+            onClick={() => void reload()}
+            disabled={loading || saving}
+            title="ดึงค่าล่าสุดจากเซิร์ฟเวอร์สำหรับบทบาทที่เลือก"
+          >
+            <RefreshCw size={18} className={loading ? 'animate-spin shrink-0' : 'shrink-0'} />
+            <span>โหลดข้อมูลใหม่</span>
           </Button>
           {canEditRoleFeatureAccess && (
-            <Button variant="outline" onClick={() => setResetOpen(true)} disabled={loading || saving}>
-            รีเซ็ต role นี้
-            </Button>
-          )}
-          {canEditRoleFeatureAccess && (
-            <Button variant="outline" onClick={() => void handleSaveAll()} disabled={loading || saving}>
-            {saving ? 'กำลังบันทึก…' : 'บันทึกทั้งแผง'}
+            <Button
+              type="button"
+              variant="outline"
+              size="md"
+              className="inline-flex items-center justify-center gap-2 shrink-0 min-h-[44px] sm:min-h-0 border-red-300 dark:border-red-800 text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-950/40"
+              onClick={() => setResetOpen(true)}
+              disabled={loading || saving}
+              title="ล้างการตั้งค่าในฐานข้อมูลของบทบาทนี้ แล้วกลับไปค่าเริ่มต้นของโปรแกรม"
+            >
+              <RotateCcw size={18} className="shrink-0" />
+              <span>รีเซ็ตบทบาทนี้</span>
             </Button>
           )}
         </div>

@@ -1,11 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { AppRole } from '../types/database';
 import type { AccessLevel, FeatureKey } from '../types/featureAccess';
-import { builtInMatrixForRole, FEATURE_KEYS, matrixForAdminEditor } from '../types/featureAccess';
+import { builtInMatrixForRole, matrixForAdminEditor } from '../types/featureAccess';
 import {
   clearRoleFeatureOverrides,
   fetchRoleFeatureMatrix,
-  upsertRoleFeatureAccess,
   upsertSingleRoleFeature,
 } from '../services/featureAccessService';
 
@@ -75,31 +74,12 @@ export function useRoleFeatureAccessSettings() {
     }
   }, [selectedRole]);
 
-  /** บันทึกทั้ง matrix ครั้งเดียว (สำรอง) */
-  const saveAll = useCallback(async () => {
-    setSaving(true);
-    setError(null);
-    try {
-      const rows = FEATURE_KEYS.map((feature_key) => ({
-        feature_key,
-        access_level: levels[feature_key],
-      }));
-      await upsertRoleFeatureAccess(selectedRole, rows);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'บันทึกไม่สำเร็จ');
-      throw e;
-    } finally {
-      setSaving(false);
-    }
-  }, [selectedRole, levels]);
-
   return {
     selectedRole,
     setSelectedRole,
     levels,
     commitLevel,
     resetToBuiltIn,
-    saveAll,
     loading,
     saving,
     error,

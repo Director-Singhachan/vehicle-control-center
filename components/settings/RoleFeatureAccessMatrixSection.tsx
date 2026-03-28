@@ -1,131 +1,19 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { HelpCircle } from 'lucide-react';
 import type { AppRole } from '../../types/database';
 import type { AccessLevel, FeatureKey } from '../../types/featureAccess';
 import { accessLevelAtLeast, FEATURE_KEYS } from '../../types/featureAccess';
 import { APP_ROLES } from '../../services/featureAccessService';
 import { ACCESS_LEVEL_OPTIONS } from '../../hooks/useRoleFeatureAccessSettings';
 import { Card } from '../ui/Card';
-
-const FEATURE_LABELS: Partial<Record<FeatureKey, string>> = {
-  'tab.reports': 'รายงาน (ศูนย์กลาง)',
-  'report.pnl_trip': 'P&L รายเที่ยว',
-  'report.pnl_vehicle': 'P&L รายคัน',
-  'report.pnl_fleet': 'P&L ทั้งกองเรือ',
-  'tab.create_order': 'สร้างออเดอร์',
-  'tab.confirm_orders': 'ยืนยันและแบ่งส่ง',
-  'tab.track_orders': 'ติดตามออเดอร์',
-  'tab.sales_trips': 'ออกใบแจ้งหนี้',
-  'tab.products': 'จัดการสินค้า / ราคา',
-  'tab.product_pricing': 'กำหนดราคาตามลูกค้า',
-  'tab.customer_tiers': 'ระดับลูกค้า',
-  'tab.customers': 'จัดการลูกค้า',
-  'tab.cleanup_test_orders': 'จัดการออเดอร์ (ทดสอบ)',
-  'tab.excel_import': 'นำเข้าข้อมูล (Excel)',
-  'tab.stock_dashboard': 'Stock Dashboard',
-  'tab.warehouses': 'จัดการคลัง',
-  'tab.inventory_receipts': 'ประวัติรับสินค้า',
-  'tab.dashboard': 'แดชบอร์ดฝ่ายขนส่ง',
-  'tab.vehicles': 'ยานพาหนะ',
-  'tab.maintenance': 'ซ่อมบำรุง',
-  'tab.triplogs': 'บันทึกการใช้งานรถ',
-  'tab.fuellogs': 'บันทึกการเติมน้ำมัน',
-  'tab.approvals': 'ภาพรวมการอนุมัติ',
-  'tab.daily_summary': 'สรุปการใช้รถรายวัน',
-  'tab.delivery_trips': 'ทริปส่งสินค้า',
-  'tab.packing_simulation': 'จำลองจัดเรียง',
-  'tab.pending_orders': 'ออเดอร์รอจัดส่ง',
-  'tab.pending_sales': 'รายการขายค้าง',
-  'tab.admin_staff': 'บัญชีพนักงาน',
-  'tab.service_staff': 'ประวัติการปฏิบัติงาน',
-  'tab.commission': 'ค่าคอมมิชชั่น',
-  'tab.commission_rates': 'อัตราค่าคอมมิชชั่น',
-  'tab.profile': 'โปรไฟล์',
-  'tab.settings': 'ตั้งค่าแจ้งเตือน',
-  'tab.role_feature_access': 'หน้านี้ — สิทธิ์ตามฟีเจอร์',
-  'tab.db_explorer': 'สำรวจฐานข้อมูล (DB)',
-};
-
-function levelLabel(l: AccessLevel): string {
-  switch (l) {
-    case 'none':
-      return 'ไม่มี';
-    case 'view':
-      return 'ดูอย่างเดียว';
-    case 'edit':
-      return 'แก้ไข';
-    case 'manage':
-      return 'จัดการเต็ม';
-    default:
-      return l;
-  }
-}
-
-interface FeatureGroup {
-  id: string;
-  title: string;
-  keys: FeatureKey[];
-}
-
-const FEATURE_GROUPS: FeatureGroup[] = [
-  {
-    id: 'finance_reports',
-    title: 'การเงิน / รายงาน',
-    keys: ['tab.reports', 'report.pnl_trip', 'report.pnl_vehicle', 'report.pnl_fleet'],
-  },
-  {
-    id: 'sales',
-    title: 'ฝ่ายขาย',
-    keys: [
-      'tab.create_order',
-      'tab.confirm_orders',
-      'tab.track_orders',
-      'tab.sales_trips',
-      'tab.products',
-      'tab.product_pricing',
-      'tab.customer_tiers',
-      'tab.customers',
-      'tab.cleanup_test_orders',
-      'tab.pending_sales',
-    ],
-  },
-  {
-    id: 'warehouse',
-    title: 'คลังสินค้า',
-    keys: ['tab.stock_dashboard', 'tab.warehouses', 'tab.inventory_receipts'],
-  },
-  {
-    id: 'logistics',
-    title: 'ฝ่ายขนส่ง',
-    keys: [
-      'tab.dashboard',
-      'tab.vehicles',
-      'tab.maintenance',
-      'tab.triplogs',
-      'tab.fuellogs',
-      'tab.approvals',
-      'tab.daily_summary',
-      'tab.delivery_trips',
-      'tab.packing_simulation',
-      'tab.pending_orders',
-    ],
-  },
-  {
-    id: 'hr',
-    title: 'จัดการบุคคล / HR',
-    keys: ['tab.admin_staff', 'tab.service_staff', 'tab.commission', 'tab.commission_rates'],
-  },
-  {
-    id: 'system',
-    title: 'ระบบ',
-    keys: [
-      'tab.excel_import',
-      'tab.profile',
-      'tab.settings',
-      'tab.role_feature_access',
-      'tab.db_explorer',
-    ],
-  },
-];
+import {
+  FEATURE_GROUPS,
+  FEATURE_LABELS,
+  levelLabel,
+  levelSelectClasses,
+  levelShort,
+  ROLE_LABELS_TH,
+} from './roleFeatureAccessMatrixConfig';
 
 type ListFilter = 'all' | 'diff' | 'none_only';
 
@@ -200,94 +88,98 @@ export const RoleFeatureAccessMatrixSection: React.FC<RoleFeatureAccessMatrixSec
     return keys;
   }, [activeGroup, levels, builtInLevels, listFilter]);
 
+  const openPct = totals.total ? Math.round((totals.open / totals.total) * 100) : 0;
+
   return (
     <div className="space-y-5">
-      <Card className="p-4 border-slate-200 dark:border-slate-700 bg-slate-50/80 dark:bg-charcoal-900/50">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div>
-            <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">สรุปตามฝ่าย (คลิกการ์ดเพื่อไปแก้หมวดนั้น)</h3>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-              บทบาท: <span className="font-mono font-medium text-slate-700 dark:text-slate-300">{selectedRole}</span> — ทั้งหมด {totals.total}{' '}
-              ฟีเจอร์ — เข้าถึงได้ (ดูขึ้นไป){' '}
-              <span className="font-semibold text-enterprise-600 dark:text-enterprise-400">{totals.open}</span> — ปิดทั้งหมด{' '}
-              <span className="font-semibold text-slate-700 dark:text-slate-300">{totals.none}</span> — ต่างจากค่าเริ่มต้นในโปรแกรม{' '}
-              <span className="font-semibold text-amber-600 dark:text-amber-400">{totals.diff}</span> รายการ
-            </p>
-            <p className="text-xs text-slate-600 dark:text-slate-400 mt-2 leading-relaxed border-t border-slate-200/80 dark:border-slate-700/80 pt-2">
-              เมื่อบันทึกสิทธิ์ลงระบบอย่างน้อยหนึ่งรายการต่อบทบาทนี้ ผู้ใช้จะเห็นเฉพาะฟีเจอร์ที่เปิดในรายการนี้เท่านั้น — ช่องที่ไม่ได้บันทึกจะไม่แสดงเมนู
-              (โปรไฟล์ / ตั้งค่า ใช้ค่าเริ่มต้นของบทบาทจนกว่าจะตั้งในนี้) หากลบแถวของบทบาทนั้นหมดจากฐานข้อมูลจะกลับไปใช้สิทธิ์เริ่มต้นของโปรแกรมทั้งบทบาท
-            </p>
+      <Card className="p-5 border border-slate-200 dark:border-slate-700 bg-white/80 dark:bg-charcoal-900/50 backdrop-blur-md shadow-sm">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="min-w-0 flex-1 space-y-3">
+            <div>
+              <h3 className="text-sm font-bold text-slate-900 dark:text-white tracking-tight flex items-center gap-2 flex-wrap">
+                สรุปสิทธิ์ของบทบาทนี้
+                <span className="font-mono text-xs font-normal text-slate-500 dark:text-slate-400">
+                  ({selectedRole})
+                </span>
+              </h3>
+              <p className="text-sm text-slate-600 dark:text-slate-400 mt-2 leading-relaxed max-w-3xl">
+                ระดับสูงขึ้นเรื่อย ๆ: ไม่มี → ดู → แก้ไข → จัดการเต็ม — การเปลี่ยนค่าแต่ละแถวบันทึกทันที
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <div className="inline-flex items-center gap-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50/80 dark:bg-charcoal-900/40 px-3 py-2 text-sm">
+                <span className="text-slate-600 dark:text-slate-400">ฟีเจอร์ทั้งหมด</span>
+                <span className="font-semibold tabular-nums text-slate-900 dark:text-white">{totals.total}</span>
+              </div>
+              <div className="inline-flex items-center gap-2 rounded-lg border border-enterprise-100 dark:border-enterprise-900/50 bg-enterprise-50/90 dark:bg-enterprise-900/25 px-3 py-2 text-sm">
+                <span className="text-enterprise-900 dark:text-enterprise-100">เปิดใช้ (ดูขึ้นไป)</span>
+                <span className="font-semibold tabular-nums text-enterprise-900 dark:text-enterprise-100">
+                  {totals.open}
+                </span>
+                <span className="text-enterprise-600 dark:text-enterprise-500/90 tabular-nums text-sm">
+                  ({openPct}%)
+                </span>
+              </div>
+              <div className="inline-flex items-center gap-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50/80 dark:bg-charcoal-900/40 px-3 py-2 text-sm">
+                <span className="text-slate-600 dark:text-slate-400">ปิดสิ้นเชิง</span>
+                <span className="font-semibold tabular-nums text-slate-900 dark:text-slate-100">{totals.none}</span>
+              </div>
+              <div className="inline-flex items-center gap-2 rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50/90 dark:bg-amber-950/30 px-3 py-2 text-sm">
+                <span className="text-amber-900 dark:text-amber-200">ต่างจากค่าเริ่มต้น</span>
+                <span className="font-semibold tabular-nums text-amber-900 dark:text-amber-200">{totals.diff}</span>
+              </div>
+            </div>
+            <div className="h-1.5 rounded-full bg-slate-200 dark:bg-charcoal-800 overflow-hidden max-w-md">
+              <div
+                className="h-full rounded-full bg-enterprise-500 dark:bg-enterprise-600 transition-[width] duration-300"
+                style={{ width: `${openPct}%` }}
+              />
+            </div>
           </div>
         </div>
-        <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-          {groupSummaries.map((row) => {
-            const active = row.id === activeGroup.id;
-            return (
-              <button
-                key={row.id}
-                type="button"
-                disabled={loading}
-                onClick={() => setActiveGroupId(row.id)}
-                className={`rounded-xl border px-3 py-2.5 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-enterprise-500 dark:focus-visible:ring-offset-charcoal-950 focus-visible:ring-offset-2 ${
-                  active
-                    ? 'border-enterprise-400 bg-enterprise-50 dark:bg-enterprise-950/50 dark:border-enterprise-700'
-                    : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-charcoal-900/40 hover:border-enterprise-200 dark:hover:border-enterprise-800'
-                }`}
-              >
-                <div className="font-semibold text-slate-800 dark:text-slate-100">{row.title}</div>
-                <div className="mt-1 flex flex-wrap gap-x-2 gap-y-0.5 text-[11px] text-slate-600 dark:text-slate-400">
-                  <span>
-                    เปิด {row.open}/{row.total}
-                  </span>
-                  <span>ปิด {row.none}</span>
-                  {row.diff > 0 && (
-                    <span className="text-amber-600 dark:text-amber-400">ต่างจากค่าเริ่มต้น {row.diff}</span>
-                  )}
-                </div>
-              </button>
-            );
-          })}
-        </div>
+
+        <details className="mt-4 group border border-slate-200/80 dark:border-slate-700/80 rounded-lg bg-slate-50/50 dark:bg-charcoal-900/30">
+          <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-3 text-sm text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white [&::-webkit-details-marker]:hidden">
+            <HelpCircle size={16} className="shrink-0 text-slate-400 dark:text-slate-500" />
+            <span className="font-medium">หมายเหตุการทำงานของสิทธิ์ (คลิกเพื่ออ่าน)</span>
+            <span className="ml-auto text-xs text-slate-400 dark:text-slate-500 group-open:hidden">
+              แสดง
+            </span>
+            <span className="ml-auto text-xs text-slate-400 dark:text-slate-500 hidden group-open:inline">
+              ซ่อน
+            </span>
+          </summary>
+          <p className="px-3 pb-4 text-sm text-slate-600 dark:text-slate-400 leading-relaxed border-t border-slate-100 dark:border-slate-800 pt-3">
+            เมื่อบันทึกสิทธิ์ลงฐานข้อมูลอย่างน้อยหนึ่งรายการสำหรับบทบาทนี้ ผู้ใช้จะเห็นเฉพาะฟีเจอร์ที่เปิดในรายการนี้
+            — รายการที่ยังไม่มีแถวในฐานข้อมูลจะไม่แสดงในเมนู (โปรไฟล์ / ตั้งค่าแจ้งเตือน ยังมีกฎพิเศษตามค่าเริ่มต้นของบทบาท)
+            หากลบแถวของบทบาทนั้นจากฐานข้อมูลทั้งหมด ระบบจะกลับไปใช้สิทธิ์เริ่มต้นของโปรแกรม
+          </p>
+        </details>
       </Card>
 
-      <div className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-end">
-        <label className="flex flex-col gap-1 text-sm">
-          <span className="text-slate-600 dark:text-slate-400">บทบาท (Role)</span>
+      <div className="flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-end">
+        <label className="flex flex-col gap-1.5 min-w-[240px] lg:max-w-sm">
+          <span className="text-sm font-medium text-slate-700 dark:text-slate-300">บทบาท (Role)</span>
           <select
             value={selectedRole}
             onChange={(e) => onRoleChange(e.target.value as AppRole)}
             disabled={loading}
-            className="rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-charcoal-900 px-3 py-2 text-slate-900 dark:text-white min-w-[200px]"
+            className="rounded-lg border border-slate-300 dark:border-slate-600 bg-white/50 dark:bg-charcoal-900/50 px-4 py-2 text-sm text-slate-900 dark:text-white shadow-sm focus:outline-none focus:ring-2 focus:ring-enterprise-500 focus:border-enterprise-500 transition-all"
           >
             {APP_ROLES.map((r) => (
               <option key={r} value={r}>
-                {r}
+                {ROLE_LABELS_TH[r]} ({r})
               </option>
             ))}
           </select>
         </label>
-        <label className="flex flex-col gap-1 text-sm lg:hidden w-full min-w-0">
-          <span className="text-slate-600 dark:text-slate-400">ฝ่าย / หมวดหมู่</span>
-          <select
-            value={activeGroupId}
-            onChange={(e) => setActiveGroupId(e.target.value)}
-            disabled={loading}
-            className="rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-charcoal-900 px-3 py-2 text-slate-900 dark:text-white w-full max-w-md"
-          >
-            {FEATURE_GROUPS.map((g) => (
-              <option key={g.id} value={g.id}>
-                {g.title} ({g.keys.length})
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="flex flex-col gap-1 text-sm w-full sm:w-auto min-w-[220px]">
-          <span className="text-slate-600 dark:text-slate-400">แสดงรายการในหมวด</span>
+        <label className="flex flex-col gap-1.5 w-full sm:w-auto min-w-[220px]">
+          <span className="text-sm font-medium text-slate-700 dark:text-slate-300">แสดงรายการในหมวด</span>
           <select
             value={listFilter}
             onChange={(e) => setListFilter(e.target.value as ListFilter)}
             disabled={loading}
-            className="rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-charcoal-900 px-3 py-2 text-slate-900 dark:text-white"
+            className="rounded-lg border border-slate-300 dark:border-slate-600 bg-white/50 dark:bg-charcoal-900/50 px-4 py-2 text-sm text-slate-900 dark:text-white shadow-sm focus:outline-none focus:ring-2 focus:ring-enterprise-500 focus:border-enterprise-500 transition-all"
           >
             <option value="all">ทั้งหมดในหมวดนี้</option>
             <option value="diff">เฉพาะที่ต่างจากค่าเริ่มต้นในโปรแกรม</option>
@@ -295,38 +187,70 @@ export const RoleFeatureAccessMatrixSection: React.FC<RoleFeatureAccessMatrixSec
           </select>
         </label>
         {loading && (
-          <span className="text-sm text-slate-500 dark:text-slate-400">กำลังโหลด...</span>
+          <span className="text-sm text-slate-600 dark:text-slate-400 lg:pb-2">กำลังโหลด...</span>
         )}
       </div>
 
-      <div className="hidden lg:block sticky top-0 z-10 -mx-1 px-1 py-2 bg-slate-50/95 dark:bg-charcoal-950/90 backdrop-blur-md border-b border-slate-200/80 dark:border-slate-800/80">
+      <div className="sticky top-0 z-20 -mx-1 px-1 py-2 bg-slate-50/95 dark:bg-charcoal-950/95 backdrop-blur-md border-b border-slate-200/80 dark:border-slate-800/80">
+        <p className="text-xs text-slate-600 dark:text-slate-400 mb-2 px-0.5 leading-relaxed">
+          เลือกหมวดฝ่าย — แต่ละปุ่มแสดงจำนวนที่เปิดใช้ / ทั้งหมดในกลุ่ม
+        </p>
         <div
-          className="flex flex-wrap gap-2"
+          className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1 scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-700 scrollbar-track-transparent"
           role="tablist"
           aria-label="เลือกฝ่ายเพื่อกำหนดสิทธิ์"
         >
-          {FEATURE_GROUPS.map((group) => {
-            const isActive = group.id === activeGroup.id;
+          {groupSummaries.map((row) => {
+            const isActive = row.id === activeGroup.id;
+            const Icon = row.icon;
+            const pct = row.total ? Math.round((row.open / row.total) * 100) : 0;
             return (
               <button
-                key={group.id}
+                key={row.id}
                 type="button"
                 role="tab"
                 aria-selected={isActive}
-                id={`feature-group-tab-${group.id}`}
+                id={`feature-group-tab-${row.id}`}
                 disabled={loading}
-                onClick={() => setActiveGroupId(group.id)}
-                className={`shrink-0 rounded-full px-3.5 py-2 text-xs font-semibold transition-all border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-enterprise-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-charcoal-950 ${
+                onClick={() => setActiveGroupId(row.id)}
+                className={`shrink-0 flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-left transition-all border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-enterprise-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-charcoal-950 min-w-[148px] sm:min-w-[168px] ${
                   isActive
-                    ? 'bg-enterprise-500 border-enterprise-600 text-white shadow-sm dark:bg-enterprise-600 dark:border-enterprise-500'
-                    : 'bg-white dark:bg-charcoal-900 border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-200 hover:border-enterprise-300 dark:hover:border-enterprise-700'
+                    ? 'border-enterprise-500 bg-enterprise-500 text-white shadow-md dark:bg-enterprise-600 dark:border-enterprise-500'
+                    : 'border-slate-200 dark:border-slate-600 bg-white dark:bg-charcoal-900 text-slate-800 dark:text-slate-100 hover:border-enterprise-500/50 dark:hover:border-enterprise-600'
                 }`}
               >
-                <span className="whitespace-nowrap">{group.title}</span>
                 <span
-                  className={`ml-1.5 tabular-nums opacity-90 ${isActive ? 'text-white/90' : 'text-slate-500 dark:text-slate-400'}`}
+                  className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${
+                    isActive
+                      ? 'bg-white/20 text-white'
+                      : 'bg-slate-100 dark:bg-charcoal-800 text-slate-600 dark:text-slate-300'
+                  }`}
                 >
-                  ({group.keys.length})
+                  <Icon size={16} strokeWidth={2} />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm font-semibold leading-snug">
+                    {row.title}
+                  </span>
+                  <span
+                    className={`mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs tabular-nums leading-normal ${
+                      isActive ? 'text-white/90' : 'text-slate-600 dark:text-slate-400'
+                    }`}
+                  >
+                    <span>
+                      เปิด {row.open}/{row.total}
+                    </span>
+                    <span className="opacity-70">·</span>
+                    <span>{pct}%</span>
+                    {row.diff > 0 && (
+                      <>
+                        <span className="opacity-70">·</span>
+                        <span className={isActive ? 'text-amber-200' : 'text-amber-600 dark:text-amber-400'}>
+                          ปรับ {row.diff}
+                        </span>
+                      </>
+                    )}
+                  </span>
                 </span>
               </button>
             );
@@ -338,55 +262,80 @@ export const RoleFeatureAccessMatrixSection: React.FC<RoleFeatureAccessMatrixSec
         role="tabpanel"
         aria-labelledby={`feature-group-tab-${activeGroup.id}`}
         aria-label={`ฟีเจอร์ในหมวด ${activeGroup.title}`}
-        className="rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden bg-white dark:bg-charcoal-900/30 shadow-sm"
+        className="rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden bg-white dark:bg-charcoal-900/60 shadow-sm"
       >
-        <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-800 bg-enterprise-50/60 dark:bg-enterprise-950/30">
-          <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100">{activeGroup?.title}</h3>
-          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-            แสดง {visibleKeys.length} / {activeGroup?.keys.length ?? 0} ในหมวดนี้
-            {listFilter !== 'all' && ` (กรอง: ${listFilter === 'diff' ? 'ต่างจากค่าเริ่มต้น' : 'เฉพาะปิด'})`}
-          </p>
-        </div>
+        {activeGroup && (
+          <div className="px-4 py-3.5 border-b border-slate-100 dark:border-slate-800 bg-enterprise-50/70 dark:bg-enterprise-900/20 flex flex-col sm:flex-row sm:items-center gap-2 sm:justify-between">
+            <div className="flex items-start gap-3 min-w-0">
+              {(() => {
+                const HeaderIcon = activeGroup.icon;
+                return (
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-enterprise-100 dark:bg-enterprise-900/40 text-enterprise-600 dark:text-enterprise-500">
+                    <HeaderIcon size={20} strokeWidth={2} />
+                  </span>
+                );
+              })()}
+              <div className="min-w-0">
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white tracking-tight">{activeGroup.title}</h3>
+                <p className="text-sm text-slate-600 dark:text-slate-400 mt-1 leading-relaxed">
+                  แสดง {visibleKeys.length} / {activeGroup.keys.length} ในหมวดนี้
+                  {listFilter !== 'all' && ` · กรอง: ${listFilter === 'diff' ? 'ต่างจากค่าเริ่มต้น' : 'เฉพาะปิด'}`}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
         <div className="divide-y divide-slate-100 dark:divide-slate-800">
           {visibleKeys.length === 0 ? (
-            <div className="px-4 py-10 text-center text-sm text-slate-500 dark:text-slate-400">
+            <div className="px-4 py-12 text-center text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
               ไม่มีรายการในโหมดกรองนี้ — ลองเปลี่ยน &quot;แสดงรายการในหมวด&quot; หรือเลือกหมวดอื่น
             </div>
           ) : (
             visibleKeys.map((key) => {
               const differs = levels[key] !== builtInLevels[key];
+              const cur = levels[key];
               return (
                 <div
                   key={key}
-                  className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 px-4 py-3 bg-white dark:bg-charcoal-900/50"
+                  className="flex flex-col gap-3 lg:flex-row lg:items-center px-4 py-4 bg-white/50 dark:bg-charcoal-900/20"
                 >
-                  <div className="flex-1 min-w-0">
+                  <div className="flex-1 min-w-0 lg:max-w-[min(100%,28rem)]">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <p className="text-sm font-medium text-slate-900 dark:text-white">
+                      <p className="text-sm font-medium text-slate-900 dark:text-white leading-snug">
                         {FEATURE_LABELS[key] ?? key}
                       </p>
                       {differs && (
-                        <span className="text-[10px] font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-400 bg-amber-100/90 dark:bg-amber-950/50 px-1.5 py-0.5 rounded">
+                        <span className="text-xs font-medium text-amber-900 dark:text-amber-200 bg-amber-100/90 dark:bg-amber-950/50 px-2 py-0.5 rounded-md border border-amber-200/80 dark:border-amber-900/50">
                           ต่างจากค่าเริ่มต้น
                         </span>
                       )}
                     </div>
-                    <p className="text-xs text-slate-500 dark:text-slate-400 font-mono truncate">{key}</p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 font-mono truncate mt-1">
+                      {key}
+                    </p>
                   </div>
-                  <select
-                    value={levels[key]}
-                    onChange={(e) => {
-                      void onLevelCommit(key, e.target.value as AccessLevel);
-                    }}
-                    disabled={loading || readOnly}
-                    className="rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-charcoal-900 px-3 py-2 text-slate-900 dark:text-white text-sm min-w-[220px] w-full sm:w-auto"
-                  >
-                    {ACCESS_LEVEL_OPTIONS.map((opt) => (
-                      <option key={opt} value={opt}>
-                        {levelLabel(opt)}
-                      </option>
-                    ))}
-                  </select>
+                  <div className="w-full lg:w-auto lg:min-w-[340px]">
+                    <p className="text-xs text-slate-600 dark:text-slate-400 mb-1.5 lg:hidden">
+                      ระดับสิทธิ์ ({levelLabel(cur)})
+                    </p>
+                    <div className="flex rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50/90 dark:bg-charcoal-800/60 p-1 gap-0.5">
+                      {ACCESS_LEVEL_OPTIONS.map((opt) => (
+                        <button
+                          key={opt}
+                          type="button"
+                          disabled={loading || readOnly}
+                          onClick={() => {
+                            if (opt === cur) return;
+                            void onLevelCommit(key, opt);
+                          }}
+                          title={levelLabel(opt)}
+                          className={levelSelectClasses(cur === opt, opt)}
+                        >
+                          {levelShort(opt)}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 </div>
               );
             })
