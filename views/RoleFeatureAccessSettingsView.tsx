@@ -47,7 +47,9 @@ export const RoleFeatureAccessSettingsView: React.FC = () => {
     }
     try {
       await commitLevel(key, level);
-      await refetchFeatureAccess();
+      if (profile?.role === selectedRole) {
+        await refetchFeatureAccess();
+      }
     } catch (e) {
       error(e instanceof Error ? e.message : 'บันทึกไม่สำเร็จ — ค่าถูกย้อนกลับแล้ว');
     }
@@ -60,7 +62,9 @@ export const RoleFeatureAccessSettingsView: React.FC = () => {
     try {
       await resetToBuiltIn();
       success('รีเซ็ตเป็นค่าเริ่มต้นในระบบแล้ว');
-      await refetchFeatureAccess();
+      if (profile?.role === selectedRole) {
+        await refetchFeatureAccess();
+      }
       setResetOpen(false);
     } catch (e) {
       error(e instanceof Error ? e.message : 'รีเซ็ตไม่สำเร็จ');
@@ -74,7 +78,9 @@ export const RoleFeatureAccessSettingsView: React.FC = () => {
     try {
       await saveAll();
       success('บันทึกทุกฟีเจอร์สำเร็จ');
-      await refetchFeatureAccess();
+      if (profile?.role === selectedRole) {
+        await refetchFeatureAccess();
+      }
     } catch (e) {
       error(e instanceof Error ? e.message : 'บันทึกไม่สำเร็จ');
     }
