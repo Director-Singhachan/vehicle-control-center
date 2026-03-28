@@ -2,13 +2,26 @@
 import { useState, useEffect } from 'react';
 import { storeService, type Store, type StoreFilters } from '../services/storeService';
 
-export const useStores = (filters?: StoreFilters) => {
+interface UseStoresOptions {
+  enabled?: boolean;
+}
+
+export const useStores = (filters?: StoreFilters, options: UseStoresOptions = {}) => {
+  const enabled = options.enabled ?? true;
   const [stores, setStores] = useState<Store[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
 
   useEffect(() => {
+    if (!enabled) {
+      setStores([]);
+      setTotalCount(0);
+      setError(null);
+      setLoading(false);
+      return;
+    }
+
     const fetchStores = async () => {
       try {
         setLoading(true);
@@ -25,7 +38,7 @@ export const useStores = (filters?: StoreFilters) => {
     };
 
     fetchStores();
-  }, [filters?.search, filters?.is_active, filters?.branch, filters?.limit, filters?.offset]);
+  }, [enabled, filters?.search, filters?.is_active, filters?.branch, filters?.limit, filters?.offset]);
 
   return {
     stores,
@@ -33,6 +46,13 @@ export const useStores = (filters?: StoreFilters) => {
     loading,
     error,
     refetch: async () => {
+      if (!enabled) {
+        setStores([]);
+        setTotalCount(0);
+        setError(null);
+        setLoading(false);
+        return;
+      }
       const result = await storeService.getAll(filters);
       setStores(result.data);
       setTotalCount(result.totalCount);

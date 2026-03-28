@@ -1,8 +1,8 @@
 // Vehicle Detail View - Show detailed information about a vehicle
 import React, { useState, useMemo } from 'react';
 import { useVehicle, useMaintenanceHistory } from '../hooks';
-import { useAuth } from '../hooks';
 import { useVehiclePnl } from '../hooks/useVehiclePnl';
+import { useFeatureAccess } from '../hooks/useFeatureAccess';
 import {
   Truck,
   Edit,
@@ -43,7 +43,7 @@ export const VehicleDetailView: React.FC<VehicleDetailViewProps> = ({
   onViewDeliveryTrip,
 }) => {
   const [isImageOpen, setIsImageOpen] = useState(false);
-  const { isManager, isAdmin } = useAuth();
+  const { can } = useFeatureAccess();
   const { toasts, dismissToast } = useToast();
   const { vehicle, loading, error } = useVehicle(vehicleId);
   const {
@@ -56,7 +56,7 @@ export const VehicleDetailView: React.FC<VehicleDetailViewProps> = ({
     autoFetch: true
   });
 
-  const canEdit = isManager || isAdmin;
+  const canEdit = can('tab.vehicles', 'edit');
 
   const pnlDateRange = useMemo(() => {
     const now = new Date();

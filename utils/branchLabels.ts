@@ -6,12 +6,17 @@
 export const BRANCH_LABELS: Record<string, string> = {
   HQ: 'สำนักงานใหญ่',
   SD: 'สาขาสอยดาว',
+  Asia: 'สาขา Asia',
 };
 
 export const BRANCH_OPTIONS: { value: string; label: string }[] = [
   { value: 'HQ', label: BRANCH_LABELS.HQ },
   { value: 'SD', label: BRANCH_LABELS.SD },
+  { value: 'Asia', label: BRANCH_LABELS.Asia },
 ];
+
+/** สาขาที่ใช้ตั้งค่า scope ออเดอร์ตามบทบาท (Settings) */
+export const ORDER_SCOPE_BRANCH_CODES = ['HQ', 'SD', 'Asia'] as const;
 
 /** ค่า "ทุกสาขา" สำหรับ filter (ไม่เก็บใน DB) */
 export const BRANCH_ALL_VALUE = 'ALL';

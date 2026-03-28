@@ -28,10 +28,18 @@ import { LoadingSpinner } from '../components/ui/LoadingSpinner';
 import { useToast } from '../hooks/useToast';
 import { ToastContainer } from '../components/ui/Toast';
 import { OrderSplitModal } from '../components/order/OrderSplitModal';
-import { BRANCH_ALL_LABEL, BRANCH_ALL_VALUE, getBranchLabel } from '../utils/branchLabels';
+import {
+    BRANCH_ALL_LABEL,
+    BRANCH_ALL_VALUE,
+    BRANCH_FILTER_OPTIONS,
+    getBranchLabel,
+} from '../utils/branchLabels';
+import { useOrderBranchScope } from '../hooks/useOrderBranchScope';
+import { orderQueryFiltersForUiBranch } from '../utils/orderUserScope';
 
 export const ConfirmOrderView: React.FC = () => {
     const { profile } = useAuth();
+    const orderScope = useOrderBranchScope();
     const { toasts, dismissToast, success, error } = useToast();
     
     // Tab State
@@ -42,7 +50,7 @@ export const ConfirmOrderView: React.FC = () => {
     const [orders, setOrders] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
-    const [branchFilter, setBranchFilter] = useState('ALL');
+    const [branchFilter, setBranchFilter] = useState(BRANCH_ALL_VALUE);
     const [expandedOrders, setExpandedOrders] = useState<Set<string>>(new Set());
     const [splittingItem, setSplittingItem] = useState<any | null>(null);
     const [processingOrderIds, setProcessingOrderIds] = useState<Set<string>>(new Set());
@@ -56,12 +64,59 @@ export const ConfirmOrderView: React.FC = () => {
     const [pickupHistory, setPickupHistory] = useState<any[]>([]);
     const [confirmingPickupOrderId, setConfirmingPickupOrderId] = useState<string | null>(null);
 
+    const confirmBranchOptions = useMemo(() => {
+        if (orderScope.loading) {
+            return [{ value: BRANCH_ALL_VALUE, label: BRANCH_ALL_LABEL }];
+        }
+        if (orderScope.unrestricted) {
+            return BRANCH_FILTER_OPTIONS;
+        }
+        const allowed = orderScope.allowedBranches;
+        if (allowed.length === 0) {
+            return [{ value: BRANCH_ALL_VALUE, label: BRANCH_ALL_LABEL }];
+        }
+        const opts = allowed.map((b) => ({ value: b, label: getBranchLabel(b) }));
+        if (allowed.length === 1) return opts;
+        return [{ value: BRANCH_ALL_VALUE, label: 'ทุกสาขา (ที่อนุญาต)' }, ...opts];
+    }, [orderScope]);
+
+    const confirmBranchSelectDisabled =
+        !orderScope.loading && !orderScope.unrestricted && orderScope.allowedBranches.length === 1;
+
+    useEffect(() => {
+        if (orderScope.loading || orderScope.unrestricted) return;
+        const a = orderScope.allowedBranches;
+        if (a.length === 1 && branchFilter !== a[0]) setBranchFilter(a[0]);
+        if (
+            a.length > 1 &&
+            branchFilter !== BRANCH_ALL_VALUE &&
+            branchFilter !== 'ALL' &&
+            !a.includes(branchFilter)
+        ) {
+            setBranchFilter(BRANCH_ALL_VALUE);
+        }
+    }, [orderScope.loading, orderScope.unrestricted, orderScope.allowedBranches, branchFilter]);
+
+    const branchFiltersForService = useCallback(() => {
+        return orderQueryFiltersForUiBranch(orderScope, branchFilter, BRANCH_ALL_VALUE);
+    }, [orderScope, branchFilter]);
+
     const fetchOrders = useCallback(async () => {
+        if (orderScope.loading) return;
         setLoading(true);
         try {
-            const data = await ordersService.getAwaitingDispatchOrders({
-                branch: branchFilter === 'ALL' || branchFilter === BRANCH_ALL_VALUE ? undefined : branchFilter
-            });
+            const f = branchFiltersForService();
+            let data;
+            if (f?.branchesIn !== undefined) {
+                data =
+                    f.branchesIn.length === 0
+                        ? []
+                        : await ordersService.getAwaitingDispatchOrders({ branchesIn: f.branchesIn });
+            } else if (f?.branch) {
+                data = await ordersService.getAwaitingDispatchOrders({ branch: f.branch });
+            } else {
+                data = await ordersService.getAwaitingDispatchOrders();
+            }
             setOrders(Array.isArray(data) ? data : []);
         } catch (err: any) {
             console.error('[ConfirmOrderView] Fetch orders error:', err);
@@ -69,35 +124,51 @@ export const ConfirmOrderView: React.FC = () => {
         } finally {
             setLoading(false);
         }
-    }, [branchFilter, error]);
+    }, [branchFilter, error, orderScope.loading, branchFiltersForService]);
 
     const fetchPickupItems = useCallback(async () => {
+        if (orderScope.loading) return;
         try {
             setLoading(true);
-            const data = await ordersService.getPickupPendingItems(
-                branchFilter && branchFilter !== 'ALL' && branchFilter !== BRANCH_ALL_VALUE ? { branch: branchFilter } : undefined
-            );
+            const f = branchFiltersForService();
+            let arg: { branch?: string; branchesIn?: string[] } | undefined;
+            if (f?.branchesIn !== undefined) {
+                arg = { branchesIn: f.branchesIn };
+            } else if (f?.branch) {
+                arg = { branch: f.branch };
+            } else {
+                arg = undefined;
+            }
+            const data = await ordersService.getPickupPendingItems(arg);
             setPickupItems(data);
         } catch (err: any) {
             error(err?.message || 'โหลดรายการรอรับเองล้มเหลว');
         } finally {
             setLoading(false);
         }
-    }, [branchFilter, error]);
+    }, [branchFilter, error, orderScope.loading, branchFiltersForService]);
 
     const fetchPickupHistory = useCallback(async () => {
+        if (orderScope.loading) return;
         try {
             setLoading(true);
-            const data = await ordersService.getPickupFulfilledOrders(
-                branchFilter && branchFilter !== 'ALL' && branchFilter !== BRANCH_ALL_VALUE ? { branch: branchFilter } : undefined
-            );
+            const f = branchFiltersForService();
+            let arg: { branch?: string; branchesIn?: string[] } | undefined;
+            if (f?.branchesIn !== undefined) {
+                arg = { branchesIn: f.branchesIn };
+            } else if (f?.branch) {
+                arg = { branch: f.branch };
+            } else {
+                arg = undefined;
+            }
+            const data = await ordersService.getPickupFulfilledOrders(arg);
             setPickupHistory(data);
         } catch (err: any) {
             error(err?.message || 'โหลดประวัติรับเองล้มเหลว');
         } finally {
             setLoading(false);
         }
-    }, [branchFilter, error]);
+    }, [branchFilter, error, orderScope.loading, branchFiltersForService]);
 
     useEffect(() => {
         if (currentTab === 'delivery') {
@@ -322,11 +393,14 @@ export const ConfirmOrderView: React.FC = () => {
                         <select
                             value={branchFilter}
                             onChange={(e) => setBranchFilter(e.target.value)}
-                            className="px-4 py-3 rounded-2xl bg-slate-50 dark:bg-charcoal-800 border-none focus:ring-2 focus:ring-blue-500/20 text-sm font-bold outline-none cursor-pointer"
+                            disabled={confirmBranchSelectDisabled}
+                            className="px-4 py-3 rounded-2xl bg-slate-50 dark:bg-charcoal-800 border-none focus:ring-2 focus:ring-blue-500/20 text-sm font-bold outline-none cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
                         >
-                            <option value={BRANCH_ALL_VALUE}>{BRANCH_ALL_LABEL}</option>
-                            <option value="HQ">{getBranchLabel('HQ')}</option>
-                            <option value="SD">{getBranchLabel('SD')}</option>
+                            {confirmBranchOptions.map((opt) => (
+                                <option key={opt.value} value={opt.value}>
+                                    {opt.label}
+                                </option>
+                            ))}
                         </select>
                     </div>
                     <div className="flex items-center gap-3 pl-2">
@@ -413,7 +487,12 @@ export const ConfirmOrderView: React.FC = () => {
                                                         <div className="min-w-0 flex-1">
                                                             <div className="flex items-center gap-2">
                                                                 <h3 className="text-sm font-black text-slate-900 dark:text-white truncate">{order.order_number || 'ไม่มีเลขที่'}</h3>
-                                                                <Badge variant="info" className="rounded-lg px-1.5 py-0 text-[8px] font-black uppercase">
+                                                                {order.branch && (
+                                                                    <Badge variant={order.branch === 'SD' ? 'success' : order.branch === 'HQ' ? 'info' : 'default'} className="rounded-lg px-1.5 py-0 text-[8px] font-black uppercase">
+                                                                        {getBranchLabel(order.branch)}
+                                                                    </Badge>
+                                                                )}
+                                                                <Badge variant="warning" className="rounded-lg px-1.5 py-0 text-[8px] font-black uppercase">
                                                                     รอคอนเฟิร์ม
                                                                 </Badge>
                                                             </div>

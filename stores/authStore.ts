@@ -78,6 +78,8 @@ export const useAuthStore = create<AuthState>()(
           isReadOnly: profile?.role === 'user',
         });
       },
+      setAvailableStaff: (staff) => set({ availableStaff: staff }),
+      setActiveStaff: (staff) => set({ activeStaff: staff }),
       setLoading: (loading) => set({ loading }),
       setError: (error) => set({ error }),
       setInitialized: (initialized) => set({ initialized }),
@@ -129,10 +131,30 @@ export const useAuthStore = create<AuthState>()(
           if (user) {
             try {
               console.log('[Auth] Fetching profile for user:', user.id);
-              // Keep loading true until profile is fetched so driver/sales don't see full menu flash
-              getCurrentProfile().then(profile => {
-                console.log('[Auth] Profile fetched:', profile ? `role: ${profile.role}` : 'null');
+              getCurrentProfile().then(async (profile) => {
+                console.log('[Auth] Profile fetched:', profile ? `role: ${profile.role}, shared: ${profile.is_shared_account}` : 'null');
                 get().setProfile(profile);
+
+                if (profile?.is_shared_account) {
+                  console.log('[Auth] Shared account detected. Fetching available staff...');
+                  const { data: staff, error: staffError } = await supabase
+                    .from('service_staff')
+                    .select('*')
+                    .eq('user_id', user.id)
+                    .eq('status', 'active');
+                  
+                  if (staffError) {
+                    console.error('[Auth] Error fetching staff for shared account:', staffError);
+                    get().setAvailableStaff([]);
+                  } else {
+                    console.log(`[Auth] Found ${staff.length} active staff profiles.`);
+                    get().setAvailableStaff(staff || []);
+                  }
+                } else {
+                  get().setAvailableStaff([]);
+                  get().setActiveStaff(null);
+                }
+
                 set({ loading: false });
               }).catch(err => {
                 console.warn('[Auth] Failed to fetch profile:', err);
@@ -170,6 +192,27 @@ export const useAuthStore = create<AuthState>()(
             try {
               const profile = await getCurrentProfile();
               get().setProfile(profile);
+
+              if (profile?.is_shared_account) {
+                console.log('[Auth] Shared account detected. Fetching available staff...');
+                const { data: staff, error: staffError } = await supabase
+                  .from('service_staff')
+                  .select('*')
+                  .eq('user_id', data.user.id)
+                  .eq('status', 'active');
+                
+                if (staffError) {
+                  console.error('[Auth] Error fetching staff for shared account:', staffError);
+                  get().setAvailableStaff([]);
+                } else {
+                  console.log(`[Auth] Found ${staff.length} active staff profiles.`);
+                  get().setAvailableStaff(staff || []);
+                }
+              } else {
+                  get().setAvailableStaff([]);
+                  get().setActiveStaff(null);
+              }
+
             } catch (profileErr) {
               console.error('[Auth] Failed to fetch profile after sign in:', profileErr);
               get().setProfile(null);
@@ -224,6 +267,8 @@ export const useAuthStore = create<AuthState>()(
           set({
             user: null,
             profile: null,
+            availableStaff: [],
+            activeStaff: null,
             initialized: false,
             isAdmin: false,
             isManager: false,

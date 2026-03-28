@@ -4,8 +4,15 @@ import { PageLayout } from '../components/ui/PageLayout';
 import { Badge } from '../components/ui/Badge';
 import { ordersService, orderItemsService } from '../services/ordersService';
 import { EditOrderView } from './EditOrderView';
-import { useAuth } from '../hooks/useAuth';
+import { useOrderBranchScope } from '../hooks/useOrderBranchScope';
 import { supabase } from '../lib/supabase';
+import {
+  BRANCH_ALL_LABEL,
+  BRANCH_ALL_VALUE,
+  BRANCH_FILTER_OPTIONS,
+  getBranchLabel,
+} from '../utils/branchLabels';
+import { orderQueryFiltersForUiBranch } from '../utils/orderUserScope';
 import { TrackOrdersFilterBar } from '../components/order/TrackOrdersFilterBar';
 import { TrackOrdersStats } from '../components/order/TrackOrdersStats';
 import { TrackOrdersTable } from '../components/order/TrackOrdersTable';
@@ -27,18 +34,12 @@ interface Order {
 }
 
 export function TrackOrdersView() {
-  const { profile } = useAuth();
+  const orderScope = useOrderBranchScope();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
-  const [branchFilter, setBranchFilter] = useState<string>(() => {
-    const isHighLevel = profile?.role === 'admin' || profile?.role === 'manager' || profile?.role === 'inspector' || profile?.role === 'executive';
-    if (isHighLevel || profile?.branch === 'HQ') {
-      return 'ALL';
-    }
-    return profile?.branch || 'ALL';
-  });
+  const [branchFilter, setBranchFilter] = useState<string>('ALL');
   const [detailOrder, setDetailOrder] = useState<any | null>(null);
   const [detailItems, setDetailItems] = useState<any[]>([]);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -78,20 +79,65 @@ export function TrackOrdersView() {
   const [pageInput, setPageInput] = useState('');
   const itemsPerPage = 100;
 
+  const trackBranchOptions = useMemo(() => {
+    if (orderScope.loading) {
+      return [{ value: BRANCH_ALL_VALUE, label: BRANCH_ALL_LABEL }];
+    }
+    if (orderScope.unrestricted) {
+      return BRANCH_FILTER_OPTIONS;
+    }
+    const allowed = orderScope.allowedBranches;
+    if (allowed.length === 0) {
+      return [{ value: BRANCH_ALL_VALUE, label: BRANCH_ALL_LABEL }];
+    }
+    const opts = allowed.map((b) => ({ value: b, label: getBranchLabel(b) }));
+    if (allowed.length === 1) return opts;
+    return [{ value: BRANCH_ALL_VALUE, label: 'ทุกสาขา (ที่อนุญาต)' }, ...opts];
+  }, [orderScope]);
+
+  const trackBranchSelectDisabled =
+    !orderScope.loading && !orderScope.unrestricted && orderScope.allowedBranches.length === 1;
+
+  useEffect(() => {
+    if (orderScope.loading) return;
+    if (orderScope.unrestricted) return;
+    const a = orderScope.allowedBranches;
+    if (a.length === 1) {
+      setBranchFilter((prev) => (prev !== a[0] ? a[0] : prev));
+      return;
+    }
+    if (a.length > 1 && branchFilter !== BRANCH_ALL_VALUE && branchFilter !== 'ALL' && !a.includes(branchFilter)) {
+      setBranchFilter(BRANCH_ALL_VALUE);
+    }
+  }, [orderScope.loading, orderScope.unrestricted, orderScope.allowedBranches, branchFilter]);
+
   const loadOrders = useCallback(async () => {
+    if (orderScope.loading) return;
     try {
       setLoading(true);
-      const data = await ordersService.getAll();
+      const f = orderQueryFiltersForUiBranch(orderScope, branchFilter, BRANCH_ALL_VALUE);
+      let data: Order[];
+      if (f?.branchesIn !== undefined) {
+        if (f.branchesIn.length === 0) {
+          data = [];
+        } else {
+          data = (await ordersService.getAll({ branchesIn: f.branchesIn })) as Order[];
+        }
+      } else if (f?.branch) {
+        data = (await ordersService.getAll({ branch: f.branch })) as Order[];
+      } else {
+        data = (await ordersService.getAll()) as Order[];
+      }
       setOrders(data);
     } catch (error) {
       console.error('Error loading orders:', error);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [orderScope, branchFilter]);
 
   useEffect(() => {
-    loadOrders();
+    void loadOrders();
   }, [loadOrders]);
 
   useEffect(() => {
@@ -204,7 +250,11 @@ export function TrackOrdersView() {
       }
 
       // Branch filter
-      if (branchFilter && branchFilter !== 'ALL') {
+      if (
+        branchFilter &&
+        branchFilter !== 'ALL' &&
+        branchFilter !== BRANCH_ALL_VALUE
+      ) {
         if (order.branch !== branchFilter) {
           return false;
         }
@@ -314,11 +364,12 @@ export function TrackOrdersView() {
         onSearchChange={setSearchTerm}
         branchFilter={branchFilter}
         onBranchChange={setBranchFilter}
+        branchOptions={trackBranchOptions}
+        branchSelectDisabled={trackBranchSelectDisabled}
         statusFilter={statusFilter}
         onStatusChange={setStatusFilter}
         onRefresh={loadOrders}
         loading={loading}
-        profile={profile}
       />
 
       <TrackOrdersStats stats={stats} />
