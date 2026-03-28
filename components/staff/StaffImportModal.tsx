@@ -6,15 +6,27 @@ import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
 import { Badge } from '../ui/Badge';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
-import { useAuth } from '../../hooks/useAuth';
 import { adminStaffService, type StaffProfile } from '../../services/adminStaffService';
 import type { AppRole } from '../../types/database';
+import {
+  staffColumnIndex,
+  STAFF_EMAIL_HEADER_CANDIDATES,
+} from '../../utils/staffExcelHeaders';
+
+export interface StaffImportBatchResult {
+    success: number;
+    failed: number;
+    errors: string[];
+    total: number;
+}
 
 interface StaffImportModalProps {
     isOpen: boolean;
     onClose: () => void;
     onSuccess: () => void;
     existingStaff: StaffProfile[];
+    /** สรุปหลังนำเข้า (ใช้แสดง toast — ก่อนหน้านี้แถวที่ error ถูกกลืนเงียบ) */
+    onImportBatchComplete?: (result: StaffImportBatchResult) => void;
 }
 
 interface ProcessedRow {
@@ -90,14 +102,21 @@ function inferBranch(position: string, branchCode: string): string {
     return 'HQ';
 }
 
-export const StaffImportModal: React.FC<StaffImportModalProps> = ({ isOpen, onClose, onSuccess, existingStaff }) => {
-    const { profile } = useAuth();
+export const StaffImportModal: React.FC<StaffImportModalProps> = ({
+    isOpen,
+    onClose,
+    onSuccess,
+    existingStaff,
+    onImportBatchComplete,
+}) => {
     const [file, setFile] = useState<File | null>(null);
     const [processedRows, setProcessedRows] = useState<ProcessedRow[]>([]);
     const [loading, setLoading] = useState(false);
     const [importing, setImporting] = useState(false);
     const [progress, setProgress] = useState(0);
     const [expandedRow, setExpandedRow] = useState<number | null>(null);
+    const [parseError, setParseError] = useState<string | null>(null);
+    const [missingEmailColumn, setMissingEmailColumn] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     // Filter and Sort states
@@ -195,6 +214,8 @@ export const StaffImportModal: React.FC<StaffImportModalProps> = ({ isOpen, onCl
         const f = e.target.files?.[0];
         if (f) {
             setFile(f);
+            setParseError(null);
+            setMissingEmailColumn(false);
             parseFile(f);
         }
     };
@@ -235,7 +256,14 @@ export const StaffImportModal: React.FC<StaffImportModalProps> = ({ isOpen, onCl
                     else if (header === 'นามสกุล') colMap['lastName'] = idx;
                     else if (header === 'ชื่อเล่น') colMap['nickname'] = idx;
                     else if (header === 'เบอร์โทร' || header === 'phone') colMap['phone'] = idx;
-                    else if (header === 'email' || header === 'อีเมล' || header === 'อีเมล์') colMap['email'] = idx;
+                    else if (
+                        header === 'email' ||
+                        header === 'e-mail' ||
+                        header === 'อีเมล' ||
+                        header === 'อีเมล์'
+                    ) {
+                        colMap['email'] = idx;
+                    }
                     else if (header === 'ชื่อแผนก' || header === 'แผนก') colMap['dept'] = idx;
                     else if (header === 'ชื่อตำแหน่ง' || header === 'ตำแหน่ง') colMap['pos'] = idx;
                     else if (header === 'รหัสสาขา' || header === 'สาขา') colMap['branch'] = idx;
@@ -245,6 +273,9 @@ export const StaffImportModal: React.FC<StaffImportModalProps> = ({ isOpen, onCl
                     // Keep original for fallback
                     colMap[h] = idx; 
                 });
+
+                const emailCol = staffColumnIndex(colMap, STAFF_EMAIL_HEADER_CANDIDATES);
+                setMissingEmailColumn(emailCol === undefined);
 
                 const results: ProcessedRow[] = [];
                 const staffMap = new Map(existingStaff.map(s => [s.employee_code, s]));
@@ -262,14 +293,15 @@ export const StaffImportModal: React.FC<StaffImportModalProps> = ({ isOpen, onCl
                     const nickname = row[colMap['nickname'] || colMap['ชื่อเล่น']]?.toString().trim() || '';
                     const fullName = `${firstName} ${lastName}${nickname ? ` (${nickname})` : ''}`.trim();
                     const phone = row[colMap['phone'] || colMap['เบอร์โทร']]?.toString().trim() || null;
-                    
-                    const emailIndex = colMap['email'] !== undefined ? colMap['email'] : colMap['Email'];
-                    const emailRaw = row[emailIndex]?.toString().trim() || '';
+
                     let email: string | null = null;
-                    if (emailRaw.toLowerCase().includes('domain')) {
-                        email = `${code}@staff.local`;
-                    } else if (emailRaw !== '') {
-                        email = emailRaw;
+                    if (emailCol !== undefined) {
+                        const emailRaw = row[emailCol]?.toString().trim() || '';
+                        if (emailRaw.toLowerCase().includes('domain')) {
+                            email = `${code}@staff.local`;
+                        } else if (emailRaw !== '') {
+                            email = emailRaw;
+                        }
                     }
 
                     const dept = row[colMap['dept'] || colMap['ชื่อแผนก']]?.toString().trim() || null;
@@ -340,8 +372,11 @@ export const StaffImportModal: React.FC<StaffImportModalProps> = ({ isOpen, onCl
                 }
 
                 setProcessedRows(results);
-            } catch (err: any) {
-                alert(err.message);
+            } catch (err: unknown) {
+                const message = err instanceof Error ? err.message : 'อ่านไฟล์ไม่สำเร็จ';
+                setParseError(message);
+                setProcessedRows([]);
+                setMissingEmailColumn(false);
             } finally {
                 setLoading(false);
             }
@@ -356,8 +391,7 @@ export const StaffImportModal: React.FC<StaffImportModalProps> = ({ isOpen, onCl
         setImporting(true);
         setProgress(0);
         let successCount = 0;
-        let failCount = 0;
-        let lastError = '';
+        const rowErrors: string[] = [];
 
         for (let i = 0; i < toProcess.length; i++) {
             const row = toProcess[i];
@@ -388,27 +422,33 @@ export const StaffImportModal: React.FC<StaffImportModalProps> = ({ isOpen, onCl
                         if (Object.keys(updatePayload).length > 0) {
                             await adminStaffService.updateProfile(existing.id, updatePayload);
                         }
+                    } else if (!existing) {
+                        throw new Error('ไม่พบผู้ใช้รหัสนี้ในระบบ');
                     }
                 }
                 successCount++;
-            } catch (err: any) {
-                failCount++;
-                lastError = err.message;
-                console.error(`[Import Error] ${row.employee_code}:`, err);
+            } catch (err: unknown) {
+                const msg = err instanceof Error ? err.message : String(err);
+                console.error(`Failed to ${row.action} ${row.employee_code}:`, msg);
+                rowErrors.push(`รหัส ${row.employee_code}: ${msg}`);
             }
             setProgress(Math.round(((i + 1) / toProcess.length) * 100));
         }
 
+        const failedCount = toProcess.length - successCount;
         setImporting(false);
-        
-        if (failCount > 0) {
-            alert(`นำเข้าเสร็จสิ้น\n- สำเร็จ: ${successCount} รายการ\n- ล้มเหลว: ${failCount} รายการ\n\nสาเหตุล่าสุด: ${lastError}`);
-        } else if (successCount > 0) {
-            alert(`นำเข้าข้อมูลพนักงานสำเร็จทั้งหมด ${successCount} รายการ`);
+        onImportBatchComplete?.({
+            success: successCount,
+            failed: failedCount,
+            errors: rowErrors,
+            total: toProcess.length,
+        });
+        if (successCount > 0) {
+            onSuccess();
         }
-
-        onSuccess();
-        onClose();
+        if (successCount > 0 || toProcess.length === 0) {
+            onClose();
+        }
     };
 
     const renderSortIcon = (key: any) => {
@@ -433,6 +473,10 @@ export const StaffImportModal: React.FC<StaffImportModalProps> = ({ isOpen, onCl
                         <p className="text-sm text-slate-500 dark:text-slate-400 mb-8 text-center max-w-sm px-6">
                             รองรับไฟล์ <span className="font-bold">.xlsx (Sheet: Simple)</span><br />
                             ระบบจะเปรียบเทียบข้อมูลด้วยรหัสพนักงานเป็นหลัก
+                            <br />
+                            <span className="text-xs text-slate-400 dark:text-slate-500 mt-2 inline-block">
+                                คอลัมน์อีเมลรองรับชื่อ: Email / อีเมล / E-mail
+                            </span>
                         </p>
                         <input
                             type="file"
@@ -463,7 +507,17 @@ export const StaffImportModal: React.FC<StaffImportModalProps> = ({ isOpen, onCl
                                     <span className="text-[10px] text-slate-500 font-medium">ขนาด {(file.size / 1024).toFixed(1)} KB</span>
                                 </div>
                             </div>
-                            <Button variant="ghost" size="sm" onClick={() => { setFile(null); setProcessedRows([]); }} className="text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 font-bold text-xs px-4">
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => {
+                                    setFile(null);
+                                    setProcessedRows([]);
+                                    setParseError(null);
+                                    setMissingEmailColumn(false);
+                                }}
+                                className="text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 font-bold text-xs px-4"
+                            >
                                 เปลี่ยนไฟล์
                             </Button>
                         </div>
@@ -477,29 +531,57 @@ export const StaffImportModal: React.FC<StaffImportModalProps> = ({ isOpen, onCl
                             </div>
                         ) : (
                             <>
-                                {/* Stats Ribbon */}
-                                <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
-                                    <div className="p-4 bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl shadow-sm flex flex-col items-center justify-center">
-                                        <p className="text-[10px] text-slate-400 font-bold uppercase mb-1">รายการทั้งหมด</p>
-                                        <p className="text-2xl font-black text-slate-900 dark:text-white">{stats.total}</p>
+                                {parseError && (
+                                    <div className="p-4 rounded-xl border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 flex items-start gap-3">
+                                        <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400 shrink-0 mt-0.5" />
+                                        <div>
+                                            <p className="text-sm font-semibold text-red-800 dark:text-red-200">อ่านไฟล์ไม่สำเร็จ</p>
+                                            <p className="text-xs text-red-700 dark:text-red-300 mt-1">{parseError}</p>
+                                        </div>
                                     </div>
-                                    <div className="p-4 bg-green-50/50 dark:bg-green-900/20 border border-green-100/50 dark:border-green-900/30 rounded-2xl shadow-sm flex flex-col items-center justify-center">
-                                        <p className="text-[10px] text-green-600 dark:text-green-400 font-bold uppercase mb-1">สร้างพนักงานใหม่</p>
-                                        <p className="text-2xl font-black text-green-600">{stats.create}</p>
+                                )}
+                                {!parseError && missingEmailColumn && (
+                                    <div className="p-4 rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 flex items-start gap-3">
+                                        <Info className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                                        <div>
+                                            <p className="text-sm font-semibold text-amber-800 dark:text-amber-200">ไม่พบคอลัมน์อีเมลในไฟล์</p>
+                                            <p className="text-xs text-amber-700 dark:text-amber-300 mt-1">
+                                                ตั้งหัวคอลัมน์เป็น <span className="font-mono">Email</span>,{' '}
+                                                <span className="font-mono">อีเมล</span>, <span className="font-mono">email</span> หรือ{' '}
+                                                <span className="font-mono">E-mail</span> — ไม่เช่นนั้นอีเมลจะว่างและจะไม่ถูกอัปเดตจากไฟล์นี้
+                                            </p>
+                                        </div>
                                     </div>
-                                    <div className="p-4 bg-orange-50/50 dark:bg-orange-900/20 border border-orange-100/50 dark:border-orange-900/30 rounded-2xl shadow-sm flex flex-col items-center justify-center">
-                                        <p className="text-[10px] text-orange-600 dark:text-orange-400 font-bold uppercase mb-1">อัปเดตข้อมูลเดิม</p>
-                                        <p className="text-2xl font-black text-orange-600">{stats.update}</p>
+                                )}
+                                <div className="space-y-4">
+                                    <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
+                                        <div className="p-4 bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl shadow-sm flex flex-col items-center justify-center">
+                                            <p className="text-[10px] text-slate-400 font-bold uppercase mb-1">รายการทั้งหมด</p>
+                                            <p className="text-2xl font-black text-slate-900 dark:text-white">{stats.total}</p>
+                                        </div>
+                                        <div className="p-4 bg-green-50/50 dark:bg-green-900/20 border border-green-100/50 dark:border-green-900/30 rounded-2xl shadow-sm flex flex-col items-center justify-center">
+                                            <p className="text-[10px] text-green-600 dark:text-green-400 font-bold uppercase mb-1">สร้างพนักงานใหม่</p>
+                                            <p className="text-2xl font-black text-green-600">{stats.create}</p>
+                                        </div>
+                                        <div className="p-4 bg-orange-50/50 dark:bg-orange-900/20 border border-orange-100/50 dark:border-orange-900/30 rounded-2xl shadow-sm flex flex-col items-center justify-center">
+                                            <p className="text-[10px] text-orange-600 dark:text-orange-400 font-bold uppercase mb-1">อัปเดตข้อมูลเดิม</p>
+                                            <p className="text-2xl font-black text-orange-600">{stats.update}</p>
+                                        </div>
+                                        <div className="p-4 bg-blue-50/50 dark:bg-blue-900/20 border border-blue-100/50 dark:border-blue-900/30 rounded-2xl shadow-sm flex flex-col items-center justify-center">
+                                            <p className="text-[10px] text-blue-600 dark:text-blue-400 font-bold uppercase mb-1">เลือกไว้</p>
+                                            <p className="text-2xl font-black text-blue-600">{stats.selected}</p>
+                                        </div>
+                                        <div className="p-4 bg-red-50/50 dark:bg-red-900/20 border border-red-100/50 dark:border-red-900/30 rounded-2xl shadow-sm flex flex-col items-center justify-center">
+                                            <p className="text-[10px] text-red-600 dark:text-red-400 font-bold uppercase mb-1">บัญชีลาออก</p>
+                                            <p className="text-2xl font-black text-red-600">{stats.resigned}</p>
+                                        </div>
+                                        <div className="p-4 bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl shadow-sm flex flex-col items-center justify-center opacity-70">
+                                            <p className="text-[10px] text-slate-500 font-bold uppercase mb-1">ไม่มีการแก้ไข</p>
+                                            <p className="text-2xl font-black text-slate-500">
+                                                {stats.total - stats.create - stats.update - stats.resigned}
+                                            </p>
+                                        </div>
                                     </div>
-                                    <div className="p-4 bg-blue-50/50 dark:bg-blue-900/20 border border-blue-100/50 dark:border-blue-900/30 rounded-2xl shadow-sm flex flex-col items-center justify-center">
-                                        <p className="text-[10px] text-blue-600 dark:text-blue-400 font-bold uppercase mb-1">เลือกไว้</p>
-                                        <p className="text-2xl font-black text-blue-600">{stats.selected}</p>
-                                    </div>
-                                    <div className="p-4 bg-red-50/50 dark:bg-red-900/20 border border-red-100/50 dark:border-red-900/30 rounded-2xl shadow-sm flex flex-col items-center justify-center">
-                                        <p className="text-[10px] text-red-600 dark:text-red-400 font-bold uppercase mb-1">บัญชีลาออก</p>
-                                        <p className="text-2xl font-black text-red-600">{stats.resigned}</p>
-                                    </div>
-                                </div>
 
                                 {/* Filters */}
                                 <div className="flex flex-wrap items-center gap-3 p-2 bg-slate-50/50 dark:bg-slate-900/50 rounded-2xl border border-slate-100 dark:border-slate-800">
@@ -637,6 +719,7 @@ export const StaffImportModal: React.FC<StaffImportModalProps> = ({ isOpen, onCl
                                             </tbody>
                                         </table>
                                     </div>
+                                </div>
                                 </div>
                             </>
                         )}

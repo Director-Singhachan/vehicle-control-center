@@ -1,14 +1,19 @@
 // Protected Route - Route guard with role-based access control
 import React from 'react';
 import { useAuth } from '../hooks';
+import { useFeatureAccess } from '../hooks/useFeatureAccess';
 import { LoginView } from '../views/LoginView';
 import { AlertCircle, Shield } from 'lucide-react';
 import { Card } from './ui/Card';
+import type { AccessLevel, FeatureKey } from '../types/featureAccess';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
   requiredRole?: 'user' | 'inspector' | 'manager' | 'executive' | 'admin' | 'sales';
   requiredRoles?: ('user' | 'inspector' | 'manager' | 'executive' | 'admin' | 'sales')[];
+  /** ต้องอยู่ภายใต้ FeatureAccessProvider */
+  requiredFeature?: FeatureKey;
+  minFeatureAccess?: AccessLevel;
   fallback?: React.ReactNode;
 }
 
@@ -16,9 +21,12 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   children,
   requiredRole,
   requiredRoles,
+  requiredFeature,
+  minFeatureAccess = 'view',
   fallback,
 }) => {
   const { user, profile, loading, error, isAuthenticated, isAdmin, isManager, isInspector } = useAuth();
+  const { can, loading: featureAccessLoading } = useFeatureAccess();
   const [showTimeout, setShowTimeout] = React.useState(false);
 
   // Debug logging
@@ -99,12 +107,65 @@ VITE_SUPABASE_ANON_KEY=your-anon-key-here`}
     return <LoginView />;
   }
 
-  // If we have user, show app even if profile is still loading
-  // Profile will load in background and update when ready
-  // This prevents infinite loading when profile fetch is slow
   if (user && !profile) {
-    console.log('[ProtectedRoute] User exists but profile not loaded yet - showing app anyway');
-    // Continue to show app - profile will load in background
+    if (loading) {
+      return (
+        <div className="min-h-screen flex items-center justify-center">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-enterprise-600 mx-auto mb-4"></div>
+            <p className="text-slate-600 dark:text-slate-400">กำลังโหลดข้อมูลสิทธิ์ผู้ใช้...</p>
+          </div>
+        </div>
+      );
+    }
+
+    return fallback || (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-charcoal-950 px-4">
+        <Card className="w-full max-w-md p-8 text-center">
+          <div className="inline-flex items-center justify-center w-16 h-16 bg-red-100 dark:bg-red-900 rounded-full mb-4">
+            <Shield className="w-8 h-8 text-red-600 dark:text-red-400" />
+          </div>
+          <h1 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">
+            ไม่สามารถยืนยันสิทธิ์ได้
+          </h1>
+          <p className="text-slate-600 dark:text-slate-400">
+            ระบบยังไม่พบข้อมูลบทบาทของบัญชีนี้ จึงไม่เปิดหน้าใช้งานเพื่อป้องกันสิทธิ์หลุด
+          </p>
+        </Card>
+      </div>
+    );
+  }
+
+  if (featureAccessLoading && requiredFeature) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-enterprise-600 mx-auto mb-4"></div>
+          <p className="text-slate-600 dark:text-slate-400">กำลังตรวจสอบสิทธิ์การเข้าถึง...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (requiredFeature && !can(requiredFeature, minFeatureAccess)) {
+    return fallback || (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-charcoal-950 px-4">
+        <Card className="w-full max-w-md p-8 text-center">
+          <div className="inline-flex items-center justify-center w-16 h-16 bg-red-100 dark:bg-red-900 rounded-full mb-4">
+            <Shield className="w-8 h-8 text-red-600 dark:text-red-400" />
+          </div>
+          <h1 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">
+            ไม่มีสิทธิ์เข้าถึง
+          </h1>
+          <p className="text-slate-600 dark:text-slate-400 mb-6">
+            บทบาทของคุณไม่มีสิทธิ์ในโมดูลนี้ ({requiredFeature})
+          </p>
+          <p className="text-sm text-slate-500 dark:text-slate-400">
+            บทบาทปัจจุบัน: {profile?.role || 'ไม่ระบุ'}
+          </p>
+        </Card>
+      </div>
+    );
   }
 
   // Check role requirements

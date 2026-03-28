@@ -1,6 +1,6 @@
 // Approval Board View - Kanban board สำหรับดูภาพรวมสถานะการอนุมัติ
 import React, { useMemo, useEffect } from 'react';
-import { useTicketsWithRelations, useAuth } from '../hooks';
+import { useTicketsWithRelations } from '../hooks';
 
 // จำกัดจำนวนตั๋วที่แสดงในแต่ละคอลัมน์
 const ITEMS_PER_COLUMN = 15;
@@ -23,6 +23,7 @@ import { PageLayout } from '../components/layout/PageLayout';
 import { Button } from '../components/ui/Button';
 import { ApprovalStatusBadge } from '../components/ApprovalStatusBadge';
 import type { Database } from '../types/database';
+import { useFeatureAccess } from '../hooks/useFeatureAccess';
 
 type TicketWithRelations = Database['public']['Views']['tickets_with_relations']['Row'];
 type TicketStatus = Database['public']['Tables']['tickets']['Row']['status'];
@@ -43,7 +44,8 @@ interface Column {
 export const ApprovalBoardView: React.FC<ApprovalBoardViewProps> = ({
   onViewDetail,
 }) => {
-  const { profile, isAdmin, isInspector, isManager, isExecutive } = useAuth();
+  const { can, loading: featureAccessLoading } = useFeatureAccess();
+  const canViewApprovals = !featureAccessLoading && can('tab.approvals', 'view');
   const { tickets = [], loading, error, refetch } = useTicketsWithRelations();
 
   // Listen for ticket approval events and refetch immediately
@@ -212,6 +214,22 @@ export const ApprovalBoardView: React.FC<ApprovalBoardViewProps> = ({
   // Show loading/error inline if needed, but always render the board
   const showLoading = loading && stableTickets.length === 0;
   const showError = !!error && stableTickets.length === 0;
+
+  if (featureAccessLoading) {
+    return (
+      <PageLayout title="เธ เธฒเธเธฃเธงเธกเธเธฒเธฃเธญเธเธธเธกเธฑเธ•เธด" subtitle="กำลังตรวจสอบสิทธิ์..." loading={true} />
+    );
+  }
+
+  if (!canViewApprovals) {
+    return (
+      <PageLayout title="เธ เธฒเธเธฃเธงเธกเธเธฒเธฃเธญเธเธธเธกเธฑเธ•เธด" subtitle="คุณไม่มีสิทธิ์เข้าใช้งานหน้านี้">
+        <Card className="p-6">
+          <p className="text-slate-600 dark:text-slate-400">คุณไม่มีสิทธิ์เข้าดูภาพรวมการอนุมัติ</p>
+        </Card>
+      </PageLayout>
+    );
+  }
 
   return (
     <PageLayout

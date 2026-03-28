@@ -6,6 +6,7 @@ import { Badge } from '../ui/Badge';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
 import { ToastContainer } from '../ui/Toast';
 import { useAuth, useToast } from '../../hooks';
+import { useOrderBranchScope } from '../../hooks/useOrderBranchScope';
 import { useWarehouses } from '../../hooks/useInventory';
 import { orderUploadService, UploadedOrder } from '../../services/orderUploadService';
 import { ordersService } from '../../services/ordersService';
@@ -20,6 +21,7 @@ interface OrderUploadModalProps {
 
 export function OrderUploadModal({ isOpen, onClose, onSuccess, selectedWarehouse: initialWarehouse }: OrderUploadModalProps) {
   const { profile } = useAuth();
+  const orderScope = useOrderBranchScope();
   const { toasts, dismissToast, success, error, warning } = useToast();
   const { warehouses, loading: warehousesLoading } = useWarehouses();
   
@@ -48,15 +50,12 @@ export function OrderUploadModal({ isOpen, onClose, onSuccess, selectedWarehouse
   
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Filter warehouses based on user branch (Same logic as CreateOrderView)
   const filteredWarehouses = useMemo(() => {
     if (!warehouses) return [];
-    const isHighLevel = profile?.role === 'admin' || profile?.role === 'manager' || profile?.role === 'inspector' || profile?.role === 'executive';
-    if (isHighLevel || profile?.branch === 'HQ') {
-      return warehouses;
-    }
-    return warehouses.filter(w => w.branch === profile?.branch);
-  }, [warehouses, profile]);
+    if (orderScope.loading) return warehouses;
+    if (orderScope.unrestricted) return warehouses;
+    return warehouses.filter((w) => w.branch && orderScope.allowedBranches.includes(w.branch));
+  }, [warehouses, orderScope]);
 
   if (!isOpen) return null;
 

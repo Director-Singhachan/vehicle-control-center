@@ -1,5 +1,19 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { ordersService, orderItemsService, orderStatsService } from '../services/ordersService';
+
+/**
+ * คีย์สำหรับ useEffect — แยก "ไม่ส่งกรองสาขา" (undefined) กับ branchesIn ว่าง ([] ระหว่างโหลด)
+ * ถ้าใช้แค่ join(branchesIn) ทั้งคู่กลายเป็น '' ทำให้ไม่ refetch หลัง scope โหลดเสร็จและ list ค้างว่าง
+ */
+function pendingOrdersFilterKey(filters?: { branch?: string; branchesIn?: string[] }): string {
+  if (filters == null) return 'all';
+  if (filters.branchesIn !== undefined) {
+    return `in:${[...filters.branchesIn].sort().join('|')}`;
+  }
+  const b = filters.branch;
+  if (b && b !== 'ALL') return `branch:${b}`;
+  return 'all';
+}
 
 export function useOrders(filters?: {
   status?: string;
@@ -34,10 +48,12 @@ export function useOrders(filters?: {
 
 export function usePendingOrders(filters?: {
   branch?: string;
+  branchesIn?: string[];
 }) {
   const [orders, setOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
+  const filterKey = useMemo(() => pendingOrdersFilterKey(filters), [filters]);
 
   const fetchOrders = async () => {
     try {
@@ -53,8 +69,8 @@ export function usePendingOrders(filters?: {
   };
 
   useEffect(() => {
-    fetchOrders();
-  }, [filters?.branch]); // Added filters?.branch to dependency array
+    void fetchOrders();
+  }, [filterKey]);
 
   return { orders, loading, error, refetch: fetchOrders };
 }

@@ -176,6 +176,8 @@ export const ordersService = {
     dateFrom?: string;
     dateTo?: string;
     branch?: string;
+    /** จำกัดหลายสาขา (เช่น ผู้ใช้ที่ตั้งค่าได้หลายสาขา) — ไม่ใช้คู่กับ branch */
+    branchesIn?: string[];
   }) {
     let query = supabase
       .from('orders_with_details')
@@ -194,7 +196,10 @@ export const ordersService = {
     if (filters?.dateTo) {
       query = query.lte('order_date', filters.dateTo);
     }
-    if (filters?.branch && filters.branch !== 'ALL') {
+    if (filters?.branchesIn !== undefined) {
+      if (filters.branchesIn.length === 0) return [];
+      query = query.in('branch', filters.branchesIn);
+    } else if (filters?.branch && filters.branch !== 'ALL') {
       query = query.eq('branch', filters.branch);
     }
 
@@ -217,7 +222,11 @@ export const ordersService = {
    * แสดงเมื่อ: delivery_trip_id IS NULL, remaining > 0, status ไม่ใช่ delivered, ไม่ใช้รหัสเก่า (-ORD-)
    * remaining = สั่ง - รับที่ร้าน - ส่งแล้ว (จาก order_items)
    */
-  async getPendingOrders(filters?: { branch?: string }) {
+  async getPendingOrders(filters?: { branch?: string; branchesIn?: string[] }) {
+    if (filters?.branchesIn !== undefined && filters.branchesIn.length === 0) {
+      return [];
+    }
+
     let query = supabase
       .from('orders_with_details')
       .select('*')
@@ -225,7 +234,9 @@ export const ordersService = {
       .is('delivery_trip_id', null) // เฉพาะออเดอร์ที่ยังไม่จัดทริป
       .order('created_at', { ascending: true });
 
-    if (filters?.branch && filters.branch !== 'ALL') {
+    if (filters?.branchesIn !== undefined) {
+      query = query.in('branch', filters.branchesIn);
+    } else if (filters?.branch && filters.branch !== 'ALL') {
       query = query.eq('branch', filters.branch);
     }
 
@@ -295,7 +306,7 @@ export const ordersService = {
   /**
    * ดึงออเดอร์ที่รอการยืนยัน (awaiting_confirmation)
    */
-  async getAwaitingDispatchOrders(filters?: { branch?: string }) {
+  async getAwaitingDispatchOrders(filters?: { branch?: string; branchesIn?: string[] }) {
     let query = supabase
       .from('orders_with_details')
       .select('*')
@@ -303,7 +314,10 @@ export const ordersService = {
       .is('delivery_trip_id', null)
       .order('created_at', { ascending: true });
 
-    if (filters?.branch && filters.branch !== 'ALL') {
+    if (filters?.branchesIn !== undefined) {
+      if (filters.branchesIn.length === 0) return [];
+      query = query.in('branch', filters.branchesIn);
+    } else if (filters?.branch && filters.branch !== 'ALL') {
       query = query.eq('branch', filters.branch);
     }
 
@@ -380,7 +394,7 @@ export const ordersService = {
    * ดึงรายการรอรับเอง (fulfillment_method = 'pickup') ที่ยังรับไม่ครบ
    * ใช้สำหรับหน้ารายการรอรับเอง และพิมพ์ใบเบิก
    */
-  async getPickupPendingItems(filters?: { branch?: string }): Promise<PickupPendingItem[]> {
+  async getPickupPendingItems(filters?: { branch?: string; branchesIn?: string[] }): Promise<PickupPendingItem[]> {
     const { data: items, error } = await supabase
       .from('order_items')
       .select(
@@ -418,7 +432,12 @@ export const ordersService = {
       const pickedUp = Number(row.quantity_picked_up_at_store ?? 0);
       if (qty - pickedUp <= 0) return false;
 
-      if (filters?.branch && filters.branch !== 'ALL') {
+      if (filters?.branchesIn !== undefined) {
+        if (filters.branchesIn.length === 0) return false;
+        const store = row.order?.stores ?? row.order?.store;
+        const branch = store?.branch ?? null;
+        if (!filters.branchesIn.includes(branch ?? '')) return false;
+      } else if (filters?.branch && filters.branch !== 'ALL') {
         const store = row.order?.stores ?? row.order?.store;
         const branch = store?.branch ?? null;
         if (branch !== filters.branch) return false;
@@ -539,7 +558,7 @@ export const ordersService = {
    * - รวมทั้งออเดอร์ทั้งหมดรับเอง และออเดอร์ผสม (delivery + pickup) ที่รับส่วน pickup ครบแล้ว
    * - ไม่ต้องรอให้ทริปส่งครบ — แสดงทันทีเมื่อลูกค้ามารับส่วน pickup ครบแล้ว
    */
-  async getPickupFulfilledOrders(filters?: { branch?: string }): Promise<any[]> {
+  async getPickupFulfilledOrders(filters?: { branch?: string; branchesIn?: string[] }): Promise<any[]> {
     const { data: pickupItems, error: itemsError } = await supabase
       .from('order_items')
       .select('order_id, product_id, quantity, quantity_picked_up_at_store, fulfillment_method, updated_at, is_bonus, unit')
@@ -576,7 +595,10 @@ export const ordersService = {
     if (!orders?.length) return [];
 
     let result = orders;
-    if (filters?.branch && filters.branch !== 'ALL') {
+    if (filters?.branchesIn !== undefined) {
+      if (filters.branchesIn.length === 0) return [];
+      result = result.filter((o: any) => filters.branchesIn!.includes(o.branch));
+    } else if (filters?.branch && filters.branch !== 'ALL') {
       result = result.filter((o: any) => o.branch === filters.branch);
     }
 
