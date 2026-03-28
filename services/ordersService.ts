@@ -891,6 +891,109 @@ export const ordersService = {
   },
 
   /**
+   * สร้างหรืออัปเดตออเดอร์ที่มาจาก SML (UPSERT)
+   * ใช้ sml_doc_no เป็น key ในการ match (ไม่ใช่ order_number)
+   * order_number จะถูก Gen ตาม Logic ปกติเมื่อจัดทริป
+   */
+  async upsertSmlOrder(
+    orderData: Omit<OrderInsert, 'id' | 'created_at' | 'updated_at'> & { warehouse_id?: string; sml_doc_no?: string },
+    items: Array<{
+      product_id: string;
+      quantity: number;
+      unit_price: number;
+      discount_percent?: number;
+      is_bonus?: boolean;
+      fulfillment_method?: 'delivery' | 'pickup';
+    }>,
+    payment_status?: string | null,
+    delivery_time_slot?: string | null
+  ) {
+    const smlDocNo = orderData.sml_doc_no;
+    if (!smlDocNo) {
+        return this.createWithItems(orderData, items, payment_status, delivery_time_slot);
+    }
+
+    // ตรวจสอบว่ามีออเดอร์ที่มี sml_doc_no นี้หรือไม่
+    const { data: existingOrder } = await supabase
+      .from('orders')
+      .select('id')
+      .eq('sml_doc_no', smlDocNo)
+      .maybeSingle();
+
+    if (existingOrder) {
+      // 1. UPDATE ข้อมูลออเดอร์เดิม + เคลียร์ trip/order_number/สถานะให้กลับมารอคอนเฟิร์ม
+      const updatePayload: Record<string, unknown> = {
+        store_id: orderData.store_id,
+        order_date: orderData.order_date,
+        status: 'awaiting_confirmation',
+        notes: orderData.notes,
+        created_by: orderData.created_by,
+        warehouse_id: orderData.warehouse_id,
+        payment_status: payment_status && payment_status.trim() ? payment_status.trim() : null,
+        delivery_time_slot: delivery_time_slot && delivery_time_slot.trim() ? delivery_time_slot.trim() : null,
+        delivery_trip_id: null, // ดึงกลับมาจากทริป
+        order_number: null, // ล้าง order_number เพื่อให้ Gen ใหม่ตอนจัดทริป
+        updated_at: new Date().toISOString(),
+      };
+
+      Object.keys(updatePayload).forEach((k) => {
+        if (updatePayload[k] === undefined) delete updatePayload[k];
+      });
+
+      const { error: updateError } = await supabase
+        .from('orders')
+        .update(updatePayload)
+        .eq('id', existingOrder.id);
+
+      if (updateError) {
+        throw mapOrdersError(updateError, 'update');
+      }
+
+      // 2. ลบรายการ order_items เดิมทิ้ง
+      await supabase.from('order_items').delete().eq('order_id', existingOrder.id);
+
+      // 3. สร้างรายการสินค้าใหม่
+      const orderItems = items.map((item) => {
+        const actualUnitPrice = item.is_bonus ? 0 : item.unit_price;
+        const discountAmount = (actualUnitPrice * item.quantity * (item.discount_percent || 0)) / 100;
+        const lineTotal = (actualUnitPrice * item.quantity) - discountAmount;
+
+        const orderItem: any = {
+          order_id: existingOrder.id,
+          product_id: item.product_id,
+          quantity: item.quantity,
+          unit_price: actualUnitPrice,
+          discount_percent: item.discount_percent || 0,
+          discount_amount: discountAmount,
+          line_total: lineTotal,
+          fulfillment_method: item.fulfillment_method || 'delivery',
+        };
+
+        if (item.is_bonus !== undefined) {
+          orderItem.is_bonus = item.is_bonus;
+        }
+
+        return orderItem;
+      });
+
+      const { error: itemsError } = await supabase.from('order_items').insert(orderItems);
+      if (itemsError) throw itemsError;
+
+      // 4. คืนค่า
+      return existingOrder;
+    } else {
+      // ไม่มี ให้สร้างใหม่ — ไม่ใส่ order_number (ให้ Gen ตอนจัดทริป)
+      const { sml_doc_no: _smlDocNo, order_number: _orderNum, ...restData } = orderData as any;
+      const createPayload = {
+        ...restData,
+        order_number: null, // ปล่อยให้ Gen ตอนจัดทริป
+        sml_doc_no: smlDocNo, // เก็บรหัส SML ไว้หลังบ้าน
+      };
+      return this.createWithItems(createPayload, items, payment_status, delivery_time_slot);
+    }
+  },
+
+  /**
    * อัพเดทออเดอร์
    */
   async update(id: string, updates: OrderUpdate) {
