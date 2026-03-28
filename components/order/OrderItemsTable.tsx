@@ -148,7 +148,9 @@ export function OrderItemsTable({
                     {remaining.toLocaleString()}
                   </span>
                 </td>
-                <td className="py-2 px-2 text-gray-500 dark:text-gray-400">{item.product?.unit || '-'}</td>
+                <td className="py-2 px-2 text-gray-500 dark:text-gray-400">
+                  {item.unit || item.product?.unit || '-'}
+                </td>
               </tr>
             );
           })}

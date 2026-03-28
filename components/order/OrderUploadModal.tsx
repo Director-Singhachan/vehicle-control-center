@@ -1,4 +1,4 @@
-import React, { useState, useRef, useMemo, useEffect } from 'react';
+﻿import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { Upload, X, FileText, CheckCircle2, AlertCircle, Info, ChevronDown, ChevronUp, Boxes } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
@@ -155,6 +155,7 @@ export function OrderUploadModal({ isOpen, onClose, onSuccess, selectedWarehouse
           product_id: item.product_id!, // known valid
           quantity: item.quantity,
           unit_price: item.unit_price,
+          unit: item.unit,
           discount_percent: Math.round((item.discount / (item.total || 1)) * 100) || 0,
           is_bonus: item.unit_price === 0,
           fulfillment_method: 'delivery' as const,

@@ -274,7 +274,7 @@ export const orderUploadService = {
         const orderIds = existingOrders.map(o => o.id);
         const { data: items } = await supabase
             .from('order_items')
-            .select('order_id, product_id, quantity, unit_price')
+            .select('order_id, product_id, quantity, unit_price, is_bonus, unit')
             .in('order_id', orderIds);
         existingItems = items || [];
     }
@@ -335,18 +335,50 @@ export const orderUploadService = {
                 // Order exists but trip is editable, check items for differences
                 const orderExistingItems = existingItems.filter(i => i.order_id === existingOrder.id);
                 
+                // Aggregate existing items by product_id, is_bonus, and unit to handle splits
+                const aggregatedDbItems = new Map<string, { quantity: number, unit_price: number }>();
+                for (const dbItem of orderExistingItems) {
+                    const key = `${dbItem.product_id}_${dbItem.is_bonus ? 'bonus' : 'normal'}_${dbItem.unit || ''}`;
+                    const existing = aggregatedDbItems.get(key);
+                    if (existing) {
+                        existing.quantity += Number(dbItem.quantity);
+                    } else {
+                        aggregatedDbItems.set(key, { 
+                            quantity: Number(dbItem.quantity), 
+                            unit_price: Number(dbItem.unit_price) 
+                        });
+                    }
+                }
+
+                // Aggregate uploaded items (just in case Excel has duplicate rows for same product)
+                const aggregatedUploadedItems = new Map<string, { quantity: number, unit_price: number, product_id: string }>();
+                for (const vItem of validatedOrder.items) {
+                    const isBonus = vItem.unit_price === 0;
+                    const key = `${vItem.product_id}_${isBonus ? 'bonus' : 'normal'}_${vItem.unit || ''}`;
+                    const existing = aggregatedUploadedItems.get(key);
+                    const actualUnitPrice = vItem.unit_price === 0 ? 0 : vItem.unit_price;
+
+                    if (existing) {
+                        existing.quantity += Number(vItem.quantity);
+                    } else {
+                        aggregatedUploadedItems.set(key, { 
+                            quantity: Number(vItem.quantity), 
+                            unit_price: Number(actualUnitPrice),
+                            product_id: vItem.product_id!
+                        });
+                    }
+                }
+
                 let isIdentical = true;
-                if (orderExistingItems.length !== validatedOrder.items.length) {
+                if (aggregatedDbItems.size !== aggregatedUploadedItems.size) {
                     isIdentical = false;
                 } else {
-                    for (const vItem of validatedOrder.items) {
-                        const actualUnitPrice = vItem.unit_price === 0 ? 0 : vItem.unit_price;
-                        const matchingDbItem = orderExistingItems.find(dbItem => 
-                            dbItem.product_id === vItem.product_id && 
-                            Number(dbItem.quantity) === Number(vItem.quantity) &&
-                            Number(dbItem.unit_price) === Number(actualUnitPrice)
-                        );
-                        if (!matchingDbItem) {
+                    for (const [key, vAgg] of aggregatedUploadedItems.entries()) {
+                        const dbAgg = aggregatedDbItems.get(key);
+                        
+                        if (!dbAgg || 
+                            Math.abs(dbAgg.quantity - vAgg.quantity) > 0.001 || 
+                            Math.abs(dbAgg.unit_price - vAgg.unit_price) > 0.001) {
                             isIdentical = false;
                             break;
                         }
