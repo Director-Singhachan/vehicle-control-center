@@ -109,6 +109,7 @@ type OrderItem = {
   // computed (from view or service):
   quantity_remaining?: number;          // = quantity - picked_up - delivered
   unit_price: number | null;
+  unit: string | null;
   discount_percent: number | null;
   discount_amount: number | null;
   line_total: number | null;
@@ -175,6 +176,8 @@ export const ordersService = {
     dateFrom?: string;
     dateTo?: string;
     branch?: string;
+    /** จำกัดหลายสาขา (เช่น ผู้ใช้ที่ตั้งค่าได้หลายสาขา) — ไม่ใช้คู่กับ branch */
+    branchesIn?: string[];
   }) {
     let query = supabase
       .from('orders_with_details')
@@ -193,7 +196,10 @@ export const ordersService = {
     if (filters?.dateTo) {
       query = query.lte('order_date', filters.dateTo);
     }
-    if (filters?.branch && filters.branch !== 'ALL') {
+    if (filters?.branchesIn !== undefined) {
+      if (filters.branchesIn.length === 0) return [];
+      query = query.in('branch', filters.branchesIn);
+    } else if (filters?.branch && filters.branch !== 'ALL') {
       query = query.eq('branch', filters.branch);
     }
 
@@ -216,15 +222,21 @@ export const ordersService = {
    * แสดงเมื่อ: delivery_trip_id IS NULL, remaining > 0, status ไม่ใช่ delivered, ไม่ใช้รหัสเก่า (-ORD-)
    * remaining = สั่ง - รับที่ร้าน - ส่งแล้ว (จาก order_items)
    */
-  async getPendingOrders(filters?: { branch?: string }) {
+  async getPendingOrders(filters?: { branch?: string; branchesIn?: string[] }) {
+    if (filters?.branchesIn !== undefined && filters.branchesIn.length === 0) {
+      return [];
+    }
+
     let query = supabase
       .from('orders_with_details')
       .select('*')
-      .in('status', ['confirmed', 'partial', 'assigned'])
+      .in('status', ['awaiting_dispatch', 'confirmed', 'partial', 'assigned'])
       .is('delivery_trip_id', null) // เฉพาะออเดอร์ที่ยังไม่จัดทริป
       .order('created_at', { ascending: true });
 
-    if (filters?.branch && filters.branch !== 'ALL') {
+    if (filters?.branchesIn !== undefined) {
+      query = query.in('branch', filters.branchesIn);
+    } else if (filters?.branch && filters.branch !== 'ALL') {
       query = query.eq('branch', filters.branch);
     }
 
@@ -283,7 +295,7 @@ export const ordersService = {
       .filter((o: any) => {
         if (this.isOldOrderNumberFormat(o.order_number)) return false;
         const orderStatus = (orderIdToStatus.get(o.id) ?? String(o.status ?? '')).toLowerCase();
-        if (orderStatus === 'delivered' || orderStatus === 'awaiting_dispatch') return false;
+        if (orderStatus === 'delivered') return false;
         const remaining = orderIdToRemaining.get(o.id) ?? 0;
         if (remaining <= 0) return false;
         return true;
@@ -292,17 +304,20 @@ export const ordersService = {
   },
 
   /**
-   * ดึงออเดอร์ที่รอการแบ่งยอด (awaiting_dispatch)
+   * ดึงออเดอร์ที่รอการยืนยัน (awaiting_confirmation)
    */
-  async getAwaitingDispatchOrders(filters?: { branch?: string }) {
+  async getAwaitingDispatchOrders(filters?: { branch?: string; branchesIn?: string[] }) {
     let query = supabase
       .from('orders_with_details')
       .select('*')
-      .eq('status', 'awaiting_dispatch')
+      .eq('status', 'awaiting_confirmation')
       .is('delivery_trip_id', null)
       .order('created_at', { ascending: true });
 
-    if (filters?.branch && filters.branch !== 'ALL') {
+    if (filters?.branchesIn !== undefined) {
+      if (filters.branchesIn.length === 0) return [];
+      query = query.in('branch', filters.branchesIn);
+    } else if (filters?.branch && filters.branch !== 'ALL') {
       query = query.eq('branch', filters.branch);
     }
 
@@ -323,6 +338,7 @@ export const ordersService = {
         quantity_delivered,
         fulfillment_method,
         notes,
+        unit,
         product:products(product_name, product_code, unit)
       `)
       .in('order_id', orderIds);
@@ -337,7 +353,7 @@ export const ordersService = {
           ...i,
           product_name: i.product?.product_name || 'ไม่ระบุชื่อสินค้า',
           product_code: i.product?.product_code || '-',
-          unit_name: i.product?.unit || 'หน่วย'
+          unit_name: i.unit || i.product?.unit || 'หน่วย'
         })),
         total_items: orderItems.length,
         isAwaitingDispatch: true
@@ -378,7 +394,7 @@ export const ordersService = {
    * ดึงรายการรอรับเอง (fulfillment_method = 'pickup') ที่ยังรับไม่ครบ
    * ใช้สำหรับหน้ารายการรอรับเอง และพิมพ์ใบเบิก
    */
-  async getPickupPendingItems(filters?: { branch?: string }): Promise<PickupPendingItem[]> {
+  async getPickupPendingItems(filters?: { branch?: string; branchesIn?: string[] }): Promise<PickupPendingItem[]> {
     const { data: items, error } = await supabase
       .from('order_items')
       .select(
@@ -388,6 +404,7 @@ export const ordersService = {
         product_id,
         quantity,
         quantity_picked_up_at_store,
+        unit,
         order:orders(
           id,
           order_number,
@@ -415,7 +432,12 @@ export const ordersService = {
       const pickedUp = Number(row.quantity_picked_up_at_store ?? 0);
       if (qty - pickedUp <= 0) return false;
 
-      if (filters?.branch && filters.branch !== 'ALL') {
+      if (filters?.branchesIn !== undefined) {
+        if (filters.branchesIn.length === 0) return false;
+        const store = row.order?.stores ?? row.order?.store;
+        const branch = store?.branch ?? null;
+        if (!filters.branchesIn.includes(branch ?? '')) return false;
+      } else if (filters?.branch && filters.branch !== 'ALL') {
         const store = row.order?.stores ?? row.order?.store;
         const branch = store?.branch ?? null;
         if (branch !== filters.branch) return false;
@@ -454,7 +476,7 @@ export const ordersService = {
           product_code: product?.product_code ?? '-',
           product_name: product?.product_name ?? '-',
           category: product?.category ?? null,
-          unit: product?.unit ?? '',
+          unit: row.unit || product?.unit || '',
         },
       };
     });
@@ -536,10 +558,10 @@ export const ordersService = {
    * - รวมทั้งออเดอร์ทั้งหมดรับเอง และออเดอร์ผสม (delivery + pickup) ที่รับส่วน pickup ครบแล้ว
    * - ไม่ต้องรอให้ทริปส่งครบ — แสดงทันทีเมื่อลูกค้ามารับส่วน pickup ครบแล้ว
    */
-  async getPickupFulfilledOrders(filters?: { branch?: string }): Promise<any[]> {
+  async getPickupFulfilledOrders(filters?: { branch?: string; branchesIn?: string[] }): Promise<any[]> {
     const { data: pickupItems, error: itemsError } = await supabase
       .from('order_items')
-      .select('order_id, product_id, quantity, quantity_picked_up_at_store, fulfillment_method, updated_at, is_bonus')
+      .select('order_id, product_id, quantity, quantity_picked_up_at_store, fulfillment_method, updated_at, is_bonus, unit')
       .eq('fulfillment_method', 'pickup');
 
     if (itemsError) throw itemsError;
@@ -573,7 +595,10 @@ export const ordersService = {
     if (!orders?.length) return [];
 
     let result = orders;
-    if (filters?.branch && filters.branch !== 'ALL') {
+    if (filters?.branchesIn !== undefined) {
+      if (filters.branchesIn.length === 0) return [];
+      result = result.filter((o: any) => filters.branchesIn!.includes(o.branch));
+    } else if (filters?.branch && filters.branch !== 'ALL') {
       result = result.filter((o: any) => o.branch === filters.branch);
     }
 
@@ -599,7 +624,7 @@ export const ordersService = {
         return {
           product_code: p?.product_code ?? '-',
           product_name: p?.product_name ?? '-',
-          unit: p?.unit ?? 'ชิ้น',
+          unit: r.unit || p?.unit || 'ชิ้น',
           quantity: Number(r.quantity ?? r.quantity_picked_up_at_store ?? 0),
           is_bonus: Boolean(r.is_bonus),
         };
@@ -639,7 +664,7 @@ export const ordersService = {
     const orderIds = orders.map((o: any) => o.id);
     const { data: items, error: itemsError } = await supabase
       .from('order_items')
-      .select('product_id, quantity, quantity_picked_up_at_store, is_bonus')
+      .select('product_id, quantity, quantity_picked_up_at_store, is_bonus, unit')
       .in('order_id', orderIds);
 
     if (itemsError) throw itemsError;
@@ -647,7 +672,7 @@ export const ordersService = {
 
     const map = new Map<string, { ordered: number; pickedUp: number }>();
     for (const row of items) {
-      const key = `${row.product_id}_${row.is_bonus ? 'bonus' : 'normal'}`;
+      const key = `${row.product_id}_${row.is_bonus ? 'bonus' : 'normal'}_${row.unit || ''}`;
       const ordered = Number(row.quantity ?? 0);
       const pickedUp = Number(row.quantity_picked_up_at_store ?? 0);
       const existing = map.get(key);
@@ -696,7 +721,7 @@ export const ordersService = {
 
     const { data: items, error: itemsError } = await supabase
       .from('order_items')
-      .select('order_id, product_id, quantity_picked_up_at_store, is_bonus')
+      .select('order_id, product_id, quantity_picked_up_at_store, is_bonus, unit')
       .in('order_id', orderIds)
       .eq('fulfillment_method', 'pickup');
 
@@ -750,7 +775,7 @@ export const ordersService = {
         return {
           product_code: p?.product_code ?? '-',
           product_name: p?.product_name ?? '-',
-          unit: p?.unit ?? 'ชิ้น',
+          unit: r.unit || p?.unit || 'ชิ้น',
           quantity_picked_up: Number(r.quantity_picked_up_at_store ?? 0),
           is_bonus: Boolean(r.is_bonus),
         };
@@ -791,6 +816,7 @@ export const ordersService = {
       product_id: string;
       quantity: number;
       unit_price: number;
+      unit?: string;
       discount_percent?: number;
       is_bonus?: boolean;
       fulfillment_method?: 'delivery' | 'pickup';
@@ -834,6 +860,7 @@ export const ordersService = {
         product_id: item.product_id,
         quantity: item.quantity,
         unit_price: actualUnitPrice,
+        unit: item.unit || null,
         discount_percent: item.discount_percent || 0,
         discount_amount: discountAmount,
         line_total: lineTotal,
@@ -869,6 +896,163 @@ export const ordersService = {
   },
 
   /**
+   * สร้างหรืออัปเดตออเดอร์ที่มาจาก SML (UPSERT)
+   * ใช้ sml_doc_no เป็น key ในการ match (ไม่ใช่ order_number)
+   * order_number จะถูก Gen ตาม Logic ปกติเมื่อจัดทริป
+   */
+  async upsertSmlOrder(
+    orderData: Omit<OrderInsert, 'id' | 'created_at' | 'updated_at'> & { warehouse_id?: string; sml_doc_no?: string },
+    items: Array<{
+      product_id: string;
+      quantity: number;
+      unit_price: number;
+      unit?: string;
+      discount_percent?: number;
+      is_bonus?: boolean;
+      fulfillment_method?: 'delivery' | 'pickup';
+    }>,
+    payment_status?: string | null,
+    delivery_time_slot?: string | null
+  ) {
+    const smlDocNo = orderData.sml_doc_no;
+    if (!smlDocNo) {
+        return this.createWithItems(orderData, items, payment_status, delivery_time_slot);
+    }
+
+    // ตรวจสอบว่ามีออเดอร์ที่มี sml_doc_no นี้หรือไม่
+    const { data: existingOrder } = await supabase
+      .from('orders')
+      .select('id')
+      .eq('sml_doc_no', smlDocNo)
+      .maybeSingle();
+
+    if (existingOrder) {
+      // 1. UPDATE ข้อมูลออเดอร์เดิม + เคลียร์ trip/order_number/สถานะให้กลับมารอคอนเฟิร์ม
+      const updatePayload: Record<string, unknown> = {
+        store_id: orderData.store_id,
+        order_date: orderData.order_date,
+        status: 'awaiting_confirmation',
+        notes: orderData.notes,
+        created_by: orderData.created_by,
+        warehouse_id: orderData.warehouse_id,
+        payment_status: payment_status && payment_status.trim() ? payment_status.trim() : null,
+        delivery_time_slot: delivery_time_slot && delivery_time_slot.trim() ? delivery_time_slot.trim() : null,
+        delivery_trip_id: null, // ดึงกลับมาจากทริป
+        order_number: null, // ล้าง order_number เพื่อให้ Gen ใหม่ตอนจัดทริป
+        updated_at: new Date().toISOString(),
+      };
+
+      Object.keys(updatePayload).forEach((k) => {
+        if (updatePayload[k] === undefined) delete updatePayload[k];
+      });
+
+      const { error: updateError } = await supabase
+        .from('orders')
+        .update(updatePayload)
+        .eq('id', existingOrder.id);
+
+      if (updateError) {
+        throw mapOrdersError(updateError, 'update');
+      }
+
+      // 2. SURGICAL UPDATE รายการ order_items
+      // ดึงรายการที่มีอยู่เดิม
+      const { data: existingItems } = await supabase
+        .from('order_items')
+        .select('*')
+        .eq('order_id', existingOrder.id);
+      
+      const dbItems = existingItems || [];
+      
+      // รวมยอดสินค้าเดิมตาม (product_id, is_bonus, unit)
+      const aggregatedDb = new Map<string, { quantity: number, unit_price: number, unit: string | null, items: any[] }>();
+      for (const item of dbItems) {
+          const key = `${item.product_id}_${item.is_bonus ? 'bonus' : 'normal'}_${item.unit || ''}`;
+          const existing = aggregatedDb.get(key);
+          if (existing) {
+              existing.quantity += Number(item.quantity);
+              existing.items.push(item);
+          } else {
+              aggregatedDb.set(key, { 
+                  quantity: Number(item.quantity), 
+                  unit_price: Number(item.unit_price),
+                  unit: item.unit,
+                  items: [item]
+              });
+          }
+      }
+
+      // เตรียมรายการใหม่ และหาว่าอะไรที่ต้องเปลี่ยน
+      const newAggregated = new Map<string, typeof items[0]>();
+      for (const item of items) {
+          const key = `${item.product_id}_${item.is_bonus ? 'bonus' : 'normal'}_${item.unit || ''}`;
+          const existing = newAggregated.get(key);
+          if (existing) {
+              existing.quantity += item.quantity;
+          } else {
+              newAggregated.set(key, { ...item });
+          }
+      }
+
+      // วนลูปรายการใหม่เพื่อตรวจสอบความเปลี่ยนแปลง
+      for (const [key, newItem] of newAggregated.entries()) {
+          const dbAgg = aggregatedDb.get(key);
+          const actualUnitPrice = newItem.is_bonus ? 0 : newItem.unit_price;
+
+          // ถ้าไม่มีใน DB หรือ ยอดรวม/ราคา/หน่วย เปลี่ยน -> ลบของเดิมเฉพาะสินค้านี้ แล้วเพิ่มใหม่
+          if (!dbAgg || 
+              Math.abs(dbAgg.quantity - newItem.quantity) > 0.001 || 
+              Math.abs(dbAgg.unit_price - actualUnitPrice) > 0.001) {
+              
+              if (dbAgg) {
+                  // ลบเฉพาะรายการที่เป็นสินค้านี้
+                  const itemIdsToDelete = dbAgg.items.map(i => i.id);
+                  await supabase.from('order_items').delete().in('id', itemIdsToDelete);
+              }
+
+              // เพิ่มรายการใหม่
+              const discountAmount = (actualUnitPrice * newItem.quantity * (newItem.discount_percent || 0)) / 100;
+              const lineTotal = (actualUnitPrice * newItem.quantity) - discountAmount;
+
+              await supabase.from('order_items').insert({
+                  order_id: existingOrder.id,
+                  product_id: newItem.product_id,
+                  quantity: newItem.quantity,
+                  unit_price: actualUnitPrice,
+                  unit: newItem.unit || null,
+                  discount_percent: newItem.discount_percent || 0,
+                  discount_amount: discountAmount,
+                  line_total: lineTotal,
+                  fulfillment_method: newItem.fulfillment_method || 'delivery',
+                  is_bonus: newItem.is_bonus || false,
+              });
+          }
+          // ถ้าเหมือนเดิม -> ไม่ทำอะไร (เก็บ splits เดิมไว้)
+      }
+
+      // ลบรายการที่มีใน DB แต่ไม่มีในรายการใหม่
+      for (const [key, dbAgg] of aggregatedDb.entries()) {
+          if (!newAggregated.has(key)) {
+              const itemIdsToDelete = dbAgg.items.map(i => i.id);
+              await supabase.from('order_items').delete().in('id', itemIdsToDelete);
+          }
+      }
+
+      // 4. คืนค่า
+      return existingOrder;
+    } else {
+      // ไม่มี ให้สร้างใหม่ — ไม่ใส่ order_number (ให้ Gen ตอนจัดทริป)
+      const { sml_doc_no: _smlDocNo, order_number: _orderNum, ...restData } = orderData as any;
+      const createPayload = {
+        ...restData,
+        order_number: null, // ปล่อยให้ Gen ตอนจัดทริป
+        sml_doc_no: smlDocNo, // เก็บรหัส SML ไว้หลังบ้าน
+      };
+      return this.createWithItems(createPayload, items, payment_status, delivery_time_slot);
+    }
+  },
+
+  /**
    * อัพเดทออเดอร์
    */
   async update(id: string, updates: OrderUpdate) {
@@ -891,7 +1075,7 @@ export const ordersService = {
   async updateStatus(
     id: string,
     status: string,
-    updatedBy: string,
+    updatedBy?: string,
     reason?: string
   ) {
     const updates: any = {
@@ -911,7 +1095,7 @@ export const ordersService = {
   /**
    * ยกเลิกออเดอร์
    */
-  async cancel(id: string, updatedBy: string, reason: string) {
+  async cancel(id: string, updatedBy?: string, reason?: string) {
     return this.updateStatus(id, 'cancelled', updatedBy, reason);
   },
 
@@ -1091,10 +1275,30 @@ export const ordersService = {
 
   /**
    * ยืนยันการจัดสรรเสร็จสิ้น (Dispatch ready)
-   * เปลี่ยนสถานะจาก awaiting_dispatch -> confirmed
+   * เปลี่ยนสถานะจาก awaiting_confirmation -> awaiting_dispatch
    */
   async markAsReady(orderId: string, updatedBy: string) {
-    return this.updateStatus(orderId, 'confirmed', updatedBy);
+    return this.updateStatus(orderId, 'awaiting_dispatch', updatedBy);
+  },
+
+  /**
+   * ยืนยันหลายออเดอร์พร้อมกัน
+   */
+  async markMultipleAsReady(orderIds: string[], updatedBy: string) {
+    if (orderIds.length === 0) return { updated: 0 };
+    
+    const { data, error } = await supabase
+      .from('orders')
+      .update({
+        status: 'awaiting_dispatch',
+        updated_by: updatedBy,
+        updated_at: new Date().toISOString()
+      })
+      .in('id', orderIds)
+      .select('id');
+
+    if (error) throw error;
+    return { updated: data?.length || 0 };
   },
 
   /**
@@ -1129,6 +1333,7 @@ export const ordersService = {
         product_id: original.product_id,
         quantity: quantity,
         unit_price: unitPrice,
+        unit: original.unit,
         discount_percent: discountPercent,
         discount_amount: discountAmount,
         line_total: lineTotal,
@@ -1144,6 +1349,23 @@ export const ordersService = {
 
     const { error: insertError } = await supabase.from('order_items').insert(newItems);
     if (insertError) throw insertError;
+  },
+
+  /**
+   * อัปเดตวิธีรับสินค้าสำหรับหลายออเดอร์พร้อมกัน
+   * (อัปเดตทุก item ใน orderIds)
+   */
+  async updateMultipleFulfillmentMethods(orderIds: string[], method: 'delivery' | 'pickup') {
+    if (orderIds.length === 0) return { updated: 0 };
+
+    const { data, error } = await supabase
+      .from('order_items')
+      .update({ fulfillment_method: method })
+      .in('order_id', orderIds)
+      .select('id');
+
+    if (error) throw error;
+    return { updated: data?.length || 0 };
   },
 };
 
@@ -1318,4 +1540,3 @@ export const orderStatsService = {
     return data;
   },
 };
-

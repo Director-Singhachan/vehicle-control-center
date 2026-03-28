@@ -23,6 +23,7 @@ import { useVehicles, useAuth, useActiveTrips } from '../hooks';
 import { fuelService } from '../services/fuelService';
 import { tripLogService } from '../services/tripLogService';
 import { useDataCacheStore, createCacheKey } from '../stores/dataCacheStore';
+import { useFeatureAccess } from '../hooks/useFeatureAccess';
 
 interface FuelLogFormViewProps {
   vehicleId?: string;
@@ -46,8 +47,10 @@ export const FuelLogFormView: React.FC<FuelLogFormViewProps> = ({
   onCancel,
 }) => {
   const { user, isDriver } = useAuth();
-  const { vehicles, loading: loadingVehicles, error: vehiclesError } = useVehicles();
-  const { trips: activeTrips } = useActiveTrips();
+  const { can, loading: featureAccessLoading } = useFeatureAccess();
+  const canManageFuelLogs = !featureAccessLoading && can('tab.fuellogs', 'manage');
+  const { vehicles, loading: loadingVehicles, error: vehiclesError } = useVehicles({ autoFetch: canManageFuelLogs });
+  const { trips: activeTrips } = useActiveTrips(undefined, { enabled: canManageFuelLogs });
   const cache = useDataCacheStore();
 
   const [selectedVehicleId, setSelectedVehicleId] = useState<string>(initialVehicleId || '');
@@ -216,6 +219,11 @@ export const FuelLogFormView: React.FC<FuelLogFormViewProps> = ({
     setError(null);
     setSuccess(false);
 
+    if (!canManageFuelLogs) {
+      setError('คุณไม่มีสิทธิ์บันทึกข้อมูลการเติมน้ำมัน');
+      return;
+    }
+
     if (!selectedVehicleId) {
       setError('กรุณาเลือกรถ');
       return;
@@ -308,13 +316,26 @@ export const FuelLogFormView: React.FC<FuelLogFormViewProps> = ({
   };
 
   // Show loading state
-  if (loadingVehicles) {
+  if (featureAccessLoading || loadingVehicles) {
     return (
       <PageLayout
         title="บันทึกการเติมน้ำมัน"
         subtitle="กำลังโหลดข้อมูล..."
         loading={true}
       />
+    );
+  }
+
+  if (!canManageFuelLogs) {
+    return (
+      <PageLayout
+        title="สิทธิ์ไม่เพียงพอ"
+        subtitle="คุณไม่มีสิทธิ์เข้าใช้งานหน้านี้"
+      >
+        <Card className="p-6">
+          <p className="text-slate-600 dark:text-slate-400">คุณไม่มีสิทธิ์บันทึกข้อมูลการเติมน้ำมัน</p>
+        </Card>
+      </PageLayout>
     );
   }
 

@@ -21,6 +21,8 @@ export interface UploadedOrder {
   customer_name: string;
   customer_code?: string;
   store_id?: string;
+  store_branch?: string;
+  warehouse_id?: string;
   doc_type: string;
   status: string;
   tax_exempt: number;
@@ -30,6 +32,7 @@ export interface UploadedOrder {
   net_value: number;
   items: UploadedOrderItem[];
   error?: string; // e.g. Store not found
+  action?: 'new' | 'update' | 'skip' | 'locked'; // To track if this order should be created, updated, skipped, or locked
 }
 
 export const orderUploadService = {
@@ -69,6 +72,52 @@ export const orderUploadService = {
              return idx >= 0 ? row[idx] : null;
           };
 
+          const formatADDate = (dateVal: any): string => {
+            if (dateVal instanceof Date) {
+              let year = dateVal.getFullYear();
+              if (year > 2400) year -= 543;
+              const month = String(dateVal.getMonth() + 1).padStart(2, '0');
+              const day = String(dateVal.getDate()).padStart(2, '0');
+              return `${year}-${month}-${day}`;
+            }
+            
+            const dateStr = String(dateVal || '').trim();
+            if (!dateStr) return '';
+            
+            // Handle various formats if it's a string
+            // Format: DD/MM/YYYY or YYYY-MM-DD
+            let day, month, year;
+            
+            if (dateStr.includes('/')) {
+              const parts = dateStr.split('/');
+              if (parts.length === 3) {
+                day = parts[0];
+                month = parts[1];
+                year = parseInt(parts[2]);
+              }
+            } else if (dateStr.includes('-')) {
+              const parts = dateStr.split('-');
+              if (parts.length === 3) {
+                if (parts[0].length === 4) { // YYYY-MM-DD
+                  year = parseInt(parts[0]);
+                  month = parts[1];
+                  day = parts[2];
+                } else { // DD-MM-YYYY
+                  day = parts[0];
+                  month = parts[1];
+                  year = parseInt(parts[2]);
+                }
+              }
+            }
+            
+            if (year && month && day) {
+              if (year > 2400) year -= 543;
+              return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+            }
+            
+            return dateStr;
+          };
+
           for (const row of rows) {
             const docDate = getCell(row, 'เอกสารวันที่');
             const docNo = getCell(row, 'เอกสารเลขที่');
@@ -88,7 +137,7 @@ export const orderUploadService = {
                }
 
                currentHeaderRow = {
-                 order_date: docDate instanceof Date ? docDate.toISOString().split('T')[0] : String(docDate),
+                 order_date: formatADDate(docDate),
                  doc_no: docNo,
                  time: getCell(row, 'เวลา'),
                  customer_name: rawCustomerName,
@@ -169,7 +218,7 @@ export const orderUploadService = {
     // This bypasses the 1000-row limit issue
     const { data: stores, error: storesError } = await supabase
        .from('stores')
-       .select('id, customer_name, customer_code')
+       .select('id, customer_name, customer_code, branch')
        .in('customer_code', uniqueCustomerCodes) as { data: any[] | null, error: any };
        
     if (storesError) {
@@ -198,19 +247,50 @@ export const orderUploadService = {
     
     const productMap = new Map((products ?? []).map(p => [p.product_code, p]));
 
-    // 3. Apply validation
+    // 2.5 Fetch existing orders by sml_doc_no for diff checking
+    const docNos = [...new Set(orders.map(o => o.doc_no).filter(Boolean))];
+    const { data: existingOrders } = docNos.length > 0 ? await supabase
+        .from('orders')
+        .select('id, sml_doc_no, delivery_trip_id')
+        .in('sml_doc_no', docNos) : { data: [] };
+    
+    // Fetch trip statuses for orders that have a trip
+    let tripStatusMap = new Map<string, string>();
+    if (existingOrders && existingOrders.length > 0) {
+        const tripIds = [...new Set(existingOrders.map(o => o.delivery_trip_id).filter(Boolean))];
+        if (tripIds.length > 0) {
+            const { data: trips } = await supabase
+                .from('delivery_trips')
+                .select('id, status')
+                .in('id', tripIds);
+            for (const t of trips ?? []) {
+                tripStatusMap.set(t.id, t.status);
+            }
+        }
+    }
+        
+    let existingItems: any[] = [];
+    if (existingOrders && existingOrders.length > 0) {
+        const orderIds = existingOrders.map(o => o.id);
+        const { data: items } = await supabase
+            .from('order_items')
+            .select('order_id, product_id, quantity, unit_price, is_bonus, unit')
+            .in('order_id', orderIds);
+        existingItems = items || [];
+    }
+
+    // 3. Apply validation and diff checking
     return orders.map(order => {
         const validatedOrder = { ...order };
         
         // Find store
         if (stores) {
             const searchCode = normalizeCode(order.customer_code);
-            
-            // Strictly Match by Code only as per user request
             const matchedStore = searchCode ? stores.find(s => normalizeCode(s.customer_code) === searchCode) : undefined;
 
             if (matchedStore) {
                validatedOrder.store_id = matchedStore.id;
+               validatedOrder.store_branch = matchedStore.branch;
             } else {
                validatedOrder.error = `ไม่พบรหัสร้านค้า "${order.customer_code || '-'}" ในระบบ (ตรวจสอบจากวงเล็บสุดท้ายในชื่อ)`;
             }
@@ -233,6 +313,80 @@ export const orderUploadService = {
         // Check if order has item errors
         if (!validatedOrder.error && validatedOrder.items.some(i => i.error)) {
             validatedOrder.error = 'มีรายการสินค้าที่ไม่ถูกต้อง';
+        }
+
+        // If no errors, determine action (new, update, skip, locked)
+        if (!validatedOrder.error) {
+            const existingOrder = existingOrders?.find(o => o.sml_doc_no === validatedOrder.doc_no);
+            
+            if (!existingOrder) {
+                validatedOrder.action = 'new';
+            } else {
+                // Check if the order's trip has departed (in_progress or completed)
+                if (existingOrder.delivery_trip_id) {
+                    const tripStatus = tripStatusMap.get(existingOrder.delivery_trip_id);
+                    if (tripStatus === 'in_progress' || tripStatus === 'completed') {
+                        validatedOrder.action = 'locked';
+                        validatedOrder.error = `ออเดอร์นี้อยู่ในทริปที่ออกรถแล้ว (สถานะ: ${tripStatus === 'in_progress' ? 'กำลังจัดส่ง' : 'เสร็จสิ้น'}) ไม่สามารถอัพเดตได้`;
+                        return validatedOrder;
+                    }
+                }
+
+                // Order exists but trip is editable, check items for differences
+                const orderExistingItems = existingItems.filter(i => i.order_id === existingOrder.id);
+                
+                // Aggregate existing items by product_id, is_bonus, and unit to handle splits
+                const aggregatedDbItems = new Map<string, { quantity: number, unit_price: number }>();
+                for (const dbItem of orderExistingItems) {
+                    const key = `${dbItem.product_id}_${dbItem.is_bonus ? 'bonus' : 'normal'}_${dbItem.unit || ''}`;
+                    const existing = aggregatedDbItems.get(key);
+                    if (existing) {
+                        existing.quantity += Number(dbItem.quantity);
+                    } else {
+                        aggregatedDbItems.set(key, { 
+                            quantity: Number(dbItem.quantity), 
+                            unit_price: Number(dbItem.unit_price) 
+                        });
+                    }
+                }
+
+                // Aggregate uploaded items (just in case Excel has duplicate rows for same product)
+                const aggregatedUploadedItems = new Map<string, { quantity: number, unit_price: number, product_id: string }>();
+                for (const vItem of validatedOrder.items) {
+                    const isBonus = vItem.unit_price === 0;
+                    const key = `${vItem.product_id}_${isBonus ? 'bonus' : 'normal'}_${vItem.unit || ''}`;
+                    const existing = aggregatedUploadedItems.get(key);
+                    const actualUnitPrice = vItem.unit_price === 0 ? 0 : vItem.unit_price;
+
+                    if (existing) {
+                        existing.quantity += Number(vItem.quantity);
+                    } else {
+                        aggregatedUploadedItems.set(key, { 
+                            quantity: Number(vItem.quantity), 
+                            unit_price: Number(actualUnitPrice),
+                            product_id: vItem.product_id!
+                        });
+                    }
+                }
+
+                let isIdentical = true;
+                if (aggregatedDbItems.size !== aggregatedUploadedItems.size) {
+                    isIdentical = false;
+                } else {
+                    for (const [key, vAgg] of aggregatedUploadedItems.entries()) {
+                        const dbAgg = aggregatedDbItems.get(key);
+                        
+                        if (!dbAgg || 
+                            Math.abs(dbAgg.quantity - vAgg.quantity) > 0.001 || 
+                            Math.abs(dbAgg.unit_price - vAgg.unit_price) > 0.001) {
+                            isIdentical = false;
+                            break;
+                        }
+                    }
+                }
+                
+                validatedOrder.action = isIdentical ? 'skip' : 'update';
+            }
         }
         
         return validatedOrder;

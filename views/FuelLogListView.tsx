@@ -24,7 +24,7 @@ import { Card } from '../components/ui/Card';
 import { PageLayout } from '../components/layout/PageLayout';
 import { Avatar } from '../components/ui/Avatar';
 import { ImageModal } from '../components/ui/ImageModal';
-import { useFuelLogs, useFuelStats, useVehicles, useVehicleEfficiencyComparison } from '../hooks';
+import { useFeatureAccess, useFuelLogs, useFuelStats, useVehicles, useVehicleEfficiencyComparison } from '../hooks';
 import { useVehicleFuelComparison, useFuelTrend } from '../hooks/useReports';
 import type { Database } from '../types/database';
 import { getBranchLabel } from '../utils/branchLabels';
@@ -77,6 +77,9 @@ export const FuelLogListView: React.FC<FuelLogListViewProps> = ({
   onCreate,
 }) => {
   const { vehicles } = useVehicles();
+  const { can, loading: featureAccessLoading } = useFeatureAccess();
+  const canEditFuelLogs = !featureAccessLoading && can('tab.fuellogs', 'edit');
+  const canManageFuelLogs = !featureAccessLoading && can('tab.fuellogs', 'manage');
   const [expandedImage, setExpandedImage] = useState<{ src: string; alt: string } | null>(null);
   const [selectedVehicleImage, setSelectedVehicleImage] = useState<{ url: string; alt: string } | null>(null);
   const [editFuelRecordId, setEditFuelRecordId] = useState<string | null>(null);
@@ -270,7 +273,7 @@ export const FuelLogListView: React.FC<FuelLogListViewProps> = ({
       subtitle={loading ? 'กำลังโหลด...' : `ทั้งหมด ${displayedTotalCount.toLocaleString('th-TH')} รายการ${totalPages > 1 ? ` (หน้า ${currentPage}/${totalPages})` : ''}`}
       actions={
         <div className="flex gap-2">
-          {onCreate && (
+          {onCreate && canManageFuelLogs && (
             <Button onClick={onCreate}>
               <Plus className="w-4 h-4 mr-2" />
               บันทึกการเติมน้ำมัน
@@ -942,7 +945,8 @@ export const FuelLogListView: React.FC<FuelLogListViewProps> = ({
                       </div>
 
                       <div className="flex flex-col gap-2 items-end">
-                        <Button
+                        {canEditFuelLogs && (
+                          <Button
                           variant="outline"
                           size="sm"
                           onClick={() => setEditFuelRecordId(record.id)}
@@ -950,7 +954,8 @@ export const FuelLogListView: React.FC<FuelLogListViewProps> = ({
                         >
                           <Edit2 size={16} />
                           แก้ไขข้อมูล
-                        </Button>
+                          </Button>
+                        )}
                         <div className="text-xs text-slate-500 dark:text-slate-400">
                           {formatDate(record.filled_at)}
                         </div>

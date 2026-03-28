@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { ShoppingCart, Plus, Trash2, Search, Check, Grid3x3, Clock, Gift, Truck, Store } from 'lucide-react';
+import { ShoppingCart, Plus, Trash2, Search, Check, Grid3x3, Clock, Gift, Truck, Store, FileText, History } from 'lucide-react';
+import { useIncompleteOrdersCount } from '../hooks/useIncompleteOrdersCount';
 import { useProducts, useWarehouses, useProductCategories } from '../hooks/useInventory';
 import { ordersService } from '../services/ordersService';
 import { productTierPriceService } from '../services/customerTierService';
@@ -10,6 +11,7 @@ import { PageLayout } from '../components/ui/PageLayout';
 import { LoadingSpinner } from '../components/ui/LoadingSpinner';
 import { ToastContainer } from '../components/ui/Toast';
 import { useAuth, useToast } from '../hooks';
+import { useOrderBranchScope } from '../hooks/useOrderBranchScope';
 import { supabase } from '../lib/supabase';
 import { PaymentStatusBadge, PaymentStatus } from '../components/order/PaymentStatusBadge';
 import { OrderUploadModal } from '../components/order/OrderUploadModal';
@@ -30,11 +32,21 @@ type FulfillmentMode = 'delivery' | 'pickup' | 'mixed';
 const RECENT_PRODUCTS_KEY = 'recent_products';
 const MAX_RECENT_PRODUCTS = 20;
 
-export function CreateOrderView() {
+interface CreateOrderViewProps {
+  onNavigateToPendingSales?: () => void;
+  onNavigateToConfirmOrders?: () => void;
+}
+
+export const CreateOrderView: React.FC<CreateOrderViewProps> = ({ 
+  onNavigateToPendingSales,
+  onNavigateToConfirmOrders
+}) => {
   const { products, loading: productsLoading } = useProducts();
   const { warehouses, loading: warehousesLoading } = useWarehouses();
   const { categories, loading: categoriesLoading } = useProductCategories();
+  const { count: incompleteCount } = useIncompleteOrdersCount();
   const { profile } = useAuth();
+  const orderScope = useOrderBranchScope();
   const { toasts, success, error, warning, dismissToast } = useToast();
 
   const [selectedStore, setSelectedStore] = useState<any>(null);
@@ -57,15 +69,12 @@ export function CreateOrderView() {
 
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
 
-  // Filter warehouses based on user branch
   const filteredWarehouses = useMemo(() => {
     if (!warehouses) return [];
-    const isHighLevel = profile?.role === 'admin' || profile?.role === 'manager' || profile?.role === 'inspector' || profile?.role === 'executive';
-    if (isHighLevel || profile?.branch === 'HQ') {
-      return warehouses;
-    }
-    return warehouses.filter(w => w.branch === profile?.branch);
-  }, [warehouses, profile]);
+    if (orderScope.loading) return warehouses;
+    if (orderScope.unrestricted) return warehouses;
+    return warehouses.filter((w) => w.branch && orderScope.allowedBranches.includes(w.branch));
+  }, [warehouses, orderScope]);
 
   // Set default warehouse if only one is available
   useEffect(() => {
@@ -120,10 +129,16 @@ export function CreateOrderView() {
         .or(`customer_name.ilike.%${query}%,customer_code.ilike.%${query}%`)
         .eq('is_active', true);
 
-      // Filter by branch for restricted users
-      const isHighLevel = profile?.role === 'admin' || profile?.role === 'manager' || profile?.role === 'inspector' || profile?.role === 'executive';
-      if (!isHighLevel && profile?.branch && profile?.branch !== 'HQ') {
-        queryBuilder = queryBuilder.eq('branch', profile.branch);
+      if (!orderScope.loading && !orderScope.unrestricted) {
+        if (orderScope.allowedBranches.length === 0) {
+          setStores([]);
+          return;
+        }
+        if (orderScope.allowedBranches.length === 1) {
+          queryBuilder = queryBuilder.eq('branch', orderScope.allowedBranches[0]);
+        } else {
+          queryBuilder = queryBuilder.in('branch', orderScope.allowedBranches);
+        }
       }
 
       const { data, error } = await queryBuilder.limit(10);
@@ -264,6 +279,10 @@ export function CreateOrderView() {
 
       // เก็บ recent product
       addToRecentProducts(product.id);
+
+      // ซ่อนการเลือกสินค้าอัตโนมัติเมื่อกดเพิ่ม
+      setShowProductBrowser(false);
+      setProductSearch('');
     } catch (error: any) {
       error('ไม่สามารถดึงราคาสินค้าได้');
     }
@@ -427,7 +446,7 @@ export function CreateOrderView() {
       const orderInsert = {
         store_id: selectedStore.id,
         order_date: new Date().toISOString().split('T')[0],
-        status: 'confirmed',
+        status: 'awaiting_confirmation',
         notes: notes || null,
         delivery_address: selectedStore.address || null,
         // บันทึกวันที่ต้องการส่ง (ถ้าไม่ได้เลือก ให้เป็น null)
@@ -442,7 +461,7 @@ export function CreateOrderView() {
         unit_price: item.is_bonus ? 0 : item.unit_price, // ของแถมราคาเป็น 0
         discount_percent: Number(item.discount_percent || 0),
         is_bonus: item.is_bonus || false,
-        fulfillment_method: 'delivery',
+        fulfillment_method: 'delivery' as const,
       }));
 
       await ordersService.createWithItems(
@@ -453,6 +472,7 @@ export function CreateOrderView() {
       );
 
       success('สร้างออเดอร์เรียบร้อย');
+      onNavigateToConfirmOrders?.();
 
       // Reset form
       setSelectedStore(null);
@@ -475,14 +495,31 @@ export function CreateOrderView() {
       <PageLayout
         title="สร้างออเดอร์ใหม่"
         actions={
-          <Button
-            onClick={() => setIsUploadModalOpen(true)}
-            variant="outline"
-            className="flex items-center gap-2 bg-white text-blue-600 border-blue-200 hover:bg-blue-50 dark:bg-slate-800 dark:text-blue-400 dark:border-slate-700 dark:hover:bg-slate-700"
-          >
-            <Grid3x3 className="w-4 h-4" />
-            อัพโหลดใบขาย
-          </Button>
+          <div className="flex items-center gap-2">
+            <div className="relative">
+              <Button
+                onClick={onNavigateToPendingSales}
+                variant="outline"
+                className="flex items-center gap-2 bg-white text-orange-600 border-orange-200 hover:bg-orange-50 dark:bg-slate-800 dark:text-orange-400 dark:border-slate-700 dark:hover:bg-slate-700"
+              >
+                <FileText className="w-4 h-4" />
+                ใบขายคงค้าง
+              </Button>
+              {incompleteCount > 0 && (
+                <span className="absolute -top-2 -right-2 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white shadow-sm ring-2 ring-white dark:ring-slate-900 animate-in zoom-in duration-300">
+                  {incompleteCount > 99 ? '99+' : incompleteCount}
+                </span>
+              )}
+            </div>
+            <Button
+              onClick={() => setIsUploadModalOpen(true)}
+              variant="outline"
+              className="flex items-center gap-2 bg-white text-blue-600 border-blue-200 hover:bg-blue-50 dark:bg-slate-800 dark:text-blue-400 dark:border-slate-700 dark:hover:bg-slate-700"
+            >
+              <Grid3x3 className="w-4 h-4" />
+              อัพโหลดใบขาย
+            </Button>
+          </div>
         }
       >
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -1164,7 +1201,7 @@ export function CreateOrderView() {
         isOpen={isUploadModalOpen}
         onClose={() => setIsUploadModalOpen(false)}
         onSuccess={() => {
-          // TODO: Refresh orders list or redirect
+          onNavigateToConfirmOrders?.();
         }}
         selectedWarehouse={selectedWarehouse}
       />

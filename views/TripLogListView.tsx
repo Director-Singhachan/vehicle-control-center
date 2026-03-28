@@ -29,7 +29,7 @@ import { Input } from '../components/ui/Input';
 import { Card } from '../components/ui/Card';
 import { PageLayout } from '../components/layout/PageLayout';
 import { Avatar } from '../components/ui/Avatar';
-import { useTripLogs, useVehicles, useAuth } from '../hooks';
+import { useTripLogs, useVehicles, useFeatureAccess } from '../hooks';
 import { getBranchLabel } from '../utils/branchLabels';
 import { tripLogService, type TripLogWithRelations } from '../services/tripLogService';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
@@ -72,8 +72,9 @@ export const TripLogListView: React.FC<TripLogListViewProps> = ({
   const [unlinkTripId, setUnlinkTripId] = useState<string | null>(null);
   const [isUnlinking, setIsUnlinking] = useState(false);
 
-  const { isAdmin, isManager, isExecutive } = useAuth();
-  const canAdminDelete = isAdmin || isManager || isExecutive;
+  const { can, loading: featureAccessLoading } = useFeatureAccess();
+  const canEditTripLogs = !featureAccessLoading && can('tab.triplogs', 'edit');
+  const canManageTripLogs = !featureAccessLoading && can('tab.triplogs', 'manage');
 
   // Debounce search input (wait 500ms after user stops typing)
   useEffect(() => {
@@ -243,7 +244,7 @@ export const TripLogListView: React.FC<TripLogListViewProps> = ({
       subtitle={loading ? 'กำลังโหลด...' : `ทั้งหมด ${displayedTotalCount.toLocaleString('th-TH')} รายการ${totalPages > 1 ? ` (หน้า ${currentPage}/${totalPages})` : ''}`}
       actions={
         <div className="flex gap-2">
-          {onCreateCheckout && (
+          {onCreateCheckout && canManageTripLogs && (
             <Button
               onClick={onCreateCheckout}
               className="flex items-center gap-2"
@@ -503,7 +504,7 @@ export const TripLogListView: React.FC<TripLogListViewProps> = ({
                                 {trip.delivery_trip.trip_number}
                               </span>
                             </button>
-                            {trip.status === 'checked_in' && canAdminDelete && (
+                            {trip.status === 'checked_in' && canManageTripLogs && (
                               <button
                                 type="button"
                                 onClick={() => setUnlinkTripId(trip.id)}
@@ -651,7 +652,7 @@ export const TripLogListView: React.FC<TripLogListViewProps> = ({
                     <div className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-700 flex flex-wrap items-center gap-2">
                       {trip.status === 'checked_out' && (
                         <>
-                          {onCreateCheckin && (
+                          {onCreateCheckin && canManageTripLogs && (
                             <Button
                               variant="outline"
                               size="sm"
@@ -662,7 +663,8 @@ export const TripLogListView: React.FC<TripLogListViewProps> = ({
                               บันทึกการกลับ
                             </Button>
                           )}
-                          <Button
+                          {canManageTripLogs && (
+                            <Button
                             variant="outline"
                             size="sm"
                             onClick={() => setCancelTripId(trip.id)}
@@ -670,11 +672,12 @@ export const TripLogListView: React.FC<TripLogListViewProps> = ({
                           >
                             <XCircle size={16} />
                             ยกเลิกทริป
-                          </Button>
+                            </Button>
+                          )}
                         </>
                       )}
 
-                      {trip.status === 'checked_in' && (
+                        {trip.status === 'checked_in' && canEditTripLogs && (
                         <Button
                           variant="outline"
                           size="sm"
@@ -686,7 +689,7 @@ export const TripLogListView: React.FC<TripLogListViewProps> = ({
                         </Button>
                       )}
 
-                      {trip.status === 'checked_in' && canAdminDelete && (trip.delivery_trip_id || trip.delivery_trip) && (
+                      {trip.status === 'checked_in' && canManageTripLogs && (trip.delivery_trip_id || trip.delivery_trip) && (
                         <Button
                           variant="outline"
                           size="sm"
@@ -699,7 +702,7 @@ export const TripLogListView: React.FC<TripLogListViewProps> = ({
                         </Button>
                       )}
 
-                      {canAdminDelete && (
+                      {canManageTripLogs && (
                         <Button
                           variant="outline"
                           size="sm"

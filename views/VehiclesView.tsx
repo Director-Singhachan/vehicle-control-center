@@ -1,7 +1,7 @@
 // Vehicles View - List all vehicles with filters and search
 import React, { useState, useMemo, useCallback } from 'react';
 import { useVehicles, useVehiclesWithStatus } from '../hooks';
-import { useAuth } from '../hooks';
+import { useFeatureAccess } from '../hooks/useFeatureAccess';
 import {
   Truck,
   Plus,
@@ -187,12 +187,18 @@ export const VehiclesView: React.FC<VehiclesViewProps> = ({
   console.log('[VehiclesView] ✅✅✅ Component rendered - START');
   console.log('[VehiclesView] Props:', { onViewDetail: !!onViewDetail, onEdit: !!onEdit, onCreate: !!onCreate });
   
-  const { isManager, isAdmin } = useAuth();
-  console.log('[VehiclesView] Auth:', { isManager, isAdmin });
-  const { vehicles, loading, error, refetch } = useVehicles();
+  const { can, loading: featureAccessLoading } = useFeatureAccess();
+  const canViewVehicles = can('tab.vehicles', 'view');
+  const canEdit = can('tab.vehicles', 'edit');
+  console.log('[VehiclesView] Access:', { canViewVehicles, canEdit });
+  const { vehicles, loading, error, refetch } = useVehicles({
+    autoFetch: !featureAccessLoading && canViewVehicles,
+  });
   
   // Try to get vehicles with status, but don't block if it fails
-  const { vehicles: vehiclesWithStatus, loading: loadingStatus, error: statusError, refetch: refetchStatus } = useVehiclesWithStatus();
+  const { vehicles: vehiclesWithStatus, loading: loadingStatus, error: statusError, refetch: refetchStatus } = useVehiclesWithStatus({
+    autoFetch: !featureAccessLoading && canViewVehicles,
+  });
   
   // If status view fails, we can still show vehicles without status
   const hasStatusData = !statusError && vehiclesWithStatus && vehiclesWithStatus.length > 0;
@@ -328,8 +334,6 @@ export const VehiclesView: React.FC<VehiclesViewProps> = ({
     return badges[status];
   };
 
-  const canEdit = isManager || isAdmin;
-
   // Never show loading state - always show UI (even if empty or error)
   // This prevents infinite loading when API calls timeout or are slow
   // Data will appear when it's ready
@@ -344,6 +348,26 @@ export const VehiclesView: React.FC<VehiclesViewProps> = ({
     showLoading,
     showError,
   });
+
+  if (featureAccessLoading) {
+    return <PageLayout title="ยานพาหนะ" loading={true} />;
+  }
+
+  if (!canViewVehicles) {
+    return (
+      <PageLayout title="ยานพาหนะ">
+        <Card className="p-12 text-center">
+          <Truck className="w-16 h-16 mx-auto mb-4 text-slate-400 opacity-50" />
+          <h3 className="text-lg font-medium text-slate-600 dark:text-slate-300 mb-2">
+            คุณไม่มีสิทธิ์เข้าถึงหน้านี้
+          </h3>
+          <p className="text-sm text-slate-500 dark:text-slate-400">
+            ต้องได้รับสิทธิ์ "ยานพาหนะ" ก่อนใช้งาน
+          </p>
+        </Card>
+      </PageLayout>
+    );
+  }
 
   return (
     <PageLayout

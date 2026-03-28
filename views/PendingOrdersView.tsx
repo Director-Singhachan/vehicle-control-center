@@ -21,6 +21,14 @@ import { AreaGroupedOrderList } from '../components/order/AreaGroupedOrderList';
 import { usePendingOrdersFilters } from '../hooks/usePendingOrdersFilters';
 import { usePickupUpdate } from '../hooks/usePickupUpdate';
 import { PaymentStatusBadge } from '../components/order/PaymentStatusBadge';
+import {
+  BRANCH_ALL_LABEL,
+  BRANCH_ALL_VALUE,
+  BRANCH_FILTER_OPTIONS,
+  getBranchLabel,
+} from '../utils/branchLabels';
+import { useOrderBranchScope } from '../hooks/useOrderBranchScope';
+import { useFeatureAccess } from '../hooks/useFeatureAccess';
 
 // Memoized OrderCard component to prevent unnecessary re-renders
 interface OrderCardProps {
@@ -283,9 +291,27 @@ OrderCard.displayName = 'OrderCard';
 const TRIP_DELETED_EVENT = 'trip-deleted';
 
 export function PendingOrdersView() {
-  const { orders, loading, error, refetch } = usePendingOrders();
+  const { can, loading: featureAccessLoading } = useFeatureAccess();
   const { toasts, warning, dismissToast } = useToast();
   const { profile } = useAuth();
+  const orderScope = useOrderBranchScope();
+  const canViewPendingOrders = can('tab.pending_orders', 'view');
+  const pendingOrdersFilters = useMemo(() => {
+    if (featureAccessLoading || !canViewPendingOrders || orderScope.loading) {
+      return { branchesIn: [] as string[] };
+    }
+    if (orderScope.unrestricted) {
+      return undefined;
+    }
+    return { branchesIn: orderScope.allowedBranches };
+  }, [
+    canViewPendingOrders,
+    featureAccessLoading,
+    orderScope.allowedBranches,
+    orderScope.loading,
+    orderScope.unrestricted,
+  ]);
+  const { orders, loading, error, refetch } = usePendingOrders(pendingOrdersFilters);
 
   // Refetch เมื่อมีการลบทริป
   useEffect(() => {
@@ -312,7 +338,27 @@ export function PendingOrdersView() {
     handleSetDistrictFilter,
     handleSetSubDistrictFilter,
     resetDistrictFilter,
-  } = usePendingOrdersFilters({ orders, profile });
+  } = usePendingOrdersFilters({ orders, profile, scope: orderScope });
+
+  const pendingBranchOptions = useMemo(() => {
+    if (orderScope.loading) {
+      return [{ value: BRANCH_ALL_VALUE, label: BRANCH_ALL_LABEL }];
+    }
+    if (orderScope.unrestricted) {
+      return BRANCH_FILTER_OPTIONS;
+    }
+    const allowed = orderScope.allowedBranches;
+    if (allowed.length === 0) {
+      return [{ value: BRANCH_ALL_VALUE, label: BRANCH_ALL_LABEL }];
+    }
+    const opts = allowed.map((b) => ({ value: b, label: getBranchLabel(b) }));
+    if (allowed.length === 1) return opts;
+    return [{ value: BRANCH_ALL_VALUE, label: 'ทุกสาขา (ที่อนุญาต)' }, ...opts];
+  }, [orderScope]);
+
+  const pendingBranchSelectDisabled =
+    orderScope.loading ||
+    (!orderScope.unrestricted && orderScope.allowedBranches.length <= 1);
 
   const [selectedOrders, setSelectedOrders] = useState<Set<string>>(new Set());
   const [showCreateTrip, setShowCreateTrip] = useState(false);
@@ -411,7 +457,7 @@ export function PendingOrdersView() {
             product_id: item.product_id,
             product_name: item.product?.product_name || 'ไม่ระบุ',
             product_code: item.product?.product_code || '',
-            unit: item.product?.unit || 'หน่วย',
+            unit: item.unit || item.product?.unit || 'หน่วย',
             total_quantity: item.quantity,
           });
         }
@@ -535,6 +581,33 @@ export function PendingOrdersView() {
     );
   }
 
+  if (featureAccessLoading || orderScope.loading) {
+    return (
+      <PageLayout
+        title="ออเดอร์รอจัดส่ง"
+        subtitle="กำลังตรวจสอบสิทธิ์และขอบเขตข้อมูล..."
+      >
+        <div className="flex items-center justify-center py-16">
+          <LoadingSpinner />
+        </div>
+      </PageLayout>
+    );
+  }
+
+  if (!canViewPendingOrders) {
+    return (
+      <PageLayout title="ออเดอร์รอจัดส่ง">
+        <Card>
+          <div className="p-8 text-center text-gray-500 dark:text-gray-400">
+            <Package className="w-12 h-12 mx-auto mb-4 opacity-40" />
+            <p className="text-lg font-medium">คุณไม่มีสิทธิ์เข้าถึงหน้านี้</p>
+            <p className="text-sm mt-2">ต้องได้รับสิทธิ์ "ออเดอร์รอจัดส่ง" ก่อนใช้งาน</p>
+          </div>
+        </Card>
+      </PageLayout>
+    );
+  }
+
   if (loading) {
     return (
       <PageLayout title="ออเดอร์ที่รอจัดทริป">
@@ -616,15 +689,13 @@ export function PendingOrdersView() {
                 value={branchFilter}
                 onChange={(e) => setBranchFilter(e.target.value)}
                 className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
-                disabled={!(profile?.role === 'admin' || profile?.role === 'manager' || profile?.role === 'inspector' || profile?.role === 'executive' || profile?.branch === 'HQ')}
+                disabled={pendingBranchSelectDisabled}
               >
-                {(profile?.role === 'admin' || profile?.role === 'manager' || profile?.role === 'inspector' || profile?.role === 'executive' || profile?.branch === 'HQ') && (
-                  <>
-                    <option value="ALL">ทุกสาขา</option>
-                    <option value="HQ">สำนักงานใหญ่</option>
-                  </>
-                )}
-                <option value="SD">สาขาสอยดาว</option>
+                {pendingBranchOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
               </select>
             </div>
 
@@ -665,44 +736,47 @@ export function PendingOrdersView() {
         </div>
 
         {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-          <Card>
-            <div className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-600 dark:text-gray-400">ออเดอร์ทั้งหมด</p>
-                  <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">{orders?.length || 0}</p>
-                </div>
-                <Package className="w-10 h-10 text-blue-500 opacity-50" />
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+          <Card className="border-0 shadow-sm overflow-hidden group relative">
+            <div className="absolute inset-0 bg-gradient-to-br from-slate-100 to-slate-50 dark:from-slate-800/50 dark:to-charcoal-900/50 opacity-50 group-hover:opacity-100 transition-opacity" />
+            <div className="p-5 flex items-center justify-between relative z-10">
+              <div>
+                <p className="text-sm font-bold tracking-wider text-slate-500 dark:text-slate-400 uppercase">ออเดอร์ทั้งหมด</p>
+                <p className="text-3xl font-black text-slate-900 dark:text-white mt-1">{orders?.length || 0}</p>
+              </div>
+              <div className="w-14 h-14 rounded-2xl bg-slate-200/50 dark:bg-slate-800 flex items-center justify-center transform group-hover:scale-110 transition-transform">
+                <Package className="w-8 h-8 text-slate-400 dark:text-slate-500" />
               </div>
             </div>
           </Card>
 
-          <Card>
-            <div className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-600 dark:text-gray-400">ออเดอร์ที่กรอง</p>
-                  <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">{filteredOrders.length}</p>
-                </div>
-                <Filter className="w-10 h-10 text-green-500 opacity-50" />
+          <Card className="border-0 shadow-sm overflow-hidden group relative ring-1 ring-inset ring-neon-green/10">
+            <div className="absolute inset-0 bg-gradient-to-br from-emerald-50 to-white dark:from-emerald-900/20 dark:to-charcoal-900/50 opacity-50 group-hover:opacity-100 transition-opacity" />
+            <div className="p-5 flex items-center justify-between relative z-10">
+              <div>
+                <p className="text-sm font-bold tracking-wider text-emerald-700/80 dark:text-emerald-500/80 uppercase">ออเดอร์ที่กรอง</p>
+                <p className="text-3xl font-black text-emerald-600 dark:text-emerald-400 mt-1">{filteredOrders.length}</p>
+              </div>
+              <div className="w-14 h-14 rounded-2xl bg-emerald-100 dark:bg-emerald-900/40 flex items-center justify-center transform group-hover:scale-110 transition-transform">
+                <Filter className="w-8 h-8 text-emerald-500" />
               </div>
             </div>
           </Card>
 
-          <Card>
-            <div className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-600 dark:text-gray-400">มูลค่ารวม</p>
-                  <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">
-                    {new Intl.NumberFormat('th-TH', {
-                      notation: 'compact',
-                      compactDisplay: 'short'
-                    }).format(filteredOrdersTotal)} ฿
-                  </p>
-                </div>
-                <DollarSign className="w-10 h-10 text-yellow-500 opacity-50" />
+          <Card className="border-0 shadow-sm overflow-hidden group relative ring-1 ring-inset ring-amber-500/10">
+            <div className="absolute inset-0 bg-gradient-to-br from-amber-50 to-white dark:from-amber-900/20 dark:to-charcoal-900/50 opacity-50 group-hover:opacity-100 transition-opacity" />
+            <div className="p-5 flex items-center justify-between relative z-10">
+              <div>
+                <p className="text-sm font-bold tracking-wider text-amber-700/80 dark:text-amber-500/80 uppercase">มูลค่ารวม</p>
+                <p className="text-3xl font-black text-amber-600 dark:text-amber-400 mt-1">
+                  {new Intl.NumberFormat('th-TH', {
+                    notation: 'compact',
+                    compactDisplay: 'short'
+                  }).format(filteredOrdersTotal)} <span className="text-lg">฿</span>
+                </p>
+              </div>
+              <div className="w-14 h-14 rounded-2xl bg-amber-100 dark:bg-amber-900/40 flex items-center justify-center transform group-hover:scale-110 transition-transform">
+                <DollarSign className="w-8 h-8 text-amber-500" />
               </div>
             </div>
           </Card>

@@ -29,6 +29,7 @@ export interface UpdateStaffInput {
   department?: string;
   position?: string;
   phone?: string;
+  email?: string;
   /** ตั้งหรือแก้รหัสพนักงาน (กรณีใช้อีเมลจริงแต่ยังไม่มีรหัส) — ส่งค่าว่างเพื่อล้าง */
   employee_code?: string | null;
   is_banned?: boolean;
@@ -50,8 +51,26 @@ async function invokeAdminStaff<T = unknown>(
     body: { action, ...payload },
   });
 
-  if (error) throw new Error(error.message || 'Edge Function error');
-  if (data?.success === false) throw new Error(data.error || 'Operation failed');
+  const body = data as { success?: boolean; error?: string } | null;
+  // บางกรณี HTTP 4xx แต่ body มี { success: false, error } — อ่านก่อนข้อความ generic
+  if (body && body.success === false) {
+    throw new Error(body.error || 'Operation failed');
+  }
+
+  if (error) {
+    const serverMsg = body?.error;
+    throw new Error(
+      serverMsg || error.message || 'Edge Function error',
+    );
+  }
+
+  // กันคำตอบว่าง / ไม่มี success: true แล้วฝั่ง client เข้าใจผิดว่าสำเร็จ
+  if (body == null || typeof body !== 'object' || body.success !== true) {
+    throw new Error(
+      'คำตอบจาก admin-staff-management ไม่สมบูรณ์ (คาด JSON มี success: true) — ตรวจการ deploy Edge Function และ URL โปรเจกต์',
+    );
+  }
+
   return data as T;
 }
 
@@ -108,10 +127,31 @@ export const adminStaffService = {
 
   // ─── อัปเดตข้อมูลพนักงาน ─────────────────────────────────────────────────
   updateProfile: async (userId: string, input: UpdateStaffInput): Promise<void> => {
+    const emailNorm =
+      typeof input.email === 'string' && input.email.trim() ? input.email.trim() : undefined;
+    const { email: _omitEmail, ...inputRest } = input;
     await invokeAdminStaff('update_profile', {
       user_id: userId,
-      ...input,
+      ...inputRest,
+      ...(emailNorm !== undefined ? { email: emailNorm } : {}),
     } as Record<string, unknown>);
+
+    // ยืนยันว่า profiles.email เปลี่ยนจริง (กันเคส Edge คืน success แต่ DB ไม่อัปเดต)
+    if (emailNorm) {
+      const want = emailNorm.toLowerCase();
+      const { data: row, error } = await supabase
+        .from('profiles')
+        .select('email')
+        .eq('id', userId)
+        .maybeSingle();
+      if (error) throw new Error(error.message);
+      const got = (row?.email ?? '').trim().toLowerCase();
+      if (got !== want) {
+        throw new Error(
+          `อีเมลในฐานข้อมูลยังเป็น "${row?.email ?? '—'}" ไม่ตรง "${emailNorm}" — ตรวจ Edge Function admin-staff-management (update_profile) และ Supabase Auth`,
+        );
+      }
+    }
   },
 
   // ─── ย้าย email รูปแบบเก่า (@driver.local) → {employee_code}@staff.local ──

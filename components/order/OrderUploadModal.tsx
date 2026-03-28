@@ -1,30 +1,61 @@
-import React, { useState, useRef } from 'react';
-import { Upload, X, FileText, CheckCircle2, AlertCircle, Info, ChevronDown, ChevronUp } from 'lucide-react';
+﻿import React, { useState, useRef, useMemo, useEffect } from 'react';
+import { Upload, X, FileText, CheckCircle2, AlertCircle, Info, ChevronDown, ChevronUp, Boxes } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
 import { Badge } from '../ui/Badge';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
-import { useToast } from '../../hooks';
+import { ToastContainer } from '../ui/Toast';
+import { useAuth, useToast } from '../../hooks';
+import { useOrderBranchScope } from '../../hooks/useOrderBranchScope';
+import { useWarehouses } from '../../hooks/useInventory';
 import { orderUploadService, UploadedOrder } from '../../services/orderUploadService';
 import { ordersService } from '../../services/ordersService';
-import { useAuth } from '../../hooks';
+import { incompleteOrdersService } from '../../services/incompleteOrdersService';
 
 interface OrderUploadModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
-  selectedWarehouse: any;
+  selectedWarehouse?: any; // Optional now
 }
 
-export function OrderUploadModal({ isOpen, onClose, onSuccess, selectedWarehouse }: OrderUploadModalProps) {
+export function OrderUploadModal({ isOpen, onClose, onSuccess, selectedWarehouse: initialWarehouse }: OrderUploadModalProps) {
   const { profile } = useAuth();
-  const { success, error, warning } = useToast();
+  const orderScope = useOrderBranchScope();
+  const { toasts, dismissToast, success, error, warning } = useToast();
+  const { warehouses, loading: warehousesLoading } = useWarehouses();
   
   const [isProcessing, setIsProcessing] = useState(false);
+  const [processingMessage, setProcessingMessage] = useState('กำลังประมวลผลข้อมูล...');
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [parsedOrders, setParsedOrders] = useState<UploadedOrder[]>([]);
+  const [selectedBranch, setSelectedBranch] = useState<string>('all');
   const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
+
+  const filteredOrders = useMemo(() => {
+    if (selectedBranch === 'all') return parsedOrders;
+    if (selectedBranch === 'unknown') return parsedOrders.filter(o => !o.store_branch);
+    return parsedOrders.filter(o => o.store_branch === selectedBranch);
+  }, [parsedOrders, selectedBranch]);
+
+  const branchesList = useMemo(() => {
+    return Array.from(new Set(parsedOrders.map(o => o.store_branch).filter(Boolean)));
+  }, [parsedOrders]);
+
+  const getBranchLabel = (code: string) => {
+    if (code === 'SD') return 'สาขาสอยดาว (SD)';
+    if (code === 'HQ') return 'สำนักงานใหญ่ (HQ)';
+    return code;
+  };
   
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const filteredWarehouses = useMemo(() => {
+    if (!warehouses) return [];
+    if (orderScope.loading) return warehouses;
+    if (orderScope.unrestricted) return warehouses;
+    return warehouses.filter((w) => w.branch && orderScope.allowedBranches.includes(w.branch));
+  }, [warehouses, orderScope]);
 
   if (!isOpen) return null;
 
@@ -38,6 +69,8 @@ export function OrderUploadModal({ isOpen, onClose, onSuccess, selectedWarehouse
     }
 
     setIsProcessing(true);
+    setProcessingMessage('กำลังอ่านไฟล์ Excel...');
+    setUploadProgress(0);
     setParsedOrders([]);
     
     try {
@@ -45,7 +78,25 @@ export function OrderUploadModal({ isOpen, onClose, onSuccess, selectedWarehouse
       const rawOrders = await orderUploadService.parseExcel(file);
       
       // 2. Validate against DB
-      const validatedOrders = await orderUploadService.validateOrders(rawOrders);
+      setProcessingMessage('กำลังตรวจสอบข้อมูลกับฐานข้อมูล...');
+      let validatedOrders = await orderUploadService.validateOrders(rawOrders);
+      
+      // 3. Match warehouse from store branch
+      validatedOrders = validatedOrders.map(order => {
+        if (!order.error) {
+            if (order.store_branch) {
+                const matchedWh = warehouses.find(w => w.branch === order.store_branch);
+                if (matchedWh) {
+                   order.warehouse_id = matchedWh.id;
+                } else {
+                   order.error = `ไม่พบคลังสินค้าสำหรับสาขา "${order.store_branch}"`;
+                }
+            } else {
+                order.error = `ไม่พบข้อมูลสาขาของร้านค้า (Store ID: ${order.store_id})`;
+            }
+        }
+        return order;
+      });
       
       setParsedOrders(validatedOrders);
       
@@ -68,46 +119,88 @@ export function OrderUploadModal({ isOpen, onClose, onSuccess, selectedWarehouse
   };
 
   const handleConfirmUpload = async () => {
-    if (!selectedWarehouse) {
-      error('กรุณาเลือกคลังสินค้าในหน้าหลักก่อนอัพโหลด');
-      return;
-    }
-
-    const validOrders = parsedOrders.filter(o => !o.error);
-    if (validOrders.length === 0) {
-      error('ไม่มีออเดอร์ที่สามารถบันทึกได้');
+    const validOrders = filteredOrders.filter(o => !o.error && o.action !== 'skip' && o.action !== 'locked');
+    const invalidOrders = filteredOrders.filter(o => o.error && o.action !== 'locked');
+    const skippedOrders = filteredOrders.filter(o => !o.error && o.action === 'skip');
+    const lockedOrders = filteredOrders.filter(o => o.action === 'locked');
+    
+    if (validOrders.length === 0 && invalidOrders.length === 0) {
+      success(`ข้อมูลเหมือนเดิม ไม่มีการอัพเดต (ข้าม ${skippedOrders.length} รายการ)`);
+      onSuccess();
+      onClose();
       return;
     }
 
     setIsProcessing(true);
+    setProcessingMessage('กำลังบันทึกข้อมูล...');
+    setUploadProgress(0);
     try {
-      // Batch create orders
+      // Batch create valid orders
       let successCount = 0;
+      const totalToProcess = validOrders.length + invalidOrders.length;
+      let processedCount = 0;
+
       for (const order of validOrders) {
-        
         const orderInsert = {
-          store_id: order.store_id!, // known valid since not error
+          sml_doc_no: order.doc_no, // เก็บรหัส SML หลังบ้าน
+          store_id: order.store_id!,
           order_date: order.order_date,
-          status: 'awaiting_dispatch',
-          notes: `(อัพโหลดจาก SML / ${order.doc_no})`,
+          status: 'awaiting_confirmation',
+          notes: `(อัพโหลดจาก SML)`,
           created_by: profile?.id,
-          warehouse_id: selectedWarehouse.id,
+          warehouse_id: order.warehouse_id!,
         };
 
         const itemsToSubmit = order.items.map(item => ({
           product_id: item.product_id!, // known valid
           quantity: item.quantity,
           unit_price: item.unit_price,
-          discount_percent: Math.round((item.discount / item.total) * 100) || 0, // Approx
+          unit: item.unit,
+          discount_percent: Math.round((item.discount / (item.total || 1)) * 100) || 0,
           is_bonus: item.unit_price === 0,
           fulfillment_method: 'delivery' as const,
         }));
 
-        await ordersService.createWithItems(orderInsert, itemsToSubmit, null, null);
+        await ordersService.upsertSmlOrder(orderInsert, itemsToSubmit, null, null);
         successCount++;
+        processedCount++;
+        setUploadProgress(Math.round((processedCount / totalToProcess) * 100));
+      }
+
+      // Save invalid orders to Pending Sales
+      let pendingCount = 0;
+      for (const order of invalidOrders) {
+          await incompleteOrdersService.create({
+              doc_no: order.doc_no,
+              order_date: order.order_date,
+              customer_name: order.customer_name,
+              customer_code: order.customer_code,
+              net_value: order.net_value,
+              items: order.items.map(item => ({
+                  product_name: item.product_name,
+                  product_code: item.product_code,
+                  quantity: item.quantity,
+                  unit_price: item.unit_price,
+                  unit: item.unit,
+              })),
+              error_message: order.error || 'Unknown error',
+              warehouse_id: order.warehouse_id || warehouses[0]?.id,
+              branch: profile?.branch || null,
+              created_by: profile?.id || null,
+          });
+          pendingCount++;
+          processedCount++;
+          setUploadProgress(Math.round((processedCount / totalToProcess) * 100));
       }
       
-      success(`อัพโหลดสำเร็จ ${successCount} ออเดอร์`);
+      if (successCount > 0 && pendingCount > 0) {
+          success(`อัพเดต/บันทึกใหม่ ${successCount} ออเดอร์, ข้าม ${skippedOrders.length} ออเดอร์ และพบข้อผิดพลาด ${pendingCount} ออเดอร์`);
+      } else if (successCount > 0) {
+          success(`อัพเดต/บันทึกใหม่ ${successCount} ออเดอร์สำเร็จ (ข้าม ${skippedOrders.length} ออเดอร์)`);
+      } else if (pendingCount > 0) {
+          success(`ส่งข้อมูลไปใบขายคงค้าง ${pendingCount} ออเดอร์สำเร็จ (ข้าม ${skippedOrders.length} ออเดอร์)`);
+      }
+
       onSuccess();
       onClose();
     } catch (err: any) {
@@ -119,17 +212,23 @@ export function OrderUploadModal({ isOpen, onClose, onSuccess, selectedWarehouse
 
   const resetUpload = () => {
     setParsedOrders([]);
+    setSelectedBranch('all');
   };
 
   const toggleExpand = (docNo: string) => {
     setExpandedOrderId(expandedOrderId === docNo ? null : docNo);
   };
 
-  const validCount = parsedOrders.filter(o => !o.error).length;
-  const invalidCount = parsedOrders.filter(o => o.error).length;
+  const newCount = filteredOrders.filter(o => !o.error && (o.action === 'new' || !o.action)).length;
+  const updateCount = filteredOrders.filter(o => !o.error && o.action === 'update').length;
+  const skipCount = filteredOrders.filter(o => !o.error && o.action === 'skip').length;
+  const lockedCount = filteredOrders.filter(o => o.action === 'locked').length;
+  const validToSaveCount = newCount + updateCount;
+  const invalidCount = filteredOrders.filter(o => o.error && o.action !== 'locked').length;
 
   return (
     <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4">
+      <ToastContainer toasts={toasts} onDismiss={dismissToast} />
       <Card className="w-full max-w-4xl max-h-[90vh] flex flex-col bg-white dark:bg-slate-900 shadow-2xl overflow-hidden rounded-2xl">
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-slate-700">
@@ -152,23 +251,30 @@ export function OrderUploadModal({ isOpen, onClose, onSuccess, selectedWarehouse
           </button>
         </div>
 
-        {/* Content */}
+          {/* Content */}
         <div className="p-6 overflow-y-auto flex-1 bg-gray-50/50 dark:bg-slate-900/50">
-          
+
           {/* Step 1: Upload Input */}
           {parsedOrders.length === 0 && !isProcessing && (
-             <div className="border-2 border-dashed border-gray-300 dark:border-slate-700 rounded-xl p-12 text-center hover:border-blue-500 dark:hover:border-blue-400 transition-colors bg-white dark:bg-slate-800">
+             <div className="border-2 border-dashed rounded-xl p-12 text-center transition-colors bg-white dark:bg-slate-800 border-gray-300 dark:border-slate-700 hover:border-blue-500 dark:hover:border-blue-400">
                  <Upload className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                 <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">ลากไฟล์ลงที่นี่ หรือคลิกเพื่อเลือกไฟล์</h3>
+                 <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">
+                    ลากไฟล์ลงที่นี่ หรือคลิกเพื่อเลือกไฟล์
+                 </h3>
                  <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">รูปแบบไฟล์ที่รองรับ: .xlsx, .xls</p>
                  <input
                     type="file"
                     ref={fileInputRef}
                     onChange={handleFileUpload}
                     accept=".xlsx, .xls"
+                    disabled={isProcessing || !warehouses || warehouses.length === 0}
                     className="hidden"
                   />
-                 <Button onClick={() => fileInputRef.current?.click()} className="mx-auto flex items-center gap-2">
+                 <Button 
+                    onClick={() => fileInputRef.current?.click()} 
+                    disabled={isProcessing || !warehouses || warehouses.length === 0}
+                    className="mx-auto flex items-center gap-2"
+                  >
                     <FileText className="w-4 h-4" />
                     เลือกไฟล์ Excel
                  </Button>
@@ -179,33 +285,88 @@ export function OrderUploadModal({ isOpen, onClose, onSuccess, selectedWarehouse
           {isProcessing && (
               <div className="flex flex-col items-center justify-center p-12">
                   <LoadingSpinner className="w-12 h-12 mb-4 text-blue-600" />
-                  <p className="text-lg font-medium text-gray-900 dark:text-white">กำลังประมวลผลข้อมูล...</p>
-                  <p className="text-sm text-gray-500 mt-2">โปรดรอสักครู่ ระบบกำลังตรวจสอบข้อมูลกับฐานข้อมูล</p>
+                  <p className="text-lg font-medium text-gray-900 dark:text-white">{processingMessage}</p>
+                  {uploadProgress > 0 && (
+                    <div className="w-full max-w-xs mt-6">
+                        <div className="flex justify-between mb-2">
+                             <span className="text-xs font-semibold inline-block text-blue-600 uppercase">
+                                กำลังดำเนินการ
+                             </span>
+                             <span className="text-xs font-semibold inline-block text-blue-600">
+                                {uploadProgress}%
+                             </span>
+                        </div>
+                        <div className="overflow-hidden h-2 mb-4 text-xs flex rounded bg-blue-100">
+                             <div 
+                                style={{ width: `${uploadProgress}%` }}
+                                className="shadow-none flex flex-col text-center whitespace-nowrap text-white justify-center bg-blue-500 transition-all duration-300"
+                             ></div>
+                        </div>
+                        <p className="text-center text-xs text-gray-400">ห้ามปิดหน้าต่างนี้จนกว่าจะเสร็จสิ้น</p>
+                    </div>
+                  )}
+                  {uploadProgress === 0 && <p className="text-sm text-gray-500 mt-2">โปรดรอสักครู่ ระบบกำลังสื่อสารกับฐานข้อมูล</p>}
               </div>
           )}
 
           {/* Step 2: Verification */}
           {parsedOrders.length > 0 && !isProcessing && (
               <div className="space-y-6">
+
+                 {/* Filters */}
+                 <div className="flex items-center gap-4 bg-white dark:bg-slate-800 p-4 rounded-xl border border-gray-200 dark:border-slate-700 shadow-sm">
+                     <label className="text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap">กรองตามสาขา:</label>
+                     <select
+                         value={selectedBranch}
+                         onChange={(e) => setSelectedBranch(e.target.value)}
+                         className="flex-1 max-w-xs p-2.5 bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-lg text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500"
+                     >
+                         <option value="all">ทุกสาขา ({parsedOrders.length})</option>
+                         {branchesList.map(b => (
+                             <option key={b} value={b}>{getBranchLabel(b)} ({parsedOrders.filter(o => o.store_branch === b).length})</option>
+                         ))}
+                         {parsedOrders.some(o => !o.store_branch) && (
+                             <option value="unknown">ไม่ระบุสาขา ({parsedOrders.filter(o => !o.store_branch).length})</option>
+                         )}
+                     </select>
+                     <div className="ml-auto text-sm text-gray-500 dark:text-gray-400">
+                         แสดงอยู่: <span className="font-bold text-gray-900 dark:text-white">{filteredOrders.length}</span> รายการ
+                     </div>
+                 </div>
+
                  {/* Summary Cards */}
-                 <div className="grid grid-cols-3 gap-4">
+                 <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                     <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-gray-200 dark:border-slate-700">
-                        <p className="text-sm text-gray-500 dark:text-gray-400">ออเดอร์ทั้งหมด</p>
-                        <p className="text-2xl font-bold text-gray-900 dark:text-white">{parsedOrders.length}</p>
+                        <p className="text-sm text-gray-500 dark:text-gray-400">ทั้งหมด (กรอง)</p>
+                        <p className="text-2xl font-bold text-gray-900 dark:text-white">{filteredOrders.length}</p>
                     </div>
                     <div className="bg-green-50 dark:bg-green-900/20 p-4 rounded-xl border border-green-200 dark:border-green-800/50">
-                        <p className="text-sm text-green-600 dark:text-green-400">พร้อมบันทึก</p>
-                        <p className="text-2xl font-bold text-green-700 dark:text-green-300">{validCount}</p>
+                        <p className="text-sm text-green-600 dark:text-green-400">ออเดอร์ใหม่</p>
+                        <p className="text-2xl font-bold text-green-700 dark:text-green-300">{newCount}</p>
+                    </div>
+                    <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-xl border border-blue-200 dark:border-blue-800/50">
+                        <p className="text-sm text-blue-600 dark:text-blue-400">อัพเดตข้อมูล</p>
+                        <p className="text-2xl font-bold text-blue-700 dark:text-blue-300">{updateCount}</p>
+                    </div>
+                    <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700">
+                        <p className="text-sm text-gray-500 dark:text-gray-400">ข้อมูลเดิม (ข้าม)</p>
+                        <p className="text-2xl font-bold text-gray-600 dark:text-gray-300">{skipCount}</p>
                     </div>
                     <div className="bg-red-50 dark:bg-red-900/20 p-4 rounded-xl border border-red-200 dark:border-red-800/50">
                         <p className="text-sm text-red-600 dark:text-red-400">พบข้อผิดพลาด</p>
                         <p className="text-2xl font-bold text-red-700 dark:text-red-300">{invalidCount}</p>
                     </div>
+                    {lockedCount > 0 && (
+                    <div className="bg-orange-50 dark:bg-orange-900/20 p-4 rounded-xl border border-orange-200 dark:border-orange-800/50">
+                        <p className="text-sm text-orange-600 dark:text-orange-400">ล็อก (ออกรถแล้ว)</p>
+                        <p className="text-2xl font-bold text-orange-700 dark:text-orange-300">{lockedCount}</p>
+                    </div>
+                    )}
                  </div>
 
                  {/* Order List */}
                  <div className="space-y-3">
-                    {parsedOrders.map((order, index) => (
+                    {filteredOrders.map((order, index) => (
                         <div key={index} className={`bg-white dark:bg-slate-800 border rounded-xl overflow-hidden transition-colors ${order.error ? 'border-red-300 dark:border-red-800/50' : 'border-gray-200 dark:border-slate-700'}`}>
                            {/* Order Header / Accordion trigger */}
                            <div 
@@ -221,9 +382,28 @@ export function OrderUploadModal({ isOpen, onClose, onSuccess, selectedWarehouse
                                    <div>
                                        <div className="flex items-center gap-2">
                                            <span className="font-semibold text-gray-900 dark:text-white">{order.customer_name}</span>
-                                           <Badge className="text-xs bg-gray-100 dark:bg-slate-700">
+                                           <Badge className="text-xs bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-gray-300">
                                                {order.doc_no}
                                            </Badge>
+                                           <Badge variant={order.store_branch === 'SD' ? 'success' : order.store_branch === 'HQ' ? 'info' : 'default'} className="text-[11px] px-2 py-0.5 border border-transparent dark:border-slate-700">
+                                               {order.store_branch ? getBranchLabel(order.store_branch) : 'ไม่ระบุสาขา'}
+                                           </Badge>
+                                           {!order.error && (
+                                               <Badge 
+                                                    variant={order.action === 'new' ? 'success' : order.action === 'update' ? 'warning' : 'default'} 
+                                                    className="text-[11px] px-2 py-0.5 border border-transparent dark:border-slate-700"
+                                                >
+                                                   {order.action === 'new' ? 'ใหม่' : order.action === 'update' ? 'อัพเดต' : 'ข้าม'}
+                                               </Badge>
+                                           )}
+                                           {order.action === 'locked' && (
+                                               <Badge 
+                                                    variant="error" 
+                                                    className="text-[11px] px-2 py-0.5 border border-transparent dark:border-slate-700"
+                                                >
+                                                   ล็อก (ออกรถแล้ว)
+                                               </Badge>
+                                           )}
                                        </div>
                                        {order.error && (
                                            <p className="text-xs text-red-500 mt-1">{order.error}</p>
@@ -287,13 +467,13 @@ export function OrderUploadModal({ isOpen, onClose, onSuccess, selectedWarehouse
                   <Button variant="outline" onClick={resetUpload} disabled={isProcessing}>
                       อัพโหลดไฟล์ใหม่
                   </Button>
-                  <Button 
+                   <Button 
                       onClick={handleConfirmUpload} 
-                      disabled={isProcessing || validCount === 0}
+                      disabled={isProcessing || (validToSaveCount === 0 && invalidCount === 0 && skipCount > 0)}
                       className="flex items-center gap-2"
                   >
                       <CheckCircle2 className="w-4 h-4" />
-                      บันทึก {validCount} ออเดอร์
+                      บันทึก {validToSaveCount} ออเดอร์
                   </Button>
                </>
            ) : (
