@@ -19,7 +19,7 @@ import { Input } from '../components/ui/Input';
 import { Card } from '../components/ui/Card';
 import { PageLayout } from '../components/layout/PageLayout';
 import { fuelService } from '../services/fuelService';
-import { useAuth } from '../hooks/useAuth';
+import { useFeatureAccess } from '../hooks/useFeatureAccess';
 
 interface FuelLogEditViewProps {
     fuelRecordId: string;
@@ -48,7 +48,9 @@ export const FuelLogEditView: React.FC<FuelLogEditViewProps> = ({
     const [success, setSuccess] = useState(false);
     const [fuelRecord, setFuelRecord] = useState<any>(null);
 
-    const { isAdmin } = useAuth();
+    const { can, loading: featureAccessLoading } = useFeatureAccess();
+    const canEditFuelLogs = can('tab.fuellogs', 'edit');
+    const canManageFuelLogs = can('tab.fuellogs', 'manage');
 
     const [formData, setFormData] = useState({
         fuel_type: 'diesel',
@@ -123,6 +125,11 @@ export const FuelLogEditView: React.FC<FuelLogEditViewProps> = ({
         setError(null);
         setSuccess(false);
 
+        if (!canEditFuelLogs) {
+            setError('คุณไม่มีสิทธิ์แก้ไขข้อมูลการเติมน้ำมัน');
+            return;
+        }
+
         const liters = parseFloat(formData.liters);
         if (isNaN(liters) || liters <= 0) {
             setError('กรุณากรอกจำนวนลิตรที่ถูกต้อง');
@@ -157,7 +164,7 @@ export const FuelLogEditView: React.FC<FuelLogEditViewProps> = ({
             };
 
             // Include odometer if admin and value changed
-            if (isAdmin && formData.odometer) {
+            if (canManageFuelLogs && formData.odometer) {
                 updates.odometer = parseInt(formData.odometer);
             }
 
@@ -174,13 +181,26 @@ export const FuelLogEditView: React.FC<FuelLogEditViewProps> = ({
         }
     };
 
-    if (loading) {
+    if (loading || featureAccessLoading) {
         return (
             <PageLayout
                 title="แก้ไขข้อมูลการเติมน้ำมัน"
                 subtitle="กำลังโหลดข้อมูล..."
                 loading={true}
             />
+        );
+    }
+
+    if (!canEditFuelLogs) {
+        return (
+            <PageLayout
+                title="สิทธิ์ไม่เพียงพอ"
+                subtitle="คุณไม่มีสิทธิ์เข้าใช้งานหน้านี้"
+            >
+                <Card className="p-6">
+                    <p className="text-slate-600 dark:text-slate-400">คุณไม่มีสิทธิ์แก้ไขข้อมูลการเติมน้ำมัน</p>
+                </Card>
+            </PageLayout>
         );
     }
 
@@ -261,7 +281,7 @@ export const FuelLogEditView: React.FC<FuelLogEditViewProps> = ({
                 </Card>
 
                 {/* Admin-only Odometer Field */}
-                {isAdmin && (
+                {canManageFuelLogs && (
                     <Card className="p-6 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
                         <div className="flex items-center gap-2 text-amber-800 dark:text-amber-200 text-sm font-medium mb-4">
                             <AlertCircle size={16} />

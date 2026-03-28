@@ -27,6 +27,7 @@ import { useVehicles, useActiveTrips, useTripCheckout, useTripCheckin, useVehicl
 import { tripLogService } from '../services/tripLogService';
 import { deliveryTripService, type DeliveryTripWithRelations } from '../services/deliveryTripService';
 import { useDataCacheStore, createCacheKey } from '../stores/dataCacheStore';
+import { useFeatureAccess } from '../hooks/useFeatureAccess';
 
 interface TripLogFormViewProps {
   vehicleId?: string;
@@ -43,9 +44,11 @@ export const TripLogFormView: React.FC<TripLogFormViewProps> = ({
   onSave,
   onCancel,
 }) => {
-  const { user, isDriver, isManager, isAdmin, isInspector } = useAuth();
-  const { vehicles, loading: loadingVehicles, error: vehiclesError } = useVehicles();
-  const { trips: activeTrips, refetch: refetchActiveTrips, loading: loadingActiveTrips } = useActiveTrips();
+  const { user, isDriver } = useAuth();
+  const { can, loading: featureAccessLoading } = useFeatureAccess();
+  const canManageTripLogs = !featureAccessLoading && can('tab.triplogs', 'manage');
+  const { vehicles, loading: loadingVehicles, error: vehiclesError } = useVehicles({ autoFetch: canManageTripLogs });
+  const { trips: activeTrips, refetch: refetchActiveTrips, loading: loadingActiveTrips } = useActiveTrips(undefined, { enabled: canManageTripLogs });
 
   // Log active trips for debugging
   useEffect(() => {
@@ -58,10 +61,10 @@ export const TripLogFormView: React.FC<TripLogFormViewProps> = ({
         driver_id: t.driver_id,
         driver_name: t.driver?.full_name,
       })),
-      userRole: { isDriver, isManager, isAdmin, isInspector },
+      userRole: { isDriver },
       userId: user?.id,
     });
-  }, [activeTrips, user, isDriver, isManager, isAdmin, isInspector]);
+  }, [activeTrips, user, isDriver]);
   const { checkout, loading: checkingOut } = useTripCheckout();
   const { checkin, loading: checkingIn } = useTripCheckin();
   const cache = useDataCacheStore();
@@ -75,7 +78,7 @@ export const TripLogFormView: React.FC<TripLogFormViewProps> = ({
   const vehicleDropdownRef = useRef<HTMLDivElement>(null);
 
   // Use selectedVehicleId after it's initialized
-  const { activeTrip: vehicleActiveTrip, refetch: refetchVehicleStatus, loading: loadingVehicleStatus } = useVehicleStatus(selectedVehicleId || '');
+  const { activeTrip: vehicleActiveTrip, refetch: refetchVehicleStatus, loading: loadingVehicleStatus } = useVehicleStatus(canManageTripLogs ? (selectedVehicleId || '') : '');
 
   const [formData, setFormData] = useState({
     odometer: '',
@@ -112,12 +115,12 @@ export const TripLogFormView: React.FC<TripLogFormViewProps> = ({
 
   // Refresh active trips when component mounts or user changes
   useEffect(() => {
-    if (user) {
+    if (user && canManageTripLogs) {
       // Invalidate cache and refetch active trips to ensure fresh data
       cache.invalidate([createCacheKey('active-trips', 'all')]);
       refetchActiveTrips();
     }
-  }, [user?.id]); // Only refetch when user ID changes
+  }, [user?.id, canManageTripLogs]); // Only refetch when user ID changes
 
   // Detect when vehicle with active trip is selected in checkout mode
   // Use vehicleActiveTrip from useVehicleStatus which refreshes automatically when vehicle is selected
@@ -470,6 +473,11 @@ export const TripLogFormView: React.FC<TripLogFormViewProps> = ({
     setError(null);
     setSuccess(false);
 
+    if (!canManageTripLogs) {
+      setError('คุณไม่มีสิทธิ์บันทึกข้อมูลการเดินทาง');
+      return;
+    }
+
     if (!selectedVehicleId) {
       setError('กรุณาเลือกรถ');
       return;
@@ -690,13 +698,26 @@ export const TripLogFormView: React.FC<TripLogFormViewProps> = ({
   };
 
   // Show loading state
-  if (loadingVehicles || (mode === 'checkin' && loadingVehicleStatus)) {
+  if (featureAccessLoading || loadingVehicles || loadingActiveTrips || (mode === 'checkin' && loadingVehicleStatus)) {
     return (
       <PageLayout
         title={mode === 'checkout' ? 'บันทึกการออกเดินทาง' : 'บันทึกการกลับ'}
         subtitle="กำลังโหลดข้อมูล..."
         loading={true}
       />
+    );
+  }
+
+  if (!canManageTripLogs) {
+    return (
+      <PageLayout
+        title="สิทธิ์ไม่เพียงพอ"
+        subtitle="คุณไม่มีสิทธิ์เข้าใช้งานหน้านี้"
+      >
+        <Card className="p-6">
+          <p className="text-slate-600 dark:text-slate-400">คุณไม่มีสิทธิ์บันทึกข้อมูลการเดินทาง</p>
+        </Card>
+      </PageLayout>
     );
   }
 

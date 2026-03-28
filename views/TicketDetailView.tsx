@@ -1,6 +1,6 @@
 // Ticket Detail View - Show detailed information about a ticket with approval workflow
 import React, { useState } from 'react';
-import { useTicket, useTicketCosts, useAuth } from '../hooks';
+import { useFeatureAccess, useTicket, useTicketCosts, useAuth } from '../hooks';
 import { ticketService, maintenanceService } from '../services';
 import { supabase } from '../lib/supabase';
 import { pdfService } from '../services/pdfService';
@@ -73,6 +73,8 @@ export const TicketDetailView: React.FC<TicketDetailViewProps> = ({
   }
   
   const { user, profile, isInspector, isManager, isExecutive, isAdmin } = useAuth();
+  const { can, loading: featureAccessLoading } = useFeatureAccess();
+  const canManageApprovals = !featureAccessLoading && can('tab.approvals', 'manage');
   const { ticket, loading, error, refetch } = useTicket(ticketId);
   
   console.log('[TicketDetailView] useTicket result:', { 
@@ -315,6 +317,7 @@ export const TicketDetailView: React.FC<TicketDetailViewProps> = ({
   // Check if user can approve - enforce sequential approval
   const canApprove = () => {
     if (!user || !profile) return false;
+    if (!canManageApprovals) return false;
 
     // Get approved levels from approval history
     const approvedLevels = getApprovedLevels();
@@ -354,12 +357,14 @@ export const TicketDetailView: React.FC<TicketDetailViewProps> = ({
   // Check if user can update status
   const canUpdateStatus = () => {
     if (!user || !profile) return false;
+    if (!canManageApprovals) return false;
     return isInspector || isManager || isAdmin;
   };
 
   // Check if user can start repair
   const canStartRepair = () => {
     if (!user || !profile) return false;
+    if (!canManageApprovals) return false;
     // Only Inspector, Manager, Admin can start repair
     if (!isInspector && !isManager && !isAdmin) return false;
 
@@ -369,6 +374,7 @@ export const TicketDetailView: React.FC<TicketDetailViewProps> = ({
   // Check if user can complete repair
   const canCompleteRepair = () => {
     if (!user || !profile) return false;
+    if (!canManageApprovals) return false;
     // Only Inspector, Manager, Admin can complete repair
     if (!isInspector && !isManager && !isAdmin) return false;
 
@@ -376,12 +382,16 @@ export const TicketDetailView: React.FC<TicketDetailViewProps> = ({
   };
 
   const handleApproveClick = (action: 'approve' | 'reject') => {
+    if (!canApprove()) return;
     setApprovalAction(action);
     setShowApprovalDialog(true);
   };
 
   const handleApprovalSubmit = async (password: string, comment: string) => {
     if (!user || !profile) return;
+    if (!canApprove()) {
+      throw new Error('คุณไม่มีสิทธิ์อนุมัติรายการนี้');
+    }
 
     setApproving(true);
 
@@ -479,6 +489,9 @@ export const TicketDetailView: React.FC<TicketDetailViewProps> = ({
 
   // Handle start repair
   const handleStartRepair = async () => {
+    if (!canStartRepair()) {
+      return;
+    }
     if (!repairForm.garage || !repairForm.repairDate) {
       alert('กรุณากรอกข้อมูลอู่ซ่อมและวันที่เข้าซ่อม');
       return;
@@ -506,6 +519,9 @@ export const TicketDetailView: React.FC<TicketDetailViewProps> = ({
 
   // Handle complete repair
   const handleCompleteRepair = async () => {
+    if (!canCompleteRepair()) {
+      return;
+    }
     setCompletingRepair(true);
     try {
       // 1. Create maintenance history
@@ -525,6 +541,9 @@ export const TicketDetailView: React.FC<TicketDetailViewProps> = ({
   };
 
   const handleAddCost = async () => {
+    if (!canUpdateStatus()) {
+      return;
+    }
     if (!costForm.description || !costForm.cost) {
       return;
     }
@@ -1233,7 +1252,7 @@ export const TicketDetailView: React.FC<TicketDetailViewProps> = ({
           />
 
           {/* Upload Signed PDF */}
-          {(isInspector || isManager || isExecutive || isAdmin) && (
+          {canManageApprovals && (isInspector || isManager || isExecutive) && (
             <Card className="p-6">
               <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
                 <FileText className="w-5 h-5" />
