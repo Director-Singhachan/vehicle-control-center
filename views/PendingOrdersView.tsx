@@ -457,7 +457,7 @@ export function PendingOrdersView() {
             product_id: item.product_id,
             product_name: item.product?.product_name || 'ไม่ระบุ',
             product_code: item.product?.product_code || '',
-            unit: item.product?.unit || 'หน่วย',
+            unit: item.unit || item.product?.unit || 'หน่วย',
             total_quantity: item.quantity,
           });
         }
