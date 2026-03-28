@@ -10,6 +10,7 @@ import { Badge } from '../components/ui/Badge';
 import { PageLayout } from '../components/ui/PageLayout';
 import { LoadingSpinner } from '../components/ui/LoadingSpinner';
 import { useAuth } from '../hooks';
+import { useOrderBranchScope } from '../hooks/useOrderBranchScope';
 import { supabase } from '../lib/supabase';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { PaymentStatusBadge, PaymentStatus } from '../components/order/PaymentStatusBadge';
@@ -37,19 +38,17 @@ interface EditOrderViewProps {
 
 export function EditOrderView({ orderId, onSave, onCancel }: EditOrderViewProps) {
   const { user, profile } = useAuth();
+  const orderScope = useOrderBranchScope();
   const { products, loading: productsLoading } = useProducts();
   const { warehouses, loading: warehousesLoading } = useWarehouses();
   const { categories, loading: categoriesLoading } = useProductCategories();
 
-  // Filter warehouses based on user branch
   const filteredWarehouses = useMemo(() => {
     if (!warehouses) return [];
-    const isHighLevel = profile?.role === 'admin' || profile?.role === 'manager' || profile?.role === 'inspector' || profile?.role === 'executive';
-    if (isHighLevel || profile?.branch === 'HQ') {
-      return warehouses;
-    }
-    return warehouses.filter(w => w.branch === profile?.branch);
-  }, [warehouses, profile]);
+    if (orderScope.loading) return warehouses;
+    if (orderScope.unrestricted) return warehouses;
+    return warehouses.filter((w) => w.branch && orderScope.allowedBranches.includes(w.branch));
+  }, [warehouses, orderScope]);
 
   const showNotification = (type: 'success' | 'error' | 'warning', message: string) => {
     if (type === 'error') {
@@ -217,10 +216,16 @@ export function EditOrderView({ orderId, onSave, onCancel }: EditOrderViewProps)
         .or(`customer_name.ilike.%${query}%,customer_code.ilike.%${query}%`)
         .eq('is_active', true);
 
-      // Filter by branch for restricted users
-      const isHighLevel = profile?.role === 'admin' || profile?.role === 'manager' || profile?.role === 'inspector' || profile?.role === 'executive';
-      if (!isHighLevel && profile?.branch && profile?.branch !== 'HQ') {
-        queryBuilder = queryBuilder.eq('branch', profile.branch);
+      if (!orderScope.loading && !orderScope.unrestricted) {
+        if (orderScope.allowedBranches.length === 0) {
+          setStores([]);
+          return;
+        }
+        if (orderScope.allowedBranches.length === 1) {
+          queryBuilder = queryBuilder.eq('branch', orderScope.allowedBranches[0]);
+        } else {
+          queryBuilder = queryBuilder.in('branch', orderScope.allowedBranches);
+        }
       }
 
       const { data, error } = await queryBuilder.limit(10);

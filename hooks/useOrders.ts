@@ -34,10 +34,12 @@ export function useOrders(filters?: {
 
 export function usePendingOrders(filters?: {
   branch?: string;
+  branchesIn?: string[];
 }) {
   const [orders, setOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
+  const branchesInKey = filters?.branchesIn?.join('|') ?? '';
 
   const fetchOrders = async () => {
     try {
@@ -54,7 +56,7 @@ export function usePendingOrders(filters?: {
 
   useEffect(() => {
     fetchOrders();
-  }, [filters?.branch]); // Added filters?.branch to dependency array
+  }, [filters?.branch, branchesInKey]);
 
   return { orders, loading, error, refetch: fetchOrders };
 }

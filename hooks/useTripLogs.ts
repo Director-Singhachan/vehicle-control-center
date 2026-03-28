@@ -63,7 +63,11 @@ export const useTripLogs = (filters?: {
   };
 };
 
-export const useActiveTrips = (vehicleId?: string) => {
+interface UseActiveTripsOptions {
+  enabled?: boolean;
+}
+
+export const useActiveTrips = (vehicleId?: string, options: UseActiveTripsOptions = { enabled: true }) => {
   const cache = useDataCacheStore();
   const cacheKey = createCacheKey('active-trips', vehicleId || 'all');
 
@@ -99,12 +103,19 @@ export const useActiveTrips = (vehicleId?: string) => {
   };
 
   useEffect(() => {
+    if (!options.enabled) {
+      setTrips([]);
+      setLoading(false);
+      setError(null);
+      return;
+    }
+
     fetchActiveTrips();
     
     // Refresh every 30 seconds for active trips
     const interval = setInterval(() => fetchActiveTrips(false), 30000);
     return () => clearInterval(interval);
-  }, [vehicleId]);
+  }, [vehicleId, options.enabled]);
 
   return {
     trips,

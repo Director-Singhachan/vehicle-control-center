@@ -17,7 +17,7 @@ import { Input } from '../components/ui/Input';
 import { Card } from '../components/ui/Card';
 import { PageLayout } from '../components/layout/PageLayout';
 import { tripLogService } from '../services/tripLogService';
-import { useAuth } from '../hooks/useAuth';
+import { useFeatureAccess } from '../hooks/useFeatureAccess';
 
 interface TripLogEditViewProps {
     tripId: string;
@@ -36,7 +36,9 @@ export const TripLogEditView: React.FC<TripLogEditViewProps> = ({
     const [success, setSuccess] = useState(false);
     const [tripData, setTripData] = useState<any>(null);
 
-    const { isAdmin } = useAuth();
+    const { can, loading: featureAccessLoading } = useFeatureAccess();
+    const canEditTripLogs = can('tab.triplogs', 'edit');
+    const canManageTripLogs = can('tab.triplogs', 'manage');
 
     const [formData, setFormData] = useState({
         destination: '',
@@ -81,6 +83,11 @@ export const TripLogEditView: React.FC<TripLogEditViewProps> = ({
         setError(null);
         setSuccess(false);
 
+        if (!canEditTripLogs) {
+            setError('คุณไม่มีสิทธิ์แก้ไขข้อมูลการเดินทาง');
+            return;
+        }
+
         if (!formData.destination.trim()) {
             setError('กรุณากรอกปลายทาง');
             return;
@@ -102,7 +109,7 @@ export const TripLogEditView: React.FC<TripLogEditViewProps> = ({
 
             // Include odometer values if admin
             // IMPORTANT: Must send both odometer_start AND odometer_end together to satisfy check_distance_method constraint
-            if (isAdmin) {
+            if (canManageTripLogs) {
                 const odometerStart = formData.odometer_start ? parseInt(formData.odometer_start) : null;
                 const odometerEnd = formData.odometer_end ? parseInt(formData.odometer_end) : null;
 
@@ -125,13 +132,26 @@ export const TripLogEditView: React.FC<TripLogEditViewProps> = ({
         }
     };
 
-    if (loading) {
+    if (loading || featureAccessLoading) {
         return (
             <PageLayout
                 title="แก้ไขประวัติการเดินทาง"
                 subtitle="กำลังโหลดข้อมูล..."
                 loading={true}
             />
+        );
+    }
+
+    if (!canEditTripLogs) {
+        return (
+            <PageLayout
+                title="สิทธิ์ไม่เพียงพอ"
+                subtitle="คุณไม่มีสิทธิ์เข้าใช้งานหน้านี้"
+            >
+                <Card className="p-6">
+                    <p className="text-slate-600 dark:text-slate-400">คุณไม่มีสิทธิ์แก้ไขข้อมูลการเดินทาง</p>
+                </Card>
+            </PageLayout>
         );
     }
 
@@ -220,7 +240,7 @@ export const TripLogEditView: React.FC<TripLogEditViewProps> = ({
                         </h3>
 
                         {/* Admin-only Odometer Fields */}
-                        {isAdmin && (
+                        {canManageTripLogs && (
                             <div className="p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg space-y-4">
                                 <div className="flex items-center gap-2 text-amber-800 dark:text-amber-200 text-sm font-medium">
                                     <AlertCircle size={16} />

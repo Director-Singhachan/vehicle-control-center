@@ -8,7 +8,8 @@ import { PageLayout } from '../components/ui/PageLayout';
 import { LoadingSpinner } from '../components/ui/LoadingSpinner';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { ToastContainer } from '../components/ui/Toast';
-import { useAuth, useToast } from '../hooks';
+import { useToast } from '../hooks';
+import { useFeatureAccess } from '../hooks/useFeatureAccess';
 
 interface Order {
   id: string;
@@ -23,7 +24,7 @@ interface Order {
 }
 
 export function CleanupTestOrdersView() {
-  const { user, isAdmin, isManager } = useAuth();
+  const { can, loading: featureAccessLoading } = useFeatureAccess();
   const { toasts, success, error: showError, warning, dismissToast } = useToast();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
@@ -43,12 +44,22 @@ export function CleanupTestOrdersView() {
   const [itemsPerPage] = useState(100);
 
   // ตรวจสอบสิทธิ์
-  const canDelete = isAdmin || isManager;
+  const canView = can('tab.cleanup_test_orders', 'view');
+  const canDelete = can('tab.cleanup_test_orders', 'manage');
 
   // โหลดข้อมูลออเดอร์
   useEffect(() => {
-    loadOrders();
-  }, []);
+    if (featureAccessLoading) {
+      setLoading(true);
+      return;
+    }
+    if (!canView) {
+      setLoading(false);
+      setOrders([]);
+      return;
+    }
+    void loadOrders();
+  }, [featureAccessLoading, canView]);
 
   const loadOrders = async () => {
     try {
@@ -63,6 +74,18 @@ export function CleanupTestOrdersView() {
       setLoading(false);
     }
   };
+
+  if (!featureAccessLoading && !canView) {
+    return (
+      <PageLayout title="ล้างออเดอร์ทดสอบ">
+        <Card className="p-6">
+          <p className="text-sm text-slate-600 dark:text-slate-300">
+            คุณไม่มีสิทธิ์เข้าถึงหน้าจัดการออเดอร์ทดสอบ
+          </p>
+        </Card>
+      </PageLayout>
+    );
+  }
 
   // กรองข้อมูล
   const filteredOrders = useMemo(() => {

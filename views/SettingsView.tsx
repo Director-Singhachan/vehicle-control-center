@@ -7,9 +7,11 @@ import { Input } from '../components/ui/Input';
 import { Bell, MessageCircle, Send } from 'lucide-react';
 import { notificationService, type NotificationSettings } from '../services/notificationService';
 import { useAuth } from '../hooks';
+import { useFeatureAccess } from '../hooks/useFeatureAccess';
 
 export const SettingsView: React.FC = () => {
-  const { profile, isAdmin, isManager, isInspector, isExecutive, isDriver, loading: authLoading } = useAuth();
+  const { loading: authLoading } = useAuth();
+  const { can, loading: featureAccessLoading } = useFeatureAccess();
   const [settings, setSettings] = useState<NotificationSettings | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -18,17 +20,17 @@ export const SettingsView: React.FC = () => {
   const [success, setSuccess] = useState(false);
   const [isEditing, setIsEditing] = useState(false); // Lock/unlock state
 
-  const hasPermission =
-    isAdmin ||
-    isManager ||
-    isInspector ||
-    isExecutive ||
-    (profile?.role && ['admin', 'manager', 'inspector', 'executive'].includes(profile.role));
+  const canViewSettings = can('tab.settings', 'view');
 
   useEffect(() => {
     // ถ้าเป็นพนักงานขับรถ (driver) หรือไม่มีสิทธิ์ ไม่ต้องโหลด settings เลย
-    if (isDriver && !hasPermission) {
+    if (featureAccessLoading) {
+      return;
+    }
+
+    if (!canViewSettings) {
       setLoading(false);
+      setSettings(null);
       return;
     }
 
@@ -47,7 +49,7 @@ export const SettingsView: React.FC = () => {
     };
 
     loadSettings();
-  }, [isDriver, hasPermission]);
+  }, [canViewSettings, featureAccessLoading]);
 
   const handleToggle = (key: keyof NotificationSettings) => {
     if (!settings || !isEditing) return; // Prevent changes when locked
@@ -130,7 +132,18 @@ export const SettingsView: React.FC = () => {
   };
 
   // ถ้าไม่มีสิทธิ์ดูหน้า Settings (เช่น พนักงานขับรถ)
-  if (!authLoading && (isDriver && !hasPermission)) {
+  if ((authLoading || featureAccessLoading) && !settings) {
+    return (
+      <PageLayout
+        title="ตั้งค่า"
+        subtitle="การตั้งค่าการแจ้งเตือน"
+        loading={true}
+        error={false}
+      />
+    );
+  }
+
+  if (!authLoading && !featureAccessLoading && !canViewSettings) {
     return (
       <PageLayout
         title="ตั้งค่า"

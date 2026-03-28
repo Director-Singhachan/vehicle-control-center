@@ -24,6 +24,47 @@ const STAFF_EMAIL_DOMAIN = '@staff.local';
 // Roles ที่ต้อง auto-create service_staff record
 const OPERATIONAL_ROLES = new Set(['driver', 'service_staff']);
 
+const STAFF_ACCOUNTS_FEATURE = 'tab.admin_staff';
+const ACCESS_ORDER: Record<string, number> = {
+  none: 0,
+  view: 1,
+  edit: 2,
+  manage: 3,
+};
+
+async function staffAccountsEffectiveLevel(
+  adminClient: ReturnType<typeof createClient>,
+  role: string,
+): Promise<'none' | 'view' | 'edit' | 'manage'> {
+  const { data: row, error } = await adminClient
+    .from('role_feature_access')
+    .select('access_level')
+    .eq('role', role)
+    .eq('feature_key', STAFF_ACCOUNTS_FEATURE)
+    .maybeSingle();
+
+  if (error) {
+    console.warn('[admin-staff] role_feature_access:', error.message);
+    return role === 'admin' || role === 'hr' ? 'manage' : 'none';
+  }
+
+  const lv = row?.access_level as string | undefined;
+  if (lv && ACCESS_ORDER[lv] !== undefined) {
+    return lv as 'none' | 'view' | 'edit' | 'manage';
+  }
+  if (role === 'admin' || role === 'hr') return 'manage';
+  return 'none';
+}
+
+async function staffAccountsAtLeast(
+  adminClient: ReturnType<typeof createClient>,
+  role: string,
+  need: 'view' | 'edit' | 'manage',
+): Promise<boolean> {
+  const lv = await staffAccountsEffectiveLevel(adminClient, role);
+  return ACCESS_ORDER[lv] >= ACCESS_ORDER[need];
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { status: 200, headers: corsHeaders });
@@ -64,8 +105,8 @@ Deno.serve(async (req) => {
 
     // ─── set_own_employee_code — ใช้ได้เฉพาะ Admin/HR (นโยบาย: ให้เฉพาะ Admin/HR ตั้งรหัส) ───
     if (action === 'set_own_employee_code') {
-      if (callerProfile.role !== 'admin' && callerProfile.role !== 'hr') {
-        return jsonError('Forbidden: ตั้งรหัสพนักงานได้เฉพาะ Admin หรือ HR เท่านั้น', 403);
+      if (!(await staffAccountsAtLeast(adminClient, callerProfile.role, 'edit'))) {
+        return jsonError('Forbidden: ไม่มีสิทธิ์ตั้งรหัสพนักงาน', 403);
       }
       const { employee_code: rawCode } = body;
       const employee_code = typeof rawCode === 'string' ? rawCode.trim() : '';
@@ -103,9 +144,9 @@ Deno.serve(async (req) => {
       return jsonOk({ message: 'บันทึกรหัสพนักงานสำเร็จ', employee_code });
     }
 
-    // ─── Actions ต่อไปนี้ต้องการสิทธิ์ Admin หรือ HR ────────────────────────
-    if (callerProfile.role !== 'admin' && callerProfile.role !== 'hr') {
-      return jsonError('Forbidden: ต้องเป็น Admin หรือ HR เท่านั้น', 403);
+    // ─── Actions ต่อไปนี้ต้องการสิทธิ์อย่างน้อย edit บน tab.admin_staff ─────
+    if (!(await staffAccountsAtLeast(adminClient, callerProfile.role, 'edit'))) {
+      return jsonError('Forbidden: ไม่มีสิทธิ์จัดการบัญชีพนักงาน', 403);
     }
 
     // ─── next_employee_code ─────────────────────────────────────────────────
@@ -344,6 +385,10 @@ Deno.serve(async (req) => {
         }
       }
 
+      if (Object.keys(updates).length === 0) {
+        return jsonError('ไม่มีฟิลด์ที่จะอัปเดตใน profiles — ตรวจสอบค่า email/ฟิลด์ที่ส่งมา', 400);
+      }
+
       const { error } = await adminClient.from('profiles').update(updates).eq('id', user_id);
       if (error) throw error;
 
@@ -501,8 +546,8 @@ Deno.serve(async (req) => {
     // Soft-delete บัญชี: ล้างข้อมูลส่วนตัว + แบนถาวร + ซ่อนจากรายการ
     // ไม่ hard-delete เนื่องจาก ticket_approvals / tickets มี FK RESTRICT ไปยัง profiles
     if (action === 'delete_user') {
-      if (callerProfile.role !== 'admin' && callerProfile.role !== 'hr') {
-        return jsonError('Forbidden: ต้องเป็น Admin หรือ HR เท่านั้นจึงจะลบบัญชีได้', 403);
+      if (!(await staffAccountsAtLeast(adminClient, callerProfile.role, 'manage'))) {
+        return jsonError('Forbidden: ต้องมีสิทธิ์ระดับจัดการเต็มจึงจะลบบัญชีได้', 403);
       }
 
       const { user_id } = body;

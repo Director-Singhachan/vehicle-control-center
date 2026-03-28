@@ -21,6 +21,14 @@ import { AreaGroupedOrderList } from '../components/order/AreaGroupedOrderList';
 import { usePendingOrdersFilters } from '../hooks/usePendingOrdersFilters';
 import { usePickupUpdate } from '../hooks/usePickupUpdate';
 import { PaymentStatusBadge } from '../components/order/PaymentStatusBadge';
+import {
+  BRANCH_ALL_LABEL,
+  BRANCH_ALL_VALUE,
+  BRANCH_FILTER_OPTIONS,
+  getBranchLabel,
+} from '../utils/branchLabels';
+import { useOrderBranchScope } from '../hooks/useOrderBranchScope';
+import { useFeatureAccess } from '../hooks/useFeatureAccess';
 
 // Memoized OrderCard component to prevent unnecessary re-renders
 interface OrderCardProps {
@@ -283,9 +291,27 @@ OrderCard.displayName = 'OrderCard';
 const TRIP_DELETED_EVENT = 'trip-deleted';
 
 export function PendingOrdersView() {
-  const { orders, loading, error, refetch } = usePendingOrders();
+  const { can, loading: featureAccessLoading } = useFeatureAccess();
   const { toasts, warning, dismissToast } = useToast();
   const { profile } = useAuth();
+  const orderScope = useOrderBranchScope();
+  const canViewPendingOrders = can('tab.pending_orders', 'view');
+  const pendingOrdersFilters = useMemo(() => {
+    if (featureAccessLoading || !canViewPendingOrders || orderScope.loading) {
+      return { branchesIn: [] as string[] };
+    }
+    if (orderScope.unrestricted) {
+      return undefined;
+    }
+    return { branchesIn: orderScope.allowedBranches };
+  }, [
+    canViewPendingOrders,
+    featureAccessLoading,
+    orderScope.allowedBranches,
+    orderScope.loading,
+    orderScope.unrestricted,
+  ]);
+  const { orders, loading, error, refetch } = usePendingOrders(pendingOrdersFilters);
 
   // Refetch เมื่อมีการลบทริป
   useEffect(() => {
@@ -312,7 +338,27 @@ export function PendingOrdersView() {
     handleSetDistrictFilter,
     handleSetSubDistrictFilter,
     resetDistrictFilter,
-  } = usePendingOrdersFilters({ orders, profile });
+  } = usePendingOrdersFilters({ orders, profile, scope: orderScope });
+
+  const pendingBranchOptions = useMemo(() => {
+    if (orderScope.loading) {
+      return [{ value: BRANCH_ALL_VALUE, label: BRANCH_ALL_LABEL }];
+    }
+    if (orderScope.unrestricted) {
+      return BRANCH_FILTER_OPTIONS;
+    }
+    const allowed = orderScope.allowedBranches;
+    if (allowed.length === 0) {
+      return [{ value: BRANCH_ALL_VALUE, label: BRANCH_ALL_LABEL }];
+    }
+    const opts = allowed.map((b) => ({ value: b, label: getBranchLabel(b) }));
+    if (allowed.length === 1) return opts;
+    return [{ value: BRANCH_ALL_VALUE, label: 'ทุกสาขา (ที่อนุญาต)' }, ...opts];
+  }, [orderScope]);
+
+  const pendingBranchSelectDisabled =
+    orderScope.loading ||
+    (!orderScope.unrestricted && orderScope.allowedBranches.length <= 1);
 
   const [selectedOrders, setSelectedOrders] = useState<Set<string>>(new Set());
   const [showCreateTrip, setShowCreateTrip] = useState(false);
@@ -535,6 +581,33 @@ export function PendingOrdersView() {
     );
   }
 
+  if (featureAccessLoading || orderScope.loading) {
+    return (
+      <PageLayout
+        title="ออเดอร์รอจัดส่ง"
+        subtitle="กำลังตรวจสอบสิทธิ์และขอบเขตข้อมูล..."
+      >
+        <div className="flex items-center justify-center py-16">
+          <LoadingSpinner />
+        </div>
+      </PageLayout>
+    );
+  }
+
+  if (!canViewPendingOrders) {
+    return (
+      <PageLayout title="ออเดอร์รอจัดส่ง">
+        <Card>
+          <div className="p-8 text-center text-gray-500 dark:text-gray-400">
+            <Package className="w-12 h-12 mx-auto mb-4 opacity-40" />
+            <p className="text-lg font-medium">คุณไม่มีสิทธิ์เข้าถึงหน้านี้</p>
+            <p className="text-sm mt-2">ต้องได้รับสิทธิ์ "ออเดอร์รอจัดส่ง" ก่อนใช้งาน</p>
+          </div>
+        </Card>
+      </PageLayout>
+    );
+  }
+
   if (loading) {
     return (
       <PageLayout title="ออเดอร์ที่รอจัดทริป">
@@ -616,15 +689,13 @@ export function PendingOrdersView() {
                 value={branchFilter}
                 onChange={(e) => setBranchFilter(e.target.value)}
                 className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
-                disabled={!(profile?.role === 'admin' || profile?.role === 'manager' || profile?.role === 'inspector' || profile?.role === 'executive' || profile?.branch === 'HQ')}
+                disabled={pendingBranchSelectDisabled}
               >
-                {(profile?.role === 'admin' || profile?.role === 'manager' || profile?.role === 'inspector' || profile?.role === 'executive' || profile?.branch === 'HQ') && (
-                  <>
-                    <option value="ALL">ทุกสาขา</option>
-                    <option value="HQ">สำนักงานใหญ่</option>
-                  </>
-                )}
-                <option value="SD">สาขาสอยดาว</option>
+                {pendingBranchOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
               </select>
             </div>
 
