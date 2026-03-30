@@ -23,12 +23,12 @@ const VISIBILITY_OPTIONS: { value: OrderBranchVisibility; label: string; hint: s
   {
     value: 'all_branches',
     label: 'เห็นออเดอร์ทุกสาขา',
-    hint: 'สร้าง/ดูได้ทั้ง HQ, SD, Asia (ไม่จำกัดตามโปรไฟล์)',
+    hint: 'ไม่จำกัดตามสาขาในโปรไฟล์',
   },
   {
     value: 'own_branch_only',
     label: 'เห็นเฉพาะสาขาในโปรไฟล์',
-    hint: 'เฉพาะคนที่โปรไฟล์เป็นสาขานี้ — จำกัดเฉพาะสาขาที่ตรงกับที่ตั้งไว้ด้านบน',
+    hint: 'จำกัดตามสาขาที่เลือกด้านบน',
   },
 ];
 
@@ -145,16 +145,11 @@ export const RoleOrderBranchSection: React.FC<RoleOrderBranchSectionProps> = ({
         </div>
         <div className="space-y-3 min-w-0">
           <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-            ออเดอร์: ขอบเขตตามบทบาท + สาขาในโปรไฟล์
+            ขอบเขตการเห็นออเดอร์
           </h3>
-          <p className="text-xs text-slate-600 dark:text-slate-400 max-w-3xl leading-relaxed">
-            เลือกบทบาทจากแถบด้านบน จากนั้นเลือกว่า “พนักงานที่โปรไฟล์เป็นสาขาไหน” จะมองเห็นออเดอร์แบบไหน — ไม่ต้องติ๊กหลายสาขา
-            แยกตั้งได้ว่า Sale ที่โปรไฟล์ HQ เห็นทั้งระบบ แต่ Sale ที่โปรไฟล์ SD เห็นแค่ SD
+          <p className="text-xs text-slate-600 dark:text-slate-400 max-w-2xl">
+            ใช้คู่กับบทบาทที่เลือกด้านบน — กำหนดแยกตามโปรไฟล์สาขา HQ / SD / Asia
           </p>
-          <ol className="text-xs text-slate-600 dark:text-slate-400 max-w-3xl space-y-1 list-decimal list-inside leading-relaxed">
-            <li>เลือกรหัสสาขาในโปรไฟล์ (HQ / SD / Asia) ที่ต้องการกำหนด</li>
-            <li>เลือกโหมดมองเห็น แล้วกดบันทึก — หรือกดล้างคู่นี้เพื่อกลับไปใช้กฎเดิมของระบบ</li>
-          </ol>
         </div>
       </div>
 
@@ -167,7 +162,7 @@ export const RoleOrderBranchSection: React.FC<RoleOrderBranchSectionProps> = ({
         <>
           <div className="mb-4 rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50/80 dark:bg-slate-900/40 overflow-x-auto">
             <p className="text-xs font-semibold text-slate-800 dark:text-slate-200 px-3 pt-3 pb-2">
-              สถานะที่บันทึกในฐานข้อมูล (บทบาท {selectedRole})
+              ค่าที่บันทึกแล้ว · {selectedRole}
             </p>
             <table className="w-full text-xs text-left border-t border-slate-200 dark:border-slate-700">
               <thead className="bg-slate-100/90 dark:bg-slate-800/50 text-slate-600 dark:text-slate-400">
@@ -210,8 +205,8 @@ export const RoleOrderBranchSection: React.FC<RoleOrderBranchSectionProps> = ({
               </tbody>
             </table>
             {scopeRows.length === 0 && (
-              <p className="px-3 pb-3 pt-1 text-[11px] text-amber-800 dark:text-amber-200/90 leading-relaxed">
-                ยังไม่พบแถวใดในฐานข้อมูลสำหรับบทบาทนี้ หากเคยตั้งค่าในระบบเก่าก่อนอัปเดต schema การจำกัดสาขาอาจอยู่ในตารางเดิมที่ถูกแทนที่ — ต้องบันทึกใหม่ในแบบฟอร์มด้านล่าง
+              <p className="px-3 pb-3 pt-1 text-[11px] text-amber-800 dark:text-amber-200/90">
+                ยังไม่มีแถวในฐานข้อมูล — ตั้งค่าและบันทึกด้านล่าง
               </p>
             )}
           </div>
@@ -222,7 +217,7 @@ export const RoleOrderBranchSection: React.FC<RoleOrderBranchSectionProps> = ({
                 htmlFor="role-order-profile-branch"
                 className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1"
               >
-                สาขาในโปรไฟล์ (รหัสที่ตั้งในบัญชีพนักงาน)
+                โปรไฟล์สาขา
               </label>
               <select
                 id="role-order-profile-branch"
@@ -239,7 +234,7 @@ export const RoleOrderBranchSection: React.FC<RoleOrderBranchSectionProps> = ({
               </select>
               {scopeByProfileBranch[profileBranchKey] == null && (
                 <p className="text-[11px] text-slate-500 dark:text-slate-500 mt-1">
-                  ยังไม่มีแถวในฐานข้อมูลสำหรับคู่นี้ → ใช้กฎเดิมจนกว่าจะบันทึก
+                  ยังไม่บันทึกคู่นี้ — ใช้กฎเดิมของระบบ
                 </p>
               )}
             </div>

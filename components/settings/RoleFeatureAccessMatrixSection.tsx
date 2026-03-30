@@ -102,8 +102,8 @@ export const RoleFeatureAccessMatrixSection: React.FC<RoleFeatureAccessMatrixSec
                   ({selectedRole})
                 </span>
               </h3>
-              <p className="text-sm text-slate-600 dark:text-slate-400 mt-2 leading-relaxed max-w-3xl">
-                ระดับสูงขึ้นเรื่อย ๆ: ไม่มี → ดู → แก้ไข → จัดการเต็ม — การเปลี่ยนค่าแต่ละแถวบันทึกทันที
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5">
+                ไม่มี → ดู → แก้ไข → เต็ม · ระดับสูงรวมสิทธิ์ระดับต่ำ
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -139,21 +139,33 @@ export const RoleFeatureAccessMatrixSection: React.FC<RoleFeatureAccessMatrixSec
         </div>
 
         <details className="mt-4 group border border-slate-200/80 dark:border-slate-700/80 rounded-lg bg-slate-50/50 dark:bg-charcoal-900/30">
-          <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-3 text-sm text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white [&::-webkit-details-marker]:hidden">
+          <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2.5 text-sm text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white [&::-webkit-details-marker]:hidden">
             <HelpCircle size={16} className="shrink-0 text-slate-400 dark:text-slate-500" />
-            <span className="font-medium">หมายเหตุการทำงานของสิทธิ์ (คลิกเพื่ออ่าน)</span>
-            <span className="ml-auto text-xs text-slate-400 dark:text-slate-500 group-open:hidden">
-              แสดง
-            </span>
-            <span className="ml-auto text-xs text-slate-400 dark:text-slate-500 hidden group-open:inline">
-              ซ่อน
-            </span>
+            <span className="font-medium">อธิบายระดับสิทธิ์ / เมทริกซ์กับ RLS</span>
           </summary>
-          <p className="px-3 pb-4 text-sm text-slate-600 dark:text-slate-400 leading-relaxed border-t border-slate-100 dark:border-slate-800 pt-3">
-            เมื่อบันทึกสิทธิ์ลงฐานข้อมูลอย่างน้อยหนึ่งรายการสำหรับบทบาทนี้ ผู้ใช้จะเห็นเฉพาะฟีเจอร์ที่เปิดในรายการนี้
-            — รายการที่ยังไม่มีแถวในฐานข้อมูลจะไม่แสดงในเมนู (โปรไฟล์ / ตั้งค่าแจ้งเตือน ยังมีกฎพิเศษตามค่าเริ่มต้นของบทบาท)
-            หากลบแถวของบทบาทนั้นจากฐานข้อมูลทั้งหมด ระบบจะกลับไปใช้สิทธิ์เริ่มต้นของโปรแกรม
-          </p>
+          <div className="px-3 pb-3 space-y-3 text-xs sm:text-sm text-slate-600 dark:text-slate-400 leading-relaxed border-t border-slate-100 dark:border-slate-800 pt-3">
+            <ul className="space-y-1.5 list-none">
+              <li>
+                <span className="font-medium text-slate-800 dark:text-slate-200">ไม่มี</span> — ปิดเมนูและเข้าหน้าไม่ได้
+              </li>
+              <li>
+                <span className="font-medium text-slate-800 dark:text-slate-200">ดู</span> — อ่านข้อมูล ส่วนใหญ่ไม่มีปุ่มแก้ไข
+              </li>
+              <li>
+                <span className="font-medium text-slate-800 dark:text-slate-200">แก้ไข</span> — สร้าง/แก้ตามปกติ
+              </li>
+              <li>
+                <span className="font-medium text-slate-800 dark:text-slate-200">เต็ม</span> — รวมแก้ไข และงานเสี่ยงในบางหน้า (เช่น ลบ, ยกเลิกทริป)
+              </li>
+            </ul>
+            <p>
+              มีแถวในฐานข้อมูลอย่างน้อยหนึ่งรายการต่อบทบาท → ฟีเจอร์ที่ไม่ตั้งในตารางจะปิดในเมนู (โปรไฟล์/ตั้งค่ามีกฎพิเศษ)
+              ลบแถวของบทบาทนั้นหมด → กลับค่าเริ่มต้นของโปรแกรม
+            </p>
+            <p>
+              หน้านี้ไม่แก้ RLS — ถ้าปุ่มกดได้แต่ API ปฏิเสธ ให้ตรวจสิทธิ์บนตารางนั้น
+            </p>
+          </div>
         </details>
       </Card>
 
@@ -181,9 +193,9 @@ export const RoleFeatureAccessMatrixSection: React.FC<RoleFeatureAccessMatrixSec
             disabled={loading}
             className="rounded-lg border border-slate-300 dark:border-slate-600 bg-white/50 dark:bg-charcoal-900/50 px-4 py-2 text-sm text-slate-900 dark:text-white shadow-sm focus:outline-none focus:ring-2 focus:ring-enterprise-500 focus:border-enterprise-500 transition-all"
           >
-            <option value="all">ทั้งหมดในหมวดนี้</option>
-            <option value="diff">เฉพาะที่ต่างจากค่าเริ่มต้นในโปรแกรม</option>
-            <option value="none_only">เฉพาะที่สิทธิ์ = ไม่มี</option>
+            <option value="all">ทั้งหมด</option>
+            <option value="diff">ต่างจากค่าเริ่มต้น</option>
+            <option value="none_only">เฉพาะปิด (ไม่มี)</option>
           </select>
         </label>
         {loading && (
@@ -192,9 +204,6 @@ export const RoleFeatureAccessMatrixSection: React.FC<RoleFeatureAccessMatrixSec
       </div>
 
       <div className="sticky top-0 z-20 -mx-1 px-1 py-2 bg-slate-50/95 dark:bg-charcoal-950/95 backdrop-blur-md border-b border-slate-200/80 dark:border-slate-800/80">
-        <p className="text-xs text-slate-600 dark:text-slate-400 mb-2 px-0.5 leading-relaxed">
-          เลือกหมวดฝ่าย — แต่ละปุ่มแสดงจำนวนที่เปิดใช้ / ทั้งหมดในกลุ่ม
-        </p>
         <div
           className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1 scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-700 scrollbar-track-transparent"
           role="tablist"
@@ -277,9 +286,9 @@ export const RoleFeatureAccessMatrixSection: React.FC<RoleFeatureAccessMatrixSec
               })()}
               <div className="min-w-0">
                 <h3 className="text-sm font-bold text-slate-900 dark:text-white tracking-tight">{activeGroup.title}</h3>
-                <p className="text-sm text-slate-600 dark:text-slate-400 mt-1 leading-relaxed">
-                  แสดง {visibleKeys.length} / {activeGroup.keys.length} ในหมวดนี้
-                  {listFilter !== 'all' && ` · กรอง: ${listFilter === 'diff' ? 'ต่างจากค่าเริ่มต้น' : 'เฉพาะปิด'}`}
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                  {visibleKeys.length} / {activeGroup.keys.length}
+                  {listFilter !== 'all' && ` · ${listFilter === 'diff' ? 'ต่างจากเริ่มต้น' : 'ปิดเท่านั้น'}`}
                 </p>
               </div>
             </div>
@@ -287,8 +296,8 @@ export const RoleFeatureAccessMatrixSection: React.FC<RoleFeatureAccessMatrixSec
         )}
         <div className="divide-y divide-slate-100 dark:divide-slate-800">
           {visibleKeys.length === 0 ? (
-            <div className="px-4 py-12 text-center text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
-              ไม่มีรายการในโหมดกรองนี้ — ลองเปลี่ยน &quot;แสดงรายการในหมวด&quot; หรือเลือกหมวดอื่น
+            <div className="px-4 py-12 text-center text-sm text-slate-600 dark:text-slate-400">
+              ไม่มีรายการตามตัวกรอง — ลองเปลี่ยนตัวกรองหรือหมวด
             </div>
           ) : (
             visibleKeys.map((key) => {
