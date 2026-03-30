@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { Users, Edit2, Search, AlertCircle, ChevronLeft, ChevronRight, Trash2, Plus } from 'lucide-react';
 import { PageLayout } from '../components/ui/PageLayout';
 import { Card } from '../components/ui/Card';
@@ -11,21 +11,27 @@ import { storeService } from '../services/storeService';
 import { useNotification } from '../hooks/useNotification';
 import { useAuth } from '../hooks';
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
+import { useOrderBranchScope } from '../hooks/useOrderBranchScope';
+import { normalizeProfileBranch } from '../utils/orderUserScope';
+import { BRANCH_FILTER_OPTIONS, BRANCH_OPTIONS, getBranchLabel } from '../utils/branchLabels';
 
 export function CustomerManagementView() {
   const { can, loading: featureAccessLoading } = useFeatureAccess();
   const { isAdmin, isManager, isExecutive, isInspector, profile } = useAuth();
   const isHighLevel = isAdmin || isManager || isExecutive || isInspector;
-  const userBranch = profile?.branch || 'HQ';
+  const userBranch = normalizeProfileBranch(profile?.branch);
+  const orderScope = useOrderBranchScope();
+  /** สอดคล้องกับตั้งค่า "ขอบเขตออเดอร์ตามบทบาท+สาขา" — เห็นทุกสาขาเมื่อ unrestricted (รวมผู้บริหาร / HQ แบบเดิม) */
+  const canChooseCustomerBranch = !orderScope.loading && orderScope.unrestricted;
   const canViewCustomers = can('tab.customers', 'view');
   const canEditCustomers = can('tab.customers', 'edit');
   const canManageCustomers = can('tab.customers', 'manage');
 
   const [searchTerm, setSearchTerm] = useState('');
   const [onlyActive, setOnlyActive] = useState(true);
-  const [branchFilter, setBranchFilter] = useState<'ALL' | 'HQ' | 'SD'>(() => {
+  const [branchFilter, setBranchFilter] = useState<string>(() => {
     if (isHighLevel || userBranch === 'HQ') return 'ALL';
-    return userBranch as 'SD';
+    return userBranch;
   });
   const [currentPage, setCurrentPage] = useState(1);
   const [pageInput, setPageInput] = useState('');
@@ -58,12 +64,29 @@ export function CustomerManagementView() {
     setCurrentPage(1);
   }, [searchTerm, onlyActive, branchFilter, itemsPerPage]);
 
+  const branchScopeSyncKeyRef = useRef<string | null>(null);
+  const allowedBranchesKey = orderScope.allowedBranches.join('|');
+
+  // sync กับขอบเขตออเดอร์ — อัปเดตเมื่อสถานะ scope เปลี่ยนจริง ไม่รีเซ็ตทุกครั้งที่ profile object ถูกสร้างใหม่
+  useEffect(() => {
+    if (orderScope.loading) return;
+    const scopeKey = `${orderScope.unrestricted ? 'u' : 'r'}:${allowedBranchesKey}`;
+    if (branchScopeSyncKeyRef.current === scopeKey) return;
+    branchScopeSyncKeyRef.current = scopeKey;
+
+    if (orderScope.unrestricted) {
+      setBranchFilter('ALL');
+    } else if (orderScope.allowedBranches.length === 1) {
+      setBranchFilter(orderScope.allowedBranches[0]);
+    }
+  }, [orderScope.loading, orderScope.unrestricted, allowedBranchesKey, orderScope.allowedBranches]);
+
   // Calculate pagination
   const totalPages = Math.ceil(totalCount / itemsPerPage) || 1;
   const startIndex = offset;
   const endIndex = Math.min(startIndex + itemsPerPage, totalCount);
 
-  if (featureAccessLoading) {
+  if (featureAccessLoading || orderScope.loading) {
     return (
       <PageLayout title="จัดการลูกค้า">
         <div className="flex items-center justify-center h-64">
@@ -139,6 +162,8 @@ export function CustomerManagementView() {
           branch = 'SD';
         } else if (b.includes('สำนักงาน') || b === 'HQ') {
           branch = 'HQ';
+        } else if (b === 'ASIA') {
+          branch = 'Asia';
         }
       }
 
@@ -231,13 +256,21 @@ export function CustomerManagementView() {
           )}
           <select
             value={branchFilter}
-            onChange={(e) => setBranchFilter(e.target.value as 'ALL' | 'HQ' | 'SD')}
+            onChange={(e) => setBranchFilter(e.target.value)}
             className="px-2 py-1 text-xs border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-enterprise-500 disabled:opacity-50"
-            disabled={!(isHighLevel || userBranch === 'HQ')}
+            disabled={!canChooseCustomerBranch}
           >
-            {(isHighLevel || userBranch === 'HQ') && <option value="ALL">ทุกสาขา</option>}
-            {(isHighLevel || userBranch === 'HQ') && <option value="HQ">สำนักงานใหญ่ (HQ)</option>}
-            <option value="SD">สาขาสอยดาว (SD)</option>
+            {canChooseCustomerBranch
+              ? BRANCH_FILTER_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.value === 'ALL' ? o.label : `${o.label} (${o.value})`}
+                  </option>
+                ))
+              : orderScope.allowedBranches.map((code) => (
+                  <option key={code} value={code}>
+                    {getBranchLabel(code)} ({code})
+                  </option>
+                ))}
           </select>
           <select
             value={itemsPerPage}
@@ -614,10 +647,19 @@ export function CustomerManagementView() {
                   value={formData.branch || 'HQ'}
                   onChange={(e) => setFormData({ ...formData, branch: e.target.value })}
                   className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-enterprise-500 disabled:opacity-60"
-                  disabled={!(isHighLevel || userBranch === 'HQ')}
+                  disabled={!canChooseCustomerBranch}
                 >
-                  {(isHighLevel || userBranch === 'HQ') && <option value="HQ">สำนักงานใหญ่ (HQ)</option>}
-                  <option value="SD">สาขาสอยดาว (SD)</option>
+                  {canChooseCustomerBranch
+                    ? BRANCH_OPTIONS.map((o) => (
+                        <option key={o.value} value={o.value}>
+                          {o.label} ({o.value})
+                        </option>
+                      ))
+                    : orderScope.allowedBranches.map((code) => (
+                        <option key={code} value={code}>
+                          {getBranchLabel(code)} ({code})
+                        </option>
+                      ))}
                 </select>
                 <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
                   การเปลี่ยนค่านี้จะส่งผลกับการคำนวณสาขาของออเดอร์ใหม่ที่สร้างจากลูกค้ารายนี้
