@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Package, Plus, Search, Edit2, Trash2, Filter, Download, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Package, Plus, Search, Edit2, Trash2, Filter, ChevronLeft, ChevronRight, AlertCircle } from 'lucide-react';
 import { useProducts, useProductCategories } from '../hooks/useInventory';
 import { productService } from '../services/inventoryService';
 import { Card } from '../components/ui/Card';
@@ -9,6 +9,7 @@ import { PageLayout } from '../components/ui/PageLayout';
 import { LoadingSpinner } from '../components/ui/LoadingSpinner';
 import { Modal } from '../components/ui/Modal';
 import { useNotification } from '../hooks/useNotification';
+import { useFeatureAccess } from '../hooks/useFeatureAccess';
 import { ProductPalletConfigManager } from '../components/product/ProductPalletConfigManager';
 import type { Database } from '../types/database';
 
@@ -16,6 +17,11 @@ type ProductInsert = Database['public']['Tables']['products']['Insert'];
 type ProductUpdate = Database['public']['Tables']['products']['Update'];
 
 export function ProductsManagementView() {
+  const { can, loading: featureAccessLoading } = useFeatureAccess();
+  const canViewProducts = can('tab.products', 'view');
+  const canEditProducts = can('tab.products', 'edit');
+  const canManageProducts = can('tab.products', 'manage');
+
   const { products, loading, refetch } = useProducts();
   const { categories } = useProductCategories();
   const { showNotification } = useNotification();
@@ -177,6 +183,7 @@ export function ProductsManagementView() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!canEditProducts) return;
 
     try {
       const toNumberOrNull = (v: string | undefined) => {
@@ -254,6 +261,7 @@ export function ProductsManagementView() {
   };
 
   const handleDelete = async (id: string, name: string) => {
+    if (!canManageProducts) return;
     if (!confirm(`ต้องการลบสินค้า "${name}" ใช่หรือไม่?`)) return;
 
     try {
@@ -265,11 +273,25 @@ export function ProductsManagementView() {
     }
   };
 
-  if (loading) {
+  if (loading || featureAccessLoading) {
     return (
       <PageLayout title="จัดการสินค้า">
         <div className="flex items-center justify-center h-64">
           <LoadingSpinner />
+        </div>
+      </PageLayout>
+    );
+  }
+
+  if (!canViewProducts) {
+    return (
+      <PageLayout title="จัดการสินค้า">
+        <div className="flex flex-col items-center justify-center h-64 text-slate-500 dark:text-slate-400">
+          <AlertCircle className="w-12 h-12 mb-3 text-amber-500" />
+          <p className="text-lg font-medium">คุณไม่มีสิทธิ์เข้าถึงหน้าจอนี้</p>
+          <p className="text-sm mt-1">
+            ต้องได้รับสิทธิ์ &quot;จัดการสินค้า / ราคา&quot; (tab.products) จากการกำหนดสิทธิ์ตามฟีเจอร์
+          </p>
         </div>
       </PageLayout>
     );
@@ -323,10 +345,12 @@ export function ProductsManagementView() {
           </select>
 
           {/* Add Button */}
-          <Button onClick={() => handleOpenModal()} className="flex items-center gap-2">
-            <Plus className="w-5 h-5" />
-            <span>เพิ่มสินค้า</span>
-          </Button>
+          {canEditProducts && (
+            <Button onClick={() => handleOpenModal()} className="flex items-center gap-2">
+              <Plus className="w-5 h-5" />
+              <span>เพิ่มสินค้า</span>
+            </Button>
+          )}
         </div>
       </div>
 
@@ -396,20 +420,26 @@ export function ProductsManagementView() {
                   </td>
                   <td className="py-4 px-6">
                     <div className="flex items-center justify-center gap-2">
-                      <button
-                        onClick={() => handleOpenModal(product)}
-                        className="p-2 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors"
-                        title="แก้ไข"
-                      >
-                        <Edit2 className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={() => handleDelete(product.id, product.product_name)}
-                        className="p-2 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
-                        title="ลบ"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                      {canEditProducts && (
+                        <button
+                          type="button"
+                          onClick={() => handleOpenModal(product)}
+                          className="p-2 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors"
+                          title="แก้ไข"
+                        >
+                          <Edit2 className="w-4 h-4" />
+                        </button>
+                      )}
+                      {canManageProducts && (
+                        <button
+                          type="button"
+                          onClick={() => handleDelete(product.id, product.product_name)}
+                          className="p-2 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+                          title="ลบ"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -812,7 +842,8 @@ export function ProductsManagementView() {
             <ProductPalletConfigManager
               productId={editingProduct.id}
               productName={editingProduct.product_name || formData.product_name || 'สินค้า'}
-              canEdit={true}
+              canEdit={canEditProducts}
+              canManage={canManageProducts}
             />
           </div>
         )}

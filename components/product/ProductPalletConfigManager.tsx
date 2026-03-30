@@ -43,12 +43,15 @@ interface ProductPalletConfigManagerProps {
   productId: string;
   productName: string;
   canEdit?: boolean;
+  /** ลบแบบจัดเรียง — ใช้ระดับเดียวกับการลบสินค้า (tab.products = manage) */
+  canManage?: boolean;
 }
 
 export const ProductPalletConfigManager: React.FC<ProductPalletConfigManagerProps> = ({
   productId,
   productName,
   canEdit = true,
+  canManage = true,
 }) => {
   const [configs, setConfigs] = useState<PalletConfig[]>([]);
   const [pallets, setPallets] = useState<Pallet[]>([]);
@@ -274,6 +277,7 @@ export const ProductPalletConfigManager: React.FC<ProductPalletConfigManagerProp
   };
 
   const handleDelete = async (id: string, configName: string) => {
+    if (!canManage) return;
     if (!confirm(`ต้องการลบแบบจัดเรียง "${configName}" ใช่หรือไม่?`)) return;
 
     try {
@@ -410,22 +414,28 @@ export const ProductPalletConfigManager: React.FC<ProductPalletConfigManagerProp
                     พาเลท: {config.pallet?.pallet_name || config.pallet_id}
                   </p>
                 </div>
-                {canEdit && (
+                {(canEdit || canManage) && (
                   <div className="flex gap-1">
-                    <button
-                      onClick={() => handleOpenModal(config)}
-                      className="p-1.5 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded transition-colors"
-                      title="แก้ไข"
-                    >
-                      <Edit2 className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() => handleDelete(config.id, config.config_name)}
-                      className="p-1.5 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors"
-                      title="ลบ"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                    {canEdit && (
+                      <button
+                        type="button"
+                        onClick={() => handleOpenModal(config)}
+                        className="p-1.5 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded transition-colors"
+                        title="แก้ไข"
+                      >
+                        <Edit2 className="w-4 h-4" />
+                      </button>
+                    )}
+                    {canManage && (
+                      <button
+                        type="button"
+                        onClick={() => handleDelete(config.id, config.config_name)}
+                        className="p-1.5 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors"
+                        title="ลบ"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
