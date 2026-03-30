@@ -39,9 +39,32 @@ interface AuthState {
   refreshProfile: () => Promise<void>;
 }
 
+/** ไม่ล้าง profile ที่ persist ไว้เมื่อ fetch ล้มเหลวชั่วคราว (timeout/network) — กันแฟลช "ไม่พบบทบาท" */
+function mergeProfileFromFetch(get: () => AuthState, fetched: Profile | null): void {
+  const s = get();
+  const uid = s.user?.id;
+  if (!uid) {
+    s.setProfile(null);
+    return;
+  }
+  if (fetched) {
+    s.setProfile(fetched);
+    return;
+  }
+  const existing = s.profile;
+  if (existing?.id === uid) {
+    if (import.meta.env.DEV) {
+      console.warn('[Auth] Profile fetch returned no data; keeping existing profile for this user');
+    }
+    return;
+  }
+  s.setProfile(null);
+}
+
 export const useAuthStore = create<AuthState>()(
   persist(
-    (set, get) => ({
+    (set, get) => {
+      return {
       user: null,
       profile: null,
       loading: false,
@@ -129,41 +152,39 @@ export const useAuthStore = create<AuthState>()(
           set({ user, initialized: true });
 
           if (user) {
+            if (get().profile && get().profile.id !== user.id) {
+              get().setProfile(null);
+            }
             try {
               console.log('[Auth] Fetching profile for user:', user.id);
-              getCurrentProfile().then(async (profile) => {
-                console.log('[Auth] Profile fetched:', profile ? `role: ${profile.role}, shared: ${profile.is_shared_account}` : 'null');
-                get().setProfile(profile);
+              const profile = await getCurrentProfile();
+              console.log('[Auth] Profile fetched:', profile ? `role: ${profile.role}, shared: ${profile.is_shared_account}` : 'null');
+              mergeProfileFromFetch(get, profile);
 
-                if (profile?.is_shared_account) {
-                  console.log('[Auth] Shared account detected. Fetching available staff...');
-                  const { data: staff, error: staffError } = await supabase
-                    .from('service_staff')
-                    .select('*')
-                    .eq('user_id', user.id)
-                    .eq('status', 'active');
-                  
-                  if (staffError) {
-                    console.error('[Auth] Error fetching staff for shared account:', staffError);
-                    get().setAvailableStaff([]);
-                  } else {
-                    console.log(`[Auth] Found ${staff.length} active staff profiles.`);
-                    get().setAvailableStaff(staff || []);
-                  }
-                } else {
+              const resolved = get().profile;
+              if (resolved?.is_shared_account) {
+                console.log('[Auth] Shared account detected. Fetching available staff...');
+                const { data: staff, error: staffError } = await supabase
+                  .from('service_staff')
+                  .select('*')
+                  .eq('user_id', user.id)
+                  .eq('status', 'active');
+
+                if (staffError) {
+                  console.error('[Auth] Error fetching staff for shared account:', staffError);
                   get().setAvailableStaff([]);
-                  get().setActiveStaff(null);
+                } else {
+                  console.log(`[Auth] Found ${staff.length} active staff profiles.`);
+                  get().setAvailableStaff(staff || []);
                 }
-
-                set({ loading: false });
-              }).catch(err => {
-                console.warn('[Auth] Failed to fetch profile:', err);
-                get().setProfile(null);
-                set({ loading: false });
-              });
+              } else {
+                get().setAvailableStaff([]);
+                get().setActiveStaff(null);
+              }
             } catch (err) {
               console.warn('[Auth] Failed to fetch profile:', err);
-              get().setProfile(null);
+              mergeProfileFromFetch(get, null);
+            } finally {
               set({ loading: false });
             }
           } else {
@@ -191,7 +212,7 @@ export const useAuthStore = create<AuthState>()(
           if (data.user) {
             try {
               const profile = await getCurrentProfile();
-              get().setProfile(profile);
+              mergeProfileFromFetch(get, profile);
 
               if (profile?.is_shared_account) {
                 console.log('[Auth] Shared account detected. Fetching available staff...');
@@ -215,7 +236,7 @@ export const useAuthStore = create<AuthState>()(
 
             } catch (profileErr) {
               console.error('[Auth] Failed to fetch profile after sign in:', profileErr);
-              get().setProfile(null);
+              mergeProfileFromFetch(get, null);
             }
           } else {
             get().setProfile(null);
@@ -296,12 +317,13 @@ export const useAuthStore = create<AuthState>()(
           }
 
           const profile = await getCurrentProfile();
-          get().setProfile(profile);
+          mergeProfileFromFetch(get, profile);
         } catch (err) {
           console.error('[Auth] Error refreshing profile:', err);
         }
       },
-    }),
+    };
+    },
     {
       name: 'auth-storage',
       partialize: (state) => ({
@@ -333,31 +355,34 @@ if (typeof window !== 'undefined') {
     } else {
       useAuthStore.getState().initialize();
 
-      supabase.auth.onAuthStateChange(async (event, session) => {
+      supabase.auth.onAuthStateChange(async (_event, session) => {
         try {
-          const store = useAuthStore.getState();
-          store.setUser(session?.user ?? null);
-          store.setInitialized(true);
+          const s = useAuthStore.getState();
+          const newUser = session?.user ?? null;
 
-          if (session?.user) {
-            try {
-              const profile = await getCurrentProfile();
-              if (profile) {
-                store.setProfile(profile);
-                console.log('[Auth] Profile updated:', profile.role);
-              } else {
-                if (!store.profile) {
-                  store.setProfile(null);
-                }
-              }
-            } catch (err) {
-              console.error('[Auth] Error fetching profile on auth change:', err);
-              if (!store.profile) {
-                store.setProfile(null);
-              }
+          if (newUser && s.profile && s.profile.id !== newUser.id) {
+            s.setProfile(null);
+          }
+          if (!newUser) {
+            s.setProfile(null);
+          }
+
+          s.setUser(newUser);
+          s.setInitialized(true);
+
+          if (!newUser) {
+            return;
+          }
+
+          try {
+            const profile = await getCurrentProfile();
+            mergeProfileFromFetch(() => useAuthStore.getState(), profile);
+            if (profile) {
+              console.log('[Auth] Profile updated:', profile.role);
             }
-          } else {
-            store.setProfile(null);
+          } catch (err) {
+            console.error('[Auth] Error fetching profile on auth change:', err);
+            mergeProfileFromFetch(() => useAuthStore.getState(), null);
           }
         } catch (err) {
           console.error('[Auth] Error in auth state change handler:', err);
