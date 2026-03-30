@@ -11,6 +11,8 @@ export interface DeliveryTripStore {
   store_id: string;
   sequence_order: number;
   delivery_status?: string;
+  /** สถานะออกบิล (pending / issued) — คอลัมน์ใน delivery_trip_stores */
+  invoice_status?: string | null;
   delivered_at?: string;
   created_at?: string;
   updated_at?: string;
