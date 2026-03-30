@@ -185,6 +185,40 @@ export const storeService = {
 
   // Delete store
   delete: async (id: string): Promise<void> => {
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (!user) {
+      throw new Error('User not authenticated');
+    }
+
+    const { count: orderCount, error: orderCountError } = await supabase
+      .from('orders')
+      .select('id', { count: 'exact', head: true })
+      .eq('store_id', id);
+
+    if (orderCountError) {
+      console.error('[storeService] Error counting orders for store:', orderCountError);
+      throw orderCountError;
+    }
+
+    if (orderCount != null && orderCount > 0) {
+      throw new Error(
+        `ไม่สามารถลบลูกค้าได้ เนื่องจากมีออเดอร์ผูกอยู่ ${orderCount} รายการ — ให้ใช้การปิดใช้งาน (is_active) แทน หรือจัดการออเดอร์ก่อน`
+      );
+    }
+
+    // Trip stops reference stores with ON DELETE RESTRICT; remove stops first
+    // (delivery_trip_items CASCADE from delivery_trip_stores per schema)
+    const { error: tripStoresError } = await supabase
+      .from('delivery_trip_stores')
+      .delete()
+      .eq('store_id', id);
+
+    if (tripStoresError) {
+      console.error('[storeService] Error removing delivery_trip_stores for store:', tripStoresError);
+      throw tripStoresError;
+    }
+
     const { error } = await supabase
       .from('stores')
       .delete()
@@ -192,6 +226,11 @@ export const storeService = {
 
     if (error) {
       console.error('[storeService] Error deleting store:', error);
+      if (error.code === '23503') {
+        throw new Error(
+          'ไม่สามารถลบลูกค้าได้ เนื่องจากยังมีข้อมูลอื่นในระบบอ้างอิงอยู่ — ติดต่อผู้ดูแลระบบหรือใช้การปิดใช้งานแทน'
+        );
+      }
       throw error;
     }
   },
