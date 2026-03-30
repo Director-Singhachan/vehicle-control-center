@@ -19,7 +19,9 @@ export function useActivityTicker({ branch, isHighLevel }: UseActivityTickerOpti
     const [items, setItems] = useState<ActivityTickerItem[]>([]);
     const [loading, setLoading] = useState(true);
 
-    const shouldFilterBranch = !isHighLevel && branch && branch !== 'HQ';
+    /** ผู้ใช้ทั่วไปเห็นเฉพาะสาขาตามโปรไฟล์ — ไม่ยกเว้น HQ; ระดับผู้บริหาร/หัวหน้าดูภาพรวมทุกสาขา */
+    const shouldFilterBranch =
+        !isHighLevel && Boolean(branch) && branch !== 'ALL';
 
     const fetchActivities = useCallback(async () => {
         try {
@@ -142,7 +144,7 @@ export function useActivityTicker({ branch, isHighLevel }: UseActivityTickerOpti
         } finally {
             setLoading(false);
         }
-    }, [branch, shouldFilterBranch, isHighLevel]);
+    }, [branch, isHighLevel]);
 
     useEffect(() => {
         fetchActivities();
