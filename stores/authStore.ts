@@ -6,10 +6,13 @@ import type { User } from '@supabase/supabase-js';
 import type { Database } from '../types/database';
 
 type Profile = Database['public']['Tables']['profiles']['Row'];
+type ServiceStaff = Database['public']['Tables']['service_staff']['Row'];
 
 interface AuthState {
   user: User | null;
   profile: Profile | null;
+  availableStaff: ServiceStaff[];
+  activeStaff: ServiceStaff | null;
   loading: boolean;
   error: Error | null;
   initialized: boolean;
@@ -30,6 +33,8 @@ interface AuthState {
   // Actions
   setUser: (user: User | null) => void;
   setProfile: (profile: Profile | null) => void;
+  setAvailableStaff: (staff: ServiceStaff[]) => void;
+  setActiveStaff: (staff: ServiceStaff | null) => void;
   setLoading: (loading: boolean) => void;
   setError: (error: Error | null) => void;
   setInitialized: (initialized: boolean) => void;
@@ -67,6 +72,8 @@ export const useAuthStore = create<AuthState>()(
       return {
       user: null,
       profile: null,
+      availableStaff: [],
+      activeStaff: null,
       loading: false,
       error: null,
       initialized: false,
