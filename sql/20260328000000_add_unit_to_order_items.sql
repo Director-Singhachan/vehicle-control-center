@@ -20,8 +20,10 @@ WHERE oi.product_id = p.id AND oi.unit IS NULL;
 -- 3. ลบ View เดิมออกก่อน (ต้องใช้ CASCADE หากมี View อื่นมาเรียกใช้ View นี้ต่อ)
 DROP VIEW IF EXISTS public.order_items_with_fulfillment CASCADE;
 
--- 4. สร้าง View ใหม่พร้อมคอลัมน์ unit
-CREATE VIEW public.order_items_with_fulfillment AS
+-- 4. สร้าง View ใหม่พร้อมคอลัมน์ unit (security_invoker = สอดคล้อง Supabase linter 0010)
+CREATE VIEW public.order_items_with_fulfillment
+WITH (security_invoker = true)
+AS
 SELECT
   oi.id,
   oi.order_id,

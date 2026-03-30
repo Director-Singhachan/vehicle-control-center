@@ -2929,6 +2929,7 @@ export type Database = {
           full_name: string | null
           id: string
           is_banned: boolean
+          is_shared_account: boolean
           name_prefix: string | null
           phone: string | null
           position: string | null
@@ -2946,6 +2947,7 @@ export type Database = {
           full_name?: string | null
           id: string
           is_banned?: boolean
+          is_shared_account?: boolean
           name_prefix?: string | null
           phone?: string | null
           position?: string | null
@@ -2962,13 +2964,14 @@ export type Database = {
           full_name?: string | null
           id?: string
           is_banned?: boolean
+          is_shared_account?: boolean
           name_prefix?: string | null
           phone?: string | null
           position?: string | null
           role?: Database["public"]["Enums"]["app_role"]
         }
         Relationships: []
-      }
+      },
       service_staff: {
         Row: {
           branch: string | null

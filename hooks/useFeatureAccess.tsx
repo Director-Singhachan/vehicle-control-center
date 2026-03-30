@@ -21,6 +21,7 @@ import {
   TAB_TO_PRIMARY_FEATURE,
 } from '../types/featureAccess';
 
+/** สิทธิ์จากเมทริกซ์ (role_feature_access + built-in) ใช้กันเมนู/หน้าในแอป — ไม่ได้แทน RLS บนตารางธุรกรรม */
 export interface UseFeatureAccessResult {
   appRole: AppRole | null;
   levelFor: (feature: FeatureKey) => AccessLevel;

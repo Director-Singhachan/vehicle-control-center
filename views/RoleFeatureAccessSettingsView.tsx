@@ -94,7 +94,7 @@ export const RoleFeatureAccessSettingsView: React.FC = () => {
   return (
     <PageLayout
       title="กำหนดสิทธิ์ตามฟีเจอร์"
-      subtitle="แต่ละฟีเจอร์บันทึกลงฐานข้อมูลทันทีเมื่อเปลี่ยนระดับ — เลือกหมวดฝ่ายแล้วตั้งระดับด้านล่าง"
+      subtitle="ควบคุมเมนูและปุ่มในแอป — แต่ละฟีเจอร์บันทึกทันที; การเขียนข้อมูลจริงยังผ่าน RLS ของฐานข้อมูล"
       actions={
         <div className="flex flex-col items-stretch sm:flex-row sm:flex-wrap sm:items-center gap-2 min-w-0 max-w-full">
           <Button
@@ -128,9 +128,7 @@ export const RoleFeatureAccessSettingsView: React.FC = () => {
     >
       {!canEditRoleFeatureAccess && (
         <Card className="mb-4 p-4 border-amber-200 dark:border-amber-900 bg-amber-50/80 dark:bg-amber-950/40">
-          <p className="text-sm text-amber-800 dark:text-amber-200">
-            บัญชีนี้เข้าดูการตั้งค่าสิทธิ์ได้ แต่ยังไม่มีสิทธิ์แก้ไขข้อมูล
-          </p>
+          <p className="text-sm text-amber-800 dark:text-amber-200">โหมดดูอย่างเดียว — ไม่สามารถแก้ค่าได้</p>
         </Card>
       )}
       {loadError && (

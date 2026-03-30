@@ -35,6 +35,10 @@ interface SummaryItem {
   }>;
 }
 
+function getMergedSummaryCheckKey(si: SummaryItem): string {
+  return `${si.product_id}-${si.is_bonus ? 'bonus' : 'normal'}`;
+}
+
 // Merged store: ร้านเดียวกันจากหลายทริป รวมเป็นก้อนเดียว
 interface MergedStoreEntry {
   store_id: string;
@@ -63,10 +67,21 @@ interface StoreCardProps {
   updatingStatus: Set<string>;
   onToggleExpand: (storeId: string) => void;
   onViewDetail: (entry: MergedStoreEntry) => void;
+  /** เปิด modal เช็ครายการสินค้าทีละรายการ (เดียวกับมุมมองแบบทริป) — ถ้าไม่ส่ง จะใช้ onViewDetail แบบเดิม */
+  onOpenInvoiceChecklist?: (entry: MergedStoreEntry) => void;
   onToggleInvoiceStatus: (tripId: string, storeId: string, currentStatus: string) => void;
 }
 
-const StoreCard = memo(({ entry, expandedStores, updatingStatus, onToggleExpand, onViewDetail, onToggleInvoiceStatus }: StoreCardProps) => {
+const StoreCard = memo(
+  ({
+    entry,
+    expandedStores,
+    updatingStatus,
+    onToggleExpand,
+    onViewDetail,
+    onOpenInvoiceChecklist,
+    onToggleInvoiceStatus,
+  }: StoreCardProps) => {
   const isExpanded = expandedStores.has(entry.store_id);
   const isSplit = entry.trips.length > 1;
   const hasPartialRemaining = entry.trips.some((t: any) => t.order_status === 'partial' || t.order_status === 'assigned');
@@ -171,7 +186,15 @@ const StoreCard = memo(({ entry, expandedStores, updatingStatus, onToggleExpand,
                 {isExpanded ? <><ChevronUp className="w-3 h-3" />ซ่อน</> : <><ChevronDown className="w-3 h-3" />ดูรายการ</>}
               </button>
               <button
-                onClick={() => onViewDetail(entry)}
+                type="button"
+                onClick={() =>
+                  onOpenInvoiceChecklist ? onOpenInvoiceChecklist(entry) : onViewDetail(entry)
+                }
+                title={
+                  onOpenInvoiceChecklist
+                    ? 'เปิดรายการเพื่อเช็คสินค้าก่อนยืนยันออกบิล (ยอดรวมต่อสินค้า รวมทุกคันสำหรับร้านนี้)'
+                    : 'ดูรายละเอียดรวม'
+                }
                 className="text-xs text-purple-600 dark:text-purple-400 hover:underline flex items-center gap-1 px-2 py-1 rounded hover:bg-purple-50 dark:hover:bg-purple-900/20"
               >
                 <Eye className="w-3 h-3" />ดูทั้งหมด
@@ -249,6 +272,7 @@ export function SalesTripsView() {
   const [viewMode, setViewMode] = useState<ViewMode>('by_trip'); // default = ดูแบบทริป (จัดกลุ่มตามทริป)
   // สำหรับ modal แบบ merged store
   const [selectedMergedStore, setSelectedMergedStore] = useState<MergedStoreEntry | null>(null);
+  const [mergedCheckedItems, setMergedCheckedItems] = useState<Set<string>>(new Set());
   // Index สำหรับเลื่อน \"หน้าต่าง\" สรุปทริปวันนี้ (ควบคุมด้วยปุ่มลูกศรเท่านั้น)
   const [tripSummaryIndex, setTripSummaryIndex] = useState(0);
   // ขนาด viewport สรุปทริป - คำนวณจากความกว้างหน้าจอ
@@ -288,6 +312,20 @@ export function SalesTripsView() {
       setCheckedItems(new Set());
     }
   }, [selectedStoreDetail]);
+
+  useEffect(() => {
+    if (!selectedMergedStore) {
+      setMergedCheckedItems(new Set());
+      return;
+    }
+    const allIssued = selectedMergedStore.trips.every((t) => (t.invoice_status || 'pending') === 'issued');
+    if (allIssued) {
+      const keys = selectedMergedStore.summaryItems.map(getMergedSummaryCheckKey);
+      setMergedCheckedItems(new Set(keys));
+    } else {
+      setMergedCheckedItems(new Set());
+    }
+  }, [selectedMergedStore]);
 
   // Fetch trips with full details for invoicing
   // Sales view needs items data to display and manage invoices
@@ -512,6 +550,28 @@ export function SalesTripsView() {
 
   const handleViewStoreDetail = useCallback((tripId: string, store: any) => {
     setSelectedStoreDetail({ tripId, store });
+  }, []);
+
+  /** มุมมองแบบรายร้าน: ทริปเดียวใช้ modal รายแถว (เหมือนมุมมองทริป); หลายคันใช้ modal สรุปยอดพร้อมเช็ค */
+  const handleOpenInvoiceChecklistFromMerged = useCallback((entry: MergedStoreEntry) => {
+    if (entry.trips.length === 1) {
+      const t = entry.trips[0];
+      setSelectedStoreDetail({
+        tripId: t.trip_id,
+        store: {
+          id: t.trip_store_id,
+          store_id: entry.store_id,
+          store: entry.store,
+          items: t.items,
+          invoice_status: t.invoice_status,
+          order_status: t.order_status,
+          sequence_order: t.sequence_order,
+          delivery_status: t.delivery_status,
+        },
+      });
+      return;
+    }
+    setSelectedMergedStore(entry);
   }, []);
 
   if (loading) {
@@ -894,6 +954,7 @@ export function SalesTripsView() {
                       });
                     }}
                     onViewDetail={(entry) => setSelectedMergedStore(entry)}
+                    onOpenInvoiceChecklist={handleOpenInvoiceChecklistFromMerged}
                     onToggleInvoiceStatus={handleToggleInvoiceStatus}
                   />
                 ))
@@ -1332,7 +1393,10 @@ export function SalesTripsView() {
           {selectedMergedStore && (
             <Modal
               isOpen={!!selectedMergedStore}
-              onClose={() => setSelectedMergedStore(null)}
+              onClose={() => {
+                setSelectedMergedStore(null);
+                setMergedCheckedItems(new Set());
+              }}
               title={`รายละเอียดสินค้า - ${selectedMergedStore.store?.customer_name || 'ไม่ระบุชื่อร้าน'}`}
               size="large"
             >
@@ -1385,83 +1449,316 @@ export function SalesTripsView() {
                   </div>
                 )}
 
-                {/* Items Table — ยอดรวม */}
+                {/* Items Table — ยอดรวม + เช็ครายการ (มุมมองรายร้าน) */}
                 {selectedMergedStore.summaryItems.length > 0 ? (
                   <div>
                     <h3 className="font-semibold text-gray-900 dark:text-white mb-3">
                       รายการสินค้า ({selectedMergedStore.summaryItems.length} รายการ)
                     </h3>
-                    <div className="overflow-x-auto">
-                      <table className="w-full border-collapse">
-                        <thead>
-                          <tr className="border-b-2 border-gray-300 dark:border-slate-600 bg-gray-50 dark:bg-slate-800">
-                            <th className="text-center py-3 px-3 text-sm font-semibold text-gray-700 dark:text-gray-300 w-16">ลำดับ</th>
-                            <th className="text-left py-3 px-3 text-sm font-semibold text-gray-700 dark:text-gray-300">รหัสสินค้า</th>
-                            <th className="text-left py-3 px-3 text-sm font-semibold text-gray-700 dark:text-gray-300">ชื่อสินค้า</th>
-                            <th className="text-right py-3 px-3 text-sm font-semibold text-gray-700 dark:text-gray-300">จำนวนสั่ง</th>
-                            <th className="text-right py-3 px-3 text-sm font-semibold text-amber-600 dark:text-amber-400">รับที่ร้านแล้ว</th>
-                            <th className="text-right py-3 px-3 text-sm font-semibold text-gray-700 dark:text-gray-300">หน่วย</th>
-                            {selectedMergedStore.trips.length > 1 && (
-                              <th className="text-left py-3 px-3 text-sm font-semibold text-gray-700 dark:text-gray-300">แบ่งตามรถ</th>
-                            )}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {selectedMergedStore.summaryItems.map((si, index) => (
-                            <tr key={`${si.product_id}-${si.is_bonus}`} className="border-b border-gray-100 dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-800/50">
-                              <td className="py-3 px-3 text-sm text-center text-gray-600 dark:text-gray-400 font-mono font-semibold">
-                                {index + 1}
-                              </td>
-                              <td className="py-3 px-3 text-sm">
-                                <Badge variant="info" className="text-xs font-mono">{si.product?.product_code || 'ไม่ระบุ'}</Badge>
-                                {si.is_bonus && <Badge variant="success" className="text-xs ml-1">ของแถม</Badge>}
-                              </td>
-                              <td className="py-3 px-3 text-sm font-medium text-gray-900 dark:text-white">
-                                {si.product?.product_name || 'ไม่ระบุชื่อ'}
-                              </td>
-                              <td className="py-3 px-3 text-sm text-right font-bold text-gray-900 dark:text-white">
-                                {Math.floor(si.totalQuantity).toLocaleString('th-TH', { maximumFractionDigits: 0 })}
-                              </td>
-                              <td className="py-3 px-3 text-sm text-right">
-                                {si.totalPickedUp > 0 ? (
-                                  <span className="text-amber-600 dark:text-amber-400 font-medium">
-                                    {si.totalPickedUp.toLocaleString('th-TH', { maximumFractionDigits: 0 })} {si.product?.unit || 'ชิ้น'}
-                                  </span>
-                                ) : (
-                                  <span className="text-gray-400 dark:text-gray-500">—</span>
-                                )}
-                              </td>
-                              <td className="py-3 px-3 text-sm text-right text-gray-600 dark:text-gray-400">
-                                {si.product?.unit || 'ชิ้น'}
-                              </td>
-                              {selectedMergedStore.trips.length > 1 && (
-                                <td className="py-3 px-3 text-sm">
-                                  <div className="flex flex-wrap gap-1.5">
-                                    {si.breakdown.map((b, bi) => (
-                                      <span key={bi} className="inline-flex items-center gap-1 text-xs bg-gray-100 dark:bg-slate-800 text-gray-600 dark:text-gray-400 px-2 py-0.5 rounded">
-                                        <Truck className="w-3 h-3" />{b.vehicle_plate}: {Math.floor(b.quantity || 0).toLocaleString('th-TH', { maximumFractionDigits: 0 })}
-                                        {b.pickedUp != null && b.pickedUp > 0 && (
-                                          <span className="text-amber-600 dark:text-amber-400"> (รับที่ร้าน {b.pickedUp})</span>
-                                        )}
-                                      </span>
-                                    ))}
-                                  </div>
-                                </td>
-                              )}
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
+                    {(() => {
+                      const ms = selectedMergedStore;
+                      const mergedStoreId = ms.store_id;
+                      const mergedTotal = ms.summaryItems.length;
+                      const mergedCheckedCount = ms.summaryItems.filter((si) =>
+                        mergedCheckedItems.has(getMergedSummaryCheckKey(si)),
+                      ).length;
+                      const allMergedChecked = mergedTotal > 0 && mergedCheckedCount === mergedTotal;
+                      const allMergedTripsIssued = ms.trips.every(
+                        (t) => (t.invoice_status || 'pending') === 'issued',
+                      );
+                      const mergedModalUpdating = ms.trips.some((t) =>
+                        updatingStatus.has(`${t.trip_id}-${mergedStoreId}`),
+                      );
+                      const mergedProgress =
+                        mergedTotal > 0 ? (mergedCheckedCount / mergedTotal) * 100 : 0;
 
-                    <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
-                      <p className="text-xs text-blue-800 dark:text-blue-300">
-                        <strong>ข้อมูลสำคัญ:</strong> จำนวนเป็น<strong>จำนวนเต็ม</strong>เท่านั้น คอลัมน์ &quot;รับที่ร้านแล้ว&quot; ระบุจำนวนที่ลูกค้ามารับไปที่หน้าร้านแล้ว
-                        {selectedMergedStore.trips.length > 1 && (
-                          <> ควรออกเป็น <strong>บิลเดียว</strong> คอลัมน์ &quot;แบ่งตามรถ&quot; แสดงว่าสินค้าถูกส่งไปกับรถทะเบียนใดจำนวนเท่าไร</>
-                        )}
-                      </p>
-                    </div>
+                      return (
+                        <>
+                          <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+                            <div className="flex items-center justify-between text-sm mb-2">
+                              <span className="text-blue-800 dark:text-blue-200 font-medium">
+                                สรุปการเช็ค (ยอดรวมต่อสินค้า — ทุกคันในร้านนี้)
+                              </span>
+                              <span className="text-blue-700 dark:text-blue-300">
+                                คีย์แล้ว {mergedCheckedCount} / {mergedTotal} รายการ
+                              </span>
+                            </div>
+                            <div className="w-full bg-gray-200 dark:bg-slate-700 rounded-full h-2">
+                              <div
+                                className={`h-2 rounded-full transition-all duration-300 ${
+                                  mergedProgress === 100
+                                    ? 'bg-green-500'
+                                    : mergedProgress > 0
+                                      ? 'bg-yellow-500'
+                                      : 'bg-gray-300 dark:bg-slate-600'
+                                }`}
+                                style={{ width: `${mergedProgress}%` }}
+                              />
+                            </div>
+                          </div>
+
+                          <div className="overflow-x-auto">
+                            <table className="w-full border-collapse">
+                              <thead>
+                                <tr className="border-b-2 border-gray-300 dark:border-slate-600 bg-gray-50 dark:bg-slate-800">
+                                  <th className="text-center py-3 px-3 text-sm font-semibold text-gray-700 dark:text-gray-300 w-12">
+                                    ✓
+                                  </th>
+                                  <th className="text-center py-3 px-3 text-sm font-semibold text-gray-700 dark:text-gray-300 w-16">
+                                    ลำดับ
+                                  </th>
+                                  <th className="text-left py-3 px-3 text-sm font-semibold text-gray-700 dark:text-gray-300">
+                                    รหัสสินค้า
+                                  </th>
+                                  <th className="text-left py-3 px-3 text-sm font-semibold text-gray-700 dark:text-gray-300">
+                                    ชื่อสินค้า
+                                  </th>
+                                  <th className="text-right py-3 px-3 text-sm font-semibold text-gray-700 dark:text-gray-300">
+                                    จำนวนสั่ง
+                                  </th>
+                                  <th className="text-right py-3 px-3 text-sm font-semibold text-amber-600 dark:text-amber-400">
+                                    รับที่ร้านแล้ว
+                                  </th>
+                                  <th className="text-right py-3 px-3 text-sm font-semibold text-gray-700 dark:text-gray-300">
+                                    หน่วย
+                                  </th>
+                                  {ms.trips.length > 1 && (
+                                    <th className="text-left py-3 px-3 text-sm font-semibold text-gray-700 dark:text-gray-300">
+                                      แบ่งตามรถ
+                                    </th>
+                                  )}
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {ms.summaryItems.map((si, index) => {
+                                  const rowKey = getMergedSummaryCheckKey(si);
+                                  const isRowChecked = mergedCheckedItems.has(rowKey);
+                                  return (
+                                    <tr
+                                      key={rowKey}
+                                      className={`border-b border-gray-100 dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-800/50 ${
+                                        isRowChecked ? 'bg-green-50 dark:bg-green-900/10' : ''
+                                      }`}
+                                    >
+                                      <td className="py-3 px-3 text-center">
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setMergedCheckedItems((prev) => {
+                                              const next = new Set(prev);
+                                              if (next.has(rowKey)) next.delete(rowKey);
+                                              else next.add(rowKey);
+                                              return next;
+                                            });
+                                          }}
+                                          className={`
+                                            w-6 h-6 border-2 rounded flex items-center justify-center transition-all cursor-pointer
+                                            ${
+                                              isRowChecked
+                                                ? 'bg-green-500 border-green-600 dark:bg-green-600 dark:border-green-700'
+                                                : 'bg-white dark:bg-slate-800 border-gray-300 dark:border-slate-600 hover:border-green-400 dark:hover:border-green-500'
+                                            }
+                                          `}
+                                          title={
+                                            isRowChecked
+                                              ? 'คลิกเพื่อยกเลิกการเช็ค'
+                                              : 'คลิกเพื่อเช็คว่าคีย์สินค้านี้แล้ว'
+                                          }
+                                        >
+                                          {isRowChecked && <CheckCircle className="w-4 h-4 text-white" />}
+                                        </button>
+                                      </td>
+                                      <td className="py-3 px-3 text-sm text-center text-gray-600 dark:text-gray-400 font-mono font-semibold">
+                                        {index + 1}
+                                      </td>
+                                      <td className="py-3 px-3 text-sm">
+                                        <Badge variant="info" className="text-xs font-mono">
+                                          {si.product?.product_code || 'ไม่ระบุ'}
+                                        </Badge>
+                                        {si.is_bonus && (
+                                          <Badge variant="success" className="text-xs ml-1">
+                                            ของแถม
+                                          </Badge>
+                                        )}
+                                      </td>
+                                      <td className="py-3 px-3 text-sm font-medium text-gray-900 dark:text-white">
+                                        {si.product?.product_name || 'ไม่ระบุชื่อ'}
+                                      </td>
+                                      <td className="py-3 px-3 text-sm text-right font-bold text-gray-900 dark:text-white">
+                                        {Math.floor(si.totalQuantity).toLocaleString('th-TH', {
+                                          maximumFractionDigits: 0,
+                                        })}
+                                      </td>
+                                      <td className="py-3 px-3 text-sm text-right">
+                                        {si.totalPickedUp > 0 ? (
+                                          <span className="text-amber-600 dark:text-amber-400 font-medium">
+                                            {si.totalPickedUp.toLocaleString('th-TH', {
+                                              maximumFractionDigits: 0,
+                                            })}{' '}
+                                            {si.product?.unit || 'ชิ้น'}
+                                          </span>
+                                        ) : (
+                                          <span className="text-gray-400 dark:text-gray-500">—</span>
+                                        )}
+                                      </td>
+                                      <td className="py-3 px-3 text-sm text-right text-gray-600 dark:text-gray-400">
+                                        {si.product?.unit || 'ชิ้น'}
+                                      </td>
+                                      {ms.trips.length > 1 && (
+                                        <td className="py-3 px-3 text-sm">
+                                          <div className="flex flex-wrap gap-1.5">
+                                            {si.breakdown.map((b, bi) => (
+                                              <span
+                                                key={bi}
+                                                className="inline-flex items-center gap-1 text-xs bg-gray-100 dark:bg-slate-800 text-gray-600 dark:text-gray-400 px-2 py-0.5 rounded"
+                                              >
+                                                <Truck className="w-3 h-3" />
+                                                {b.vehicle_plate}:{' '}
+                                                {Math.floor(b.quantity || 0).toLocaleString('th-TH', {
+                                                  maximumFractionDigits: 0,
+                                                })}
+                                                {b.pickedUp != null && b.pickedUp > 0 && (
+                                                  <span className="text-amber-600 dark:text-amber-400">
+                                                    {' '}
+                                                    (รับที่ร้าน {b.pickedUp})
+                                                  </span>
+                                                )}
+                                              </span>
+                                            ))}
+                                          </div>
+                                        </td>
+                                      )}
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+
+                          <div className="mt-4 p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
+                            <p className="text-xs text-yellow-800 dark:text-yellow-300">
+                              <strong>คำแนะนำ:</strong> เช็คตามแถวสรุป (รวมทุกคันสำหรับร้านนี้) ก่อนกดยืนยัน — ระบบจะบันทึก
+                              &quot;ออกบิลแล้ว&quot; ให้ทุกทริปที่จุดส่งร้านนี้พร้อมกัน
+                            </p>
+                          </div>
+
+                          <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+                            <p className="text-xs text-blue-800 dark:text-blue-300">
+                              <strong>ข้อมูลสำคัญ:</strong> จำนวนเป็น<strong>จำนวนเต็ม</strong>เท่านั้น คอลัมน์
+                              &quot;รับที่ร้านแล้ว&quot; ระบุจำนวนที่ลูกค้ามารับไปที่หน้าร้านแล้ว
+                              {ms.trips.length > 1 && (
+                                <>
+                                  {' '}
+                                  ควรออกเป็น <strong>บิลเดียว</strong> คอลัมน์ &quot;แบ่งตามรถ&quot; แสดงว่าสินค้าถูกส่งไปกับรถทะเบียนใดจำนวนเท่าไร
+                                </>
+                              )}
+                            </p>
+                          </div>
+
+                          <div className="mt-6 pt-4 border-t border-gray-200 dark:border-slate-700">
+                            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                              <div className="flex-1 text-sm">
+                                {!allMergedChecked && mergedTotal > 0 && !allMergedTripsIssued && (
+                                  <p className="text-orange-600 dark:text-orange-400">
+                                    ยังไม่ได้เช็ครายการครบ ({mergedCheckedCount} / {mergedTotal} รายการ)
+                                  </p>
+                                )}
+                                {allMergedChecked && !allMergedTripsIssued && (
+                                  <p className="text-green-600 dark:text-green-400">
+                                    เช็ครายการครบแล้ว — กดยืนยันเพื่อบันทึกออกบิลทุกทริปสำหรับร้านนี้
+                                  </p>
+                                )}
+                                {allMergedTripsIssued && (
+                                  <p className="text-blue-600 dark:text-blue-400">
+                                    ทุกทริปสำหรับร้านนี้ทำสถานะออกบิลแล้ว
+                                  </p>
+                                )}
+                              </div>
+                              <div className="flex flex-wrap gap-3 justify-end">
+                                {allMergedTripsIssued ? (
+                                  <Button
+                                    variant="outline"
+                                    type="button"
+                                    disabled={mergedModalUpdating}
+                                    onClick={async () => {
+                                      try {
+                                        for (const t of ms.trips) {
+                                          if ((t.invoice_status || 'pending') === 'issued') {
+                                            await handleToggleInvoiceStatus(
+                                              t.trip_id,
+                                              mergedStoreId,
+                                              'issued',
+                                            );
+                                          }
+                                        }
+                                        setTimeout(() => setSelectedMergedStore(null), 800);
+                                      } catch {
+                                        /* useInvoiceStatus onError */
+                                      }
+                                    }}
+                                  >
+                                    {mergedModalUpdating ? (
+                                      <>
+                                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-current mr-2" />
+                                        กำลังอัปเดต...
+                                      </>
+                                    ) : (
+                                      <>
+                                        <Square className="w-4 h-4 mr-2" />
+                                        ยกเลิกสถานะออกบิล (ทุกทริป)
+                                      </>
+                                    )}
+                                  </Button>
+                                ) : (
+                                  <Button
+                                    type="button"
+                                    disabled={!allMergedChecked || mergedModalUpdating}
+                                    onClick={async () => {
+                                      if (!allMergedChecked) {
+                                        warning('กรุณาเช็ครายการสินค้าให้ครบก่อนยืนยันการออกบิล');
+                                        return;
+                                      }
+                                      try {
+                                        for (const t of ms.trips) {
+                                          const cur = t.invoice_status || 'pending';
+                                          if (cur !== 'issued') {
+                                            await handleToggleInvoiceStatus(
+                                              t.trip_id,
+                                              mergedStoreId,
+                                              cur,
+                                            );
+                                          }
+                                        }
+                                        setTimeout(() => setSelectedMergedStore(null), 800);
+                                      } catch {
+                                        /* useInvoiceStatus onError */
+                                      }
+                                    }}
+                                    className={
+                                      allMergedChecked
+                                        ? 'bg-green-600 hover:bg-green-700 dark:bg-green-600 dark:hover:bg-green-700'
+                                        : 'bg-gray-300 dark:bg-gray-600 cursor-not-allowed'
+                                    }
+                                  >
+                                    {mergedModalUpdating ? (
+                                      <>
+                                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
+                                        กำลังอัปเดต...
+                                      </>
+                                    ) : (
+                                      <>
+                                        <CheckCircle className="w-4 h-4 mr-2" />
+                                        ยืนยันการออกบิล
+                                      </>
+                                    )}
+                                  </Button>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        </>
+                      );
+                    })()}
                   </div>
                 ) : (
                   <div className="text-center py-8 text-gray-500 dark:text-gray-400">
