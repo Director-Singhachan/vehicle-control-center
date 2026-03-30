@@ -103,10 +103,7 @@ export const StaffEditModal: React.FC<StaffEditModalProps> = ({
       phone: form.phone.trim() || undefined,
     };
     
-    // Add email update (Auth + Profile sync handled by Edge Function)
-    if (form.email.trim() !== (staff?.email || '')) {
-      payload.email = form.email.trim() || undefined;
-    }
+    // Email is read-only in Edit Modal (Auth update disabled)
     
     // ส่ง name_prefix เฉพาะเมื่อมีค่าจาก server หรือผู้ใช้เลือกแล้ว (ไม่ส่ง null ไปทับค่าที่มีอยู่)
     if (staff?.name_prefix !== undefined || form.name_prefix !== '') {
@@ -243,14 +240,13 @@ export const StaffEditModal: React.FC<StaffEditModalProps> = ({
           </div>
           <div>
             <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">
-              Email (อัปเดตเข้า Auth โดยตรง)
+              Email
             </label>
             <input
               type="email"
               value={form.email}
-              onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
-              placeholder="example@email.com"
-              className={inputCls}
+              readOnly
+              className={`${inputCls} bg-slate-50 dark:bg-slate-800/50 text-slate-500 cursor-not-allowed`}
             />
           </div>
         </div>
