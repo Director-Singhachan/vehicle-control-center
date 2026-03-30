@@ -10,7 +10,7 @@ import { useAuth } from '../hooks';
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
 
 export const SettingsView: React.FC = () => {
-  const { loading: authLoading } = useAuth();
+  const { loading: authLoading, profile, user } = useAuth();
   const { can, loading: featureAccessLoading } = useFeatureAccess();
   const [settings, setSettings] = useState<NotificationSettings | null>(null);
   const [loading, setLoading] = useState(true);
@@ -264,7 +264,8 @@ export const SettingsView: React.FC = () => {
                       </ol>
                       <div className="mt-2 p-2 bg-white dark:bg-slate-800 rounded border border-amber-300 dark:border-amber-700">
                         <code className="text-xs font-mono text-amber-900 dark:text-amber-100">
-                          bind {profile?.email || 'your.email@company.com'}
+                          bind{' '}
+                          {profile?.email || user?.email || 'your.email@company.com'}
                         </code>
                       </div>
                       <p className="text-xs text-amber-600 dark:text-amber-400 mt-2">
