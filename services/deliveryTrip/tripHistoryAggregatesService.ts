@@ -48,10 +48,18 @@ export const tripHistoryAggregatesService = {
         const productId = item.product.id;
         const pickedUp = Number((item as any).quantity_picked_up_at_store ?? 0);
         const toDeliver = Number((item as any).quantity_to_deliver ?? (Number(item.quantity) - pickedUp));
+        const lineUnit =
+          ((item as { unit?: string | null }).unit != null &&
+          String((item as { unit?: string | null }).unit).trim() !== ''
+            ? String((item as { unit?: string | null }).unit).trim()
+            : '') || item.product.unit || '';
         const existing = productMap.get(productId);
         if (existing) {
           existing.total_quantity += toDeliver;
           existing.total_picked_up_at_store += pickedUp;
+          if (!existing.unit && lineUnit) {
+            existing.unit = lineUnit;
+          }
           existing.stores.push({
             store_id: store.store_id,
             customer_code: store.store?.customer_code || '',
@@ -65,7 +73,7 @@ export const tripHistoryAggregatesService = {
             product_code: item.product.product_code,
             product_name: item.product.product_name,
             category: item.product.category,
-            unit: item.product.unit,
+            unit: lineUnit || item.product.unit,
             total_quantity: toDeliver,
             total_picked_up_at_store: pickedUp,
             stores: [{

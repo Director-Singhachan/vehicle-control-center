@@ -11,6 +11,8 @@ export interface StoreWithItems {
     quantity_picked_up_at_store?: number;
     notes?: string;
     selected_pallet_config_id?: string;
+    /** หน่วยบรรทัด (จาก delivery_trip_items / ออเดอร์); ถ้าไม่มีใช้ products.unit ตอนแสดง */
+    unit?: string | null;
   }>;
 }
 
@@ -21,8 +23,8 @@ export function storesAndItemsEqual(a: StoreWithItems[], b: StoreWithItems[] | n
     const sa = a[i], sb = b[i];
     if (sa.store_id !== sb.store_id || sa.sequence_order !== sb.sequence_order) return false;
     if (sa.items.length !== sb.items.length) return false;
-    const sortKey = (item: { product_id: string; quantity: number; quantity_picked_up_at_store?: number; notes?: string }) =>
-      `${item.product_id}:${item.quantity}:${item.quantity_picked_up_at_store ?? 0}:${item.notes ?? ''}`;
+    const sortKey = (item: { product_id: string; quantity: number; quantity_picked_up_at_store?: number; notes?: string; unit?: string | null }) =>
+      `${item.product_id}:${item.quantity}:${item.quantity_picked_up_at_store ?? 0}:${item.notes ?? ''}:${item.unit ?? ''}`;
     const aItems = [...sa.items].sort((x, y) => sortKey(x).localeCompare(sortKey(y)));
     const bItems = [...sb.items].sort((x, y) => sortKey(x).localeCompare(sortKey(y)));
     for (let j = 0; j < aItems.length; j++) {

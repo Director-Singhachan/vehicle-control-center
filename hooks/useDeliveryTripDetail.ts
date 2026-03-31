@@ -183,6 +183,12 @@ export function useDeliveryTripDetail(tripId: string) {
           product_id: item.product_id,
           quantity: Number(item.quantity),
           is_bonus: item.is_bonus || false,
+          unit:
+            item.unit != null && String(item.unit).trim() !== ''
+              ? String(item.unit).trim()
+              : item.product?.unit
+                ? String(item.product.unit)
+                : null,
         })),
       }));
 
@@ -198,7 +204,11 @@ export function useDeliveryTripDetail(tripId: string) {
             .map((item: any) => ({
               product_id: item.product_id,
               quantity: Number(item.quantity),
-              is_bonus: false,
+              is_bonus: item.is_bonus || false,
+              unit:
+                item.unit != null && String(item.unit).trim() !== ''
+                  ? String(item.unit).trim()
+                  : null,
             }));
           return { store_id: order.store_id, sequence_order: baseSequence + index + 1, items };
         })

@@ -75,7 +75,7 @@ export const orderTripSyncService = {
       // 3. ดึง order items (เฉพาะ fulfillment_method = 'delivery' — pickup ไม่ sync)
       const { data: allOrderItems, error: itemsError } = await supabase
         .from('order_items')
-        .select('id, product_id, quantity, notes, is_bonus, fulfillment_method, quantity_picked_up_at_store')
+        .select('id, product_id, quantity, notes, is_bonus, fulfillment_method, quantity_picked_up_at_store, unit')
         .eq('order_id', orderId);
 
       if (itemsError) {
@@ -122,7 +122,7 @@ export const orderTripSyncService = {
       // 6. Mirror ข้อมูล order_items ไปยัง delivery_trip_items ของร้านนี้
       const { data: existingTripItems, error: existingTripItemsError } = await supabase
         .from('delivery_trip_items')
-        .select('id, product_id, quantity, notes, is_bonus, quantity_picked_up_at_store')
+        .select('id, product_id, quantity, notes, is_bonus, quantity_picked_up_at_store, unit')
         .eq('delivery_trip_id', trip.id)
         .eq('delivery_trip_store_id', tripStore.id);
 
@@ -141,6 +141,7 @@ export const orderTripSyncService = {
         notes: string | null;
         is_bonus: boolean;
         quantity_picked_up_at_store: number;
+        unit: string | null;
       }>();
 
       for (const item of orderItems) {
@@ -151,6 +152,8 @@ export const orderTripSyncService = {
           Math.max(0, Number(item.quantity_picked_up_at_store ?? 0)),
           quantity,
         );
+        const lineUnit =
+          item.unit != null && String(item.unit).trim() !== '' ? String(item.unit).trim() : null;
 
         if (existing) {
           existing.quantity += quantity;
@@ -161,6 +164,9 @@ export const orderTripSyncService = {
           if (!existing.notes && item.notes) {
             existing.notes = item.notes;
           }
+          if (!existing.unit && lineUnit) {
+            existing.unit = lineUnit;
+          }
         } else {
           desiredTripItems.set(key, {
             product_id: item.product_id,
@@ -168,6 +174,7 @@ export const orderTripSyncService = {
             notes: item.notes ?? null,
             is_bonus: item.is_bonus || false,
             quantity_picked_up_at_store: pickedUpAtStore,
+            unit: lineUnit,
           });
         }
       }
@@ -216,6 +223,7 @@ export const orderTripSyncService = {
               quantity_picked_up_at_store: desiredTripItem.quantity_picked_up_at_store,
               notes: desiredTripItem.notes,
               is_bonus: desiredTripItem.is_bonus,
+              unit: desiredTripItem.unit,
             });
 
           if (insertError) {
@@ -246,7 +254,8 @@ export const orderTripSyncService = {
         const shouldUpdate =
           Number(existingTripItem.quantity) !== desiredTripItem.quantity ||
           Number(existingTripItem.quantity_picked_up_at_store ?? 0) !== desiredTripItem.quantity_picked_up_at_store ||
-          (existingTripItem.notes ?? null) !== desiredTripItem.notes;
+          (existingTripItem.notes ?? null) !== desiredTripItem.notes ||
+          (existingTripItem.unit ?? null) !== (desiredTripItem.unit ?? null);
 
         if (!shouldUpdate) {
           skippedCount++;
@@ -259,6 +268,7 @@ export const orderTripSyncService = {
             quantity: desiredTripItem.quantity,
             quantity_picked_up_at_store: desiredTripItem.quantity_picked_up_at_store,
             notes: desiredTripItem.notes,
+            unit: desiredTripItem.unit,
           })
           .eq('id', existingTripItem.id);
 

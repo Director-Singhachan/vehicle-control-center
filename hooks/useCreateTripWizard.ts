@@ -759,6 +759,9 @@ export function useCreateTripWizard({ selectedOrders, onSuccess }: UseCreateTrip
               quantity_picked_up_at_store: Number(item.quantity_picked_up_at_store ?? 0),
               notes: item.notes || undefined,
               is_bonus: item.is_bonus || false,
+              unit:
+                (item.unit != null && String(item.unit).trim() !== '' ? String(item.unit).trim() : null) ||
+                (item.product?.unit ? String(item.product.unit) : null),
             }));
           return { store_id: delivery.store_id, sequence_order: delivery.sequence, items };
         })
@@ -789,6 +792,9 @@ export function useCreateTripWizard({ selectedOrders, onSuccess }: UseCreateTrip
                 quantity_picked_up_at_store: 0,
                 notes: item.notes ? `${item.notes} [แบ่งจากออเดอร์ ${delivery.order_number}: ${qty}/${item.quantity}]` : `[แบ่งจากออเดอร์ ${delivery.order_number}: ${qty}/${item.quantity}]`,
                 is_bonus: item.is_bonus || false,
+                unit:
+                  (item.unit != null && String(item.unit).trim() !== '' ? String(item.unit).trim() : null) ||
+                  (item.product?.unit ? String(item.product.unit) : null),
               });
             } else if (tripNum === 1 && remaining === 0 && pickedUp > 0) {
               if (!storesMap[delivery.id]) {
@@ -800,6 +806,9 @@ export function useCreateTripWizard({ selectedOrders, onSuccess }: UseCreateTrip
                 quantity_picked_up_at_store: pickedUp,
                 notes: item.notes || undefined,
                 is_bonus: item.is_bonus || false,
+                unit:
+                  (item.unit != null && String(item.unit).trim() !== '' ? String(item.unit).trim() : null) ||
+                  (item.product?.unit ? String(item.product.unit) : null),
               });
             }
           }

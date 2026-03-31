@@ -327,7 +327,7 @@ export const TripOrdersSection: React.FC<TripOrdersSectionProps> = ({
                         if (!product) return null;
                         return (
                           <div
-                            key={item.product_id}
+                            key={item.item_id || `${item.product_id}-${itemIndex}`}
                             className={`flex flex-col gap-2 p-2 bg-slate-50 dark:bg-slate-800 rounded ${isEdit ? 'sm:grid sm:grid-cols-[2fr_2fr_1.5fr_1fr_1fr]' : 'sm:grid sm:grid-cols-[2fr_2fr_1.5fr_1fr_auto]'}`}
                           >
                             <div className="min-w-0">
@@ -361,7 +361,9 @@ export const TripOrdersSection: React.FC<TripOrdersSectionProps> = ({
                                   />
                                 )}
                               </div>
-                              <div className="text-xs text-slate-500 dark:text-slate-400 whitespace-nowrap pl-1">{product.unit}</div>
+                              <div className="text-xs text-slate-500 dark:text-slate-400 whitespace-nowrap pl-1">
+                                {(item.unit != null && String(item.unit).trim() !== '' ? item.unit : product.unit) || '—'}
+                              </div>
                             </div>
                             {isEdit && (
                               <div className="flex flex-col gap-0.5 sm:justify-end">
