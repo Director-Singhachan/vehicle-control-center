@@ -641,25 +641,30 @@ export const tripCrudService = {
       // Do not throw – trip creation should still succeed
     }
 
-    // 1.6 Create helpers (crew)
+    // 1.6 Create helpers (crew) — ห้ามซ้ำกับคนขับ (staff เดียวกัน)
     if (data.helpers && data.helpers.length > 0) {
-      const crewData = data.helpers.map(staffId => ({
-        delivery_trip_id: trip.id,
-        staff_id: staffId,
-        role: 'helper',
-        status: 'active',
-        start_at: new Date().toISOString(),
-        created_by: user.id,
-        updated_by: user.id,
-      }));
+      const helperStaffIds = data.driver_staff_id
+        ? data.helpers.filter(h => h !== data.driver_staff_id)
+        : [...data.helpers];
+      if (helperStaffIds.length > 0) {
+        const crewData = helperStaffIds.map(staffId => ({
+          delivery_trip_id: trip.id,
+          staff_id: staffId,
+          role: 'helper',
+          status: 'active',
+          start_at: new Date().toISOString(),
+          created_by: user.id,
+          updated_by: user.id,
+        }));
 
-      const { error: crewError } = await supabase
-        .from('delivery_trip_crews')
-        .insert(crewData);
+        const { error: crewError } = await supabase
+          .from('delivery_trip_crews')
+          .insert(crewData);
 
-      if (crewError) {
-        console.error('[tripCrudService] Error creating trip crew:', crewError);
-        throw crewError;
+        if (crewError) {
+          console.error('[tripCrudService] Error creating trip crew:', crewError);
+          throw crewError;
+        }
       }
     }
 
@@ -916,6 +921,10 @@ export const tripCrudService = {
 
     // Handle helpers (crew) assignment if provided
     if (data.helpers !== undefined) {
+      const helpersWanted = data.driver_staff_id
+        ? data.helpers.filter(h => h !== data.driver_staff_id)
+        : data.helpers;
+
       // Get existing active crews
       const { data: existingCrews, error: existingCrewsError } = await supabase
         .from('delivery_trip_crews')
@@ -933,10 +942,10 @@ export const tripCrudService = {
         .map(c => c.staff_id);
 
       // Find helpers to add (not in existing list)
-      const helpersToAdd = data.helpers.filter(helperId => !existingHelperIds.includes(helperId));
+      const helpersToAdd = helpersWanted.filter(helperId => !existingHelperIds.includes(helperId));
 
       // Find helpers to remove (in existing list but not in new list)
-      const helpersToRemove = existingHelperIds.filter(helperId => !data.helpers!.includes(helperId));
+      const helpersToRemove = existingHelperIds.filter(helperId => !helpersWanted.includes(helperId));
 
       // Add new helpers
       if (helpersToAdd.length > 0) {
@@ -1052,6 +1061,30 @@ export const tripCrudService = {
       } catch (driverCrewError) {
         console.error('[tripCrudService] Error updating driver crew:', driverCrewError);
         // Don't throw - allow trip update to continue
+      }
+
+      // คนขับ(active) ต้องไม่ค้างเป็นพนักงานบริการ(active) — กรณีสลับคนขับจากพนักงานบริการ
+      try {
+        const { data: stripped, error: stripHelperDupError } = await supabase
+          .from('delivery_trip_crews')
+          .update({
+            status: 'removed',
+            end_at: new Date().toISOString(),
+            updated_by: user.id,
+          })
+          .eq('delivery_trip_id', id)
+          .eq('staff_id', data.driver_staff_id)
+          .eq('role', 'helper')
+          .eq('status', 'active')
+          .select('id');
+
+        if (stripHelperDupError) {
+          console.error('[tripCrudService] Error stripping duplicate helper for driver:', stripHelperDupError);
+        } else if (stripped && stripped.length > 0) {
+          crewChangesOccurred = true;
+        }
+      } catch (stripErr) {
+        console.error('[tripCrudService] Error stripping duplicate helper for driver:', stripErr);
       }
     }
 

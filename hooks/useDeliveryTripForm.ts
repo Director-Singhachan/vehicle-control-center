@@ -180,6 +180,14 @@ export function useDeliveryTripForm({ tripId, onSave, onCancel }: UseDeliveryTri
   const driverStaffInputRef = useRef<HTMLDivElement>(null);
   const [driverStaffDropdownPosition, setDriverStaffDropdownPosition] = useState<{ top: number; left: number; width: number } | null>(null);
 
+  // เลือกเป็นคนขับแล้ว เอาออกจากพนักงานบริการอัตโนมัติ (กันสองบทบาทพร้อมกัน)
+  useEffect(() => {
+    if (!selectedDriverStaffId) return;
+    setSelectedHelpers(prev =>
+      prev.includes(selectedDriverStaffId) ? prev.filter(h => h !== selectedDriverStaffId) : prev
+    );
+  }, [selectedDriverStaffId]);
+
   const [editReason, setEditReason] = useState('');
   const [capacitySummary, setCapacitySummary] = useState<{
     totalPallets: number;
