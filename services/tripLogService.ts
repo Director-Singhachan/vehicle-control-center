@@ -74,6 +74,76 @@ export interface TripEditHistory {
   };
 }
 
+/** ทริปถัดไปที่ checkout จะผูก (ยังไม่มี trip_log) — ใช้ตรวจสิทธิ์คนขับต่อทริป ไม่ใช่ทุกทริปของรถในวันเดียวกัน */
+export interface NextUnlinkedDeliveryTripPeek {
+  id: string;
+  trip_number: string | null;
+  assigned_profile_id: string | null;
+}
+
+async function resolveAssignedProfileIdForDeliveryTrip(deliveryTripId: string): Promise<string | null> {
+  const { data: driverCrew } = await supabase
+    .from('delivery_trip_crews')
+    .select('staff_id')
+    .eq('delivery_trip_id', deliveryTripId)
+    .eq('role', 'driver')
+    .eq('status', 'active')
+    .maybeSingle();
+
+  if (driverCrew?.staff_id) {
+    const { data: staffRow } = await supabase
+      .from('service_staff')
+      .select('user_id')
+      .eq('id', driverCrew.staff_id)
+      .maybeSingle();
+    if (staffRow?.user_id) return staffRow.user_id;
+  }
+
+  const { data: tripRow } = await supabase
+    .from('delivery_trips')
+    .select('driver_id')
+    .eq('id', deliveryTripId)
+    .maybeSingle();
+  return tripRow?.driver_id ?? null;
+}
+
+async function findNextUnlinkedDeliveryTripForVehicleDate(
+  vehicleId: string,
+  plannedDate: string
+): Promise<NextUnlinkedDeliveryTripPeek | null> {
+  const { data: candidates } = await supabase
+    .from('delivery_trips')
+    .select('id, sequence_order, trip_number, planned_date, status, created_at')
+    .eq('vehicle_id', vehicleId)
+    .eq('planned_date', plannedDate)
+    .in('status', ['planned', 'in_progress'])
+    .order('status', { ascending: true })
+    .order('sequence_order', { ascending: true, nullsFirst: false })
+    .order('created_at', { ascending: true })
+    .order('trip_number', { ascending: true });
+
+  if (!candidates?.length) return null;
+
+  for (const trip of candidates) {
+    const { data: existingLink } = await supabase
+      .from('trip_logs')
+      .select('id')
+      .eq('delivery_trip_id', trip.id)
+      .maybeSingle();
+
+    if (existingLink) continue;
+
+    const assigned_profile_id = await resolveAssignedProfileIdForDeliveryTrip(trip.id);
+    return {
+      id: trip.id,
+      trip_number: trip.trip_number ?? null,
+      assigned_profile_id,
+    };
+  }
+
+  return null;
+}
+
 export const tripLogService = {
   // Create check-out (start trip)
   createCheckout: async (data: CheckoutData): Promise<TripLog> => {
@@ -127,91 +197,42 @@ export const tripLogService = {
     }
 
     // ========================================
-    // Validation: Only assigned driver can log usage for this vehicle when trip is scheduled
+    // ผูกทริปถัดไปที่ยังไม่มี trip_log + ตรวจคนขับเฉพาะทริปนั้น
+    // (รถ 1 คันหลายทริปในวันเดียวกัน — ห้ามใช้เงื่อนไขว่า "มีทริปใดคนละคนขับ" แล้วบล็อกทุกคัน)
     // ========================================
-    const { data: scheduledTripsForVehicle } = await supabase
-      .from('delivery_trips')
-      .select('id, trip_number, driver_id')
-      .eq('vehicle_id', data.vehicle_id)
-      .eq('planned_date', checkoutDate)
-      .in('status', ['planned', 'in_progress']);
-
-    if (scheduledTripsForVehicle && scheduledTripsForVehicle.length > 0) {
-      const tripWithDifferentDriver = scheduledTripsForVehicle.find(
-        (t) => t.driver_id != null && t.driver_id !== user.id
-      );
-      if (tripWithDifferentDriver) {
-        const { data: driverProfile } = await supabase
-          .from('profiles')
-          .select('full_name')
-          .eq('id', tripWithDifferentDriver.driver_id)
-          .maybeSingle();
-        const driverName = (driverProfile?.full_name ?? 'ผู้ขับที่กำหนด').trim();
-        throw new Error(
-          `คุณไม่ได้ถูกกำหนดให้ขับรถคันนี้ตามที่ได้จัดทริปเอาไว้ (รถคันนี้กำหนดให้ ${driverName} ขับ)`
-        );
-      }
-    }
-
-    // ========================================
-    // Find delivery trip and validate
-    // ========================================
-    // Match by vehicle_id AND planned_date to ensure correct trip
     let deliveryTripId: string | null = null;
     try {
-      // Extract date from checkout_time (YYYY-MM-DD)
-      const checkoutDate = new Date(checkoutTime).toISOString().split('T')[0];
-
-      const { data: deliveryTrips } = await supabase
-        .from('delivery_trips')
-        .select('id, sequence_order, trip_number, planned_date, status, created_at')
-        .eq('vehicle_id', data.vehicle_id)
-        .eq('planned_date', checkoutDate) // Match by date
-        .in('status', ['planned', 'in_progress'])
-        // Explicit ordering to pick the earliest planned trip deterministically
-        .order('status', { ascending: true }) // in_progress before planned if any
-        .order('sequence_order', { ascending: true, nullsFirst: false })
-        .order('created_at', { ascending: true })
-        .order('trip_number', { ascending: true })
-        .limit(1);
-
-      if (deliveryTrips && deliveryTrips.length > 0) {
-        const selectedTrip = deliveryTrips[0];
-
-        // ========================================
-        // Validation: Check if delivery trip is already linked
-        // ========================================
-        const { data: existingLink } = await supabase
-          .from('trip_logs')
-          .select('id, checkout_time')
-          .eq('delivery_trip_id', selectedTrip.id)
-          .maybeSingle();
-
-        if (existingLink) {
-          console.warn(
-            `[tripLogService] Delivery trip ${selectedTrip.trip_number} already linked to trip log ${existingLink.id}`
+      const nextPeek = await findNextUnlinkedDeliveryTripForVehicleDate(data.vehicle_id, checkoutDate);
+      if (nextPeek) {
+        if (nextPeek.assigned_profile_id && nextPeek.assigned_profile_id !== user.id) {
+          const { data: driverProfile } = await supabase
+            .from('profiles')
+            .select('full_name')
+            .eq('id', nextPeek.assigned_profile_id)
+            .maybeSingle();
+          const driverName = (driverProfile?.full_name ?? 'ผู้ขับที่กำหนด').trim();
+          const tripLabel = nextPeek.trip_number ?? nextPeek.id.slice(0, 8);
+          throw new Error(
+            `คุณไม่ได้ถูกกำหนดให้ขับรถคันนี้ตามที่ได้จัดทริปเอาไว้ (ทริป ${tripLabel} กำหนดให้ ${driverName} ขับ)`
           );
-          // ไม่ผูก delivery trip ถ้ามีการใช้งานแล้ว
-          console.log('[tripLogService] Skipping delivery trip link due to existing usage');
-        } else {
-          deliveryTripId = selectedTrip.id;
-          console.log('[tripLogService] Selected delivery trip for checkout:', {
-            id: selectedTrip.id,
-            trip_number: selectedTrip.trip_number,
-            sequence_order: selectedTrip.sequence_order,
-            planned_date: selectedTrip.planned_date,
-            checkout_date: checkoutDate,
-          });
         }
+        deliveryTripId = nextPeek.id;
+        console.log('[tripLogService] Selected delivery trip for checkout:', {
+          id: nextPeek.id,
+          trip_number: nextPeek.trip_number,
+          checkout_date: checkoutDate,
+        });
       } else {
-        console.log('[tripLogService] No delivery trip found for vehicle on date:', {
+        console.log('[tripLogService] No unlinked delivery trip for vehicle on date:', {
           vehicle_id: data.vehicle_id,
           checkout_date: checkoutDate,
         });
       }
     } catch (err) {
+      if (err instanceof Error && err.message.includes('คุณไม่ได้ถูกกำหนด')) {
+        throw err;
+      }
       console.error('[tripLogService] Error finding delivery trip:', err);
-      // Continue without delivery_trip_id
     }
 
     const tripLog: TripLogInsert = {
@@ -384,6 +405,14 @@ export const tripLogService = {
     }
 
     return result;
+  },
+
+  /** ดึงทริปถัดไปที่ checkout จะผูก (ลำดับเดียวกับ createCheckout) — สำหรับหน้า UI ตรวจสิทธิ์คนขับ */
+  peekNextUnlinkedDeliveryTripForCheckout: async (
+    vehicleId: string,
+    plannedDate: string
+  ): Promise<NextUnlinkedDeliveryTripPeek | null> => {
+    return findNextUnlinkedDeliveryTripForVehicleDate(vehicleId, plannedDate);
   },
 
   // Update check-in (end trip)
