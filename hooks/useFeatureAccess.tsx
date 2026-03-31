@@ -35,8 +35,8 @@ export interface UseFeatureAccessResult {
 const FeatureAccessContext = createContext<UseFeatureAccessResult | null>(null);
 
 function useFeatureAccessState(): UseFeatureAccessResult {
-  const { profile } = useAuth();
-  const appRole = (profile?.role as AppRole) ?? null;
+  const { profile, overriddenRole } = useAuth();
+  const appRole = (overriddenRole || profile?.role) as AppRole ?? null;
   const [dbMap, setDbMap] = useState<Partial<Record<FeatureKey, AccessLevel>>>({});
   const [loading, setLoading] = useState(true);
   const [fetchFailed, setFetchFailed] = useState(false);
