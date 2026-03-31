@@ -37,6 +37,23 @@ interface TripLogFormViewProps {
   onCancel?: () => void;
 }
 
+/** โปรไฟล์ผู้ใช้ที่เป็นคนขับตาม crew ล่าสุด — ถ้าไม่มี user_id บนพนักงาน ใช้ delivery_trips.driver_id */
+function getDeliveryTripAssignedProfileId(trip: DeliveryTripWithRelations | null): string | null {
+  if (!trip) return null;
+  const activeDriverCrew = trip.crews?.find(c => c.role === 'driver' && c.status === 'active');
+  const fromCrew = activeDriverCrew?.staff?.user_id ?? null;
+  if (fromCrew) return fromCrew;
+  return trip.driver_id ?? null;
+}
+
+function getDeliveryTripAssignedDriverLabel(trip: DeliveryTripWithRelations | null): string | null {
+  if (!trip) return null;
+  const activeDriverCrew = trip.crews?.find(c => c.role === 'driver' && c.status === 'active');
+  const crewName = activeDriverCrew?.staff?.name?.trim();
+  if (crewName) return crewName;
+  return trip.driver?.full_name?.trim() || null;
+}
+
 export const TripLogFormView: React.FC<TripLogFormViewProps> = ({
   vehicleId: initialVehicleId,
   tripId,
@@ -144,6 +161,7 @@ export const TripLogFormView: React.FC<TripLogFormViewProps> = ({
             destination: activeTrip.destination || prev.destination || '',
             route: activeTrip.route || prev.route || '',
             notes: activeTrip.notes || prev.notes || '',
+            manual_distance: prev.manual_distance,
           }));
 
           // Reset success state when switching modes
@@ -178,6 +196,7 @@ export const TripLogFormView: React.FC<TripLogFormViewProps> = ({
             destination: prev.destination, // Preserve destination - will be auto-filled if needed
             route: prev.route || '',
             notes: prev.notes || '',
+            manual_distance: prev.manual_distance,
           }));
         }
       };
@@ -214,6 +233,7 @@ export const TripLogFormView: React.FC<TripLogFormViewProps> = ({
           destination: trip.destination || prev.destination || '',
           route: trip.route || prev.route || '',
           notes: trip.notes || prev.notes || '',
+          manual_distance: prev.manual_distance,
         }));
         setSelectedVehicleId(trip.vehicle_id);
       };
@@ -283,10 +303,11 @@ export const TripLogFormView: React.FC<TripLogFormViewProps> = ({
         setActiveDeliveryTrip(activeTrip);
 
         // Check if current user is not the assigned driver for this vehicle (trip scheduled)
+        const assignedProfileId = getDeliveryTripAssignedProfileId(activeTrip);
         const notAssigned =
-          activeTrip?.driver_id != null &&
+          assignedProfileId != null &&
           user?.id != null &&
-          activeTrip.driver_id !== user.id;
+          assignedProfileId !== user.id;
         setDriverNotAssignedForCheckout(!!notAssigned);
 
         // Note: Auto-fill destination will be handled in separate useEffect
@@ -300,7 +321,7 @@ export const TripLogFormView: React.FC<TripLogFormViewProps> = ({
     };
 
     fetchActiveDeliveryTrip();
-  }, [selectedVehicleId, mode]);
+  }, [selectedVehicleId, mode, user?.id]);
 
   // Track if we've auto-filled destination to prevent clearing it
   const autoFilledDestinationRef = useRef<string | null>(null);
@@ -512,7 +533,7 @@ export const TripLogFormView: React.FC<TripLogFormViewProps> = ({
       if (mode === 'checkout') {
         // Only assigned driver can log usage for vehicle with scheduled trip
         if (driverNotAssignedForCheckout) {
-          const driverName = activeDeliveryTrip?.driver?.full_name;
+          const driverName = getDeliveryTripAssignedDriverLabel(activeDeliveryTrip);
           setError(
             driverName
               ? `คุณไม่ได้ถูกกำหนดให้ขับรถคันนี้ตามที่ได้จัดทริปเอาไว้ (รถคันนี้กำหนดให้ ${driverName} ขับ)`
@@ -553,6 +574,7 @@ export const TripLogFormView: React.FC<TripLogFormViewProps> = ({
             destination: '',
             route: '',
             notes: '',
+            manual_distance: '',
           }));
           setSelectedVehicleId('');
           setVehicleSearchQuery('');
@@ -666,6 +688,7 @@ export const TripLogFormView: React.FC<TripLogFormViewProps> = ({
             destination: '',
             route: '',
             notes: '',
+            manual_distance: '',
           });
           setSelectedVehicleId('');
           setSelectedTripId('');
@@ -704,7 +727,9 @@ export const TripLogFormView: React.FC<TripLogFormViewProps> = ({
         title={mode === 'checkout' ? 'บันทึกการออกเดินทาง' : 'บันทึกการกลับ'}
         subtitle="กำลังโหลดข้อมูล..."
         loading={true}
-      />
+      >
+        {null}
+      </PageLayout>
     );
   }
 
@@ -729,7 +754,9 @@ export const TripLogFormView: React.FC<TripLogFormViewProps> = ({
         subtitle="เกิดข้อผิดพลาด"
         error={true}
         onRetry={() => window.location.reload()}
-      />
+      >
+        {null}
+      </PageLayout>
     );
   }
 
@@ -782,11 +809,14 @@ export const TripLogFormView: React.FC<TripLogFormViewProps> = ({
               <AlertTriangle size={20} className="shrink-0 mt-0.5" />
               <div className="space-y-1">
                 <span className="block">คุณไม่ได้ถูกกำหนดให้ขับรถคันนี้ตามที่ได้จัดทริปเอาไว้</span>
-                {activeDeliveryTrip?.driver?.full_name && (
-                  <span className="block text-sm font-medium">
-                    รถคันนี้กำหนดให้ {activeDeliveryTrip.driver.full_name} ขับ
-                  </span>
-                )}
+                {(() => {
+                  const assignedLabel = getDeliveryTripAssignedDriverLabel(activeDeliveryTrip);
+                  return assignedLabel ? (
+                    <span className="block text-sm font-medium">
+                      รถคันนี้กำหนดให้ {assignedLabel} ขับ
+                    </span>
+                  ) : null;
+                })()}
               </div>
             </div>
           </Card>
@@ -1046,9 +1076,11 @@ export const TripLogFormView: React.FC<TripLogFormViewProps> = ({
                       setFormData({
                         odometer: '',
                         checkout_time: '',
+                        checkin_time: '',
                         destination: '',
                         route: '',
                         notes: '',
+                        manual_distance: '',
                       });
                     }}
                     className="flex items-center gap-1"
@@ -1172,9 +1204,11 @@ export const TripLogFormView: React.FC<TripLogFormViewProps> = ({
                     setFormData({
                       odometer: '',
                       checkout_time: '',
+                      checkin_time: '',
                       destination: '',
                       route: '',
                       notes: '',
+                      manual_distance: '',
                     });
                   }}
                   className="flex items-center gap-2"

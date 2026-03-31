@@ -264,7 +264,7 @@ export const tripCrudService = {
         const crewStaffIds = [...new Set(tripCrews.map(c => c.staff_id).filter(Boolean))];
         const { data: staffList } = crewStaffIds.length > 0 ? await supabase
           .from('service_staff')
-          .select('id, name, employee_code, phone')
+          .select('id, name, employee_code, phone, user_id')
           .in('id', crewStaffIds) : { data: [] };
 
         const staffMap = new Map((staffList || []).map(s => [s.id, s]));
@@ -449,7 +449,7 @@ export const tripCrudService = {
       const staffIds = tripCrews.map(c => c.staff_id);
       const { data: staffList } = await supabase
         .from('service_staff')
-        .select('id, name, employee_code, phone')
+        .select('id, name, employee_code, phone, user_id')
         .in('id', staffIds);
 
       const staffMap = new Map((staffList || []).map(s => [s.id, s]));
@@ -506,11 +506,23 @@ export const tripCrudService = {
       vehicleBranch = vehicleRow.branch;
     }
 
+    let resolvedDriverId = data.driver_id || user.id;
+    if (data.driver_staff_id) {
+      const { data: driverStaffRow } = await supabase
+        .from('service_staff')
+        .select('user_id')
+        .eq('id', data.driver_staff_id)
+        .maybeSingle();
+      if (driverStaffRow?.user_id) {
+        resolvedDriverId = driverStaffRow.user_id;
+      }
+    }
+
     // Start transaction-like operation
     // 1. Create delivery trip
     const tripData: DeliveryTripInsert = {
       vehicle_id: data.vehicle_id,
-      driver_id: data.driver_id || user.id,
+      driver_id: resolvedDriverId,
       planned_date: data.planned_date,
       odometer_start: data.odometer_start,
       notes: data.notes,
@@ -765,7 +777,7 @@ export const tripCrudService = {
     }
 
     // Validate edit_reason if this is a data edit (not just status change)
-    const isDataEdit = data.vehicle_id || data.driver_id || data.planned_date ||
+    const isDataEdit = data.vehicle_id || data.driver_id || data.driver_staff_id || data.planned_date ||
       data.trip_revenue !== undefined || data.trip_start_date !== undefined || data.trip_end_date !== undefined ||
       data.odometer_start !== undefined || data.notes !== undefined ||
       data.stores || data.helpers;
@@ -820,6 +832,19 @@ export const tripCrudService = {
         .single();
       if (vehicleRow?.branch != null) {
         updateData.branch = vehicleRow.branch;
+      }
+    }
+
+    // คนขับจากฟอร์มผูกกับพนักงาน (driver_staff_id) — ต้องซิงก์ delivery_trips.driver_id กับ profiles
+    // มิฉะนั้นหน้าใช้งานรถจะยังเทียบ user.id กับ driver_id คนเดิม แม้ crew เปลี่ยนแล้ว
+    if (data.driver_staff_id) {
+      const { data: driverStaffRow } = await supabase
+        .from('service_staff')
+        .select('user_id')
+        .eq('id', data.driver_staff_id)
+        .maybeSingle();
+      if (driverStaffRow?.user_id) {
+        updateData.driver_id = driverStaffRow.user_id;
       }
     }
 

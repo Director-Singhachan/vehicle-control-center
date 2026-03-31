@@ -55,6 +55,8 @@ export interface DeliveryTripCrewWithDetails extends DeliveryTripCrew {
     name: string;
     employee_code?: string;
     phone?: string;
+    /** ผู้ใช้ที่ผูกกับพนักงาน — ใช้ตรวจสิทธิ์ checkout ให้ตรงกับคนขับจริง */
+    user_id?: string | null;
   };
 }
 
