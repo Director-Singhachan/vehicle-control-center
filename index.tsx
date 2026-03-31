@@ -91,7 +91,8 @@ import { Avatar } from './components/ui/Avatar';
 import { ConfirmDialog } from './components/ui/ConfirmDialog';
 import { useActivityTicker } from './hooks/useActivityTicker';
 import { HeaderActivityTicker } from './components/layout/HeaderActivityTicker';
-import { RoleSwitcher } from './components/debug/RoleSwitcher';
+import { DebugDataProvider } from './context/DebugDataContext';
+import { DebugTools } from './components/debug/DebugTools';
 
 const SidebarItem = ({ icon: Icon, label, active, onClick, onMouseEnter, isCollapsed, hasSubmenu, isOpen }: any) => (
   <button
@@ -3037,8 +3038,8 @@ const AppContent = () => {
         }}
         onCancel={() => setShowLogoutConfirm(false)}
       />
-      {/* Role Switcher for Dev role */}
-      <RoleSwitcher />
+      {/* Debug Tools for Dev role */}
+      <DebugTools onTabChange={(tab) => setActiveTab(tab)} />
     </div>
   );
 };
@@ -3046,11 +3047,13 @@ const AppContent = () => {
 // Main App with Authentication
 const App = () => {
   return (
-    <FeatureAccessProvider>
-      <ProtectedRoute>
-        <AppContent />
-      </ProtectedRoute>
-    </FeatureAccessProvider>
+    <DebugDataProvider>
+      <FeatureAccessProvider>
+        <ProtectedRoute>
+          <AppContent />
+        </ProtectedRoute>
+      </FeatureAccessProvider>
+    </DebugDataProvider>
   );
 };
 

@@ -1,6 +1,6 @@
 // Profile View - User profile management
 import React, { useState, useEffect, useRef } from 'react';
-import { useAuth } from '../hooks';
+import { useAuth, useDebugData } from '../hooks';
 import { profileService } from '../services/profileService';
 import { User, Shield, LogOut, Save, Edit2, AlertCircle, Camera, Trash2, Upload, Hash, CheckCircle2, KeyRound, Eye, EyeOff, Lock, Check, X } from 'lucide-react';
 import { Button } from '../components/ui/Button';
@@ -11,6 +11,7 @@ import { Avatar } from '../components/ui/Avatar';
 
 export const ProfileView: React.FC = () => {
   const { user, profile, signOut, refreshProfile, loading } = useAuth();
+  useDebugData('profile_raw', profile, [profile]);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
 
