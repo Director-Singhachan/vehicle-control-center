@@ -165,7 +165,13 @@ export function useDeliveryTripForm({ tripId, onSave, onCancel }: UseDeliveryTri
   const vehicleInputRef = useRef<HTMLDivElement>(null);
   const storeInputRef = useRef<HTMLDivElement>(null);
   const initialStoresRef = useRef<StoreWithItems[] | null>(null);
+  /** กัน vehicles refetch (array ใหม่) ทำให้ hydrate รันซ้ำแล้วทับคนขับที่ผู้ใช้เลือกอยู่ */
+  const tripHydrateKeyRef = useRef<string | null>(null);
   const [vehicleDropdownPosition, setVehicleDropdownPosition] = useState<{ top: number; left: number; width: number } | null>(null);
+
+  useEffect(() => {
+    tripHydrateKeyRef.current = null;
+  }, [tripId]);
 
   const [availableStaff, setAvailableStaff] = useState<Array<{ id: string; name: string; employee_code?: string | null; branch?: string | null; staffRole?: string | null }>>([]);
   const [selectedHelpers, setSelectedHelpers] = useState<string[]>([]);
@@ -179,6 +185,14 @@ export function useDeliveryTripForm({ tripId, onSave, onCancel }: UseDeliveryTri
   const [showDriverStaffDropdown, setShowDriverStaffDropdown] = useState(false);
   const driverStaffInputRef = useRef<HTMLDivElement>(null);
   const [driverStaffDropdownPosition, setDriverStaffDropdownPosition] = useState<{ top: number; left: number; width: number } | null>(null);
+
+  // เลือกเป็นคนขับแล้ว เอาออกจากพนักงานบริการอัตโนมัติ (กันสองบทบาทพร้อมกัน)
+  useEffect(() => {
+    if (!selectedDriverStaffId) return;
+    setSelectedHelpers(prev =>
+      prev.includes(selectedDriverStaffId) ? prev.filter(h => h !== selectedDriverStaffId) : prev
+    );
+  }, [selectedDriverStaffId]);
 
   const [editReason, setEditReason] = useState('');
   const [capacitySummary, setCapacitySummary] = useState<{
@@ -237,6 +251,12 @@ export function useDeliveryTripForm({ tripId, onSave, onCancel }: UseDeliveryTri
 
   useEffect(() => {
     if (!trip || vehicles.length === 0) return;
+    const hydrateKey = `${trip.id}:${trip.updated_at ?? ''}`;
+    if (tripHydrateKeyRef.current === hydrateKey) {
+      return;
+    }
+    tripHydrateKeyRef.current = hydrateKey;
+
     setFormData({
       vehicle_id: trip.vehicle_id || '',
       driver_id: trip.driver_id || '',
@@ -253,9 +273,20 @@ export function useDeliveryTripForm({ tripId, onSave, onCancel }: UseDeliveryTri
       const driverCrew = trip.crews.find(c => c.role === 'driver' && c.status === 'active');
       if (driverCrew) {
         setSelectedDriverStaffId(driverCrew.staff_id);
-        const driverStaff = availableStaff.find(s => s.id === driverCrew.staff_id);
-        if (driverStaff) setDriverStaffSearch(`${driverStaff.name}${driverStaff.employee_code ? ` (${driverStaff.employee_code})` : ''}`);
+        const crewStaff = (driverCrew as { staff?: { name?: string; employee_code?: string | null } }).staff;
+        if (crewStaff?.name) {
+          setDriverStaffSearch(`${crewStaff.name}${crewStaff.employee_code ? ` (${crewStaff.employee_code})` : ''}`);
+        } else {
+          const driverStaff = availableStaff.find(s => s.id === driverCrew.staff_id);
+          if (driverStaff) setDriverStaffSearch(`${driverStaff.name}${driverStaff.employee_code ? ` (${driverStaff.employee_code})` : ''}`);
+        }
+      } else {
+        setSelectedDriverStaffId('');
+        setDriverStaffSearch('');
       }
+    } else {
+      setSelectedDriverStaffId('');
+      setDriverStaffSearch('');
     }
     const selectedVehicle = vehicles.find(v => v.id === trip.vehicle_id);
     if (selectedVehicle) setVehicleSearch(`${selectedVehicle.plate}${selectedVehicle.make && selectedVehicle.model ? ` (${selectedVehicle.make} ${selectedVehicle.model})` : ''}`);

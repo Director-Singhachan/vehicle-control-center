@@ -264,7 +264,7 @@ export const tripCrudService = {
         const crewStaffIds = [...new Set(tripCrews.map(c => c.staff_id).filter(Boolean))];
         const { data: staffList } = crewStaffIds.length > 0 ? await supabase
           .from('service_staff')
-          .select('id, name, employee_code, phone')
+          .select('id, name, employee_code, phone, user_id')
           .in('id', crewStaffIds) : { data: [] };
 
         const staffMap = new Map((staffList || []).map(s => [s.id, s]));
@@ -449,7 +449,7 @@ export const tripCrudService = {
       const staffIds = tripCrews.map(c => c.staff_id);
       const { data: staffList } = await supabase
         .from('service_staff')
-        .select('id, name, employee_code, phone')
+        .select('id, name, employee_code, phone, user_id')
         .in('id', staffIds);
 
       const staffMap = new Map((staffList || []).map(s => [s.id, s]));
@@ -506,11 +506,23 @@ export const tripCrudService = {
       vehicleBranch = vehicleRow.branch;
     }
 
+    let resolvedDriverId = data.driver_id || user.id;
+    if (data.driver_staff_id) {
+      const { data: driverStaffRow } = await supabase
+        .from('service_staff')
+        .select('user_id')
+        .eq('id', data.driver_staff_id)
+        .maybeSingle();
+      if (driverStaffRow?.user_id) {
+        resolvedDriverId = driverStaffRow.user_id;
+      }
+    }
+
     // Start transaction-like operation
     // 1. Create delivery trip
     const tripData: DeliveryTripInsert = {
       vehicle_id: data.vehicle_id,
-      driver_id: data.driver_id || user.id,
+      driver_id: resolvedDriverId,
       planned_date: data.planned_date,
       odometer_start: data.odometer_start,
       notes: data.notes,
@@ -629,25 +641,30 @@ export const tripCrudService = {
       // Do not throw – trip creation should still succeed
     }
 
-    // 1.6 Create helpers (crew)
+    // 1.6 Create helpers (crew) — ห้ามซ้ำกับคนขับ (staff เดียวกัน)
     if (data.helpers && data.helpers.length > 0) {
-      const crewData = data.helpers.map(staffId => ({
-        delivery_trip_id: trip.id,
-        staff_id: staffId,
-        role: 'helper',
-        status: 'active',
-        start_at: new Date().toISOString(),
-        created_by: user.id,
-        updated_by: user.id,
-      }));
+      const helperStaffIds = data.driver_staff_id
+        ? data.helpers.filter(h => h !== data.driver_staff_id)
+        : [...data.helpers];
+      if (helperStaffIds.length > 0) {
+        const crewData = helperStaffIds.map(staffId => ({
+          delivery_trip_id: trip.id,
+          staff_id: staffId,
+          role: 'helper',
+          status: 'active',
+          start_at: new Date().toISOString(),
+          created_by: user.id,
+          updated_by: user.id,
+        }));
 
-      const { error: crewError } = await supabase
-        .from('delivery_trip_crews')
-        .insert(crewData);
+        const { error: crewError } = await supabase
+          .from('delivery_trip_crews')
+          .insert(crewData);
 
-      if (crewError) {
-        console.error('[tripCrudService] Error creating trip crew:', crewError);
-        throw crewError;
+        if (crewError) {
+          console.error('[tripCrudService] Error creating trip crew:', crewError);
+          throw crewError;
+        }
       }
     }
 
@@ -765,7 +782,7 @@ export const tripCrudService = {
     }
 
     // Validate edit_reason if this is a data edit (not just status change)
-    const isDataEdit = data.vehicle_id || data.driver_id || data.planned_date ||
+    const isDataEdit = data.vehicle_id || data.driver_id || data.driver_staff_id || data.planned_date ||
       data.trip_revenue !== undefined || data.trip_start_date !== undefined || data.trip_end_date !== undefined ||
       data.odometer_start !== undefined || data.notes !== undefined ||
       data.stores || data.helpers;
@@ -820,6 +837,19 @@ export const tripCrudService = {
         .single();
       if (vehicleRow?.branch != null) {
         updateData.branch = vehicleRow.branch;
+      }
+    }
+
+    // คนขับจากฟอร์มผูกกับพนักงาน (driver_staff_id) — ต้องซิงก์ delivery_trips.driver_id กับ profiles
+    // มิฉะนั้นหน้าใช้งานรถจะยังเทียบ user.id กับ driver_id คนเดิม แม้ crew เปลี่ยนแล้ว
+    if (data.driver_staff_id) {
+      const { data: driverStaffRow } = await supabase
+        .from('service_staff')
+        .select('user_id')
+        .eq('id', data.driver_staff_id)
+        .maybeSingle();
+      if (driverStaffRow?.user_id) {
+        updateData.driver_id = driverStaffRow.user_id;
       }
     }
 
@@ -891,6 +921,10 @@ export const tripCrudService = {
 
     // Handle helpers (crew) assignment if provided
     if (data.helpers !== undefined) {
+      const helpersWanted = data.driver_staff_id
+        ? data.helpers.filter(h => h !== data.driver_staff_id)
+        : data.helpers;
+
       // Get existing active crews
       const { data: existingCrews, error: existingCrewsError } = await supabase
         .from('delivery_trip_crews')
@@ -908,10 +942,10 @@ export const tripCrudService = {
         .map(c => c.staff_id);
 
       // Find helpers to add (not in existing list)
-      const helpersToAdd = data.helpers.filter(helperId => !existingHelperIds.includes(helperId));
+      const helpersToAdd = helpersWanted.filter(helperId => !existingHelperIds.includes(helperId));
 
       // Find helpers to remove (in existing list but not in new list)
-      const helpersToRemove = existingHelperIds.filter(helperId => !data.helpers!.includes(helperId));
+      const helpersToRemove = existingHelperIds.filter(helperId => !helpersWanted.includes(helperId));
 
       // Add new helpers
       if (helpersToAdd.length > 0) {
@@ -1027,6 +1061,30 @@ export const tripCrudService = {
       } catch (driverCrewError) {
         console.error('[tripCrudService] Error updating driver crew:', driverCrewError);
         // Don't throw - allow trip update to continue
+      }
+
+      // คนขับ(active) ต้องไม่ค้างเป็นพนักงานบริการ(active) — กรณีสลับคนขับจากพนักงานบริการ
+      try {
+        const { data: stripped, error: stripHelperDupError } = await supabase
+          .from('delivery_trip_crews')
+          .update({
+            status: 'removed',
+            end_at: new Date().toISOString(),
+            updated_by: user.id,
+          })
+          .eq('delivery_trip_id', id)
+          .eq('staff_id', data.driver_staff_id)
+          .eq('role', 'helper')
+          .eq('status', 'active')
+          .select('id');
+
+        if (stripHelperDupError) {
+          console.error('[tripCrudService] Error stripping duplicate helper for driver:', stripHelperDupError);
+        } else if (stripped && stripped.length > 0) {
+          crewChangesOccurred = true;
+        }
+      } catch (stripErr) {
+        console.error('[tripCrudService] Error stripping duplicate helper for driver:', stripErr);
       }
     }
 
