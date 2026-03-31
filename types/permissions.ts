@@ -7,7 +7,8 @@ export type BusinessRole =
   | 'ROLE_BRANCH_MANAGER'
   | 'ROLE_TOP_MANAGEMENT'
   | 'ROLE_SYSTEM_ADMIN'
-  | 'ROLE_SALES_USER';
+  | 'ROLE_SALES_USER'
+  | 'ROLE_DEV';
 
 export const APP_ROLE_TO_BUSINESS_ROLE: Partial<Record<AppRole, BusinessRole>> = {
   accounting: 'ROLE_PURCHASING_USER',
@@ -17,5 +18,6 @@ export const APP_ROLE_TO_BUSINESS_ROLE: Partial<Record<AppRole, BusinessRole>> =
   executive: 'ROLE_TOP_MANAGEMENT',
   admin: 'ROLE_SYSTEM_ADMIN',
   sales: 'ROLE_SALES_USER',
+  dev: 'ROLE_DEV',
 };
 

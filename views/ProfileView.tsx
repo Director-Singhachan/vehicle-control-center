@@ -191,8 +191,8 @@ export const ProfileView: React.FC = () => {
     driver: 'พนักงานขับรถ',
     service_staff: 'พนักงานบริการ',
     hr: 'บุคคล',
-    accounting: 'บัญชี',
     warehouse: 'คลังสินค้า',
+    dev: 'ผู้พัฒนา',
   };
 
   return (

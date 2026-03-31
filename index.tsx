@@ -91,6 +91,7 @@ import { Avatar } from './components/ui/Avatar';
 import { ConfirmDialog } from './components/ui/ConfirmDialog';
 import { useActivityTicker } from './hooks/useActivityTicker';
 import { HeaderActivityTicker } from './components/layout/HeaderActivityTicker';
+import { RoleSwitcher } from './components/debug/RoleSwitcher';
 
 const SidebarItem = ({ icon: Icon, label, active, onClick, onMouseEnter, isCollapsed, hasSubmenu, isOpen }: any) => (
   <button
@@ -2374,8 +2375,9 @@ const AppContent = () => {
                                     profile.role === 'hr' ? 'บุคคล' :
                                       profile.role === 'accounting' ? 'บัญชี' :
                                         profile.role === 'warehouse' ? 'คลังสินค้า' :
-                                          profile.role === 'user' ? 'ผู้ใช้ทั่วไป' :
-                                            'ผู้ใช้ทั่วไป';
+                                          profile.role === 'dev' ? 'ผู้พัฒนา' :
+                                            profile.role === 'user' ? 'ผู้ใช้ทั่วไป' :
+                                              'ผู้ใช้ทั่วไป';
                     }
                     // If we have user but no profile AND not loading anymore, show default
                     if (user && !profile && !authLoading) {
@@ -3035,6 +3037,8 @@ const AppContent = () => {
         }}
         onCancel={() => setShowLogoutConfirm(false)}
       />
+      {/* Role Switcher for Dev role */}
+      <RoleSwitcher />
     </div>
   );
 };

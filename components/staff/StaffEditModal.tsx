@@ -39,6 +39,7 @@ const ROLE_OPTIONS: { value: AppRole; label: string }[] = [
   { value: 'sales', label: 'Sales (ขาย)' },
   { value: 'inspector', label: 'Inspector (ตรวจสอบ)' },
   { value: 'user', label: 'User (ผู้ใช้ทั่วไป)' },
+  { value: 'dev', label: 'Developer (ผู้พัฒนา)' },
 ];
 
 const OPERATIONAL_ROLES: AppRole[] = ['driver', 'service_staff'];
