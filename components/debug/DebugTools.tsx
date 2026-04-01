@@ -309,20 +309,20 @@ export const DebugTools: React.FC<{ onTabChange?: (tab: string) => void }> = ({ 
       {/* Trigger Button */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className={`group relative flex items-center justify-center p-3 rounded-2xl shadow-xl transition-all duration-300 overflow-hidden ${
+        className={`group relative flex items-center justify-center rounded-2xl shadow-2xl transition-all duration-300 overflow-hidden ${
           isOpen 
-            ? 'bg-enterprise-600 shadow-enterprise-500/40 text-white w-12 h-12' 
-            : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 w-12 h-12 hover:w-32'
+            ? 'bg-enterprise-700 shadow-enterprise-500/40 text-white w-12 h-12 rotate-90' 
+            : 'bg-enterprise-600 shadow-enterprise-600/30 text-white w-12 h-12 hover:w-36'
         }`}
       >
-        <div className={`absolute inset-0 bg-gradient-to-tr from-enterprise-500 to-blue-600 transition-opacity duration-300 ${isOpen ? 'opacity-100' : 'opacity-0'}`} />
+        <div className="absolute inset-0 bg-gradient-to-tr from-enterprise-600 via-enterprise-500 to-blue-500 opacity-100" />
         
-        <div className="flex items-center justify-center relative z-10">
-          {isOpen ? <X size={20} /> : <Bug size={20} className="text-enterprise-500" />}
+        <div className="flex items-center justify-center relative z-10 w-full px-3">
+          {isOpen ? <X size={22} className="stroke-[3px]" /> : <Bug size={22} className="text-white drop-shadow-sm stroke-[2.5px]" />}
           
           {!isOpen && (
-            <div className="ml-3 overflow-hidden whitespace-nowrap opacity-0 group-hover:opacity-100 transition-all duration-300 transform translate-x-4 group-hover:translate-x-0">
-              <span className="text-xs font-bold uppercase tracking-wider">ดีบักเกอร์</span>
+            <div className="ml-2 overflow-hidden whitespace-nowrap opacity-0 group-hover:opacity-100 transition-all duration-500 transform translate-x-4 group-hover:translate-x-0">
+              <span className="text-[11px] font-black uppercase tracking-widest text-white drop-shadow-md">Debugger</span>
             </div>
           )}
         </div>
