@@ -1,45 +1,46 @@
 import React, { useState, useMemo } from 'react';
 import { useAuth } from '../../hooks/useAuth';
-import { useDebugStore } from '../../stores/debugStore';
+import { useDebugStore, OverrideState } from '../../stores/debugStore';
 import { useDebugDataContext } from '../../context/DebugDataContext';
 import { AppRole } from '../../types/database';
-import { TAB_TO_PRIMARY_FEATURE, FeatureKey } from '../../types/featureAccess';
+import { TAB_TO_PRIMARY_FEATURE, FEATURE_KEYS } from '../../types/featureAccess';
+import { FEATURE_LABELS, ROLE_LABELS_TH } from '../settings/roleFeatureAccessMatrixConfig';
 import { 
   Shield, User, Truck, Briefcase, CheckSquare, DollarSign, 
   Users, Award, Terminal, Package, Landmark, UserCircle,
   RefreshCcw, ChevronRight, X, Bug, Database, Zap, 
   Navigation, ToggleRight, Settings2, Trash2, Search,
-  Eye, CornerDownRight, ExternalLink
+  Eye, CornerDownRight, ExternalLink, Activity
 } from 'lucide-react';
 
-const ROLE_CONFIG: Record<AppRole, { label: string; icon: any; color: string }> = {
-  admin: { label: 'Admin', icon: Shield, color: 'text-rose-500 bg-rose-50' },
-  manager: { label: 'Manager', icon: Briefcase, color: 'text-amber-500 bg-amber-50' },
-  inspector: { label: 'Inspector', icon: CheckSquare, color: 'text-emerald-500 bg-emerald-50' },
-  executive: { label: 'Executive', icon: Award, color: 'text-purple-500 bg-purple-50' },
-  driver: { label: 'Driver', icon: Truck, color: 'text-blue-500 bg-blue-50' },
-  sales: { label: 'Sales', icon: DollarSign, color: 'text-green-500 bg-green-50' },
-  service_staff: { label: 'Service Staff', icon: Users, color: 'text-indigo-500 bg-indigo-50' },
-  hr: { label: 'HR', icon: UserCircle, color: 'text-pink-500 bg-pink-50' },
-  accounting: { label: 'Accounting', icon: Landmark, color: 'text-cyan-500 bg-cyan-50' },
-  warehouse: { label: 'Warehouse', icon: Package, color: 'text-orange-500 bg-orange-50' },
-  user: { label: 'User (ReadOnly)', icon: User, color: 'text-slate-500 bg-slate-50' },
-  dev: { label: 'Developer', icon: Terminal, color: 'text-violet-600 bg-violet-50' },
+const ROLE_ICONS: Record<AppRole, any> = {
+  admin: Shield,
+  manager: Briefcase,
+  inspector: CheckSquare,
+  executive: Award,
+  driver: Truck,
+  sales: DollarSign,
+  service_staff: Users,
+  hr: UserCircle,
+  accounting: Landmark,
+  warehouse: Package,
+  user: User,
+  dev: Terminal,
 };
 
 export const DebugTools: React.FC<{ onTabChange?: (tab: string) => void }> = ({ onTabChange }) => {
   const { isDev, overriddenRole, setOverriddenRole, profile } = useAuth();
-  const { featureFlags, toggleFlag, resetFlags, panelTab, setPanelTab } = useDebugStore();
+  const { featureOverrides, setFeatureOverride, resetOverrides, panelTab, setPanelTab } = useDebugStore();
   const { dataMap, clearDebugData } = useDebugDataContext();
   
   const [isOpen, setIsOpen] = useState(false);
   const [jumpQuery, setJumpQuery] = useState('');
+  const [featureQuery, setFeatureQuery] = useState('');
   const [inspectKey, setInspectKey] = useState<string | null>(null);
 
   if (!isDev) return null;
 
   const currentRole = overriddenRole || (profile?.role as AppRole) || 'dev';
-  const roleInfo = ROLE_CONFIG[currentRole] || ROLE_CONFIG.dev;
   
   const handleClearCache = () => {
     if (confirm('ยืนยันหน้าการถอย? ระบบจะล้างข้อมูล LocalStorage และรีโหลดหน้าใหม่')) {
@@ -55,24 +56,31 @@ export const DebugTools: React.FC<{ onTabChange?: (tab: string) => void }> = ({ 
       .sort();
   }, [jumpQuery]);
 
+  const filteredFeatures = useMemo(() => {
+    return FEATURE_KEYS.filter(k => 
+      k.toLowerCase().includes(featureQuery.toLowerCase()) || 
+      (FEATURE_LABELS[k] || '').toLowerCase().includes(featureQuery.toLowerCase())
+    );
+  }, [featureQuery]);
+
   const handleJump = (tab: string) => {
     onTabChange?.(tab);
     setIsOpen(false);
   };
 
   const renderRoleTab = () => (
-    <div className="space-y-1 max-h-[400px] overflow-y-auto">
+    <div className="space-y-1 max-h-[400px] overflow-y-auto pr-1">
       <div className="px-2 py-1 mb-1 text-[10px] font-bold text-slate-400 uppercase tracking-widest flex justify-between items-center">
-        <span>Select Identity</span>
+        <span>เลือกตัวตนที่ต้องการทดสอบ</span>
         <button 
           onClick={() => { setOverriddenRole(null); window.location.reload(); }}
           className="text-enterprise-600 hover:underline"
         >
-          Reset
+          ล้างค่า
         </button>
       </div>
-      {(Object.entries(ROLE_CONFIG) as [AppRole, typeof roleInfo][]).map(([role, info]) => {
-        const Icon = info.icon;
+      {(Object.entries(ROLE_LABELS_TH) as [AppRole, string][]).map(([role, label]) => {
+        const Icon = ROLE_ICONS[role] || Terminal;
         const isActive = currentRole === role;
         return (
           <button
@@ -82,10 +90,10 @@ export const DebugTools: React.FC<{ onTabChange?: (tab: string) => void }> = ({ 
               isActive ? 'bg-enterprise-50 dark:bg-enterprise-900/30 text-enterprise-700 dark:text-enterprise-400 border border-enterprise-100 dark:border-enterprise-800' : 'hover:bg-slate-50 dark:hover:bg-slate-800'
             }`}
           >
-            <div className={`p-1.5 rounded-lg mr-2 ${isActive ? info.color : 'bg-slate-100 dark:bg-slate-800'}`}>
+            <div className={`p-1.5 rounded-lg mr-2 ${isActive ? 'bg-enterprise-500 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-500'}`}>
               <Icon size={16} />
             </div>
-            <span className="text-xs font-medium">{info.label}</span>
+            <span className="text-xs font-medium">{label}</span>
           </button>
         );
       })}
@@ -93,13 +101,13 @@ export const DebugTools: React.FC<{ onTabChange?: (tab: string) => void }> = ({ 
   );
 
   const renderInspectorTab = () => (
-    <div className="space-y-2 max-h-[400px] overflow-y-auto">
+    <div className="space-y-2 max-h-[400px] overflow-y-auto pr-1">
       <div className="flex justify-between items-center px-2 py-1">
-        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Active Data Points</span>
-        <button onClick={clearDebugData} className="text-[10px] text-rose-500 hover:bg-rose-50 p-1 rounded">Clear</button>
+        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">ข้อมูล JSON ในหน้านี้</span>
+        <button onClick={clearDebugData} className="text-[10px] text-rose-500 hover:bg-rose-50 p-1 rounded">ล้างค่า</button>
       </div>
       {Object.keys(dataMap).length === 0 ? (
-        <div className="text-center py-8 text-slate-400 text-xs italic">No data registered via useDebugData</div>
+        <div className="text-center py-8 text-slate-400 text-xs italic">ไม่มีข้อมูลที่ถูกส่งมา (Raw Data)</div>
       ) : (
         Object.entries(dataMap).map(([key, data]) => (
           <div key={key} className="border border-slate-100 dark:border-slate-800 rounded-lg overflow-hidden">
@@ -135,11 +143,11 @@ export const DebugTools: React.FC<{ onTabChange?: (tab: string) => void }> = ({ 
           type="text" 
           value={jumpQuery}
           onChange={(e) => setJumpQuery(e.target.value)}
-          placeholder="Search tabs..."
+          placeholder="ค้นหาหน้า..."
           className="w-full bg-slate-50 dark:bg-slate-800 border-none rounded-lg pl-9 pr-4 py-2 text-xs focus:ring-1 focus:ring-enterprise-500"
         />
       </div>
-      <div className="space-y-1 max-h-[300px] overflow-y-auto">
+      <div className="space-y-1 max-h-[350px] overflow-y-auto pr-1">
         {jumpOptions.map(tab => (
           <button 
             key={tab}
@@ -155,62 +163,96 @@ export const DebugTools: React.FC<{ onTabChange?: (tab: string) => void }> = ({ 
   );
 
   const renderFlagsTab = () => (
-    <div className="space-y-3 p-1">
+    <div className="space-y-3">
       <div className="px-1 text-[10px] font-bold text-slate-400 uppercase tracking-widest flex justify-between items-center">
-        <span>Dev Flags</span>
-        <button onClick={resetFlags} className="text-enterprise-500">Reset</button>
+        <span>จัดการสิทธิ์ (Overrides)</span>
+        <button onClick={resetOverrides} className="text-enterprise-500 hover:underline">รีเซ็ตทั้งหมด</button>
       </div>
-      {Object.entries(featureFlags).map(([key, value]) => (
-        <button 
-          key={key} 
-          onClick={() => toggleFlag(key as any)}
-          className="w-full flex items-center justify-between p-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800"
-        >
-          <span className="text-xs font-medium text-slate-700 dark:text-slate-200">{key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase())}</span>
-          <div className={`w-8 h-4 rounded-full relative transition-colors ${value ? 'bg-enterprise-500' : 'bg-slate-300 dark:bg-slate-700'}`}>
-            <div className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all ${value ? 'left-4.5' : 'left-0.5'}`} />
-          </div>
-        </button>
-      ))}
-      <div className="mt-4 p-3 bg-amber-50 dark:bg-amber-900/20 rounded-xl border border-amber-100 dark:border-amber-800/50">
-        <div className="flex items-start">
-          <Zap size={14} className="text-amber-600 mt-0.5 mr-2" />
-          <p className="text-[10px] text-amber-800 dark:text-amber-200 leading-normal">Flags here are meant for testing UI variants without full deployments.</p>
-        </div>
+
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+        <input 
+          type="text" 
+          value={featureQuery}
+          onChange={(e) => setFeatureQuery(e.target.value)}
+          placeholder="ค้นหาฟีเจอร์..."
+          className="w-full bg-slate-50 dark:bg-slate-800 border-none rounded-lg pl-9 pr-4 py-2 text-xs focus:ring-1 focus:ring-enterprise-500"
+        />
+      </div>
+
+      <div className="space-y-1 max-h-[350px] overflow-y-auto pr-1">
+        {filteredFeatures.map(key => {
+          const override = featureOverrides[key] || 'default';
+          return (
+            <div key={key} className="p-2 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 border border-transparent hover:border-slate-100 dark:hover:border-slate-700">
+              <div className="flex flex-col mb-2">
+                <span className="text-[10px] font-mono text-slate-400">{key}</span>
+                <span className="text-xs font-bold text-slate-700 dark:text-slate-200">{FEATURE_LABELS[key] || key}</span>
+              </div>
+              <div className="flex bg-slate-100 dark:bg-slate-900 p-0.5 rounded-lg">
+                {[
+                  { id: 'default', label: 'ปกติ' },
+                  { id: 'on', label: 'เปิดใช้งาน', color: 'bg-emerald-500 text-white' },
+                  { id: 'off', label: 'ปิดกั้น', color: 'bg-rose-500 text-white' }
+                ].map(opt => (
+                  <button
+                    key={opt.id}
+                    onClick={() => setFeatureOverride(key, opt.id as OverrideState)}
+                    className={`flex-1 py-1 text-[10px] font-bold rounded-md transition-all ${
+                      override === opt.id 
+                        ? (opt.color || 'bg-white dark:bg-slate-700 shadow-sm text-enterprise-600') 
+                        : 'text-slate-400 hover:text-slate-600'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
 
   const renderSystemTab = () => (
     <div className="space-y-2 p-1">
-      <div className="px-1 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-widest">System Actions</div>
+      <div className="px-1 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-widest">การจัดการระบบ</div>
       <button 
         onClick={handleClearCache}
         className="w-full flex items-center p-3 rounded-xl bg-rose-50 dark:bg-rose-900/20 text-rose-700 dark:text-rose-400 border border-rose-100 dark:border-rose-900/50 hover:bg-rose-100 dark:hover:bg-rose-900/30 transition-all font-bold text-xs"
       >
         <Trash2 size={16} className="mr-3" />
-        Clear Cache & Reload App
+        ล้าง Cache และรีโหลดแอป
       </button>
 
-      <div className="mt-2 space-y-1">
-        <div className="p-2 text-[10px] text-slate-400 text-center font-mono bg-slate-50 dark:bg-slate-800/50 rounded">
-          v1.0.0-dev | {profile?.email}
+      <div className="mt-4 p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-700">
+        <div className="flex items-center space-x-3 mb-3">
+          <div className="p-2 bg-enterprise-100 dark:bg-enterprise-900/30 rounded-lg">
+            <Activity size={16} className="text-enterprise-600" />
+          </div>
+          <span className="text-xs font-bold">ข้อมูลเซสชัน</span>
+        </div>
+        <div className="space-y-1 text-[10px] font-mono text-slate-500">
+          <div className="flex justify-between"><span>User:</span> <span className="text-slate-700 dark:text-slate-300">{profile?.email}</span></div>
+          <div className="flex justify-between"><span>Real Role:</span> <span className="text-slate-700 dark:text-slate-300">{profile?.role}</span></div>
+          <div className="flex justify-between"><span>Active Role:</span> <span className="text-enterprise-600 font-bold">{currentRole}</span></div>
         </div>
       </div>
     </div>
   );
 
   return (
-    <div className="fixed bottom-6 right-6 z-[9999] flex flex-col items-end">
+    <div className="fixed bottom-6 right-6 z-[9999] flex flex-col items-end font-sans">
       {isOpen && (
-        <div className="mb-4 w-72 bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden flex flex-col animate-in zoom-in-95 slide-in-from-bottom-5 duration-200 ring-4 ring-black/5">
+        <div className="mb-4 w-80 bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden flex flex-col animate-in zoom-in-95 slide-in-from-bottom-5 duration-200 ring-4 ring-black/5">
           {/* Header */}
           <div className="p-4 bg-slate-50/80 dark:bg-slate-900/80 backdrop-blur-md border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
             <div className="flex items-center space-x-2">
               <div className="p-1.5 bg-enterprise-500 rounded-lg shadow-lg shadow-enterprise-500/30">
                 <Terminal size={14} className="text-white" />
               </div>
-              <span className="font-black text-xs uppercase tracking-widest text-slate-900 dark:text-white">Debug Central</span>
+              <span className="font-black text-xs uppercase tracking-widest text-slate-900 dark:text-white">เครื่องมือสำหรับ Dev</span>
             </div>
             <button 
               onClick={() => setIsOpen(false)}
@@ -220,30 +262,33 @@ export const DebugTools: React.FC<{ onTabChange?: (tab: string) => void }> = ({ 
             </button>
           </div>
 
-          {/* Sub Header Tabs */}
-          <div className="flex p-1 bg-slate-100 dark:bg-slate-800/50 mx-4 mt-4 rounded-xl">
-            {(['role', 'jump', 'inspector', 'flags', 'system'] as const).map(tab => (
+          {/* Nav Tabs */}
+          <div className="grid grid-cols-5 p-1 bg-slate-100 dark:bg-slate-800/50 mx-4 mt-4 rounded-xl">
+            {[
+              { id: 'role', icon: UserCircle, label: 'ตัวตน' },
+              { id: 'jump', icon: Navigation, label: 'ไปที่หน้า' },
+              { id: 'flags', icon: ToggleRight, label: 'สิทธิ์' },
+              { id: 'inspector', icon: Search, label: 'แจส' },
+              { id: 'system', icon: Settings2, label: 'ระบบ' }
+            ].map(tab => (
               <button
-                key={tab}
-                onClick={() => setPanelTab(tab)}
-                className={`flex-1 flex justify-center py-1.5 rounded-lg transition-all ${
-                  panelTab === tab 
+                key={tab.id}
+                onClick={() => setPanelTab(tab.id as any)}
+                className={`flex flex-col items-center justify-center py-2 rounded-lg transition-all ${
+                  panelTab === tab.id 
                     ? 'bg-white dark:bg-slate-700 shadow-sm text-enterprise-600 dark:text-white' 
-                    : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'
+                    : 'text-slate-400 hover:text-slate-600'
                 }`}
-                title={tab.toUpperCase()}
+                title={tab.label}
               >
-                {tab === 'role' && <UserCircle size={16} />}
-                {tab === 'inspector' && <Search size={16} />}
-                {tab === 'jump' && <Navigation size={16} />}
-                {tab === 'flags' && <ToggleRight size={16} />}
-                {tab === 'system' && <Settings2 size={16} />}
+                <tab.icon size={16} />
+                <span className="text-[8px] mt-1 font-bold">{tab.label}</span>
               </button>
             ))}
           </div>
 
           {/* Tab Content */}
-          <div className="p-4">
+          <div className="p-4 overflow-y-auto">
             {panelTab === 'role' && renderRoleTab()}
             {panelTab === 'inspector' && renderInspectorTab()}
             {panelTab === 'jump' && renderJumpTab()}
@@ -255,7 +300,7 @@ export const DebugTools: React.FC<{ onTabChange?: (tab: string) => void }> = ({ 
             <span className="text-[9px] font-bold text-slate-400 uppercase tracking-tighter">Powered by DeepMind</span>
             <div className="flex items-center space-x-1">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-              <span className="text-[9px] text-slate-400">Dev Mode Active</span>
+              <span className="text-[9px] text-slate-400">ระบบทดสอบกำลังทำงาน</span>
             </div>
           </div>
         </div>
@@ -273,20 +318,14 @@ export const DebugTools: React.FC<{ onTabChange?: (tab: string) => void }> = ({ 
         <div className={`absolute inset-0 bg-gradient-to-tr from-enterprise-500 to-blue-600 transition-opacity duration-300 ${isOpen ? 'opacity-100' : 'opacity-0'}`} />
         
         <div className="flex items-center justify-center relative z-10">
-          {isOpen ? <X size={20} /> : <Bug size={20} className={roleInfo.color.split(' ')[0]} />}
+          {isOpen ? <X size={20} /> : <Bug size={20} className="text-enterprise-500" />}
           
           {!isOpen && (
             <div className="ml-3 overflow-hidden whitespace-nowrap opacity-0 group-hover:opacity-100 transition-all duration-300 transform translate-x-4 group-hover:translate-x-0">
-              <span className="text-xs font-bold uppercase tracking-wider">Debugger</span>
+              <span className="text-xs font-bold uppercase tracking-wider">ดีบักเกอร์</span>
             </div>
           )}
         </div>
-        
-        {!isOpen && (
-          <div className="absolute top-0 right-0 p-1">
-            <div className={`w-2 h-2 rounded-full border border-white dark:border-slate-900 ${roleInfo.color.split(' ')[0].replace('text-', 'bg-')}`}></div>
-          </div>
-        )}
       </button>
     </div>
   );

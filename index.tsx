@@ -30,6 +30,7 @@ import {
   Database,
   Upload,
   UserCog,
+  AlertTriangle,
 } from 'lucide-react';
 // Lazy load views เพื่อลด initial bundle และให้หน้าแรกโหลดเร็วขึ้น
 const DashboardView = lazy(() => import('./views/DashboardView').then(m => ({ default: m.DashboardView })));
@@ -93,8 +94,9 @@ import { useActivityTicker } from './hooks/useActivityTicker';
 import { HeaderActivityTicker } from './components/layout/HeaderActivityTicker';
 import { DebugDataProvider } from './context/DebugDataContext';
 import { DebugTools } from './components/debug/DebugTools';
+import { useDebugStore } from './stores/debugStore';
 
-const SidebarItem = ({ icon: Icon, label, active, onClick, onMouseEnter, isCollapsed, hasSubmenu, isOpen }: any) => (
+const SidebarItem = ({ icon: Icon, label, active, onClick, onMouseEnter, isCollapsed, hasSubmenu, isOpen, isWarning }: any) => (
   <button
     onClick={onClick}
     onMouseEnter={onMouseEnter}
@@ -103,15 +105,29 @@ const SidebarItem = ({ icon: Icon, label, active, onClick, onMouseEnter, isColla
       : 'text-slate-600 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700/50'
       }`}
   >
-    <Icon size={isCollapsed ? 24 : 20} />
-    {!isCollapsed && <span className="flex-1 text-left">{label}</span>}
+    <div className="relative">
+      <Icon size={isCollapsed ? 24 : 20} />
+      {isWarning && isCollapsed && (
+        <div className="absolute -top-1 -right-1 bg-white dark:bg-slate-900 rounded-full p-0.5 shadow-sm">
+          <AlertTriangle size={10} className="text-amber-500 fill-amber-500/20" />
+        </div>
+      )}
+    </div>
+    {!isCollapsed && (
+      <span className={`flex-1 text-left ${isWarning ? 'text-amber-600 dark:text-amber-400 font-semibold' : ''}`}>
+        {label}
+      </span>
+    )}
+    {!isCollapsed && isWarning && (
+      <AlertTriangle size={14} className="text-amber-500 fill-amber-500/20 animate-pulse" />
+    )}
     {!isCollapsed && hasSubmenu && (
       isOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />
     )}
   </button>
 );
 
-const SubSidebarItem = ({ label, active, onClick, isCollapsed, isFlyout }: any) => (
+const SubSidebarItem = ({ label, active, onClick, isCollapsed, isFlyout, isWarning }: any) => (
   <button
     onClick={onClick}
     className={`w-full flex items-center ${isFlyout ? 'px-4' : 'pl-12 pr-4'} py-2 rounded-lg transition-colors duration-200 ${active
@@ -119,8 +135,56 @@ const SubSidebarItem = ({ label, active, onClick, isCollapsed, isFlyout }: any) 
       : 'text-slate-600 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700/50'
       }`}
   >
-    {!isCollapsed && <span className="text-sm whitespace-nowrap">{label}</span>}
+    {!isCollapsed && (
+      <span className={`text-sm whitespace-nowrap flex-1 text-left ${isWarning ? 'text-amber-600 dark:text-amber-400 font-semibold italic' : ''}`}>
+        {label}
+      </span>
+    )}
+    {!isCollapsed && isWarning && (
+      <AlertTriangle size={12} className="text-amber-500 ml-2" />
+    )}
   </button>
+);
+
+const MaintenanceView = ({ isDev, onReset, featureName, onContact }: { isDev?: boolean, onReset?: () => void, featureName?: string, onContact?: () => void }) => (
+  <div className="flex flex-col items-center justify-center min-h-[60vh] p-8 text-center bg-white dark:bg-charcoal-900 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-xl max-w-2xl mx-auto my-12 animate-in zoom-in-95 duration-300">
+    <div className="relative mb-8">
+      <div className="absolute inset-0 bg-amber-500 blur-3xl opacity-20 animate-pulse"></div>
+      <div className="relative p-6 bg-amber-50 dark:bg-amber-900/20 rounded-3xl border-2 border-amber-100 dark:border-amber-800/50">
+        <AlertTriangle size={64} className="text-amber-500" />
+      </div>
+      <div className="absolute -bottom-2 -right-2 p-2 bg-white dark:bg-slate-900 rounded-xl shadow-lg border border-slate-100 dark:border-slate-800">
+        <Wrench size={16} className="text-slate-400" />
+      </div>
+    </div>
+
+    <h2 className="text-3xl font-black text-slate-900 dark:text-white mb-4 tracking-tight">
+      {isDev || featureName ? "ปิดการเข้าถึงชั่วคราว" : "กำลังปรับปรุงระบบ"}
+    </h2>
+
+    <p className="text-slate-600 dark:text-slate-400 leading-relaxed mb-8 text-lg">
+      {isDev || featureName
+        ? "หน้านี้มีสถานะการเข้าถึงที่ถูก Force Disabled โดยทีมนักพัฒนาอยู่ (Development / Testing Mode) คุณสามารถเปิดใช้งานใหม่ได้ผ่าน Debug Control Center"
+        : "ขออภัยในความไม่สะดวก ฟีเจอร์นี้กำลังอยู่ในช่วงการปรับปรุงและพัฒนาชุดใหม่ เพื่อประสิทธิภาพที่ดียิ่งขึ้น โปรดรอติดตามในเวอร์ชันถัดไป"}
+    </p>
+
+    {(isDev || featureName) && (
+      <button
+        onClick={onReset || onContact}
+        className="px-8 py-3 bg-enterprise-600 hover:bg-enterprise-700 text-white rounded-2xl font-bold shadow-lg shadow-enterprise-600/30 transition-all active:scale-95 flex items-center space-x-2"
+      >
+        <Settings size={18} />
+        <span>จัดการ Feature Flags</span>
+      </button>
+    )}
+
+    {!(isDev || featureName) && (
+      <div className="flex items-center space-x-2 text-slate-400">
+        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+        <span className="text-sm font-medium">ทีมวิศวกรกำลังดำเนินการพัฒนาระบบ</span>
+      </div>
+    )}
+  </div>
 );
 
 const MenuSectionHeader = ({ label }: { label: string }) => (
@@ -136,6 +200,7 @@ const MenuSectionHeader = ({ label }: { label: string }) => (
 const AppContent = () => {
   const { user, profile, signOut, isAdmin, isManager, isInspector, isExecutive, isDriver, isSales, isHR, isWarehouse, loading: authLoading, refreshProfile } = useAuth();
   const { can, canAccessTab, loading: featureAccessLoading } = useFeatureAccess();
+  const { featureOverrides, setPanelTab } = useDebugStore();
   const showHrMenu =
     can('tab.admin_staff', 'view') ||
     can('tab.service_staff', 'view') ||
@@ -1063,13 +1128,14 @@ const AppContent = () => {
 
         <div className="flex-1 min-h-0 px-3 space-y-1 mt-4 overflow-y-auto overflow-x-clip scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-700 scrollbar-track-transparent hover:scrollbar-thumb-gray-400 dark:hover:scrollbar-thumb-gray-600 [&:has(.group\/menu:hover)]:overflow-x-visible">
           {/* 1. รายงาน (Reports) */}
-          {can('tab.reports', 'view') && (
+          {(can('tab.reports', 'view') || featureOverrides['tab.reports'] === 'off') && (
             <SidebarItem
               icon={FileText}
               label={isSidebarOpen ? "รายงาน" : ""}
               active={activeTab === 'reports'}
               onClick={() => navigateAndCloseMobile('reports')}
               isCollapsed={!isSidebarOpen}
+              isWarning={featureOverrides['tab.reports'] === 'off'}
             />
           )}
 
@@ -1132,39 +1198,102 @@ const AppContent = () => {
               {/* Mobile inline submenu for Orders */}
               {isMobile && mobileOrdersExpanded && isSidebarOpen && (
                 <div className="pl-2 pr-1 space-y-0.5 animate-in fade-in slide-in-from-top-1 duration-150">
-                  {can('tab.create_order', 'view') && (
-                    <SubSidebarItem label="สร้างออเดอร์" active={activeTab === 'create-order'} onClick={() => navigateAndCloseMobile('create-order')} isCollapsed={false} isFlyout={false} />
+                  {(can('tab.create_order', 'view') || featureOverrides['tab.create_order'] === 'off') && (
+                    <SubSidebarItem 
+                      label="สร้างออเดอร์" 
+                      active={activeTab === 'create-order'} 
+                      onClick={() => navigateAndCloseMobile('create-order')} 
+                      isCollapsed={false} 
+                      isFlyout={false}
+                      isWarning={featureOverrides['tab.create_order'] === 'off'} 
+                    />
                   )}
-                  {can('tab.confirm_orders', 'view') && (
-                    <SubSidebarItem label="ยืนยันและแบ่งส่ง" active={activeTab === 'confirm-orders'} onClick={() => navigateAndCloseMobile('confirm-orders')} isCollapsed={false} isFlyout={false} />
+                  {(can('tab.confirm_orders', 'view') || featureOverrides['tab.confirm_orders'] === 'off') && (
+                    <SubSidebarItem 
+                      label="ยืนยันและแบ่งส่ง" 
+                      active={activeTab === 'confirm-orders'} 
+                      onClick={() => navigateAndCloseMobile('confirm-orders')} 
+                      isCollapsed={false} 
+                      isFlyout={false}
+                      isWarning={featureOverrides['tab.confirm_orders'] === 'off'} 
+                    />
                   )}
-                  {can('tab.track_orders', 'view') && (
-                    <SubSidebarItem label="ติดตามออเดอร์" active={activeTab === 'track-orders'} onClick={() => navigateAndCloseMobile('track-orders')} isCollapsed={false} isFlyout={false} />
+                  {(can('tab.track_orders', 'view') || featureOverrides['tab.track_orders'] === 'off') && (
+                    <SubSidebarItem 
+                      label="ติดตามออเดอร์" 
+                      active={activeTab === 'track-orders'} 
+                      onClick={() => navigateAndCloseMobile('track-orders')} 
+                      isCollapsed={false} 
+                      isFlyout={false}
+                      isWarning={featureOverrides['tab.track_orders'] === 'off'} 
+                    />
                   )}
-                  {can('tab.sales_trips', 'view') && (
-                    <SubSidebarItem label="ออกใบแจ้งหนี้" active={activeTab === 'sales-trips'} onClick={() => navigateAndCloseMobile('sales-trips')} isCollapsed={false} isFlyout={false} />
+                  {(can('tab.sales_trips', 'view') || featureOverrides['tab.sales_trips'] === 'off') && (
+                    <SubSidebarItem 
+                      label="ออกใบแจ้งหนี้" 
+                      active={activeTab === 'sales-trips'} 
+                      onClick={() => navigateAndCloseMobile('sales-trips')} 
+                      isCollapsed={false} 
+                      isFlyout={false}
+                      isWarning={featureOverrides['tab.sales_trips'] === 'off'} 
+                    />
                   )}
-                  {(can('tab.cleanup_test_orders', 'view') ||
-                    can('tab.customers', 'view') ||
-                    can('tab.products', 'view') ||
-                    can('tab.product_pricing', 'view') ||
-                    can('tab.customer_tiers', 'view')) && (
+                  {(can('tab.cleanup_test_orders', 'view') || featureOverrides['tab.cleanup_test_orders'] === 'off' ||
+                    can('tab.customers', 'view') || featureOverrides['tab.customers'] === 'off' ||
+                    can('tab.products', 'view') || featureOverrides['tab.products'] === 'off' ||
+                    can('tab.product_pricing', 'view') || featureOverrides['tab.product_pricing'] === 'off' ||
+                    can('tab.customer_tiers', 'view') || featureOverrides['tab.customer_tiers'] === 'off') && (
                     <MenuSectionHeader label="เฉพาะเจ้าหน้าที่ / Manager" />
                   )}
-                  {can('tab.cleanup_test_orders', 'view') && (
-                    <SubSidebarItem label="จัดการออเดอร์" active={activeTab === 'cleanup-test-orders'} onClick={() => navigateAndCloseMobile('cleanup-test-orders')} isCollapsed={false} isFlyout={false} />
+                  {(can('tab.cleanup_test_orders', 'view') || featureOverrides['tab.cleanup_test_orders'] === 'off') && (
+                    <SubSidebarItem 
+                      label="จัดการออเดอร์" 
+                      active={activeTab === 'cleanup-test-orders'} 
+                      onClick={() => navigateAndCloseMobile('cleanup-test-orders')} 
+                      isCollapsed={false} 
+                      isFlyout={false}
+                      isWarning={featureOverrides['tab.cleanup_test_orders'] === 'off'} 
+                    />
                   )}
-                  {can('tab.customers', 'view') && (
-                    <SubSidebarItem label="จัดการลูกค้า" active={activeTab === 'customers'} onClick={() => navigateAndCloseMobile('customers')} isCollapsed={false} isFlyout={false} />
+                  {(can('tab.customers', 'view') || featureOverrides['tab.customers'] === 'off') && (
+                    <SubSidebarItem 
+                      label="จัดการลูกค้า" 
+                      active={activeTab === 'customers'} 
+                      onClick={() => navigateAndCloseMobile('customers')} 
+                      isCollapsed={false} 
+                      isFlyout={false}
+                      isWarning={featureOverrides['tab.customers'] === 'off'} 
+                    />
                   )}
-                  {can('tab.products', 'view') && (
-                    <SubSidebarItem label="จัดการสินค้า / ราคา" active={activeTab === 'products'} onClick={() => navigateAndCloseMobile('products')} isCollapsed={false} isFlyout={false} />
+                  {(can('tab.products', 'view') || featureOverrides['tab.products'] === 'off') && (
+                    <SubSidebarItem 
+                      label="จัดการสินค้า / ราคา" 
+                      active={activeTab === 'products'} 
+                      onClick={() => navigateAndCloseMobile('products')} 
+                      isCollapsed={false} 
+                      isFlyout={false}
+                      isWarning={featureOverrides['tab.products'] === 'off'} 
+                    />
                   )}
-                  {can('tab.product_pricing', 'view') && (
-                    <SubSidebarItem label="กำหนดราคาตามลูกค้า" active={activeTab === 'product-pricing'} onClick={() => navigateAndCloseMobile('product-pricing')} isCollapsed={false} isFlyout={false} />
+                  {(can('tab.product_pricing', 'view') || featureOverrides['tab.product_pricing'] === 'off') && (
+                    <SubSidebarItem 
+                      label="กำหนดราคาตามลูกค้า" 
+                      active={activeTab === 'product-pricing'} 
+                      onClick={() => navigateAndCloseMobile('product-pricing')} 
+                      isCollapsed={false} 
+                      isFlyout={false}
+                      isWarning={featureOverrides['tab.product_pricing'] === 'off'} 
+                    />
                   )}
-                  {can('tab.customer_tiers', 'view') && (
-                    <SubSidebarItem label="ระดับลูกค้า" active={activeTab === 'customer-tiers'} onClick={() => navigateAndCloseMobile('customer-tiers')} isCollapsed={false} isFlyout={false} />
+                  {(can('tab.customer_tiers', 'view') || featureOverrides['tab.customer_tiers'] === 'off') && (
+                    <SubSidebarItem 
+                      label="ระดับลูกค้า" 
+                      active={activeTab === 'customer-tiers'} 
+                      onClick={() => navigateAndCloseMobile('customer-tiers')} 
+                      isCollapsed={false} 
+                      isFlyout={false}
+                      isWarning={featureOverrides['tab.customer_tiers'] === 'off'} 
+                    />
                   )}
                 </div>
               )}
@@ -1186,11 +1315,11 @@ const AppContent = () => {
                       <div className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"></div>
                     </div>
                     <div className="px-2 space-y-0.5">
-                      {(can('tab.create_order', 'view') ||
-                        can('tab.confirm_orders', 'view') ||
-                        can('tab.track_orders', 'view') ||
-                        can('tab.sales_trips', 'view')) && <MenuSectionHeader label="รายการออเดอร์" />}
-                      {can('tab.create_order', 'view') && (
+                      {(can('tab.create_order', 'view') || featureOverrides['tab.create_order'] === 'off' ||
+                        can('tab.confirm_orders', 'view') || featureOverrides['tab.confirm_orders'] === 'off' ||
+                        can('tab.track_orders', 'view') || featureOverrides['tab.track_orders'] === 'off' ||
+                        can('tab.sales_trips', 'view') || featureOverrides['tab.sales_trips'] === 'off') && <MenuSectionHeader label="รายการออเดอร์" />}
+                      {(can('tab.create_order', 'view') || featureOverrides['tab.create_order'] === 'off') && (
                         <SubSidebarItem
                           label="สร้างออเดอร์"
                           active={activeTab === 'create-order'}
@@ -1200,9 +1329,10 @@ const AppContent = () => {
                           }}
                           isCollapsed={false}
                           isFlyout={true}
+                          isWarning={featureOverrides['tab.create_order'] === 'off'}
                         />
                       )}
-                      {can('tab.confirm_orders', 'view') && (
+                      {(can('tab.confirm_orders', 'view') || featureOverrides['tab.confirm_orders'] === 'off') && (
                         <SubSidebarItem
                           label="ยืนยันและแบ่งส่ง"
                           active={activeTab === 'confirm-orders'}
@@ -1212,9 +1342,10 @@ const AppContent = () => {
                           }}
                           isCollapsed={false}
                           isFlyout={true}
+                          isWarning={featureOverrides['tab.confirm_orders'] === 'off'}
                         />
                       )}
-                      {can('tab.track_orders', 'view') && (
+                      {(can('tab.track_orders', 'view') || featureOverrides['tab.track_orders'] === 'off') && (
                         <SubSidebarItem
                           label="ติดตามออเดอร์"
                           active={activeTab === 'track-orders'}
@@ -1224,9 +1355,10 @@ const AppContent = () => {
                           }}
                           isCollapsed={false}
                           isFlyout={true}
+                          isWarning={featureOverrides['tab.track_orders'] === 'off'}
                         />
                       )}
-                      {can('tab.sales_trips', 'view') && (
+                      {(can('tab.sales_trips', 'view') || featureOverrides['tab.sales_trips'] === 'off') && (
                         <SubSidebarItem
                           label="ออกใบแจ้งหนี้"
                           active={activeTab === 'sales-trips'}
@@ -1236,17 +1368,18 @@ const AppContent = () => {
                           }}
                           isCollapsed={false}
                           isFlyout={true}
+                          isWarning={featureOverrides['tab.sales_trips'] === 'off'}
                         />
                       )}
 
-                      {(can('tab.cleanup_test_orders', 'view') ||
-                        can('tab.customers', 'view') ||
-                        can('tab.products', 'view') ||
-                        can('tab.product_pricing', 'view') ||
-                        can('tab.customer_tiers', 'view')) && (
+                      {(can('tab.cleanup_test_orders', 'view') || featureOverrides['tab.cleanup_test_orders'] === 'off' ||
+                        can('tab.customers', 'view') || featureOverrides['tab.customers'] === 'off' ||
+                        can('tab.products', 'view') || featureOverrides['tab.products'] === 'off' ||
+                        can('tab.product_pricing', 'view') || featureOverrides['tab.product_pricing'] === 'off' ||
+                        can('tab.customer_tiers', 'view') || featureOverrides['tab.customer_tiers'] === 'off') && (
                         <MenuSectionHeader label="เฉพาะเจ้าหน้าที่ / Manager" />
                       )}
-                      {can('tab.cleanup_test_orders', 'view') && (
+                      {(can('tab.cleanup_test_orders', 'view') || featureOverrides['tab.cleanup_test_orders'] === 'off') && (
                         <SubSidebarItem
                           label="จัดการออเดอร์"
                           active={activeTab === 'cleanup-test-orders'}
@@ -1256,9 +1389,10 @@ const AppContent = () => {
                           }}
                           isCollapsed={false}
                           isFlyout={true}
+                          isWarning={featureOverrides['tab.cleanup_test_orders'] === 'off'}
                         />
                       )}
-                      {can('tab.customers', 'view') && (
+                      {(can('tab.customers', 'view') || featureOverrides['tab.customers'] === 'off') && (
                         <SubSidebarItem
                           label="จัดการลูกค้า"
                           active={activeTab === 'customers'}
@@ -1268,9 +1402,10 @@ const AppContent = () => {
                           }}
                           isCollapsed={false}
                           isFlyout={true}
+                          isWarning={featureOverrides['tab.customers'] === 'off'}
                         />
                       )}
-                      {can('tab.products', 'view') && (
+                      {(can('tab.products', 'view') || featureOverrides['tab.products'] === 'off') && (
                         <SubSidebarItem
                           label="จัดการสินค้า / ราคา"
                           active={activeTab === 'products'}
@@ -1280,9 +1415,10 @@ const AppContent = () => {
                           }}
                           isCollapsed={false}
                           isFlyout={true}
+                          isWarning={featureOverrides['tab.products'] === 'off'}
                         />
                       )}
-                      {can('tab.product_pricing', 'view') && (
+                      {(can('tab.product_pricing', 'view') || featureOverrides['tab.product_pricing'] === 'off') && (
                         <SubSidebarItem
                           label="กำหนดราคาตามลูกค้า"
                           active={activeTab === 'product-pricing'}
@@ -1292,9 +1428,10 @@ const AppContent = () => {
                           }}
                           isCollapsed={false}
                           isFlyout={true}
+                          isWarning={featureOverrides['tab.product_pricing'] === 'off'}
                         />
                       )}
-                      {can('tab.customer_tiers', 'view') && (
+                      {(can('tab.customer_tiers', 'view') || featureOverrides['tab.customer_tiers'] === 'off') && (
                         <SubSidebarItem
                           label="ระดับลูกค้า"
                           active={activeTab === 'customer-tiers'}
@@ -1304,6 +1441,7 @@ const AppContent = () => {
                           }}
                           isCollapsed={false}
                           isFlyout={true}
+                          isWarning={featureOverrides['tab.customer_tiers'] === 'off'}
                         />
                       )}
                     </div>
@@ -1331,13 +1469,13 @@ const AppContent = () => {
                       setMobileStockExpanded(prev => !prev);
                     } else {
                       const firstStock =
-                        can('tab.stock_dashboard', 'view')
+                        (can('tab.stock_dashboard', 'view') || featureOverrides['tab.stock_dashboard'] === 'off')
                           ? 'stock-dashboard'
-                          : can('tab.confirm_orders', 'view')
+                          : (can('tab.confirm_orders', 'view') || featureOverrides['tab.confirm_orders'] === 'off')
                             ? 'confirm-orders'
-                            : can('tab.warehouses', 'view')
+                            : (can('tab.warehouses', 'view') || featureOverrides['tab.warehouses'] === 'off')
                               ? 'warehouses'
-                              : can('tab.inventory_receipts', 'view')
+                              : (can('tab.inventory_receipts', 'view') || featureOverrides['tab.inventory_receipts'] === 'off')
                                 ? 'inventory-receipts'
                                 : null;
                       if (firstStock && activeTab !== firstStock) setActiveTab(firstStock);
@@ -1346,23 +1484,57 @@ const AppContent = () => {
                   isCollapsed={!isSidebarOpen}
                   hasSubmenu={true}
                   isOpen={isMobile ? mobileStockExpanded : isStockHovered}
+                  isWarning={
+                    featureOverrides['tab.stock_dashboard'] === 'off' ||
+                    featureOverrides['tab.confirm_orders'] === 'off' ||
+                    featureOverrides['tab.warehouses'] === 'off' ||
+                    featureOverrides['tab.inventory_receipts'] === 'off'
+                  }
                 />
               </div>
 
               {/* Mobile inline submenu for Stock */}
               {isMobile && mobileStockExpanded && isSidebarOpen && (
                 <div className="pl-2 pr-1 space-y-0.5 animate-in fade-in slide-in-from-top-1 duration-150">
-                  {can('tab.stock_dashboard', 'view') && (
-                    <SubSidebarItem label="Stock Dashboard" active={activeTab === 'stock-dashboard'} onClick={() => navigateAndCloseMobile('stock-dashboard')} isCollapsed={false} isFlyout={false} />
+                  {(can('tab.stock_dashboard', 'view') || featureOverrides['tab.stock_dashboard'] === 'off') && (
+                    <SubSidebarItem 
+                      label="Stock Dashboard" 
+                      active={activeTab === 'stock-dashboard'} 
+                      onClick={() => navigateAndCloseMobile('stock-dashboard')} 
+                      isCollapsed={false} 
+                      isFlyout={false}
+                      isWarning={featureOverrides['tab.stock_dashboard'] === 'off'}
+                    />
                   )}
-                  {can('tab.confirm_orders', 'view') && (
-                    <SubSidebarItem label="ยืนยันและแบ่งส่ง" active={activeTab === 'confirm-orders'} onClick={() => navigateAndCloseMobile('confirm-orders')} isCollapsed={false} isFlyout={false} />
+                  {(can('tab.confirm_orders', 'view') || featureOverrides['tab.confirm_orders'] === 'off') && (
+                    <SubSidebarItem 
+                      label="ยืนยันและแบ่งส่ง" 
+                      active={activeTab === 'confirm-orders'} 
+                      onClick={() => navigateAndCloseMobile('confirm-orders')} 
+                      isCollapsed={false} 
+                      isFlyout={false}
+                      isWarning={featureOverrides['tab.confirm_orders'] === 'off'}
+                    />
                   )}
-                  {can('tab.warehouses', 'view') && (
-                    <SubSidebarItem label="จัดการคลัง" active={activeTab === 'warehouses'} onClick={() => navigateAndCloseMobile('warehouses')} isCollapsed={false} isFlyout={false} />
+                  {(can('tab.warehouses', 'view') || featureOverrides['tab.warehouses'] === 'off') && (
+                    <SubSidebarItem 
+                      label="จัดการคลัง" 
+                      active={activeTab === 'warehouses'} 
+                      onClick={() => navigateAndCloseMobile('warehouses')} 
+                      isCollapsed={false} 
+                      isFlyout={false}
+                      isWarning={featureOverrides['tab.warehouses'] === 'off'}
+                    />
                   )}
-                  {can('tab.inventory_receipts', 'view') && (
-                    <SubSidebarItem label="ประวัติรับสินค้า" active={activeTab === 'inventory-receipts'} onClick={() => navigateAndCloseMobile('inventory-receipts')} isCollapsed={false} isFlyout={false} />
+                  {(can('tab.inventory_receipts', 'view') || featureOverrides['tab.inventory_receipts'] === 'off') && (
+                    <SubSidebarItem 
+                      label="ประวัติรับสินค้า" 
+                      active={activeTab === 'inventory-receipts'} 
+                      onClick={() => navigateAndCloseMobile('inventory-receipts')} 
+                      isCollapsed={false} 
+                      isFlyout={false}
+                      isWarning={featureOverrides['tab.inventory_receipts'] === 'off'}
+                    />
                   )}
                 </div>
               )}
@@ -1493,7 +1665,7 @@ const AppContent = () => {
                       ] as const;
                       for (const tab of logisticsEntryOrder) {
                         const f = TAB_TO_PRIMARY_FEATURE[tab];
-                        if (f && can(f, 'view')) {
+                        if (f && (can(f, 'view') || featureOverrides[f] === 'off')) {
                           setActiveTab(tab);
                           return;
                         }
@@ -1503,6 +1675,18 @@ const AppContent = () => {
                   isCollapsed={!isSidebarOpen}
                   hasSubmenu={true}
                   isOpen={isMobile ? mobileLogisticsExpanded : isLogisticsHovered}
+                  isWarning={
+                    featureOverrides['tab.dashboard'] === 'off' ||
+                    featureOverrides['tab.vehicles'] === 'off' ||
+                    featureOverrides['tab.maintenance'] === 'off' ||
+                    featureOverrides['tab.triplogs'] === 'off' ||
+                    featureOverrides['tab.fuellogs'] === 'off' ||
+                    featureOverrides['tab.approvals'] === 'off' ||
+                    featureOverrides['tab.daily_summary'] === 'off' ||
+                    featureOverrides['tab.delivery_trips'] === 'off' ||
+                    featureOverrides['tab.packing_simulation'] === 'off' ||
+                    featureOverrides['tab.pending_orders'] === 'off'
+                  }
                 />
               </div>
 
@@ -1515,6 +1699,7 @@ const AppContent = () => {
                     onClick={() => navigateAndCloseMobile('triplogs', () => setTripLogView(isDriver ? 'form' : 'list'))}
                     isCollapsed={false}
                     isFlyout={false}
+                    isWarning={featureOverrides['tab.triplogs'] === 'off'}
                   />
                   <SubSidebarItem
                     label="บันทึกการเติมน้ำมัน"
@@ -1522,6 +1707,7 @@ const AppContent = () => {
                     onClick={() => navigateAndCloseMobile('fuellogs', () => setFuelLogView(isDriver ? 'form' : 'list'))}
                     isCollapsed={false}
                     isFlyout={false}
+                    isWarning={featureOverrides['tab.fuellogs'] === 'off'}
                   />
                   <SubSidebarItem
                     label="แจ้งซ่อม / การซ่อมบำรุง"
@@ -1529,6 +1715,7 @@ const AppContent = () => {
                     onClick={() => navigateAndCloseMobile('maintenance', () => setTicketView(isDriver ? 'form' : 'list'))}
                     isCollapsed={false}
                     isFlyout={false}
+                    isWarning={featureOverrides['tab.maintenance'] === 'off'}
                   />
                   <SubSidebarItem
                     label="จำลองจัดเรียง"
@@ -1536,59 +1723,66 @@ const AppContent = () => {
                     onClick={() => navigateAndCloseMobile('packing-simulation')}
                     isCollapsed={false}
                     isFlyout={false}
+                    isWarning={featureOverrides['tab.packing_simulation'] === 'off'}
                   />
-                  {!isDriver && can('tab.dashboard', 'view') && (
+                  {!isDriver && (can('tab.dashboard', 'view') || featureOverrides['tab.dashboard'] === 'off') && (
                     <SubSidebarItem
                       label="เดชบอร์ด(ฝ่ายขนส่ง)"
                       active={activeTab === 'dashboard'}
                       onClick={() => navigateAndCloseMobile('dashboard')}
                       isCollapsed={false}
                       isFlyout={false}
+                      isWarning={featureOverrides['tab.dashboard'] === 'off'}
                     />
                   )}
-                  {!isDriver && can('tab.vehicles', 'view') && (
+                  {!isDriver && (can('tab.vehicles', 'view') || featureOverrides['tab.vehicles'] === 'off') && (
                     <SubSidebarItem
                       label="ยานพาหนะ"
                       active={activeTab === 'vehicles'}
                       onClick={() => navigateAndCloseMobile('vehicles')}
                       isCollapsed={false}
                       isFlyout={false}
+                      isWarning={featureOverrides['tab.vehicles'] === 'off'}
                     />
                   )}
-                  {can('tab.approvals', 'view') && (
+                  {(can('tab.approvals', 'view') || featureOverrides['tab.approvals'] === 'off') && (
                     <SubSidebarItem
                       label="ภาพรวมการอนุมัติ"
                       active={activeTab === 'approvals'}
                       onClick={() => navigateAndCloseMobile('approvals')}
                       isCollapsed={false}
                       isFlyout={false}
+                      isWarning={featureOverrides['tab.approvals'] === 'off'}
                     />
                   )}
-                  {!isDriver && can('tab.daily_summary', 'view') && (
+                  {!isDriver && (can('tab.daily_summary', 'view') || featureOverrides['tab.daily_summary'] === 'off') && (
                     <SubSidebarItem
                       label="สรุปการใช้รถรายวัน"
                       active={activeTab === 'daily-summary'}
                       onClick={() => navigateAndCloseMobile('daily-summary')}
                       isCollapsed={false}
                       isFlyout={false}
+                      isWarning={featureOverrides['tab.daily_summary'] === 'off'}
                     />
                   )}
-                  {!isDriver && can('tab.delivery_trips', 'view') && (
+                  {!isDriver && (can('tab.delivery_trips', 'view') || featureOverrides['tab.delivery_trips'] === 'off') && (
                     <SubSidebarItem
                       label="ทริปส่งสินค้า"
                       active={activeTab === 'delivery-trips'}
                       onClick={() => navigateAndCloseMobile('delivery-trips', () => { setDeliveryTripView('list'); setSelectedDeliveryTripId(null); })}
                       isCollapsed={false}
                       isFlyout={false}
+                      isWarning={featureOverrides['tab.delivery_trips'] === 'off'}
                     />
                   )}
-                  {!isDriver && can('tab.pending_orders', 'view') && (
+                  {!isDriver && (can('tab.pending_orders', 'view') || featureOverrides['tab.pending_orders'] === 'off') && (
                     <SubSidebarItem
                       label="ออเดอร์รอจัดส่ง"
                       active={activeTab === 'pending-orders'}
                       onClick={() => navigateAndCloseMobile('pending-orders')}
                       isCollapsed={false}
                       isFlyout={false}
+                      isWarning={featureOverrides['tab.pending_orders'] === 'off'}
                     />
                   )}
                 </div>
@@ -2032,13 +2226,14 @@ const AppContent = () => {
           )}
 
           {/* Database Explorer */}
-          {can('tab.db_explorer', 'view') && (
+          {(can('tab.db_explorer', 'view') || featureOverrides['tab.db_explorer'] === 'off') && (
             <SidebarItem
               icon={Database}
               label={isSidebarOpen ? "เมนูหลังบ้าน (DB)" : ""}
               active={activeTab === 'db-explorer'}
               onClick={() => navigateAndCloseMobile('db-explorer')}
               isCollapsed={!isSidebarOpen}
+              isWarning={featureOverrides['tab.db_explorer'] === 'off'}
             />
           )}
           {/* Settings Menu with Submenu */}
@@ -2065,35 +2260,45 @@ const AppContent = () => {
                 isCollapsed={!isSidebarOpen}
                 hasSubmenu={true}
                 isOpen={isMobile ? mobileSettingsExpanded : isSettingsHovered}
+                isWarning={
+                  featureOverrides['tab.profile'] === 'off' ||
+                  featureOverrides['tab.settings'] === 'off' ||
+                  featureOverrides['tab.role_feature_access'] === 'off'
+                }
               />
             </div>
 
             {/* Mobile inline submenu for Settings */}
             {isMobile && mobileSettingsExpanded && isSidebarOpen && (
               <div className="pl-2 pr-1 space-y-0.5 animate-in fade-in slide-in-from-top-1 duration-150">
-                <SubSidebarItem
-                  label="โปรไฟล์"
-                  active={activeTab === 'profile'}
-                  onClick={() => navigateAndCloseMobile('profile')}
-                  isCollapsed={false}
-                  isFlyout={false}
-                />
-                {can('tab.role_feature_access', 'view') && (
+                {(can('tab.profile', 'view') || featureOverrides['tab.profile'] === 'off') && (
+                  <SubSidebarItem
+                    label="โปรไฟล์"
+                    active={activeTab === 'profile'}
+                    onClick={() => navigateAndCloseMobile('profile')}
+                    isCollapsed={false}
+                    isFlyout={false}
+                    isWarning={featureOverrides['tab.profile'] === 'off'}
+                  />
+                )}
+                {(can('tab.role_feature_access', 'view') || featureOverrides['tab.role_feature_access'] === 'off') && (
                   <SubSidebarItem
                     label="สิทธิ์ตามฟีเจอร์"
                     active={activeTab === 'role-feature-access'}
                     onClick={() => navigateAndCloseMobile('role-feature-access')}
                     isCollapsed={false}
                     isFlyout={false}
+                    isWarning={featureOverrides['tab.role_feature_access'] === 'off'}
                   />
                 )}
-                {can('tab.settings', 'view') && (
+                {(can('tab.settings', 'view') || featureOverrides['tab.settings'] === 'off') && (
                   <SubSidebarItem
                     label="ตั้งค่าแจ้งเตือน"
                     active={activeTab === 'settings'}
                     onClick={() => navigateAndCloseMobile('settings')}
                     isCollapsed={false}
                     isFlyout={false}
+                    isWarning={featureOverrides['tab.settings'] === 'off'}
                   />
                 )}
               </div>
@@ -2410,8 +2615,22 @@ const AppContent = () => {
               <span>กำลังโหลด...</span>
             </div>
           }>
-            {activeTab === 'dashboard' ? (
-              <DashboardView
+            {(() => {
+              const featureKey = TAB_TO_PRIMARY_FEATURE[activeTab];
+              if (featureKey && featureOverrides[featureKey] === 'off') {
+                return (
+                  <MaintenanceView 
+                    featureName={activeTab} 
+                    onContact={() => {
+                      // Optional: handle contact or refresh
+                    }}
+                  />
+                );
+              }
+              return null;
+            })() || (
+              activeTab === 'dashboard' ? (
+                <DashboardView
                 onNavigateToVehicle={(vehicleId) => {
                   setActiveTab('vehicles');
                   setSelectedVehicleId(vehicleId);
@@ -3013,7 +3232,7 @@ const AppContent = () => {
                 <h3 className="text-xl font-medium text-slate-600 dark:text-slate-300">กำลังพัฒนา</h3>
                 <p>โมดูล {activeTab} กำลังอยู่ระหว่างการพัฒนา</p>
               </div>
-            )}
+            ))}
           </Suspense>
         </div>
 

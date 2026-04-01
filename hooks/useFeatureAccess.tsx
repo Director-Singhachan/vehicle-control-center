@@ -20,6 +20,7 @@ import {
   resolveAccessLevel,
   TAB_TO_PRIMARY_FEATURE,
 } from '../types/featureAccess';
+import { useDebugStore } from '../stores/debugStore';
 
 /** สิทธิ์จากเมทริกซ์ (role_feature_access + built-in) ใช้กันเมนู/หน้าในแอป — ไม่ได้แทน RLS บนตารางธุรกรรม */
 export interface UseFeatureAccessResult {
@@ -98,8 +99,15 @@ function useFeatureAccessState(): UseFeatureAccessResult {
     [loading, dbMap],
   );
 
+  const { featureOverrides } = useDebugStore();
+
   const levelFor = useCallback(
     (feature: FeatureKey): AccessLevel => {
+      // DEBUG OVERRIDES
+      const override = featureOverrides[feature];
+      if (override === 'on') return 'manage';
+      if (override === 'off') return 'none';
+
       if (fetchFailed && appRole && !isPrivilegedRole(appRole)) {
         if (FEATURE_MATRIX_SURVIVAL_KEYS.includes(feature)) {
           return builtInLevel(appRole, feature);
@@ -110,7 +118,7 @@ function useFeatureAccessState(): UseFeatureAccessResult {
         roleHasDbCustomization,
       });
     },
-    [appRole, dbMap, fetchFailed, roleHasDbCustomization],
+    [appRole, dbMap, fetchFailed, roleHasDbCustomization, featureOverrides],
   );
 
   const can = useCallback(

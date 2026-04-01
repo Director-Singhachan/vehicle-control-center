@@ -8,46 +8,41 @@ interface FeatureFlags {
   debugApiLogs: boolean;
 }
 
+export type OverrideState = 'default' | 'on' | 'off';
+
 interface DebugState {
-  featureFlags: FeatureFlags;
+  featureOverrides: Record<string, OverrideState>;
   panelTab: 'role' | 'inspector' | 'jump' | 'flags' | 'system';
   showBanner: boolean;
   
   // Actions
-  toggleFlag: (key: keyof FeatureFlags) => void;
+  setFeatureOverride: (key: string, state: OverrideState) => void;
   setPanelTab: (tab: DebugState['panelTab']) => void;
   setShowBanner: (show: boolean) => void;
-  resetFlags: () => void;
+  resetOverrides: () => void;
 }
-
-const DEFAULT_FLAGS: FeatureFlags = {
-  enableBetaV2: false,
-  showPerformanceStats: false,
-  useExperimentalSidebar: false,
-  debugApiLogs: false,
-};
 
 export const useDebugStore = create<DebugState>()(
   persist(
     (set) => ({
-      featureFlags: DEFAULT_FLAGS,
+      featureOverrides: {},
       panelTab: 'role',
       showBanner: true,
 
-      toggleFlag: (key) => set((state) => ({
-        featureFlags: {
-          ...state.featureFlags,
-          [key]: !state.featureFlags[key],
+      setFeatureOverride: (key, state) => set((s) => ({
+        featureOverrides: {
+          ...s.featureOverrides,
+          [key]: state,
         }
       })),
 
       setPanelTab: (panelTab) => set({ panelTab }),
       setShowBanner: (showBanner) => set({ showBanner }),
       
-      resetFlags: () => set({ featureFlags: DEFAULT_FLAGS }),
+      resetOverrides: () => set({ featureOverrides: {} }),
     }),
     {
-      name: 'debug-storage',
+      name: 'debug-storage-v2', // Increment version to clear old flags
     }
   )
 );
