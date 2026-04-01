@@ -4,6 +4,56 @@ import { tripCrudService } from './tripCrudService';
 import type { DeliveryTripItemChangeWithDetails } from './types';
 import type { TripEditHistory } from '../tripLogService';
 
+/** หน่วยจาก order_items ของออเดอร์ที่ผูกทริป — ใช้เมื่อ delivery_trip_items.unit ว่างหรือ view ใช้แค่ products.unit */
+async function fetchOrderLineUnitsForTrip(tripId: string): Promise<{
+  byStoreProductBonus: Map<string, string>;
+  /** หน่วยรวมที่ร้าน+SKU (ไม่แยกโบนัส) — กันหาไม่เจอเมื่อ is_bonus บนทริปกับออเดอร์ไม่ตรงกัน */
+  byStoreProduct: Map<string, string>;
+  byProductId: Map<string, string>;
+}> {
+  const byStoreProductBonus = new Map<string, string>();
+  const byStoreProduct = new Map<string, string>();
+  const byProductId = new Map<string, string>();
+
+  const { data: tripOrders } = await supabase
+    .from('orders')
+    .select('id, store_id')
+    .eq('delivery_trip_id', tripId);
+
+  if (!tripOrders?.length) {
+    return { byStoreProductBonus, byStoreProduct, byProductId };
+  }
+
+  const storeByOrderId = new Map(tripOrders.map((o) => [o.id, o.store_id as string]));
+  const orderIds = tripOrders.map((o) => o.id);
+  const { data: oiRows } = await supabase
+    .from('order_items')
+    .select('order_id, product_id, is_bonus, unit, fulfillment_method')
+    .in('order_id', orderIds);
+
+  for (const row of oiRows || []) {
+    if ((row.fulfillment_method ?? 'delivery') === 'pickup') continue;
+    const storeId = storeByOrderId.get(row.order_id);
+    if (!storeId || !row.product_id) continue;
+    const u = row.unit != null && String(row.unit).trim() !== '' ? String(row.unit).trim() : '';
+    if (!u) continue;
+    const bonus = row.is_bonus ? 'bonus' : 'normal';
+    const key = `${storeId}_${row.product_id}_${bonus}`;
+    if (!byStoreProductBonus.has(key)) {
+      byStoreProductBonus.set(key, u);
+    }
+    const storeProductKey = `${storeId}_${row.product_id}`;
+    if (!byStoreProduct.has(storeProductKey)) {
+      byStoreProduct.set(storeProductKey, u);
+    }
+    if (!byProductId.has(row.product_id)) {
+      byProductId.set(row.product_id, u);
+    }
+  }
+
+  return { byStoreProductBonus, byStoreProduct, byProductId };
+}
+
 export const tripHistoryAggregatesService = {
   getAggregatedProducts: async (tripId: string): Promise<Array<{
     product_id: string;
@@ -23,6 +73,11 @@ export const tripHistoryAggregatesService = {
   }>> => {
     const trip = await tripCrudService.getById(tripId);
     if (!trip || !trip.stores) return [];
+
+    const {
+      byStoreProductBonus: orderUnitByStoreProductBonus,
+      byStoreProduct: orderUnitByStoreProduct,
+    } = await fetchOrderLineUnitsForTrip(tripId);
 
     const productMap = new Map<string, {
       product_id: string;
@@ -48,17 +103,31 @@ export const tripHistoryAggregatesService = {
         const productId = item.product.id;
         const pickedUp = Number((item as any).quantity_picked_up_at_store ?? 0);
         const toDeliver = Number((item as any).quantity_to_deliver ?? (Number(item.quantity) - pickedUp));
-        const lineUnit =
-          ((item as { unit?: string | null }).unit != null &&
-          String((item as { unit?: string | null }).unit).trim() !== ''
-            ? String((item as { unit?: string | null }).unit).trim()
-            : '') || item.product.unit || '';
+        const tripLineUnitRaw = (item as { unit?: string | null }).unit;
+        const tripLineUnit =
+          tripLineUnitRaw != null && String(tripLineUnitRaw).trim() !== ''
+            ? String(tripLineUnitRaw).trim()
+            : '';
+        const isBonus = (item as { is_bonus?: boolean }).is_bonus ? 'bonus' : 'normal';
+        const orderLineUnit =
+          orderUnitByStoreProductBonus.get(`${store.store_id}_${productId}_${isBonus}`) ||
+          orderUnitByStoreProduct.get(`${store.store_id}_${productId}`) ||
+          '';
+        const masterUnit = item.product.unit || '';
+        const rowUnit = tripLineUnit || orderLineUnit || masterUnit || '';
+
         const existing = productMap.get(productId);
         if (existing) {
           existing.total_quantity += toDeliver;
           existing.total_picked_up_at_store += pickedUp;
-          if (!existing.unit && lineUnit) {
-            existing.unit = lineUnit;
+          if (!existing.unit) {
+            existing.unit = rowUnit;
+          } else if (
+            (tripLineUnit || orderLineUnit) &&
+            existing.unit === masterUnit &&
+            rowUnit !== existing.unit
+          ) {
+            existing.unit = tripLineUnit || orderLineUnit;
           }
           existing.stores.push({
             store_id: store.store_id,
@@ -73,7 +142,7 @@ export const tripHistoryAggregatesService = {
             product_code: item.product.product_code,
             product_name: item.product.product_name,
             category: item.product.category,
-            unit: lineUnit || item.product.unit,
+            unit: rowUnit,
             total_quantity: toDeliver,
             total_picked_up_at_store: pickedUp,
             stores: [{
@@ -237,17 +306,26 @@ export const tripHistoryAggregatesService = {
       console.error('[deliveryTripService] Error fetching product distribution:', error);
       throw error;
     }
-    return (data || []).map((item: any) => ({
+
+    const { byProductId: orderUnitByProduct } = await fetchOrderLineUnitsForTrip(tripId);
+
+    return (data || []).map((item: any) => {
+      const viewUnit = item.unit != null ? String(item.unit) : '';
+      const lineUnit = orderUnitByProduct.get(item.product_id) || '';
+      const unit = lineUnit || viewUnit || '';
+
+      return {
       product_id: item.product_id,
       product_code: item.product_code,
       product_name: item.product_name,
       category: item.category,
-      unit: item.unit,
+      unit,
       total_quantity: parseFloat(item.total_quantity || '0'),
       total_staff_count: parseFloat(item.total_staff_count || '0'),
       quantity_per_staff: parseFloat(item.quantity_per_staff || '0'),
       store_count: parseInt(item.store_count || '0', 10),
       stores_detail: (item.stores_detail || []) as Array<{ store_id: string; store_name: string | null; store_code: string | null; quantity: number }>,
-    }));
+    };
+    });
   },
 };
