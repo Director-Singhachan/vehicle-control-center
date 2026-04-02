@@ -1252,7 +1252,7 @@ export const tripMetricsService = {
     // ดึง trip items
     const { data: items, error: itemsError } = await supabase
       .from('delivery_trip_items')
-      .select('id, delivery_trip_store_id, product_id, quantity, selected_pallet_config_id, is_bonus')
+      .select('id, delivery_trip_store_id, product_id, quantity, selected_pallet_config_id, is_bonus, unit')
       .in('delivery_trip_store_id', storeIds);
 
     if (itemsError) {
@@ -1356,7 +1356,13 @@ export const tripMetricsService = {
         is_liquid: product?.is_liquid || false,
         requires_temperature: product?.requires_temperature ?? null,
         stacking_limit: product?.stacking_limit ?? null,
-        packaging_type: product?.packaging_type ?? null,
+        packaging_type:
+          ((item as { unit?: string | null }).unit != null &&
+          String((item as { unit?: string | null }).unit).trim() !== ''
+            ? String((item as { unit?: string | null }).unit).trim()
+            : null) ||
+          product?.packaging_type ||
+          null,
         uses_pallet: product?.uses_pallet || false,
         selected_pallet_config_id: item.selected_pallet_config_id ?? null,
         pallet_config: palletConfig,

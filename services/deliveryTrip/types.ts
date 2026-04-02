@@ -114,6 +114,8 @@ export interface CreateDeliveryTripData {
       notes?: string;
       is_bonus?: boolean;
       selected_pallet_config_id?: string;
+      /** หน่วยจากบรรทัดออเดอร์ (เช่น SML); ถ้าไม่ส่งใช้ products.unit ตอนแสดง */
+      unit?: string | null;
     }>;
   }>;
 }
@@ -141,6 +143,8 @@ export interface UpdateDeliveryTripData {
       notes?: string;
       is_bonus?: boolean;
       selected_pallet_config_id?: string;
+      /** หน่วยจากบรรทัดออเดอร์ (เช่น SML); ถ้าไม่ส่งใช้ products.unit ตอนแสดง */
+      unit?: string | null;
     }>;
   }>;
   helpers?: string[];

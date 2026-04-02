@@ -297,11 +297,11 @@ export const TripCard = memo(({
                                                                 </div>
                                                                 <div className="text-right ml-4 flex-shrink-0">
                                                                     <span className="text-gray-700 dark:text-gray-300 font-semibold text-sm">
-                                                                        {Math.floor(Number(item.quantity) || 0).toLocaleString('th-TH', { maximumFractionDigits: 0 })} {item.product?.unit || 'ชิ้น'}
+                                                                        {Math.floor(Number(item.quantity) || 0).toLocaleString('th-TH', { maximumFractionDigits: 0 })} {item.unit || item.product?.unit || 'ชิ้น'}
                                                                     </span>
                                                                     {(Number(item.quantity_picked_up_at_store) || 0) > 0 && (
                                                                         <p className="text-xs text-amber-600 dark:text-amber-400 mt-0.5">
-                                                                            รับที่ร้านแล้ว {Math.floor(Number(item.quantity_picked_up_at_store)).toLocaleString('th-TH', { maximumFractionDigits: 0 })} {item.product?.unit || 'ชิ้น'}
+                                                                            รับที่ร้านแล้ว {Math.floor(Number(item.quantity_picked_up_at_store)).toLocaleString('th-TH', { maximumFractionDigits: 0 })} {item.unit || item.product?.unit || 'ชิ้น'}
                                                                         </p>
                                                                     )}
                                                                     {item.product?.base_price && (
@@ -589,11 +589,11 @@ export const StoreCard = memo(({ entry, expandedStores, updatingStatus, onToggle
                                         </div>
                                         <div className="text-right ml-4 flex-shrink-0">
                                             <span className="text-gray-900 dark:text-white font-bold text-sm">
-                                                {Math.floor(si.totalQuantity).toLocaleString('th-TH', { maximumFractionDigits: 0 })} {si.product?.unit || 'ชิ้น'}
+                                                {Math.floor(si.totalQuantity).toLocaleString('th-TH', { maximumFractionDigits: 0 })} {si.line_unit || si.product?.unit || 'ชิ้น'}
                                             </span>
                                             {si.totalPickedUp > 0 && (
                                                 <p className="text-xs text-amber-600 dark:text-amber-400 mt-0.5">
-                                                    รับที่ร้านแล้ว {si.totalPickedUp.toLocaleString('th-TH', { maximumFractionDigits: 0 })} {si.product?.unit || 'ชิ้น'}
+                                                    รับที่ร้านแล้ว {si.totalPickedUp.toLocaleString('th-TH', { maximumFractionDigits: 0 })} {si.line_unit || si.product?.unit || 'ชิ้น'}
                                                 </p>
                                             )}
                                         </div>

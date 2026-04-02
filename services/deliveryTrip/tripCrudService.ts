@@ -211,7 +211,7 @@ export const tripCrudService = {
       if (tripStoreIds.length > 0) {
         const { data: tripItems, error: itemsError } = await supabase
           .from('delivery_trip_items')
-          .select('id, delivery_trip_store_id, product_id, quantity, quantity_picked_up_at_store, notes, is_bonus')
+          .select('id, delivery_trip_store_id, product_id, quantity, quantity_picked_up_at_store, notes, is_bonus, unit')
           .in('delivery_trip_store_id', tripStoreIds);
 
         if (itemsError) {
@@ -706,6 +706,7 @@ export const tripCrudService = {
             notes: item.notes,
             is_bonus: item.is_bonus || false,
             selected_pallet_config_id: item.selected_pallet_config_id || null,
+            unit: item.unit != null && String(item.unit).trim() !== '' ? String(item.unit).trim() : null,
           }));
 
           const { error: itemsError } = await supabase
@@ -751,6 +752,7 @@ export const tripCrudService = {
           notes: item.notes,
           is_bonus: item.is_bonus || false,
           selected_pallet_config_id: item.selected_pallet_config_id || null,
+          unit: item.unit != null && String(item.unit).trim() !== '' ? String(item.unit).trim() : null,
         }));
 
         const { error: itemsError } = await supabase
@@ -1105,7 +1107,7 @@ export const tripCrudService = {
 
       const { data: existingItems, error: existingItemsError } = existingStoreIds.length > 0 ? await supabase
         .from('delivery_trip_items')
-        .select('id, delivery_trip_store_id, product_id, quantity, notes, is_bonus, selected_pallet_config_id')
+        .select('id, delivery_trip_store_id, product_id, quantity, notes, is_bonus, selected_pallet_config_id, unit')
         .in('delivery_trip_store_id', existingStoreIds) : { data: [] as any[], error: null };
 
       if (existingItemsError) {
@@ -1278,6 +1280,7 @@ export const tripCrudService = {
           notes?: string | null;
           is_bonus: boolean;
           selected_pallet_config_id?: string | null;
+          unit?: string | null;
         };
 
         const existingItemsForStore: TripItemRow[] = existingStore
@@ -1288,7 +1291,7 @@ export const tripCrudService = {
           existingItemsForStore.map(item => [`${item.product_id}-${item.is_bonus || false}`, item])
         );
 
-        const newItemsMap = new Map<string, { product_id: string; quantity: number; quantity_picked_up_at_store?: number; notes?: string; is_bonus: boolean }>();
+        const newItemsMap = new Map<string, { product_id: string; quantity: number; quantity_picked_up_at_store?: number; notes?: string; is_bonus: boolean; unit?: string | null }>();
         for (const item of storeData.items || []) {
           newItemsMap.set(`${item.product_id}-${item.is_bonus || false}`, {
             product_id: item.product_id,
@@ -1296,6 +1299,7 @@ export const tripCrudService = {
             quantity_picked_up_at_store: item.quantity_picked_up_at_store,
             notes: item.notes,
             is_bonus: item.is_bonus || false,
+            unit: item.unit != null && String(item.unit).trim() !== '' ? String(item.unit).trim() : null,
           });
         }
 
@@ -1348,6 +1352,7 @@ export const tripCrudService = {
                 notes: item.notes,
                 is_bonus: item.is_bonus || false,
                 selected_pallet_config_id: item.selected_pallet_config_id || null,
+                unit: item.unit != null && String(item.unit).trim() !== '' ? String(item.unit).trim() : null,
               })
               .select();
 
@@ -1376,11 +1381,20 @@ export const tripCrudService = {
               ? Number(item.quantity_picked_up_at_store)
               : oldPickedUp;
 
+            const newUnit =
+              item.unit !== undefined
+                ? item.unit != null && String(item.unit).trim() !== ''
+                  ? String(item.unit).trim()
+                  : null
+                : undefined;
+            const oldUnit = (existingItem as TripItemRow).unit ?? null;
+
             const needsUpdate = oldQty !== newQty ||
               oldPickedUp !== newPickedUp ||
               (item.notes !== undefined) ||
               (item.selected_pallet_config_id !== undefined &&
-                item.selected_pallet_config_id !== (existingItem as any).selected_pallet_config_id);
+                item.selected_pallet_config_id !== (existingItem as any).selected_pallet_config_id) ||
+              (newUnit !== undefined && newUnit !== oldUnit);
 
             if (needsUpdate) {
               const { error: updateItemError } = await supabase
@@ -1390,6 +1404,7 @@ export const tripCrudService = {
                   quantity_picked_up_at_store: newPickedUp,
                   notes: item.notes,
                   selected_pallet_config_id: item.selected_pallet_config_id || null,
+                  ...(newUnit !== undefined ? { unit: newUnit } : {}),
                 })
                 .eq('id', existingItem.id);
 

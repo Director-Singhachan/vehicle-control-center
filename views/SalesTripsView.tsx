@@ -22,6 +22,8 @@ type ViewMode = 'by_trip' | 'by_store';
 interface SummaryItem {
   product_id: string;
   product: any;
+  /** หน่วยจากบรรทัดทริป/ออเดอร์ (delivery_trip_items.unit) */
+  line_unit?: string | null;
   totalQuantity: number;
   totalPickedUp: number; // รับที่ร้านแล้ว (จำนวนเต็ม)
   is_bonus: boolean;
@@ -223,11 +225,11 @@ const StoreCard = memo(
                     </div>
                     <div className="text-right ml-4 flex-shrink-0">
                       <span className="text-gray-900 dark:text-white font-bold text-sm">
-                        {Math.floor(si.totalQuantity).toLocaleString('th-TH', { maximumFractionDigits: 0 })} {si.product?.unit || 'ชิ้น'}
+                        {Math.floor(si.totalQuantity).toLocaleString('th-TH', { maximumFractionDigits: 0 })} {si.line_unit || si.product?.unit || 'ชิ้น'}
                       </span>
                       {si.totalPickedUp > 0 && (
                         <p className="text-xs text-amber-600 dark:text-amber-400 mt-0.5">
-                          รับที่ร้านแล้ว {si.totalPickedUp.toLocaleString('th-TH', { maximumFractionDigits: 0 })} {si.product?.unit || 'ชิ้น'}
+                          รับที่ร้านแล้ว {si.totalPickedUp.toLocaleString('th-TH', { maximumFractionDigits: 0 })} {si.line_unit || si.product?.unit || 'ชิ้น'}
                         </p>
                       )}
                     </div>
@@ -506,9 +508,14 @@ export function SalesTripsView() {
       for (const item of entry.allItems) {
         const key = `${item.product_id}_${item.is_bonus ? 'bonus' : 'normal'}`;
         if (!productMap.has(key)) {
+          const lu =
+            item.unit != null && String(item.unit).trim() !== ''
+              ? String(item.unit).trim()
+              : item.product?.unit ?? null;
           productMap.set(key, {
             product_id: item.product_id,
             product: item.product,
+            line_unit: lu,
             totalQuantity: 0,
             totalPickedUp: 0,
             is_bonus: !!item.is_bonus,
@@ -518,6 +525,13 @@ export function SalesTripsView() {
         const summary = productMap.get(key)!;
         const qty = Number(item.quantity) || 0;
         const pickedUp = Math.floor(Number(item.quantity_picked_up_at_store) || 0);
+        if (!summary.line_unit) {
+          const lu =
+            item.unit != null && String(item.unit).trim() !== ''
+              ? String(item.unit).trim()
+              : item.product?.unit ?? null;
+          if (lu) summary.line_unit = lu;
+        }
         summary.totalQuantity += qty;
         summary.totalPickedUp += pickedUp;
         summary.breakdown.push({
@@ -1210,7 +1224,7 @@ export function SalesTripsView() {
                                     const key = `${item.product_id}_${item.is_bonus ? 'bonus' : 'normal'}`;
                                     const ctx = orderQuantitiesByProduct.get(key);
                                     const pickedUp = ctx?.pickedUp ?? Math.floor(Number(item.quantity_picked_up_at_store) || 0);
-                                    const unit = item.product?.unit || 'ชิ้น';
+                                    const unit = item.unit || item.product?.unit || 'ชิ้น';
                                     if (pickedUp > 0) {
                                       return (
                                         <span className="text-amber-600 dark:text-amber-400 font-medium" title="ลูกค้ามารับไปที่หน้าร้านแล้ว">
@@ -1222,7 +1236,7 @@ export function SalesTripsView() {
                                   })()}
                                 </td>
                                 <td className="py-3 px-3 text-sm text-right text-gray-600 dark:text-gray-400">
-                                  {item.product?.unit || 'ชิ้น'}
+                                  {item.unit || item.product?.unit || 'ชิ้น'}
                                 </td>
                                 {item.product?.base_price ? (
                                   <td className="py-3 px-3 text-sm text-right text-gray-600 dark:text-gray-400">
@@ -1595,14 +1609,14 @@ export function SalesTripsView() {
                                             {si.totalPickedUp.toLocaleString('th-TH', {
                                               maximumFractionDigits: 0,
                                             })}{' '}
-                                            {si.product?.unit || 'ชิ้น'}
+                                            {si.line_unit || si.product?.unit || 'ชิ้น'}
                                           </span>
                                         ) : (
                                           <span className="text-gray-400 dark:text-gray-500">—</span>
                                         )}
                                       </td>
                                       <td className="py-3 px-3 text-sm text-right text-gray-600 dark:text-gray-400">
-                                        {si.product?.unit || 'ชิ้น'}
+                                        {si.line_unit || si.product?.unit || 'ชิ้น'}
                                       </td>
                                       {ms.trips.length > 1 && (
                                         <td className="py-3 px-3 text-sm">
