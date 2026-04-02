@@ -294,15 +294,21 @@ export const TripLogFormView: React.FC<TripLogFormViewProps> = ({
 
   // Fetch active delivery trip for selected vehicle
   useEffect(() => {
+    let cancelled = false;
+
     const fetchActiveDeliveryTrip = async () => {
       if (!selectedVehicleId || mode !== 'checkout') {
-        setActiveDeliveryTrip(null);
-        setDriverNotAssignedForCheckout(false);
+        if (!cancelled) {
+          setActiveDeliveryTrip(null);
+          setDriverNotAssignedForCheckout(false);
+        }
         return;
       }
 
       try {
-        setLoadingDeliveryTrip(true);
+        if (!cancelled) {
+          setLoadingDeliveryTrip(true);
+        }
 
         let checkoutDateForPeek = new Date().toISOString().split('T')[0];
         try {
@@ -335,6 +341,7 @@ export const TripLogFormView: React.FC<TripLogFormViewProps> = ({
         }
 
         console.log('[TripLogFormView] Fetched active delivery trip:', activeTrip, 'nextPeek:', nextPeek);
+        if (cancelled) return;
         setActiveDeliveryTrip(activeTrip);
 
         // ตรวจคนขับเฉพาะทริปที่ checkout จะผูกจริง — ไม่มีทริปคิวถัดไป = ไม่บล็อกด้วยสิทธิ์คนขับ
@@ -348,14 +355,21 @@ export const TripLogFormView: React.FC<TripLogFormViewProps> = ({
         setDriverNotAssignedForCheckout(!!notAssigned);
       } catch (err) {
         console.error('[TripLogFormView] Error fetching active delivery trip:', err);
-        setActiveDeliveryTrip(null);
-        setDriverNotAssignedForCheckout(false);
+        if (!cancelled) {
+          setActiveDeliveryTrip(null);
+          setDriverNotAssignedForCheckout(false);
+        }
       } finally {
-        setLoadingDeliveryTrip(false);
+        if (!cancelled) {
+          setLoadingDeliveryTrip(false);
+        }
       }
     };
 
     fetchActiveDeliveryTrip();
+    return () => {
+      cancelled = true;
+    };
   }, [selectedVehicleId, mode, user?.id, isBackfillMode, formData.checkout_time]);
 
   // Track if we've auto-filled destination to prevent clearing it
@@ -1616,7 +1630,7 @@ export const TripLogFormView: React.FC<TripLogFormViewProps> = ({
         <div className="flex gap-4">
           <Button
             type="submit"
-            disabled={saving || checkingOut || checkingIn || userMismatch || driverNotAssignedForCheckout}
+            disabled={saving || checkingOut || checkingIn || userMismatch || (mode === 'checkout' && driverNotAssignedForCheckout)}
             className="flex-1 flex items-center justify-center gap-2"
           >
             {saving || checkingOut || checkingIn ? (
