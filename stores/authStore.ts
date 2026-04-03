@@ -17,6 +17,7 @@ interface AuthState {
   error: Error | null;
   initialized: boolean;
   isDev: boolean;
+  isRealDev: boolean;
   overriddenRole: AppRole | null;
 
   // Computed properties
@@ -81,6 +82,7 @@ export const useAuthStore = create<AuthState>()(
       error: null,
       initialized: false,
       isDev: false,
+      isRealDev: false,
       overriddenRole: null,
 
       // Computed properties (initial values, updated via setProfile)
@@ -103,7 +105,8 @@ export const useAuthStore = create<AuthState>()(
 
         set({
           profile,
-          isDev: profile?.role === 'dev',
+          isDev: activeRole === 'dev',
+          isRealDev: profile?.role === 'dev',
           isAdmin: activeRole === 'admin',
           isManager: activeRole === 'manager',
           isInspector: activeRole === 'inspector',
@@ -123,6 +126,7 @@ export const useAuthStore = create<AuthState>()(
         
         set({
           overriddenRole: role,
+          isDev: activeRole === 'dev',
           isAdmin: activeRole === 'admin',
           isManager: activeRole === 'manager',
           isInspector: activeRole === 'inspector',
@@ -152,7 +156,8 @@ export const useAuthStore = create<AuthState>()(
           set({
             initialized: true,
             loading: false,
-            isDev: profile.role === 'dev',
+            isDev: activeRole === 'dev',
+            isRealDev: profile.role === 'dev',
             isAdmin: activeRole === 'admin',
             isManager: activeRole === 'manager',
             isInspector: activeRole === 'inspector',
@@ -340,6 +345,7 @@ export const useAuthStore = create<AuthState>()(
             isWarehouse: false,
             isReadOnly: false,
             isDev: false,
+            isRealDev: false,
             overriddenRole: null,
           });
         } finally {
@@ -381,6 +387,7 @@ export const useAuthStore = create<AuthState>()(
         isWarehouse: state.isWarehouse,
         isReadOnly: state.isReadOnly,
         isDev: state.isDev,
+        isRealDev: state.isRealDev,
         overriddenRole: state.overriddenRole,
       }),
     }

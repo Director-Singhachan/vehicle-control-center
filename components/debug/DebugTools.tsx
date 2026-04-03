@@ -29,7 +29,7 @@ const ROLE_ICONS: Record<AppRole, any> = {
 };
 
 export const DebugTools: React.FC<{ onTabChange?: (tab: string) => void }> = ({ onTabChange }) => {
-  const { isDev, overriddenRole, setOverriddenRole, profile } = useAuth();
+  const { isDev, isRealDev, overriddenRole, setOverriddenRole, profile } = useAuth();
   const { featureOverrides, setFeatureOverride, resetOverrides, panelTab, setPanelTab } = useDebugStore();
   const { dataMap, clearDebugData } = useDebugDataContext();
   
@@ -38,7 +38,7 @@ export const DebugTools: React.FC<{ onTabChange?: (tab: string) => void }> = ({ 
   const [featureQuery, setFeatureQuery] = useState('');
   const [inspectKey, setInspectKey] = useState<string | null>(null);
 
-  if (!isDev) return null;
+  if (!isRealDev) return null;
 
   const currentRole = overriddenRole || (profile?.role as AppRole) || 'dev';
   

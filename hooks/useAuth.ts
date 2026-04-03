@@ -30,6 +30,7 @@ export const useAuth = () => {
     isWarehouse: store.isWarehouse,
     isReadOnly: store.isReadOnly,
     isDev: store.isDev,
+    isRealDev: store.isRealDev,
     overriddenRole: store.overriddenRole,
     setOverriddenRole: store.setOverriddenRole,
     signIn: store.signIn,
