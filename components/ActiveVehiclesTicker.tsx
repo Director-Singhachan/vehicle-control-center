@@ -160,7 +160,7 @@ export const ActiveVehiclesTicker: React.FC = () => {
             <div className="absolute top-0 left-0 h-full w-32 bg-gradient-to-r from-blue-600 to-transparent dark:from-blue-800 pointer-events-none z-10"></div>
             <div className="absolute top-0 right-0 h-full w-32 bg-gradient-to-l from-blue-700 to-transparent dark:from-blue-900 pointer-events-none z-10"></div>
 
-            <style jsx>{`
+            <style>{`
         .ticker-wrapper {
           width: 100%;
           overflow: hidden;
