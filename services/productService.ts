@@ -93,7 +93,8 @@ export const productService = {
       throw error;
     }
 
-    const categories = [...new Set((data || []).map(p => p.category))];
+    const rows = (data ?? []) as Pick<Product, 'category'>[];
+    const categories = [...new Set(rows.map((p) => p.category))];
     return categories.sort();
   },
 
