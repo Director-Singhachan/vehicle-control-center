@@ -741,8 +741,10 @@ export function useCreateTripWizard({ selectedOrders, onSuccess }: UseCreateTrip
 
     setIsSubmitting(true);
     try {
-      const buildStoresPayload = (deliveries: StoreDelivery[]) =>
-        deliveries.map((delivery) => {
+      const buildStoresPayload = (deliveries: StoreDelivery[]) => {
+        const storesMap = new Map<string, { store_id: string; sequence_order: number; items: any[] }>();
+        const includedOrderIds = new Set<string>();
+        for (const delivery of deliveries) {
           const orderItems = orderItemsMap.get(delivery.order_id) || [];
           const items = orderItems
             .map((item: any) => {
@@ -763,14 +765,32 @@ export function useCreateTripWizard({ selectedOrders, onSuccess }: UseCreateTrip
                 (item.unit != null && String(item.unit).trim() !== '' ? String(item.unit).trim() : null) ||
                 (item.product?.unit ? String(item.product.unit) : null),
             }));
-          return { store_id: delivery.store_id, sequence_order: delivery.sequence, items };
-        })
-        .filter((s) => s.items.length > 0);
+          if (items.length === 0) continue;
+          includedOrderIds.add(delivery.order_id);
+          const existingStore = storesMap.get(delivery.store_id);
+          if (existingStore) {
+            existingStore.sequence_order = Math.min(existingStore.sequence_order, delivery.sequence);
+            existingStore.items.push(...items);
+            continue;
+          }
+          storesMap.set(delivery.store_id, {
+            store_id: delivery.store_id,
+            sequence_order: delivery.sequence,
+            items,
+          });
+        }
+        return {
+          stores: Array.from(storesMap.values()).sort((a, b) => a.sequence_order - b.sequence_order),
+          orderIds: Array.from(includedOrderIds),
+        };
+      };
 
       const buildSplitStoresPayload = (tripNum: 1 | 2 | 3) => {
-        const storesMap: Record<string, { store_id: string; sequence_order: number; items: any[] }> = {};
+        const storesMap = new Map<string, { store_id: string; sequence_order: number; items: any[] }>();
+        const includedOrderIds = new Set<string>();
         for (const delivery of storeDeliveries) {
           const orderItems = orderItemsMap.get(delivery.order_id) || [];
+          let hasItemsInTrip = false;
           for (const item of orderItems) {
             const remaining = getRemaining(item);
             const pickedUp = Number(item.quantity_picked_up_at_store ?? 0);
@@ -783,10 +803,14 @@ export function useCreateTripWizard({ selectedOrders, onSuccess }: UseCreateTrip
               qty = split ? (tripNum === 1 ? split.vehicle1Qty : split.vehicle2Qty) : (tripNum === 1 ? remaining : 0);
             }
             if (qty > 0) {
-              if (!storesMap[delivery.id]) {
-                storesMap[delivery.id] = { store_id: delivery.store_id, sequence_order: delivery.sequence, items: [] };
+              hasItemsInTrip = true;
+              const existingStore = storesMap.get(delivery.store_id);
+              if (existingStore) {
+                existingStore.sequence_order = Math.min(existingStore.sequence_order, delivery.sequence);
+              } else {
+                storesMap.set(delivery.store_id, { store_id: delivery.store_id, sequence_order: delivery.sequence, items: [] });
               }
-              storesMap[delivery.id].items.push({
+              storesMap.get(delivery.store_id)!.items.push({
                 product_id: item.product_id,
                 quantity: qty,
                 quantity_picked_up_at_store: 0,
@@ -797,10 +821,14 @@ export function useCreateTripWizard({ selectedOrders, onSuccess }: UseCreateTrip
                   (item.product?.unit ? String(item.product.unit) : null),
               });
             } else if (tripNum === 1 && remaining === 0 && pickedUp > 0) {
-              if (!storesMap[delivery.id]) {
-                storesMap[delivery.id] = { store_id: delivery.store_id, sequence_order: delivery.sequence, items: [] };
+              hasItemsInTrip = true;
+              const existingStore = storesMap.get(delivery.store_id);
+              if (existingStore) {
+                existingStore.sequence_order = Math.min(existingStore.sequence_order, delivery.sequence);
+              } else {
+                storesMap.set(delivery.store_id, { store_id: delivery.store_id, sequence_order: delivery.sequence, items: [] });
               }
-              storesMap[delivery.id].items.push({
+              storesMap.get(delivery.store_id)!.items.push({
                 product_id: item.product_id,
                 quantity: Number(item.quantity),
                 quantity_picked_up_at_store: pickedUp,
@@ -812,13 +840,21 @@ export function useCreateTripWizard({ selectedOrders, onSuccess }: UseCreateTrip
               });
             }
           }
+          if (hasItemsInTrip) {
+            includedOrderIds.add(delivery.order_id);
+          }
         }
-        return Object.values(storesMap);
+        return {
+          stores: Array.from(storesMap.values()).sort((a, b) => a.sequence_order - b.sequence_order),
+          orderIds: Array.from(includedOrderIds),
+        };
       };
 
       if (splitIntoTwoTrips) {
-        const stores1 = buildSplitStoresPayload(1);
-        const stores2 = buildSplitStoresPayload(2);
+        const payload1 = buildSplitStoresPayload(1);
+        const payload2 = buildSplitStoresPayload(2);
+        const stores1 = payload1.stores;
+        const stores2 = payload2.stores;
         const trip1 = await deliveryTripService.create({
           vehicle_id: selectedVehicleId,
           driver_id: selectedDriverId,
@@ -833,26 +869,19 @@ export function useCreateTripWizard({ selectedOrders, onSuccess }: UseCreateTrip
           notes: notes ? `[คัน 2] ${notes}` : '[คัน 2]',
           stores: stores2,
         });
-        const trip1StoreIds = new Set(stores1.map(s => s.store_id));
-        const trip2StoreIds = new Set(stores2.map(s => s.store_id));
-        const ordersForTrip1: string[] = [];
-        const ordersForTrip2: string[] = [];
-        const processedOrderIds = new Set<string>();
-        for (const delivery of storeDeliveries) {
-          if (processedOrderIds.has(delivery.order_id)) continue;
-          processedOrderIds.add(delivery.order_id);
-          const inTrip1 = trip1StoreIds.has(delivery.store_id);
-          const inTrip2 = trip2StoreIds.has(delivery.store_id);
-          if (inTrip1) ordersForTrip1.push(delivery.order_id);
-          else if (inTrip2) ordersForTrip2.push(delivery.order_id);
-        }
+        const ordersForTrip1 = payload1.orderIds;
+        const ordersForTrip1Set = new Set(ordersForTrip1);
+        const ordersForTrip2 = payload2.orderIds.filter((orderId) => !ordersForTrip1Set.has(orderId));
         if (ordersForTrip1.length > 0) await ordersService.assignToTrip(ordersForTrip1, trip1.id, user?.id!);
         if (ordersForTrip2.length > 0) await ordersService.assignToTrip(ordersForTrip2, trip2.id, user?.id!);
         success(`สร้างทริป 2 คันเรียบร้อย (ทริป 1: ${trip1.trip_number}, ทริป 2: ${trip2.trip_number})`);
       } else if (splitIntoThreeTrips) {
-        const stores1 = buildSplitStoresPayload(1);
-        const stores2 = buildSplitStoresPayload(2);
-        const stores3 = buildSplitStoresPayload(3);
+        const payload1 = buildSplitStoresPayload(1);
+        const payload2 = buildSplitStoresPayload(2);
+        const payload3 = buildSplitStoresPayload(3);
+        const stores1 = payload1.stores;
+        const stores2 = payload2.stores;
+        const stores3 = payload3.stores;
         const trip1 = await deliveryTripService.create({
           vehicle_id: selectedVehicleId,
           driver_id: selectedDriverId,
@@ -874,11 +903,18 @@ export function useCreateTripWizard({ selectedOrders, onSuccess }: UseCreateTrip
           notes: notes ? `[เที่ยว 3] ${notes}` : '[เที่ยว 3]',
           stores: stores3,
         });
-        const orderIds = [...new Set(storeDeliveries.map(d => d.order_id))];
-        if (orderIds.length > 0) await ordersService.assignToTrip(orderIds, trip1.id, user?.id!);
+        const ordersForTrip1 = payload1.orderIds;
+        const ordersForTrip1Set = new Set(ordersForTrip1);
+        const ordersForTrip2 = payload2.orderIds.filter((orderId) => !ordersForTrip1Set.has(orderId));
+        const assignedOrderIds = new Set([...ordersForTrip1, ...ordersForTrip2]);
+        const ordersForTrip3 = payload3.orderIds.filter((orderId) => !assignedOrderIds.has(orderId));
+        if (ordersForTrip1.length > 0) await ordersService.assignToTrip(ordersForTrip1, trip1.id, user?.id!);
+        if (ordersForTrip2.length > 0) await ordersService.assignToTrip(ordersForTrip2, trip2.id, user?.id!);
+        if (ordersForTrip3.length > 0) await ordersService.assignToTrip(ordersForTrip3, trip3.id, user?.id!);
         success(`สร้างทริป 3 เที่ยวเรียบร้อย (${trip1.trip_number}, ${trip2.trip_number}, ${trip3.trip_number})`);
       } else {
-        const stores = buildStoresPayload(storeDeliveries);
+        const payload = buildStoresPayload(storeDeliveries);
+        const stores = payload.stores;
         if (stores.length === 0) {
           error('กรุณาระบุสินค้าที่นำไปส่งในทริปนี้อย่างน้อย 1 รายการ (คอลัมน์ "นำไปส่งในทริปนี้")');
           setIsSubmitting(false);
@@ -891,7 +927,7 @@ export function useCreateTripWizard({ selectedOrders, onSuccess }: UseCreateTrip
           notes: notes || undefined,
           stores,
         });
-        const orderIds = [...new Set(stores.map((s) => storeDeliveries.find((d) => d.store_id === s.store_id)?.order_id).filter(Boolean) as string[])];
+        const orderIds = payload.orderIds;
         if (orderIds.length > 0) await ordersService.assignToTrip(orderIds, trip.id, user?.id!);
         success('สร้างทริปเรียบร้อย');
       }
