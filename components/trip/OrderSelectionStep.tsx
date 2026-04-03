@@ -195,7 +195,10 @@ export function OrderSelectionStep({
                                   {item.is_bonus && <span className="text-xs text-purple-600 font-medium">แถม</span>}
                                 </td>
                                 <td className="py-2 text-center font-semibold text-gray-700">
-                                  {item.quantity}
+                                  <span>{item.quantity}</span>
+                                  {(item.unit || item.product?.unit) ? (
+                                    <span className="block text-xs font-normal text-gray-500">{item.unit || item.product?.unit}</span>
+                                  ) : null}
                                 </td>
                                 {!splitIntoTwoTrips && !splitIntoThreeTrips && (
                                   <>

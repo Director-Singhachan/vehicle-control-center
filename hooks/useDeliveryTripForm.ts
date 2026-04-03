@@ -302,6 +302,11 @@ export function useDeliveryTripForm({ tripId, onSave, onCancel }: UseDeliveryTri
           quantity_picked_up_at_store: Number((item as any).quantity_picked_up_at_store ?? 0),
           notes: item.notes || '',
           selected_pallet_config_id: (item as any).selected_pallet_config_id || undefined,
+          unit:
+            (item as { unit?: string | null }).unit != null &&
+            String((item as { unit?: string | null }).unit).trim() !== ''
+              ? String((item as { unit?: string | null }).unit).trim()
+              : null,
         })),
       }));
       setSelectedStores(storesWithItems);
@@ -497,8 +502,17 @@ export function useDeliveryTripForm({ tripId, onSave, onCancel }: UseDeliveryTri
       const store = newStores[storeIndex];
       if (!store) return prev;
       const existingIndex = store.items.findIndex(item => item.product_id === productId);
-      if (existingIndex >= 0) store.items[existingIndex] = { ...store.items[existingIndex], quantity };
-      else store.items.push({ product_id: productId, quantity, notes: '' });
+      if (existingIndex >= 0) {
+        store.items[existingIndex] = {
+          ...store.items[existingIndex],
+          quantity,
+          unit:
+            store.items[existingIndex].unit != null && String(store.items[existingIndex].unit).trim() !== ''
+              ? String(store.items[existingIndex].unit).trim()
+              : product.unit ?? null,
+        };
+      }
+      else store.items.push({ product_id: productId, quantity, notes: '', unit: product.unit ?? null });
       return newStores;
     });
   }, [getProductInfo, cacheProduct]);
@@ -523,9 +537,12 @@ export function useDeliveryTripForm({ tripId, onSave, onCancel }: UseDeliveryTri
       storeWithItems.items.forEach(item => {
         const product = getProductInfo(item.product_id);
         if (!product) return;
+        const lineUnit =
+          item.unit != null && String(item.unit).trim() !== '' ? String(item.unit).trim() : product.unit || '';
         const existing = productMap.get(item.product_id);
         if (existing) {
           existing.total_quantity += item.quantity;
+          if (!existing.unit && lineUnit) existing.unit = lineUnit;
           existing.stores.push({ store_id: store.id, customer_name: store.customer_name, quantity: item.quantity });
         } else {
           productMap.set(item.product_id, {
@@ -533,7 +550,7 @@ export function useDeliveryTripForm({ tripId, onSave, onCancel }: UseDeliveryTri
             product_code: product.product_code,
             product_name: product.product_name,
             category: product.category,
-            unit: product.unit,
+            unit: lineUnit || product.unit,
             total_quantity: item.quantity,
             stores: [{ store_id: store.id, customer_name: store.customer_name, quantity: item.quantity }],
           });
@@ -614,12 +631,21 @@ export function useDeliveryTripForm({ tripId, onSave, onCancel }: UseDeliveryTri
           updateData.stores = selectedStores.map(store => ({
             store_id: store.store_id,
             sequence_order: store.sequence_order,
-            items: store.items.map(item => ({
-              product_id: item.product_id,
-              quantity: item.quantity,
-              notes: item.notes || undefined,
-              selected_pallet_config_id: item.selected_pallet_config_id || undefined,
-            })),
+            items: store.items.map(item => {
+              const line =
+                item.unit != null && String(item.unit).trim() !== ''
+                  ? String(item.unit).trim()
+                  : null;
+              const p = getProductInfo(item.product_id);
+              const master = p?.unit ? String(p.unit) : null;
+              return {
+                product_id: item.product_id,
+                quantity: item.quantity,
+                notes: item.notes || undefined,
+                selected_pallet_config_id: item.selected_pallet_config_id || undefined,
+                unit: line ?? master,
+              };
+            }),
           }));
         }
         await deliveryTripService.update(tripId, updateData);
@@ -635,12 +661,21 @@ export function useDeliveryTripForm({ tripId, onSave, onCancel }: UseDeliveryTri
           stores: selectedStores.map(store => ({
             store_id: store.store_id,
             sequence_order: store.sequence_order,
-            items: store.items.map(item => ({
-              product_id: item.product_id,
-              quantity: item.quantity,
-              notes: item.notes || undefined,
-              selected_pallet_config_id: item.selected_pallet_config_id || undefined,
-            })),
+            items: store.items.map(item => {
+              const line =
+                item.unit != null && String(item.unit).trim() !== ''
+                  ? String(item.unit).trim()
+                  : null;
+              const p = getProductInfo(item.product_id);
+              const master = p?.unit ? String(p.unit) : null;
+              return {
+                product_id: item.product_id,
+                quantity: item.quantity,
+                notes: item.notes || undefined,
+                selected_pallet_config_id: item.selected_pallet_config_id || undefined,
+                unit: line ?? master,
+              };
+            }),
           })),
         };
         await deliveryTripService.create(createData);
@@ -663,6 +698,7 @@ export function useDeliveryTripForm({ tripId, onSave, onCancel }: UseDeliveryTri
     tripId,
     onSave,
     getStoreInfo,
+    getProductInfo,
   ]);
 
   return {

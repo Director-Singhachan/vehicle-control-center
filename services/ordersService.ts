@@ -257,7 +257,7 @@ export const ordersService = {
 
     const { data: items, error: itemsError } = await supabase
       .from('order_items')
-      .select('order_id, product_id, quantity, quantity_picked_up_at_store, quantity_delivered, fulfillment_method')
+      .select('order_id, product_id, quantity, quantity_picked_up_at_store, quantity_delivered, fulfillment_method, unit, is_bonus')
       .in('order_id', orderIds);
 
     if (itemsError) {
@@ -287,7 +287,12 @@ export const ordersService = {
       const rem = Math.max(0, Number(row.quantity) - pickedUp - delivered);
       if (rem <= 0) continue;
       const arr = orderIdToItems.get(row.order_id) ?? [];
-      arr.push({ product_id: row.product_id, quantity: rem });
+      arr.push({
+        product_id: row.product_id,
+        quantity: rem,
+        unit: row.unit ?? null,
+        is_bonus: row.is_bonus ?? false,
+      });
       orderIdToItems.set(row.order_id, arr);
     }
 

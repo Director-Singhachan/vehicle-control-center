@@ -156,12 +156,12 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
                           </td>
                           <td className="py-3 px-4 text-right">
                             <span className="font-semibold text-slate-900 dark:text-white">{item.quantity?.toLocaleString()}</span>
-                            <span className="text-xs text-slate-500 ml-1">{item.product?.unit || ''}</span>
+                            <span className="text-xs text-slate-500 ml-1">{item.unit || item.product?.unit || ''}</span>
                           </td>
                           <td className="py-3 px-4 text-right bg-amber-50/30 dark:bg-amber-900/10">
                             {pickedUp > 0 ? (
                               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-bold bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-400">
-                                {pickedUp.toLocaleString()} {item.product?.unit || ''}
+                                {pickedUp.toLocaleString()} {item.unit || item.product?.unit || ''}
                               </span>
                             ) : (
                               <span className="text-slate-300 dark:text-slate-600 font-medium">—</span>
@@ -170,7 +170,7 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
                           <td className="py-3 px-4 text-right bg-emerald-50/30 dark:bg-emerald-900/10">
                             {delivered > 0 ? (
                               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-bold bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400">
-                                {delivered.toLocaleString()} {item.product?.unit || ''}
+                                {delivered.toLocaleString()} {item.unit || item.product?.unit || ''}
                               </span>
                             ) : (
                               <span className="text-slate-300 dark:text-slate-600 font-medium">—</span>

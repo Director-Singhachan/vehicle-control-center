@@ -847,6 +847,7 @@ export type Database = {
           quantity: number
           quantity_picked_up_at_store: number
           selected_pallet_config_id: string | null
+          unit: string | null
           updated_at: string
         }
         Insert: {
@@ -860,6 +861,7 @@ export type Database = {
           quantity?: number
           quantity_picked_up_at_store?: number
           selected_pallet_config_id?: string | null
+          unit?: string | null
           updated_at?: string
         }
         Update: {
@@ -873,6 +875,7 @@ export type Database = {
           quantity?: number
           quantity_picked_up_at_store?: number
           selected_pallet_config_id?: string | null
+          unit?: string | null
           updated_at?: string
         }
         Relationships: [
