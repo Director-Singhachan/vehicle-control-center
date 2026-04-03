@@ -198,7 +198,7 @@ const MenuSectionHeader = ({ label }: { label: string }) => (
 
 // Main App Content (wrapped in ProtectedRoute)
 const AppContent = () => {
-  const { user, profile, signOut, isAdmin, isManager, isInspector, isExecutive, isDriver, isSales, isHR, isWarehouse, loading: authLoading, refreshProfile } = useAuth();
+  const { user, profile, signOut, isAdmin, isManager, isInspector, isExecutive, isDriver, isSales, isHR, isWarehouse, isDev, loading: authLoading, refreshProfile } = useAuth();
   const { can, canAccessTab, loading: featureAccessLoading } = useFeatureAccess();
   const { featureOverrides, setPanelTab } = useDebugStore();
   const showHrMenu =
@@ -2226,7 +2226,7 @@ const AppContent = () => {
           )}
 
           {/* Database Explorer */}
-          {(can('tab.db_explorer', 'view') || featureOverrides['tab.db_explorer'] === 'off') && (
+          {isDev && (
             <SidebarItem
               icon={Database}
               label={isSidebarOpen ? "เมนูหลังบ้าน (DB)" : ""}
