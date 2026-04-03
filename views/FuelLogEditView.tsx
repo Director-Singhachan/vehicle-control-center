@@ -187,7 +187,9 @@ export const FuelLogEditView: React.FC<FuelLogEditViewProps> = ({
                 title="แก้ไขข้อมูลการเติมน้ำมัน"
                 subtitle="กำลังโหลดข้อมูล..."
                 loading={true}
-            />
+            >
+                {null}
+            </PageLayout>
         );
     }
 

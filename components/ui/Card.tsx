@@ -1,9 +1,8 @@
 import React from 'react';
 import { componentStyles } from '../../theme/designTokens';
 
-interface CardProps {
+interface CardProps extends Omit<React.HTMLAttributes<HTMLDivElement>, 'children'> {
   children: React.ReactNode;
-  className?: string;
   hover?: boolean;
   padding?: 'none' | 'sm' | 'md' | 'lg';
 }
@@ -13,6 +12,7 @@ export const Card: React.FC<CardProps> = ({
   className = '',
   hover = false,
   padding = 'md',
+  ...rest
 }) => {
   const paddingStyles = {
     none: '',
@@ -24,6 +24,7 @@ export const Card: React.FC<CardProps> = ({
   return (
     <div
       className={`${componentStyles.card.base} ${paddingStyles[padding]} ${hover ? componentStyles.card.hover : ''} ${className}`}
+      {...rest}
     >
       {children}
     </div>
