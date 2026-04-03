@@ -11,7 +11,11 @@ import { Modal } from '../components/ui/Modal';
 import { useNotification } from '../hooks/useNotification';
 import type { Database } from '../types/database';
 
-type TripItem = Database['public']['Tables']['trip_items']['Row'];
+// NOTE: The backend/service for trip items returns additional computed/editable fields
+// (e.g. planned_quantity/loaded_quantity/delivered_quantity) that may not map 1:1
+// to the generated Supabase table row types. We keep the form state loosely typed
+// to avoid incorrect TS errors.
+type TripItem = Database['public']['Tables']['delivery_trip_items']['Row'];
 
 interface TripItemsManagementViewProps {
   tripId: string;
@@ -26,7 +30,7 @@ export function TripItemsManagementView({ tripId, tripStatus = 'pending', onUpda
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<any>(null);
-  const [formData, setFormData] = useState<Partial<TripItem>>({
+  const [formData, setFormData] = useState<any>({
     product_id: '',
     planned_quantity: 0,
     loaded_quantity: 0,

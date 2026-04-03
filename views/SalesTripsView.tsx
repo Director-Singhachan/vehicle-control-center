@@ -54,6 +54,7 @@ interface MergedStoreEntry {
     sequence_order: number;
     delivery_status: string;
     invoice_status: string;
+    order_status?: string;
     items: any[];
   }>;
   allItems: any[]; // รวมสินค้าทุกทริป (มี trip info ติดมาด้วย)

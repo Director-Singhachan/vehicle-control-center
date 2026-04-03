@@ -32,6 +32,15 @@ export const VehicleFormView: React.FC<VehicleFormViewProps> = ({
   const isEdit = !!vehicleId;
   const { vehicle, loading: loadingVehicle } = useVehicle(vehicleId || null);
 
+  const normalizeOwnerGroup = (
+    value: unknown
+  ): '' | 'thaikit' | 'sing_chanthaburi' | 'rental' => {
+    if (value === 'thaikit' || value === 'sing_chanthaburi' || value === 'rental') {
+      return value;
+    }
+    return '';
+  };
+
   const [formData, setFormData] = useState({
     plate: '',
     make: '',
@@ -66,7 +75,7 @@ export const VehicleFormView: React.FC<VehicleFormViewProps> = ({
         model: vehicle.model || '',
         type: vehicle.type || '',
         branch: vehicle.branch || '',
-        owner_group: vehicle.owner_group || '',
+        owner_group: normalizeOwnerGroup((vehicle as any).owner_group),
         lat: vehicle.lat?.toString() || '',
         lng: vehicle.lng?.toString() || '',
         image_url: vehicle.image_url || '',

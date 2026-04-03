@@ -6,7 +6,7 @@ interface PageLayoutProps {
   title: string;
   subtitle?: string;
   actions?: React.ReactNode;
-  children: React.ReactNode;
+  children?: React.ReactNode;
   loading?: boolean;
   error?: boolean;
   onRetry?: () => void;

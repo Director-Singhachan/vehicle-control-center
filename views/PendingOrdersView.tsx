@@ -8,7 +8,7 @@ import { EditOrderView } from './EditOrderView';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
-import { PageLayout } from '../components/ui/PageLayout';
+import { PageLayout } from '../components/layout/PageLayout';
 import { LoadingSpinner } from '../components/ui/LoadingSpinner';
 import { useToast } from '../hooks/useToast';
 import { ToastContainer } from '../components/ui/Toast';

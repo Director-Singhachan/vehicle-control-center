@@ -16,6 +16,7 @@ interface WarehouseRow {
   code: string;
   name: string;
   type: string;
+  branch: string | null;
   address: string | null;
   latitude: number | null;
   longitude: number | null;
@@ -41,6 +42,7 @@ export function WarehouseManagementView() {
     code: '',
     name: '',
     type: 'branch',
+    branch: null,
     address: '',
   });
 
@@ -69,6 +71,7 @@ export function WarehouseManagementView() {
         code: warehouse.code,
         name: warehouse.name,
         type: warehouse.type,
+        branch: warehouse.branch ?? null,
         address: warehouse.address || '',
         latitude: warehouse.latitude,
         longitude: warehouse.longitude,
@@ -80,6 +83,7 @@ export function WarehouseManagementView() {
         code: '',
         name: '',
         type: 'branch',
+        branch: null,
         address: '',
       });
     }
@@ -146,7 +150,22 @@ export function WarehouseManagementView() {
         await warehouseService.update(editingWarehouse.id, formData);
         showNotification('success', 'อัพเดทคลังสินค้าเรียบร้อย');
       } else {
-        await warehouseService.create(formData as Omit<WarehouseRow, 'id' | 'created_at' | 'updated_at'>);
+        // Build payload with required keys for `warehouses` insert
+        // (TypeScript expects `branch` to exist even if it's nullable).
+        const createPayload = {
+          code: formData.code ?? '',
+          name: formData.name ?? '',
+          type: formData.type ?? 'branch',
+          branch: formData.branch ?? null,
+          address: formData.address ?? null,
+          latitude: formData.latitude ?? null,
+          longitude: formData.longitude ?? null,
+          manager_id: formData.manager_id ?? null,
+          capacity_m3: formData.capacity_m3 ?? null,
+          is_active: formData.is_active ?? true,
+        };
+
+        await warehouseService.create(createPayload as Omit<WarehouseRow, 'id' | 'created_at' | 'updated_at'>);
         showNotification('success', 'เพิ่มคลังสินค้าเรียบร้อย');
       }
 
@@ -457,22 +476,18 @@ export function WarehouseManagementView() {
                       <tr key={item.id} className="border-b border-gray-100 dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-700/50">
                         <td className="py-3 px-4">
                           <div className="flex items-center gap-2">
-                            {item.category_color && (
-                              <div
-                                className="w-3 h-3 rounded-full"
-                                style={{ backgroundColor: item.category_color }}
-                              />
-                            )}
+                            {/* `inventory_with_details` has `category`, not `category_color`.
+                                If you want a colored dot, map `category` -> color here. */}
                             <span className="font-medium text-gray-900 dark:text-white">
                               {item.product_name}
                             </span>
                           </div>
                         </td>
                         <td className="py-3 px-4 text-sm text-gray-600 dark:text-gray-400">
-                          {item.product_code || item.product_sku || '-'}
+                          {item.product_code || '-'}
                         </td>
                         <td className="py-3 px-4 text-right font-semibold text-gray-900 dark:text-white">
-                          {item.quantity} {item.product_unit}
+                          {item.quantity} {item.unit}
                         </td>
                         <td className="py-3 px-4 text-right text-sm text-gray-600 dark:text-gray-400">
                           {item.reserved_quantity}
