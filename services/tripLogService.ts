@@ -1048,7 +1048,7 @@ export const tripLogService = {
     driver_id?: string;
     start_date?: string;
     end_date?: string;
-    status?: 'checked_out' | 'checked_in';
+    status?: 'checked_out' | 'checked_in' | 'cancelled';
     limit?: number;
     offset?: number;
     search?: string; // For text search

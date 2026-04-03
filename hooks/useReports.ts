@@ -1,6 +1,6 @@
 // Reports Hooks - Custom React hooks for reports and analytics
 import { useState, useEffect, useMemo } from 'react';
-import { reportsService, type MonthlyFuelReport, type VehicleFuelComparison, type FuelTrend, type MonthlyTripReport, type VehicleTripSummary, type DriverTripReport, type MonthlyMaintenanceReport, type VehicleMaintenanceComparison, type CostPerKm, type MonthlyCostTrend, type StaffCommissionSummary, type StaffItemStatistics, type StaffItemDetail } from '../services/reportsService';
+import { reportsService, type MonthlyFuelReport, type VehicleFuelComparison, type FuelTrend, type MonthlyTripReport, type VehicleTripSummary, type DriverTripReport, type MonthlyMaintenanceReport, type VehicleMaintenanceComparison, type CostPerKm, type MonthlyCostTrend, type StaffCommissionSummary, type StaffItemStatistics, type StaffItemDetail, type MonthlyDeliveryReportRow, type DeliverySummaryByStoreRow } from '../services/reportsService';
 
 // Re-export types for convenience
 export type {
@@ -17,6 +17,7 @@ export type {
   StaffCommissionSummary,
   StaffItemStatistics,
   StaffItemDetail,
+  MonthlyDeliveryReportRow,
 };
 
 // Fuel Reports Hooks
@@ -442,23 +443,7 @@ export const useDeliverySummaryByStore = (
   endDate?: Date,
   storeId?: string
 ) => {
-  const [data, setData] = useState<Array<{
-    store_id: string;
-    customer_code: string;
-    customer_name: string;
-    totalTrips: number;
-    totalItems: number;
-    totalQuantity: number;
-    items: Array<{
-      product_id: string;
-      product_code: string;
-      product_name: string;
-      category: string;
-      unit: string;
-      totalQuantity: number;
-      deliveryCount: number;
-    }>;
-  }>>([]);
+  const [data, setData] = useState<DeliverySummaryByStoreRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
 
@@ -546,21 +531,7 @@ export const useDeliverySummaryByProduct = (
 };
 
 export const useMonthlyDeliveryReport = (months: number = 6) => {
-  const [data, setData] = useState<Array<{
-    month: string;
-    monthLabel: string;
-    totalTrips: number;
-    totalStores: number;
-    totalItems: number;
-    totalQuantity: number;
-    totalDistance: number;
-    tripLogs: Array<{
-      delivery_date: string;
-      trip_number: string;
-      quantity: number;
-      distance: number | null;
-    }>;
-  }>>([]);
+  const [data, setData] = useState<MonthlyDeliveryReportRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
 
