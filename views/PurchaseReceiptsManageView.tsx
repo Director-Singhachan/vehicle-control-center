@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ClipboardList, Package, Plus, RefreshCw, Trash2 } from 'lucide-react';
 import { PageLayout } from '../components/ui/PageLayout';
 import { Card } from '../components/ui/Card';
@@ -17,6 +17,7 @@ type PurchaseReceipt = Database['public']['Tables']['purchase_receipts']['Row'];
 
 const emptyLine = () => ({
   product_id: '',
+  product_query: '',
   quantity: '' as string | number,
   unit_cost: '' as string | number,
   unit: '' as string,
@@ -54,6 +55,41 @@ export function PurchaseReceiptsManageView() {
 
   const [postId, setPostId] = useState<string | null>(null);
   const [cancelId, setCancelId] = useState<string | null>(null);
+  const [openProductPickerLine, setOpenProductPickerLine] = useState<number | null>(null);
+  const productPickerRowRefs = useRef<(HTMLDivElement | null)[]>([]);
+
+  const filteredProductsForPicker = useCallback(
+    (query: string) => {
+      const q = query.trim().toLowerCase();
+      const list = products || [];
+      if (!q) return list.slice(0, 100);
+      return list
+        .filter(
+          (p: any) =>
+            String(p.product_code || '')
+              .toLowerCase()
+              .includes(q) ||
+            String(p.product_name || '')
+              .toLowerCase()
+              .includes(q),
+        )
+        .slice(0, 100);
+    },
+    [products],
+  );
+
+  useEffect(() => {
+    if (openProductPickerLine === null) return;
+    const el = productPickerRowRefs.current[openProductPickerLine];
+    if (!el) return;
+    const handler = (e: MouseEvent) => {
+      if (!el.contains(e.target as Node)) {
+        setOpenProductPickerLine(null);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [openProductPickerLine]);
 
   const whName = useMemo(() => {
     const m = new Map((warehouses || []).map((w: any) => [w.id, `${w.code ?? ''} ${w.name ?? ''}`.trim()]));
@@ -161,7 +197,7 @@ export function PurchaseReceiptsManageView() {
         created_by: profile.id,
         lines: parsed,
       });
-      success('สร้างใบร่างแล้ว — กดโพสต์เมื่อตรวจสอบครบ');
+      success('บันทึกร่างแล้ว — เมื่อตรวจสอบครบให้กด「ยืนยันรับเข้า」');
       setLines([emptyLine()]);
       setSupplierName('');
       setInvoiceRef('');
@@ -176,7 +212,7 @@ export function PurchaseReceiptsManageView() {
 
   const statusBadge = (s: string) => {
     const v: BadgeVariant = s === 'posted' ? 'success' : s === 'cancelled' ? 'default' : 'warning';
-    const label = s === 'posted' ? 'โพสต์แล้ว' : s === 'cancelled' ? 'ยกเลิก' : 'ร่าง';
+    const label = s === 'posted' ? 'รับเข้าแล้ว' : s === 'cancelled' ? 'ยกเลิก' : 'ร่าง';
     return <Badge variant={v}>{label}</Badge>;
   };
 
@@ -186,13 +222,13 @@ export function PurchaseReceiptsManageView() {
     setPostId(null);
     try {
       await purchaseReceiptService.postReceipt(id);
-      success('โพสต์แล้ว — อัปเดตต้นทุนเฉลี่ย (ไม่ตัดสต็อก)');
+      success('รับเข้าระบบแล้ว — อัปเดตต้นทุนเฉลี่ย (ไม่ตัดสต็อก)');
       setExpandedId(null);
       setDetailItems(null);
       await loadList();
       if (tab === 'avg') await loadAvg();
     } catch (e: any) {
-      error(e.message || 'โพสต์ไม่สำเร็จ');
+      error(e.message || 'ยืนยันรับเข้าไม่สำเร็จ');
     }
   };
 
@@ -221,7 +257,7 @@ export function PurchaseReceiptsManageView() {
           className="dark:border-slate-600"
         >
           <ClipboardList className="w-4 h-4 mr-2" />
-          ใบรับซื้อ
+          ใบรับสินค้า
         </Button>
         <Button
           variant={tab === 'avg' ? 'primary' : 'outline'}
@@ -229,7 +265,7 @@ export function PurchaseReceiptsManageView() {
           className="dark:border-slate-600"
         >
           <Package className="w-4 h-4 mr-2" />
-          ต้นทุนเฉลี่ย (MA)
+          สรุปต้นทุนเฉลี่ย
         </Button>
       </div>
 
@@ -237,11 +273,11 @@ export function PurchaseReceiptsManageView() {
         <>
           {canEdit && (
             <Card className="mb-6 p-4 md:p-6">
-              <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">สร้างใบรับร่าง</h2>
+              <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">บันทึกใบรับร่าง</h2>
               <form onSubmit={handleCreateDraft} className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">วันที่รับ</label>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">วันที่รับสินค้า</label>
                     <input
                       type="date"
                       value={receiptDate}
@@ -301,28 +337,58 @@ export function PurchaseReceiptsManageView() {
                   <div className="divide-y divide-gray-100 dark:divide-slate-800">
                     {lines.map((line, i) => (
                       <div key={i} className="p-3 grid grid-cols-1 md:grid-cols-12 gap-2 items-end">
-                        <div className="md:col-span-5">
-                          <label className="text-xs text-gray-500 dark:text-gray-400">สินค้า</label>
-                          <select
-                            value={line.product_id}
+                        <div
+                          ref={(el) => {
+                            productPickerRowRefs.current[i] = el;
+                          }}
+                          className={`md:col-span-5 relative ${openProductPickerLine === i ? 'z-50' : ''}`}
+                        >
+                          <label className="text-xs text-gray-500 dark:text-gray-400">สินค้า (พิมพ์ค้นหา)</label>
+                          <input
+                            type="text"
+                            value={line.product_query}
                             onChange={(e) => {
-                              const pid = e.target.value;
-                              const p = (products || []).find((x: any) => x.id === pid);
+                              const v = e.target.value;
                               updateLine(i, {
-                                product_id: pid,
-                                unit: p?.unit ? String(p.unit) : '',
+                                product_query: v,
+                                product_id: '',
+                                unit: '',
                               });
+                              setOpenProductPickerLine(i);
                             }}
-                            className="w-full px-2 py-2 rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-gray-900 dark:text-white text-sm"
+                            onFocus={() => setOpenProductPickerLine(i)}
+                            placeholder="รหัสหรือชื่อสินค้า..."
                             disabled={productsLoading}
-                          >
-                            <option value="">เลือก</option>
-                            {(products || []).map((p: any) => (
-                              <option key={p.id} value={p.id}>
-                                {p.product_code} — {p.product_name}
-                              </option>
-                            ))}
-                          </select>
+                            className="w-full px-2 py-2 rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-gray-900 dark:text-white text-sm placeholder-gray-400 dark:placeholder-gray-500"
+                          />
+                          {openProductPickerLine === i && !productsLoading && (
+                            <ul className="absolute left-0 right-0 mt-1 max-h-48 overflow-y-auto rounded-lg border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-900 shadow-lg dark:shadow-black/40 z-[60]">
+                              {filteredProductsForPicker(line.product_query).length === 0 ? (
+                                <li className="px-3 py-2 text-sm text-gray-500 dark:text-gray-400">ไม่พบสินค้า</li>
+                              ) : (
+                                filteredProductsForPicker(line.product_query).map((p: any) => (
+                                  <li key={p.id}>
+                                    <button
+                                      type="button"
+                                      className="w-full text-left px-3 py-2 text-sm text-gray-900 dark:text-white hover:bg-enterprise-50 dark:hover:bg-slate-800"
+                                      onClick={() => {
+                                        updateLine(i, {
+                                          product_id: p.id,
+                                          product_query: `${p.product_code} — ${p.product_name}`,
+                                          unit: p.unit ? String(p.unit) : '',
+                                        });
+                                        setOpenProductPickerLine(null);
+                                      }}
+                                    >
+                                      <span className="font-mono text-xs text-enterprise-600 dark:text-enterprise-400">{p.product_code}</span>
+                                      <span className="mx-1 text-gray-400">·</span>
+                                      {p.product_name}
+                                    </button>
+                                  </li>
+                                ))
+                              )}
+                            </ul>
+                          )}
                         </div>
                         <div className="md:col-span-2">
                           <label className="text-xs text-gray-500 dark:text-gray-400">จำนวน</label>
@@ -380,7 +446,7 @@ export function PurchaseReceiptsManageView() {
 
           <Card className="p-4 md:p-6">
             <div className="flex flex-wrap gap-4 items-end justify-between mb-4">
-              <h2 className="text-lg font-semibold text-gray-900 dark:text-white">รายการใบรับ</h2>
+              <h2 className="text-lg font-semibold text-gray-900 dark:text-white">รายการใบรับสินค้า</h2>
               <Button variant="outline" onClick={loadList} className="dark:border-slate-600">
                 <RefreshCw className="w-4 h-4 mr-2" />
                 รีเฟรช
@@ -411,7 +477,7 @@ export function PurchaseReceiptsManageView() {
                 >
                   <option value="">ทั้งหมด</option>
                   <option value="draft">ร่าง</option>
-                  <option value="posted">โพสต์แล้ว</option>
+                  <option value="posted">รับเข้าแล้ว</option>
                   <option value="cancelled">ยกเลิก</option>
                 </select>
               </div>
@@ -447,10 +513,10 @@ export function PurchaseReceiptsManageView() {
                               {canEdit && r.status === 'draft' && (
                                 <>
                                   <Button variant="primary" className="text-xs py-1 px-2" onClick={() => setPostId(r.id)}>
-                                    โพสต์
+                                    ยืนยันรับเข้า
                                   </Button>
                                   <Button variant="outline" className="text-xs py-1 px-2 dark:border-slate-600" onClick={() => setCancelId(r.id)}>
-                                    ยกเลิกร่าง
+                                    ยกเลิกใบร่าง
                                   </Button>
                                 </>
                               )}
@@ -492,7 +558,7 @@ export function PurchaseReceiptsManageView() {
         <Card className="p-4 md:p-6">
           <div className="flex flex-wrap gap-4 items-end justify-between mb-4">
             <p className="text-sm text-gray-600 dark:text-gray-400">
-              ต้นทุนเฉลี่ยจากใบรับที่โพสต์แล้ว — basis_qty ใช้สำหรับคำนวณ MA ไม่ใช่ยอดสต็อกจริง
+              ต้นทุนเฉลี่ยคำนวณจากใบรับที่ยืนยันรับเข้าแล้ว — ปริมาณฐานใช้สำหรับคิดค่าเฉลี่ยเคลื่อนที่ ไม่ใช่ยอดสต็อกจริง
             </p>
             <Button variant="outline" onClick={loadAvg} className="dark:border-slate-600">
               <RefreshCw className="w-4 h-4 mr-2" />
@@ -524,7 +590,7 @@ export function PurchaseReceiptsManageView() {
                     <th className="py-2 pr-2">คลัง</th>
                     <th className="py-2 pr-2">สินค้า</th>
                     <th className="py-2 pr-2 text-right">ต้นทุนเฉลี่ย/หน่วย</th>
-                    <th className="py-2 pr-2 text-right">ปริมาณฐาน (MA)</th>
+                    <th className="py-2 pr-2 text-right">ปริมาณฐาน (เฉลี่ย)</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -539,7 +605,7 @@ export function PurchaseReceiptsManageView() {
                 </tbody>
               </table>
               {!avgRows.length && (
-                <p className="text-gray-500 dark:text-gray-400 text-sm py-6 text-center">ยังไม่มีต้นทุนเฉลี่ย — โพสต์ใบรับซื้อก่อน</p>
+                <p className="text-gray-500 dark:text-gray-400 text-sm py-6 text-center">ยังไม่มีต้นทุนเฉลี่ย — ยืนยันรับเข้าใบรับสินค้าก่อน</p>
               )}
             </div>
           )}
@@ -548,9 +614,9 @@ export function PurchaseReceiptsManageView() {
 
       <ConfirmDialog
         isOpen={!!postId}
-        title="โพสต์ใบรับซื้อ?"
-        message="จะอัปเดตต้นทุนเฉลี่ยต่อสินค้าในคลังนี้ ระบบจะไม่ตัดสต็อก"
-        confirmText="โพสต์"
+        title="ยืนยันรับเข้าระบบ?"
+        message="ระบบจะนำรายการนี้ไปคำนวณต้นทุนเฉลี่ยต่อสินค้าในคลังนี้ (ไม่ตัดสต็อก)"
+        confirmText="ยืนยันรับเข้า"
         variant="warning"
         onConfirm={confirmPost}
         onCancel={() => setPostId(null)}
