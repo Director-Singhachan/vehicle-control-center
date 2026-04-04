@@ -1094,6 +1094,7 @@ export function useCreateTripWizard({ selectedOrders, onSuccess }: UseCreateTrip
     setSkipStockDeduction,
     nextTripSequence1,
     nextTripSequence2,
+    nextTripSequence3,
     // Confirmation & submit
     totals,
     selectedOrders,

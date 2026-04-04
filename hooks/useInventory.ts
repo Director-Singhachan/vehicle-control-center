@@ -405,8 +405,9 @@ export function useInventoryStats() {
 
         const totalProducts = inventoryData.length;
         const totalValue = inventoryData.reduce((sum, item) => {
-          const price = item.base_price ?? item.price_per_unit ?? 0;
-          return sum + item.quantity * price;
+          const price = item.base_price ?? 0;
+          const qty = item.quantity ?? 0;
+          return sum + qty * price;
         }, 0);
         const lowStockCount = inventoryData.filter(
           item => item.stock_status === 'low_stock'

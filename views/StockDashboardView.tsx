@@ -24,7 +24,7 @@ export function StockDashboardView() {
           itemCount: 0,
         };
       }
-      const price = item.base_price ?? item.price_per_unit ?? 0;
+      const price = item.base_price ?? 0;
       acc[item.warehouse_id].totalValue += item.quantity * price;
       acc[item.warehouse_id].itemCount += 1;
       return acc;
@@ -246,23 +246,16 @@ export function StockDashboardView() {
                   <tr key={item.id} className="border-b border-gray-100 dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors">
                     <td className="py-4 px-4">
                       <div className="flex items-center gap-3">
-                        {item.category_color && (
-                          <div 
-                            className="w-3 h-3 rounded-full"
-                            style={{ backgroundColor: item.category_color }}
-                          />
-                        )}
                         <span className="font-medium text-gray-900 dark:text-white">{item.product_name}</span>
                       </div>
                     </td>
-                    <td className="py-4 px-4 text-sm text-gray-600 dark:text-gray-400">{item.product_sku}</td>
+                    <td className="py-4 px-4 text-sm text-gray-600 dark:text-gray-400">{item.product_code}</td>
                     <td className="py-4 px-4 text-sm text-gray-600 dark:text-gray-400">{item.warehouse_name}</td>
                     <td className="py-4 px-4 text-right">
                       <span className="font-semibold text-gray-900 dark:text-white">{item.quantity}</span>
-                      <span className="text-sm text-gray-500 dark:text-gray-400 ml-1">{item.product_unit}</span>
                     </td>
                     <td className="py-4 px-4 text-right font-medium text-gray-900 dark:text-white">
-                      {new Intl.NumberFormat('th-TH').format(item.quantity * (item.base_price ?? item.price_per_unit ?? 0))} ฿
+                      {new Intl.NumberFormat('th-TH').format(item.quantity * (item.base_price ?? 0))} ฿
                     </td>
                     <td className="py-4 px-4 text-center">
                       <Badge

@@ -349,7 +349,7 @@ export const TripLogListView: React.FC<TripLogListViewProps> = ({
                 onChange={(e) =>
                   setFilters({
                     ...filters,
-                    status: (e.target.value as 'checked_out' | 'checked_in') || undefined,
+                    status: (e.target.value as 'checked_out' | 'checked_in' | 'cancelled') || undefined,
                   })
                 }
                 className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"

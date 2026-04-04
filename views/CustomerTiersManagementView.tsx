@@ -24,10 +24,10 @@ export function CustomerTiersManagementView() {
     tier_code: '',
     tier_name: '',
     description: '',
-    discount_percent: '',
-    min_order_amount: '',
+    discount_percent: 0,
+    min_order_amount: 0,
     color: '#3B82F6',
-    display_order: '',
+    display_order: 0,
   });
 
   const handleOpenModal = (tier?: any) => {
@@ -48,10 +48,10 @@ export function CustomerTiersManagementView() {
         tier_code: '',
         tier_name: '',
         description: '',
-        discount_percent: '',
-        min_order_amount: '',
+        discount_percent: 0,
+        min_order_amount: 0,
         color: '#3B82F6',
-        display_order: '',
+        display_order: 0,
       });
     }
     setIsModalOpen(true);
@@ -289,7 +289,7 @@ export function CustomerTiersManagementView() {
               <input
                 type="number"
                 step="0.01"
-                value={formData.discount_percent === '' ? '' : formData.discount_percent}
+                value={formData.discount_percent ?? ''}
                 onChange={(e) => setFormData({ ...formData, discount_percent: e.target.value as any })}
                 className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
                 min="0"
@@ -305,7 +305,7 @@ export function CustomerTiersManagementView() {
               <input
                 type="number"
                 step="0.01"
-                value={formData.min_order_amount === '' ? '' : formData.min_order_amount}
+                value={formData.min_order_amount ?? ''}
                 onChange={(e) => setFormData({ ...formData, min_order_amount: e.target.value as any })}
                 className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
                 min="0"
@@ -320,7 +320,7 @@ export function CustomerTiersManagementView() {
             </label>
             <input
               type="number"
-              value={formData.display_order === '' ? '' : formData.display_order}
+                value={formData.display_order ?? ''}
               onChange={(e) => setFormData({ ...formData, display_order: e.target.value as any })}
               className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
               min="0"

@@ -500,14 +500,14 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
 
                     <div className="flex justify-end gap-2 mt-4 pt-4 border-t border-slate-200 dark:border-slate-700">
                       <Button
-                        variant="ghost"
+                        variant="outline"
                         size="sm"
                         onClick={() => pdfService.generateMaintenanceTicketPDF({
                           id: ticket.id.toString(),
                           ticket_number: ticket.ticket_number,
                           vehicle_plate: ticket.vehicle_plate,
-                          vehicle_make: ticket.vehicle_make,
-                          vehicle_model: ticket.vehicle_model,
+                          vehicle_make: (ticket as any).vehicle_make,
+                          vehicle_model: (ticket as any).vehicle_model,
                           vehicle_type: (ticket as any).vehicle_type,
                           branch: (ticket as any).branch,
                           reporter_name: ticket.reporter_name,

@@ -141,7 +141,7 @@ export const StoreDeliveryDetailView: React.FC<StoreDeliveryDetailViewProps> = (
         </div>
       }
       loading={loading}
-      error={error ? (error as Error).message : undefined}
+      error={!!error}
     >
       <div className="space-y-6">
         {/* Store Info Card */}

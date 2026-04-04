@@ -7,10 +7,20 @@ import { AlertCircle, Shield } from 'lucide-react';
 import { Card } from './ui/Card';
 import type { AccessLevel, FeatureKey } from '../types/featureAccess';
 
+/** บทบาทที่รองรับใน route guard — สอดคล้องกับ app_role ที่ใช้ใน ProtectedRoute (ไม่จำเป็นต้องครบทุกค่าใน enum) */
+type ProtectedRouteRole =
+  | 'user'
+  | 'inspector'
+  | 'manager'
+  | 'executive'
+  | 'admin'
+  | 'sales'
+  | 'driver';
+
 interface ProtectedRouteProps {
   children: React.ReactNode;
-  requiredRole?: 'user' | 'inspector' | 'manager' | 'executive' | 'admin' | 'sales';
-  requiredRoles?: ('user' | 'inspector' | 'manager' | 'executive' | 'admin' | 'sales')[];
+  requiredRole?: ProtectedRouteRole;
+  requiredRoles?: ProtectedRouteRole[];
   /** ต้องอยู่ภายใต้ FeatureAccessProvider */
   requiredFeature?: FeatureKey;
   minFeatureAccess?: AccessLevel;

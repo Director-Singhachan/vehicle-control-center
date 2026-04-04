@@ -2540,7 +2540,7 @@ const AppContent = () => {
                   return (
                     <TicketsView
                       onViewDetail={(id) => {
-                        setSelectedTicketId(id);
+                        setSelectedTicketId(id.toString());
                         setTicketView('detail');
                       }}
                       onCreate={() => {
@@ -2564,7 +2564,7 @@ const AppContent = () => {
                     return (
                       <TicketsView
                         onViewDetail={(id) => {
-                          setSelectedTicketId(id);
+                          setSelectedTicketId(id.toString());
                           setTicketView('detail');
                         }}
                         onCreate={() => {
@@ -2582,15 +2582,20 @@ const AppContent = () => {
                         setSelectedTicketId(null);
                       }}
                       onEdit={(id) => {
-                        setSelectedTicketId(id);
+                        setSelectedTicketId(id.toString());
                         setTicketView('form');
                       }}
                     />
                   );
                 } else if (ticketView === 'form') {
+                  const ticketIdNumForForm = selectedTicketId ? parseInt(selectedTicketId, 10) : NaN;
+                  const ticketIdForForm =
+                    !isNaN(ticketIdNumForForm) && ticketIdNumForForm > 0
+                      ? ticketIdNumForForm
+                      : undefined;
                   return (
                     <TicketFormView
-                      ticketId={selectedTicketId || undefined}
+                      ticketId={ticketIdForForm}
                       onSave={() => {
                         setTicketView('list');
                         setSelectedTicketId(null);
@@ -2617,7 +2622,7 @@ const AppContent = () => {
                 return (
                   <TicketsView
                     onViewDetail={(id) => {
-                      setSelectedTicketId(id);
+                      setSelectedTicketId(id.toString());
                       setTicketView('detail');
                     }}
                     onCreate={() => {

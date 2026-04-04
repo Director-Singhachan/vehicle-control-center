@@ -44,6 +44,36 @@ export interface StaffItemDetail {
   store_code: string | null;
 }
 
+export interface MonthlyDeliveryReportRow {
+  month: string;
+  monthLabel: string;
+  totalTrips: number;
+  totalStores: number;
+  totalItems: number;
+  totalQuantity: number;
+  totalDistance: number;
+  averageItemsPerTrip: number;
+  averageQuantityPerTrip: number;
+}
+
+export interface DeliverySummaryByStoreRow {
+  store_id: string;
+  customer_code: string;
+  customer_name: string;
+  address: string | null;
+  totalTrips: number;
+  totalItems: number;
+  totalQuantity: number;
+  products: Array<{
+    product_id: string;
+    product_code: string;
+    product_name: string;
+    unit: string;
+    totalQuantity: number;
+    deliveryCount: number;
+  }>;
+}
+
 export const deliveryReportService = {
   getDeliverySummaryByVehicle: async (
     startDate?: Date,
@@ -253,23 +283,7 @@ export const deliveryReportService = {
     startDate?: Date,
     endDate?: Date,
     storeId?: string
-  ): Promise<Array<{
-    store_id: string;
-    customer_code: string;
-    customer_name: string;
-    address: string | null;
-    totalTrips: number;
-    totalItems: number;
-    totalQuantity: number;
-    products: Array<{
-      product_id: string;
-      product_code: string;
-      product_name: string;
-      unit: string;
-      totalQuantity: number;
-      deliveryCount: number;
-    }>;
-  }>> => {
+  ): Promise<DeliverySummaryByStoreRow[]> => {
     try {
       if (!startDate || !endDate) {
         const now = new Date();
@@ -661,17 +675,7 @@ export const deliveryReportService = {
 
   getMonthlyDeliveryReport: async (
     months: number = 6
-  ): Promise<Array<{
-    month: string;
-    monthLabel: string;
-    totalTrips: number;
-    totalStores: number;
-    totalItems: number;
-    totalQuantity: number;
-    totalDistance: number;
-    averageItemsPerTrip: number;
-    averageQuantityPerTrip: number;
-  }>> => {
+  ): Promise<MonthlyDeliveryReportRow[]> => {
     try {
       const now = new Date();
       const endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);

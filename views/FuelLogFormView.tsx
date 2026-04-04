@@ -322,7 +322,9 @@ export const FuelLogFormView: React.FC<FuelLogFormViewProps> = ({
         title="บันทึกการเติมน้ำมัน"
         subtitle="กำลังโหลดข้อมูล..."
         loading={true}
-      />
+      >
+        {null}
+      </PageLayout>
     );
   }
 
@@ -347,7 +349,9 @@ export const FuelLogFormView: React.FC<FuelLogFormViewProps> = ({
         subtitle="เกิดข้อผิดพลาด"
         error={true}
         onRetry={() => window.location.reload()}
-      />
+      >
+        {null}
+      </PageLayout>
     );
   }
 
