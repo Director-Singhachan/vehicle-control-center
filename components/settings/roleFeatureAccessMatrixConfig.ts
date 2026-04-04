@@ -21,6 +21,7 @@ export const FEATURE_LABELS: Partial<Record<FeatureKey, string>> = {
   'tab.stock_dashboard': 'Stock Dashboard',
   'tab.warehouses': 'จัดการคลัง',
   'tab.inventory_receipts': 'ประวัติรับสินค้า',
+  'tab.purchase_receipts': 'บันทึกต้นทุนจัดซื้อ',
   'tab.dashboard': 'แดชบอร์ดฝ่ายขนส่ง',
   'tab.vehicles': 'ยานพาหนะ',
   'tab.maintenance': 'ซ่อมบำรุง',
@@ -140,7 +141,7 @@ export const FEATURE_GROUPS: FeatureGroup[] = [
   {
     id: 'warehouse',
     title: 'คลังสินค้า',
-    keys: ['tab.stock_dashboard', 'tab.warehouses', 'tab.inventory_receipts'],
+    keys: ['tab.stock_dashboard', 'tab.warehouses', 'tab.inventory_receipts', 'tab.purchase_receipts'],
     icon: Package,
   },
   {
