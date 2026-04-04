@@ -1419,7 +1419,9 @@ const AppContent = () => {
                         />
                       )}
 
-                      {(can('tab.warehouses', 'view') || can('tab.inventory_receipts', 'view')) && (
+                      {(can('tab.warehouses', 'view') ||
+                        can('tab.inventory_receipts', 'view') ||
+                        can('tab.purchase_receipts', 'view')) && (
                         <>
                           <MenuSectionHeader label="จัดการระบบคลัง" />
                           {can('tab.warehouses', 'view') && (
@@ -1428,6 +1430,18 @@ const AppContent = () => {
                               active={activeTab === 'warehouses'}
                               onClick={() => {
                                 setActiveTab('warehouses');
+                                setIsStockHovered(false);
+                              }}
+                              isCollapsed={false}
+                              isFlyout={true}
+                            />
+                          )}
+                          {can('tab.purchase_receipts', 'view') && (
+                            <SubSidebarItem
+                              label="บันทึกต้นทุนจัดซื้อ"
+                              active={activeTab === 'purchase-receipts'}
+                              onClick={() => {
+                                setActiveTab('purchase-receipts');
                                 setIsStockHovered(false);
                               }}
                               isCollapsed={false}
