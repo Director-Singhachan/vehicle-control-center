@@ -10,6 +10,106 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
 };
 
+const VEHICLE_USAGE_TELEGRAM_EVENT_TYPES = new Set([
+  'trip_started',
+  'trip_finished',
+  'trip_cancelled',
+  'daily_usage_summary',
+]);
+
+function normalizeBranchCode(branch: string | null | undefined): string | null {
+  const trimmed = branch?.trim();
+  if (!trimmed) return null;
+
+  if (trimmed === 'SD' || trimmed.includes('สอยดาว')) return 'SD';
+  if (trimmed === 'HQ' || trimmed.includes('สำนักงาน')) return 'HQ';
+
+  return trimmed;
+}
+
+function toEnvBranchToken(branch: string): string | null {
+  const token = branch
+    .trim()
+    .replace(/[^a-zA-Z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .toUpperCase();
+
+  return token || null;
+}
+
+function getTelegramGroupChatIdByBranch(branch: string | null): string | null {
+  const branchToken = branch ? toEnvBranchToken(branch) : null;
+  const branchKeys = branchToken
+    ? [
+        `TELEGRAM_VEHICLE_USAGE_GROUP_CHAT_ID_${branchToken}`,
+        `TELEGRAM_USAGE_GROUP_CHAT_ID_${branchToken}`,
+        `TELEGRAM_GROUP_CHAT_ID_${branchToken}`,
+        `TELEGRAM_CHAT_ID_${branchToken}`,
+      ]
+    : [];
+
+  const fallbackKeys = [
+    'TELEGRAM_VEHICLE_USAGE_GROUP_CHAT_ID',
+    'TELEGRAM_MAINTENANCE_GROUP_CHAT_ID',
+    'TELEGRAM_GROUP_CHAT_ID',
+    'TELEGRAM_CHAT_ID',
+  ];
+
+  for (const key of [...branchKeys, ...fallbackKeys]) {
+    const value = Deno.env.get(key)?.trim();
+    if (value) return value;
+  }
+
+  return null;
+}
+
+async function resolveVehicleUsageBranch(supabase: any, event: any): Promise<string | null> {
+  const payloadBranch = normalizeBranchCode(event.payload?.branch);
+  if (payloadBranch) return payloadBranch;
+
+  const vehicleId =
+    typeof event.payload?.vehicle_id === 'string' && event.payload.vehicle_id.trim().length > 0
+      ? event.payload.vehicle_id
+      : null;
+
+  if (!vehicleId) return null;
+
+  const { data, error } = await supabase
+    .from('vehicles')
+    .select('branch')
+    .eq('id', vehicleId)
+    .maybeSingle();
+
+  if (error) {
+    console.warn(
+      `[notification-worker] Failed to load vehicle branch for event ${event.id}: ${error.message}`,
+    );
+    return null;
+  }
+
+  return normalizeBranchCode(data?.branch);
+}
+
+async function resolveTelegramGroupChatIdForEvent(
+  supabase: any,
+  event: any,
+  defaultGroupChatId: string | null,
+): Promise<{ chatId: string | null; branch: string | null }> {
+  if (!VEHICLE_USAGE_TELEGRAM_EVENT_TYPES.has(event.event_type)) {
+    return {
+      chatId: defaultGroupChatId,
+      branch: null,
+    };
+  }
+
+  const branch = await resolveVehicleUsageBranch(supabase, event);
+
+  return {
+    chatId: getTelegramGroupChatIdByBranch(branch) || defaultGroupChatId,
+    branch,
+  };
+}
+
 Deno.serve(async (req) => {
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
@@ -131,7 +231,7 @@ Deno.serve(async (req) => {
           }
 
           const botToken = Deno.env.get('TELEGRAM_BOT_TOKEN') || Deno.env.get('TELEGRAM_MAINTENANCE_BOT_TOKEN');
-          const groupChatId = Deno.env.get('TELEGRAM_MAINTENANCE_GROUP_CHAT_ID') || Deno.env.get('TELEGRAM_GROUP_CHAT_ID') || Deno.env.get('TELEGRAM_CHAT_ID');
+          const groupChatId = getTelegramGroupChatIdByBranch(null);
 
           let targetChatId: string | null = null;
 
@@ -169,7 +269,16 @@ Deno.serve(async (req) => {
               continue;
             }
 
-            targetChatId = groupChatId || null;
+            const { chatId: resolvedChatId, branch: resolvedBranch } =
+              await resolveTelegramGroupChatIdForEvent(supabase, event, groupChatId);
+
+            if (VEHICLE_USAGE_TELEGRAM_EVENT_TYPES.has(event.event_type)) {
+              console.log(
+                `[notification-worker] Resolved Telegram vehicle usage chat for branch=${resolvedBranch || 'default'} event=${event.event_type}`,
+              );
+            }
+
+            targetChatId = resolvedChatId || null;
           }
 
           if (!botToken || !targetChatId) {

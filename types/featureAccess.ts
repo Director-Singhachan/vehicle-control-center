@@ -30,6 +30,7 @@ export const FEATURE_KEYS = [
   'tab.stock_dashboard',
   'tab.warehouses',
   'tab.inventory_receipts',
+  'tab.purchase_receipts',
   'tab.dashboard',
   'tab.vehicles',
   'tab.maintenance',
@@ -57,7 +58,12 @@ export type FeatureKey = (typeof FEATURE_KEYS)[number];
  * เมื่อ role มีแถวใน role_feature_access อย่างน้อยหนึ่งแถว — ฟีเจอร์ที่ไม่มีใน DB จะเป็น none (ไม่ fallback built-in เต็มรายการ)
  * ยกเว้นกลุ่มนี้ที่ยังใช้ built-in เพื่อให้เข้าโปรไฟล์ / ตั้งค่าพื้นฐานได้ (ยังตั้งเป็น none ใน matrix ได้ถ้าต้องการปิดจริง ๆ)
  */
-export const FEATURE_MATRIX_SURVIVAL_KEYS: readonly FeatureKey[] = ['tab.profile', 'tab.settings'];
+/** ฟีเจอร์ที่เพิ่มทีหลัง: ถ้า matrix จาก DB ครบแต่ยังไม่มีแถว key นี้ ให้ fallback built-in (กันเมนูหายจนกว่าจะ seed/backfill) */
+export const FEATURE_MATRIX_SURVIVAL_KEYS: readonly FeatureKey[] = [
+  'tab.profile',
+  'tab.settings',
+  'tab.purchase_receipts',
+];
 
 export interface ResolveAccessLevelOptions {
   /** true เมื่อโหลด matrix แล้วและ role นี้มีอย่างน้อยหนึ่งแถวใน DB */
@@ -80,6 +86,7 @@ export const TAB_TO_PRIMARY_FEATURE: Record<string, FeatureKey> = {
   'stock-dashboard': 'tab.stock_dashboard',
   warehouses: 'tab.warehouses',
   'inventory-receipts': 'tab.inventory_receipts',
+  'purchase-receipts': 'tab.purchase_receipts',
   dashboard: 'tab.dashboard',
   vehicles: 'tab.vehicles',
   maintenance: 'tab.maintenance',
@@ -128,6 +135,7 @@ const NAV_FALLBACK_PRIORITY: string[] = [
   'excel-import',
   'warehouses',
   'inventory-receipts',
+  'purchase-receipts',
   'cleanup-test-orders',
   'product-pricing',
   'customer-tiers',
@@ -238,6 +246,7 @@ const BUILT_IN: Partial<Record<AppRole, Partial<Record<FeatureKey, AccessLevel>>
     'tab.confirm_orders': 'manage',
     'tab.warehouses': 'none',
     'tab.inventory_receipts': 'none',
+    'tab.purchase_receipts': 'none',
     'tab.profile': 'manage',
     'tab.settings': 'view',
   },
@@ -269,6 +278,7 @@ const BUILT_IN: Partial<Record<AppRole, Partial<Record<FeatureKey, AccessLevel>>
     'tab.confirm_orders': 'manage',
     'tab.warehouses': 'view',
     'tab.inventory_receipts': 'view',
+    'tab.purchase_receipts': 'manage',
     'tab.delivery_trips': 'view',
     'tab.profile': 'manage',
     'tab.settings': 'view',
@@ -280,6 +290,7 @@ const BUILT_IN: Partial<Record<AppRole, Partial<Record<FeatureKey, AccessLevel>>
     'tab.confirm_orders': 'manage',
     'tab.warehouses': 'manage',
     'tab.inventory_receipts': 'manage',
+    'tab.purchase_receipts': 'manage',
     'tab.delivery_trips': 'manage',
     'tab.packing_simulation': 'manage',
     'tab.triplogs': 'view',

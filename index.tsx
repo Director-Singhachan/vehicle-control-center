@@ -68,6 +68,9 @@ const WarehouseManagementView = lazy(() => import('./views/WarehouseManagementVi
 const CustomerTiersManagementView = lazy(() => import('./views/CustomerTiersManagementView').then(m => ({ default: m.CustomerTiersManagementView })));
 const ProductTierPricingView = lazy(() => import('./views/ProductTierPricingView').then(m => ({ default: m.ProductTierPricingView })));
 const InventoryReceiptsView = lazy(() => import('./views/InventoryReceiptsView').then(m => ({ default: m.InventoryReceiptsView })));
+const PurchaseReceiptsManageView = lazy(() =>
+  import('./views/PurchaseReceiptsManageView').then(m => ({ default: m.PurchaseReceiptsManageView })),
+);
 
 const ConfirmOrderView = lazy(() => import('./views/ConfirmOrderView').then(m => ({ default: m.ConfirmOrderView })));
 const CreateOrderView = lazy(() => import('./views/CreateOrderView').then(m => ({ default: m.CreateOrderView })));
@@ -164,7 +167,8 @@ const AppContent = () => {
       can('tab.stock_dashboard', 'view') ||
       can('tab.confirm_orders', 'view') ||
       can('tab.warehouses', 'view') ||
-      can('tab.inventory_receipts', 'view')
+      can('tab.inventory_receipts', 'view') ||
+      can('tab.purchase_receipts', 'view')
     );
   }, [isDriver, can]);
 
@@ -1323,7 +1327,7 @@ const AppContent = () => {
                 <SidebarItem
                   icon={Boxes}
                   label={isSidebarOpen ? "คลังสินค้า" : ""}
-                  active={activeTab === 'stock-dashboard' || activeTab === 'warehouses' || activeTab === 'inventory-receipts' || activeTab === 'confirm-orders'}
+                  active={activeTab === 'stock-dashboard' || activeTab === 'warehouses' || activeTab === 'inventory-receipts' || activeTab === 'purchase-receipts' || activeTab === 'confirm-orders'}
                   onClick={() => {
                     if (isMobile) {
                       setMobileStockExpanded(prev => !prev);
@@ -1335,9 +1339,11 @@ const AppContent = () => {
                             ? 'confirm-orders'
                             : can('tab.warehouses', 'view')
                               ? 'warehouses'
-                              : can('tab.inventory_receipts', 'view')
-                                ? 'inventory-receipts'
-                                : null;
+                              : can('tab.purchase_receipts', 'view')
+                                ? 'purchase-receipts'
+                                : can('tab.inventory_receipts', 'view')
+                                  ? 'inventory-receipts'
+                                  : null;
                       if (firstStock && activeTab !== firstStock) setActiveTab(firstStock);
                     }
                   }}
@@ -1358,6 +1364,9 @@ const AppContent = () => {
                   )}
                   {can('tab.warehouses', 'view') && (
                     <SubSidebarItem label="จัดการคลัง" active={activeTab === 'warehouses'} onClick={() => navigateAndCloseMobile('warehouses')} isCollapsed={false} isFlyout={false} />
+                  )}
+                  {can('tab.purchase_receipts', 'view') && (
+                    <SubSidebarItem label="บันทึกต้นทุนจัดซื้อ" active={activeTab === 'purchase-receipts'} onClick={() => navigateAndCloseMobile('purchase-receipts')} isCollapsed={false} isFlyout={false} />
                   )}
                   {can('tab.inventory_receipts', 'view') && (
                     <SubSidebarItem label="ประวัติรับสินค้า" active={activeTab === 'inventory-receipts'} onClick={() => navigateAndCloseMobile('inventory-receipts')} isCollapsed={false} isFlyout={false} />
@@ -1410,7 +1419,9 @@ const AppContent = () => {
                         />
                       )}
 
-                      {(can('tab.warehouses', 'view') || can('tab.inventory_receipts', 'view')) && (
+                      {(can('tab.warehouses', 'view') ||
+                        can('tab.inventory_receipts', 'view') ||
+                        can('tab.purchase_receipts', 'view')) && (
                         <>
                           <MenuSectionHeader label="จัดการระบบคลัง" />
                           {can('tab.warehouses', 'view') && (
@@ -1419,6 +1430,18 @@ const AppContent = () => {
                               active={activeTab === 'warehouses'}
                               onClick={() => {
                                 setActiveTab('warehouses');
+                                setIsStockHovered(false);
+                              }}
+                              isCollapsed={false}
+                              isFlyout={true}
+                            />
+                          )}
+                          {can('tab.purchase_receipts', 'view') && (
+                            <SubSidebarItem
+                              label="บันทึกต้นทุนจัดซื้อ"
+                              active={activeTab === 'purchase-receipts'}
+                              onClick={() => {
+                                setActiveTab('purchase-receipts');
                                 setIsStockHovered(false);
                               }}
                               isCollapsed={false}
@@ -2980,6 +3003,8 @@ const AppContent = () => {
               <WarehouseManagementView />
             ) : activeTab === 'inventory-receipts' ? (
               <InventoryReceiptsView />
+            ) : activeTab === 'purchase-receipts' ? (
+              <PurchaseReceiptsManageView />
             ) : activeTab === 'customer-tiers' ? (
               <CustomerTiersManagementView />
             ) : activeTab === 'product-pricing' ? (
