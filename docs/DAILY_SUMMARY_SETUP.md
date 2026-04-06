@@ -1,6 +1,6 @@
 # 📊 การตั้งค่าสรุปการใช้รถรายวัน (Daily Summary)
 
-ระบบจะส่งสรุปการใช้รถรายวันไปยัง Telegram group อัตโนมัติทุกวัน
+ระบบจะส่งสรุปการใช้รถรายวันไปยัง Telegram แยกตามสาขาอัตโนมัติทุกวัน
 
 ## 🎯 ฟีเจอร์
 
@@ -29,7 +29,13 @@
 ตั้งค่าใน Supabase Dashboard → Edge Functions → daily-summary-worker:
 
 - `TELEGRAM_BOT_TOKEN` - Token จาก BotFather
-- `TELEGRAM_MAINTENANCE_GROUP_CHAT_ID` - Chat ID ของกลุ่ม Telegram
+- `TELEGRAM_VEHICLE_USAGE_GROUP_CHAT_ID_<BRANCH>` - Chat ID ของกลุ่ม Telegram ต่อสาขา เช่น `TELEGRAM_VEHICLE_USAGE_GROUP_CHAT_ID_HQ`, `TELEGRAM_VEHICLE_USAGE_GROUP_CHAT_ID_SD`, `TELEGRAM_VEHICLE_USAGE_GROUP_CHAT_ID_ASIA`
+- `TELEGRAM_VEHICLE_USAGE_GROUP_CHAT_ID` - ค่า fallback ถ้ายังไม่ได้ตั้งแยกตามสาขา
+- `TELEGRAM_MAINTENANCE_GROUP_CHAT_ID` - ค่า fallback เดิม (รองรับของเก่า)
+
+หมายเหตุ:
+- worker จะพยายามหาห้องแชตตามสาขาของรถก่อน แล้วค่อย fallback ไปค่ากลาง
+- ฝั่งแจ้งเตือนการใช้รถจาก `notification-worker` ใช้ชื่อ environment แบบเดียวกัน
 
 ### 2. การเรียกใช้
 

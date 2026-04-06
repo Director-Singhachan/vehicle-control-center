@@ -44,9 +44,13 @@ export const excelExport = {
     XLSX.writeFile(workbook, safeFilename);
   },
 
-  /** Export หลายชีตในไฟล์เดียว */
-  exportToExcelMultiSheet: <T extends Record<string, any>>(
-    sheets: { sheetName: string; data: T[]; columns: ExportColumn[] }[],
+  /** Export หลายชีตในไฟล์เดียว (แต่ละชีตอาจมีคอลัมน์/แถวคนละรูปแบบได้) */
+  exportToExcelMultiSheet: (
+    sheets: {
+      sheetName: string;
+      data: Record<string, any>[];
+      columns: ExportColumn[];
+    }[],
     filename: string = 'export.xlsx'
   ): void => {
     const workbook = XLSX.utils.book_new();

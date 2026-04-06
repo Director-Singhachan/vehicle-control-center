@@ -189,7 +189,7 @@ export const DailySummaryView: React.FC<DailySummaryViewProps> = ({ isDark = fal
         </div>
       }
       loading={loading}
-      error={error}
+      error={!!error}
       onRetry={() => fetchSummary(selectedDate)}
     >
       {/* Date Selector */}

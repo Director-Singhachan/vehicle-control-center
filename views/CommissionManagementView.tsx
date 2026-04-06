@@ -775,7 +775,7 @@ export const CommissionManagementView: React.FC = () => {
                                                 size="sm"
                                                 onClick={() => handleSingleCalculate(trip.trip_id, trip.has_commission)}
                                                 disabled={batchLoading}
-                                                variant={trip.has_commission ? 'outline' : 'default'}
+                                                variant={trip.has_commission ? 'outline' : 'primary'}
                                                 className={`flex-shrink-0 rounded-lg flex items-center gap-1.5 px-4 ${
                                                     trip.has_commission
                                                         ? 'border-blue-200 text-blue-700 hover:bg-blue-50 dark:border-blue-700 dark:text-blue-300 dark:hover:bg-blue-900/20'

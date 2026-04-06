@@ -854,7 +854,9 @@ export function ExcelImportView() {
                                                         ) : (
                                                             <div className="flex items-center justify-center gap-1">
                                                                 <Badge variant="info" className="text-[10px]">อัปเดต</Badge>
-                                                                <Pencil size={10} className="text-blue-500" title="มีการแก้ไขข้อมูล" />
+                                                                <span className="inline-flex" title="มีการแก้ไขข้อมูล">
+                                                                    <Pencil size={10} className="text-blue-500" aria-hidden />
+                                                                </span>
                                                             </div>
                                                         )}
                                                     </td>

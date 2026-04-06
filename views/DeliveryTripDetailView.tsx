@@ -125,7 +125,11 @@ export const DeliveryTripDetailView: React.FC<DeliveryTripDetailViewProps> = ({
 
   // ─── Loading / error states ────────────────────────────────────────────────
   if (loading) {
-    return <PageLayout title="รายละเอียดทริปส่งสินค้า" loading={true} />;
+    return (
+      <PageLayout title="รายละเอียดทริปส่งสินค้า" loading={true}>
+        {null}
+      </PageLayout>
+    );
   }
 
   if (error || !trip) {

@@ -13,7 +13,8 @@ import {
   CheckSquare,
   Square,
   Play,
-  CheckCircle2
+  CheckCircle2,
+  ArrowLeft,
 } from 'lucide-react';
 import { PageLayout } from '../components/ui/PageLayout';
 import { Card } from '../components/ui/Card';
@@ -276,15 +277,26 @@ export const PendingSalesView: React.FC<PendingSalesViewProps> = ({ onBack }) =>
 
       <PageLayout
         title="ใบขายคงค้าง (ที่มีข้อผิดพลาด)"
-        onBack={onBack}
         actions={
           <div className="flex items-center gap-2">
+            {onBack && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={onBack}
+                className="flex items-center gap-2"
+              >
+                <ArrowLeft className="w-4 h-4" />
+                ย้อนกลับ
+              </Button>
+            )}
             {orders.length > 0 && (
                 <Button 
                     onClick={() => setIsDeleteAllOpen(true)} 
-                    variant="ghost" 
+                    variant="outline" 
                     size="sm" 
-                    className="flex items-center gap-2 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"
+                    className="flex items-center gap-2 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 border-0 bg-transparent hover:border-0 hover:bg-transparent dark:hover:bg-transparent"
                 >
                     <Trash2 className="w-4 h-4" />
                     ลบทั้งหมด
@@ -369,7 +381,7 @@ export const PendingSalesView: React.FC<PendingSalesViewProps> = ({ onBack }) =>
                           <h3 className="font-bold text-gray-900 dark:text-white text-lg">
                             {order.customer_name}
                           </h3>
-                          <Badge variant="outline" className="text-xs bg-white dark:bg-slate-900 font-mono">
+                          <Badge className="text-xs bg-white dark:bg-slate-900 font-mono">
                             {order.doc_no}
                           </Badge>
                         </div>
@@ -406,13 +418,13 @@ export const PendingSalesView: React.FC<PendingSalesViewProps> = ({ onBack }) =>
                       </div>
                       <div className="flex items-center gap-1">
                         <Button 
-                          variant="ghost" 
+                          variant="outline" 
                           size="sm" 
                           onClick={(e) => {
                             e.stopPropagation();
                             handleDelete(order.id);
                           }}
-                          className="text-gray-400 hover:text-red-600 dark:hover:text-red-400 p-2 h-auto"
+                          className="text-gray-400 hover:text-red-600 dark:hover:text-red-400 p-2 h-auto border-0 bg-transparent hover:border-0 hover:bg-transparent dark:hover:bg-transparent"
                         >
                           <Trash2 className="w-5 h-5" />
                         </Button>
@@ -500,8 +512,8 @@ export const PendingSalesView: React.FC<PendingSalesViewProps> = ({ onBack }) =>
 
                         <Button 
                             onClick={() => setSelectedIds([])}
-                            variant="ghost"
-                            className="text-slate-400 hover:text-white"
+                            variant="outline"
+                            className="text-slate-400 hover:text-white border-0 bg-transparent hover:border-0 hover:bg-transparent dark:hover:bg-transparent"
                         >
                             ยกเลิก
                         </Button>

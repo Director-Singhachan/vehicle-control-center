@@ -1514,6 +1514,151 @@ export type Database = {
           },
         ]
       }
+      product_moving_avg_costs: {
+        Row: {
+          avg_unit_cost: number
+          basis_qty: number
+          product_id: string
+          total_cost_value: number
+          updated_at: string
+          warehouse_id: string
+        }
+        Insert: {
+          avg_unit_cost?: number
+          basis_qty?: number
+          product_id: string
+          total_cost_value?: number
+          updated_at?: string
+          warehouse_id: string
+        }
+        Update: {
+          avg_unit_cost?: number
+          basis_qty?: number
+          product_id?: string
+          total_cost_value?: number
+          updated_at?: string
+          warehouse_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "product_moving_avg_costs_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "product_moving_avg_costs_warehouse_id_fkey"
+            columns: ["warehouse_id"]
+            isOneToOne: false
+            referencedRelation: "warehouses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      purchase_receipt_items: {
+        Row: {
+          created_at: string
+          id: string
+          line_total: number
+          product_id: string
+          purchase_receipt_id: string
+          quantity: number
+          unit: string | null
+          unit_cost: number
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          product_id: string
+          purchase_receipt_id: string
+          quantity: number
+          unit?: string | null
+          unit_cost: number
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          product_id?: string
+          purchase_receipt_id?: string
+          quantity?: number
+          unit?: string | null
+          unit_cost?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "purchase_receipt_items_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "purchase_receipt_items_purchase_receipt_id_fkey"
+            columns: ["purchase_receipt_id"]
+            isOneToOne: false
+            referencedRelation: "purchase_receipts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      purchase_receipts: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          invoice_ref: string | null
+          notes: string | null
+          posted_at: string | null
+          receipt_date: string
+          status: string
+          supplier_name: string | null
+          updated_at: string
+          warehouse_id: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          invoice_ref?: string | null
+          notes?: string | null
+          posted_at?: string | null
+          receipt_date?: string
+          status?: string
+          supplier_name?: string | null
+          updated_at?: string
+          warehouse_id: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          invoice_ref?: string | null
+          notes?: string | null
+          posted_at?: string | null
+          receipt_date?: string
+          status?: string
+          supplier_name?: string | null
+          updated_at?: string
+          warehouse_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "purchase_receipts_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "purchase_receipts_warehouse_id_fkey"
+            columns: ["warehouse_id"]
+            isOneToOne: false
+            referencedRelation: "warehouses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       maintenance_history: {
         Row: {
           cost: number | null
@@ -6362,6 +6507,10 @@ export type Database = {
       }
       calculate_order_total: {
         Args: { p_order_id: string }
+        Returns: undefined
+      }
+      post_purchase_receipt: {
+        Args: { p_receipt_id: string }
         Returns: undefined
       }
       check_maintenance_alerts: { Args: never; Returns: undefined }

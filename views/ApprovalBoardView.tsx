@@ -217,13 +217,15 @@ export const ApprovalBoardView: React.FC<ApprovalBoardViewProps> = ({
 
   if (featureAccessLoading) {
     return (
-      <PageLayout title="เธ เธฒเธเธฃเธงเธกเธเธฒเธฃเธญเธเธธเธกเธฑเธ•เธด" subtitle="กำลังตรวจสอบสิทธิ์..." loading={true} />
+      <PageLayout title="ภาพรวมการอนุมัติ" subtitle="กำลังตรวจสอบสิทธิ์..." loading={true}>
+        {null}
+      </PageLayout>
     );
   }
 
   if (!canViewApprovals) {
     return (
-      <PageLayout title="เธ เธฒเธเธฃเธงเธกเธเธฒเธฃเธญเธเธธเธกเธฑเธ•เธด" subtitle="คุณไม่มีสิทธิ์เข้าใช้งานหน้านี้">
+      <PageLayout title="ภาพรวมการอนุมัติ" subtitle="คุณไม่มีสิทธิ์เข้าใช้งานหน้านี้">
         <Card className="p-6">
           <p className="text-slate-600 dark:text-slate-400">คุณไม่มีสิทธิ์เข้าดูภาพรวมการอนุมัติ</p>
         </Card>

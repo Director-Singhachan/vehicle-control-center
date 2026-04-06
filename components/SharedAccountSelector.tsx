@@ -65,7 +65,7 @@ export const SharedAccountSelector: React.FC = () => {
           </DialogDescription>
         </DialogHeader>
 
-        <div className="py-4 space-y-2 max-h-[60vh] overflow-y-auto">
+        <div className="px-6 py-4 space-y-2 max-h-[60vh] overflow-y-auto">
           {availableStaff.map((staff) => (
             <button
               key={staff.id}
@@ -89,13 +89,15 @@ export const SharedAccountSelector: React.FC = () => {
           ))}
         </div>
 
-        <Button 
-          onClick={handleConfirmSelection} 
-          disabled={!selectedStaff}
-          className="w-full"
-        >
-          Confirm and Continue
-        </Button>
+        <div className="border-t border-slate-200 px-6 py-4 dark:border-slate-700">
+          <Button 
+            onClick={handleConfirmSelection} 
+            disabled={!selectedStaff}
+            className="w-full"
+          >
+            Confirm and Continue
+          </Button>
+        </div>
       </DialogContent>
     </Dialog>
   );

@@ -4,10 +4,13 @@ import type { AppRole } from '../../types/database';
 import type { AccessLevel, FeatureKey } from '../../types/featureAccess';
 
 export const FEATURE_LABELS: Partial<Record<FeatureKey, string>> = {
-  'tab.reports': 'รายงาน (ศูนย์กลาง)',
+  'tab.reports':
+    'รายงาน (ศูนย์กลาง) — สิทธิ์เข้าเมนู/หน้ารายงาน (เปิดอย่างน้อย「ดู」หากต้องใช้รายงานย่อยใด ๆ)',
   'report.pnl_trip': 'P&L รายเที่ยว',
   'report.pnl_vehicle': 'P&L รายคัน',
   'report.pnl_fleet': 'P&L ทั้งกองเรือ',
+  'report.pnl_executive':
+    'รายงานผู้บริหาร (Fleet P&L) — แสดงในแท็บหลังเข้าหน้ารายงาน (ต้องไม่ปิดศูนย์กลางระดับ「ไม่มี」)',
   'tab.create_order': 'สร้างออเดอร์',
   'tab.confirm_orders': 'ยืนยันและแบ่งส่ง',
   'tab.track_orders': 'ติดตามออเดอร์',
@@ -21,6 +24,7 @@ export const FEATURE_LABELS: Partial<Record<FeatureKey, string>> = {
   'tab.stock_dashboard': 'Stock Dashboard',
   'tab.warehouses': 'จัดการคลัง',
   'tab.inventory_receipts': 'ประวัติรับสินค้า',
+  'tab.purchase_receipts': 'บันทึกต้นทุนจัดซื้อ',
   'tab.dashboard': 'แดชบอร์ดฝ่ายขนส่ง',
   'tab.vehicles': 'ยานพาหนะ',
   'tab.maintenance': 'ซ่อมบำรุง',
@@ -118,7 +122,13 @@ export const FEATURE_GROUPS: FeatureGroup[] = [
   {
     id: 'finance_reports',
     title: 'การเงิน / รายงาน',
-    keys: ['tab.reports', 'report.pnl_trip', 'report.pnl_vehicle', 'report.pnl_fleet'],
+    keys: [
+      'tab.reports',
+      'report.pnl_trip',
+      'report.pnl_vehicle',
+      'report.pnl_fleet',
+      'report.pnl_executive',
+    ],
     icon: BarChart3,
   },
   {
@@ -141,7 +151,7 @@ export const FEATURE_GROUPS: FeatureGroup[] = [
   {
     id: 'warehouse',
     title: 'คลังสินค้า',
-    keys: ['tab.stock_dashboard', 'tab.warehouses', 'tab.inventory_receipts'],
+    keys: ['tab.stock_dashboard', 'tab.warehouses', 'tab.inventory_receipts', 'tab.purchase_receipts'],
     icon: Package,
   },
   {

@@ -15,7 +15,8 @@ export interface PendingBillingTrip {
   stores?: Array<{
     id: string;
     store_id: string;
-    invoice_status: string | null;
+    /** สอดคล้องกับ DeliveryTripStoreWithDetails — อาจไม่ถูกโหลดหรือไม่มีในบางแถว */
+    invoice_status?: string | null;
     store?: {
       customer_name: string;
       customer_code: string;

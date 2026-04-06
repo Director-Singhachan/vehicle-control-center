@@ -16,7 +16,13 @@ export type {
   CostPerKm,
   MonthlyCostTrend,
 } from './reports/productReportService';
-export type { StaffCommissionSummary, StaffItemStatistics, StaffItemDetail } from './reports/deliveryReportService';
+export type {
+  StaffCommissionSummary,
+  StaffItemStatistics,
+  StaffItemDetail,
+  MonthlyDeliveryReportRow,
+  DeliverySummaryByStoreRow,
+} from './reports/deliveryReportService';
 
 export const reportsService = {
   ...fuelReportService,

@@ -51,7 +51,7 @@ isProject: false
 
 ### A.1 โครงตาราง (แนะนำ)
 
-**ตาราง `trip_packing_layout**`
+**ตาราง `trip_packing_layout`**
 
 
 | คอลัมน์                 | ประเภท                    | คำอธิบาย                                               |
@@ -66,7 +66,7 @@ isProject: false
 
 - Unique constraint: `(delivery_trip_id, position_type, position_index, layer_index)` ถ้าใช้ layer
 
-**ตาราง `trip_packing_layout_items**`
+**ตาราง `trip_packing_layout_items`**
 
 
 | คอลัมน์                | ประเภท                         | คำอธิบาย                      |
@@ -171,7 +171,8 @@ isProject: false
 ### Database Performance
 
 - **Bulk Operations**: ใช้ transaction + batch insert สำหรับ `trip_packing_layout_items`
-  ```sql
+
+```sql
   -- แทนที่จะ insert ทีละรายการ
   INSERT INTO trip_packing_layout_items 
     (trip_packing_layout_id, delivery_trip_item_id, quantity)
@@ -179,14 +180,20 @@ isProject: false
     ($1, $2, $3),
     ($1, $4, $5),
     ... -- batch up to 100 rows
-  ```
+  
+
+```
+
 - **Required Indexes**:
-  ```sql
+
+```sql
   CREATE INDEX idx_tpl_trip ON trip_packing_layout(delivery_trip_id);
   CREATE INDEX idx_tpli_layout ON trip_packing_layout_items(trip_packing_layout_id);
   CREATE INDEX idx_tpli_item ON trip_packing_layout_items(delivery_trip_item_id);
   CREATE INDEX idx_tpl_position ON trip_packing_layout(delivery_trip_id, position_type, position_index);
-  ```
+  
+
+```
 
 ### UI Performance
 

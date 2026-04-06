@@ -17,6 +17,8 @@ export const FEATURE_KEYS = [
   'report.pnl_trip',
   'report.pnl_vehicle',
   'report.pnl_fleet',
+  /** แดชบอร์ด / แท็บรายงานผู้บริหาร (Fleet P&L สรุปภาพรวม) */
+  'report.pnl_executive',
   'tab.create_order',
   'tab.confirm_orders',
   'tab.track_orders',
@@ -30,6 +32,7 @@ export const FEATURE_KEYS = [
   'tab.stock_dashboard',
   'tab.warehouses',
   'tab.inventory_receipts',
+  'tab.purchase_receipts',
   'tab.dashboard',
   'tab.vehicles',
   'tab.maintenance',
@@ -57,7 +60,18 @@ export type FeatureKey = (typeof FEATURE_KEYS)[number];
  * เมื่อ role มีแถวใน role_feature_access อย่างน้อยหนึ่งแถว — ฟีเจอร์ที่ไม่มีใน DB จะเป็น none (ไม่ fallback built-in เต็มรายการ)
  * ยกเว้นกลุ่มนี้ที่ยังใช้ built-in เพื่อให้เข้าโปรไฟล์ / ตั้งค่าพื้นฐานได้ (ยังตั้งเป็น none ใน matrix ได้ถ้าต้องการปิดจริง ๆ)
  */
-export const FEATURE_MATRIX_SURVIVAL_KEYS: readonly FeatureKey[] = ['tab.profile', 'tab.settings'];
+/** ฟีเจอร์ที่เพิ่มทีหลัง: ถ้า matrix จาก DB ครบแต่ยังไม่มีแถว key นี้ ให้ fallback built-in (กันเมนูหายจนกว่าจะ seed/backfill) */
+export const FEATURE_MATRIX_SURVIVAL_KEYS: readonly FeatureKey[] = [
+  'tab.profile',
+  'tab.settings',
+  'tab.purchase_receipts',
+  /** กันผู้บริหาร/บทบาทอื่นหลุดเมนูรายงานเมื่อ seed role_feature_access ไม่ครบ */
+  'tab.reports',
+  /** Fleet P&L + แดชบอร์ดผู้บริหารใช้ชุดข้อมูลเดียวกัน — fallback built-in ถ้ายังไม่มีแถวใน DB */
+  'report.pnl_fleet',
+  /** แท็บรายงานผู้บริหาร — fallback built-in เมื่อ seed matrix ยังไม่มีคอลัมน์นี้ */
+  'report.pnl_executive',
+];
 
 export interface ResolveAccessLevelOptions {
   /** true เมื่อโหลด matrix แล้วและ role นี้มีอย่างน้อยหนึ่งแถวใน DB */
@@ -80,6 +94,7 @@ export const TAB_TO_PRIMARY_FEATURE: Record<string, FeatureKey> = {
   'stock-dashboard': 'tab.stock_dashboard',
   warehouses: 'tab.warehouses',
   'inventory-receipts': 'tab.inventory_receipts',
+  'purchase-receipts': 'tab.purchase_receipts',
   dashboard: 'tab.dashboard',
   vehicles: 'tab.vehicles',
   maintenance: 'tab.maintenance',
@@ -128,6 +143,7 @@ const NAV_FALLBACK_PRIORITY: string[] = [
   'excel-import',
   'warehouses',
   'inventory-receipts',
+  'purchase-receipts',
   'cleanup-test-orders',
   'product-pricing',
   'customer-tiers',
@@ -234,10 +250,12 @@ const BUILT_IN: Partial<Record<AppRole, Partial<Record<FeatureKey, AccessLevel>>
     'report.pnl_trip': 'none',
     'report.pnl_vehicle': 'none',
     'report.pnl_fleet': 'none',
+    'report.pnl_executive': 'none',
     'tab.stock_dashboard': 'view',
     'tab.confirm_orders': 'manage',
     'tab.warehouses': 'none',
     'tab.inventory_receipts': 'none',
+    'tab.purchase_receipts': 'none',
     'tab.profile': 'manage',
     'tab.settings': 'view',
   },
@@ -249,6 +267,7 @@ const BUILT_IN: Partial<Record<AppRole, Partial<Record<FeatureKey, AccessLevel>>
     'tab.commission_rates': 'none',
     'tab.role_feature_access': 'none',
     'report.pnl_fleet': 'none',
+    'report.pnl_executive': 'none',
   },
   executive: {
     ...fillAll('manage'),
@@ -260,6 +279,7 @@ const BUILT_IN: Partial<Record<AppRole, Partial<Record<FeatureKey, AccessLevel>>
     'report.pnl_trip': 'none',
     'report.pnl_vehicle': 'none',
     'report.pnl_fleet': 'manage',
+    'report.pnl_executive': 'manage',
   },
   accounting: {
     ...fillAll('none'),
@@ -269,6 +289,7 @@ const BUILT_IN: Partial<Record<AppRole, Partial<Record<FeatureKey, AccessLevel>>
     'tab.confirm_orders': 'manage',
     'tab.warehouses': 'view',
     'tab.inventory_receipts': 'view',
+    'tab.purchase_receipts': 'manage',
     'tab.delivery_trips': 'view',
     'tab.profile': 'manage',
     'tab.settings': 'view',
@@ -280,6 +301,7 @@ const BUILT_IN: Partial<Record<AppRole, Partial<Record<FeatureKey, AccessLevel>>
     'tab.confirm_orders': 'manage',
     'tab.warehouses': 'manage',
     'tab.inventory_receipts': 'manage',
+    'tab.purchase_receipts': 'manage',
     'tab.delivery_trips': 'manage',
     'tab.packing_simulation': 'manage',
     'tab.triplogs': 'view',
@@ -305,14 +327,17 @@ export function builtInPnlFlags(role: AppRole | null): {
   canViewTripPnl: boolean;
   canViewVehiclePnl: boolean;
   canViewFleetPnl: boolean;
+  canViewExecutivePnl: boolean;
 } {
   const trip = builtInLevel(role, 'report.pnl_trip');
   const veh = builtInLevel(role, 'report.pnl_vehicle');
   const fleet = builtInLevel(role, 'report.pnl_fleet');
+  const exec = builtInLevel(role, 'report.pnl_executive');
   return {
     canViewTripPnl: accessLevelAtLeast(trip, 'view'),
     canViewVehiclePnl: accessLevelAtLeast(veh, 'view'),
     canViewFleetPnl: accessLevelAtLeast(fleet, 'view'),
+    canViewExecutivePnl: accessLevelAtLeast(exec, 'view'),
   };
 }
 
@@ -335,6 +360,49 @@ export function resolveAccessLevel(
     return 'none';
   }
   return builtInLevel(role, feature);
+}
+
+/** รายงานย่อยใต้เมนูรายงาน — ใช้ร่วม implied access สำหรับ tab.reports */
+export const REPORT_SUBFEATURE_KEYS: readonly FeatureKey[] = [
+  'report.pnl_trip',
+  'report.pnl_vehicle',
+  'report.pnl_fleet',
+  'report.pnl_executive',
+];
+
+/**
+ * สิทธิ์เข้าเมนู/หน้า "รายงาน" จริงที่ใช้ในแอป
+ * เมื่อมีแถวใน role_feature_access แต่ไม่ได้กำหนด tab.reports — ค่า strict จะทำให้ tab.reports = none
+ * (เช่น ฝ่ายขายตั้งแค่ P&L) เมนูรายงานหายทั้งที่ย่อยเปิดอยู่
+ * ถ้าไม่มีแถว tab.reports ใน DB ให้ยกระดับตามรายงานย่อยที่ได้สิทธิ์ดูอย่างน้อยหนึ่งรายการ
+ * ถ้ามีแถว tab.reports ใน DB แล้ว (รวมระดับ "ไม่มี") ใช้ค่านั้นอย่างเดียว
+ */
+export function effectiveTabReportsAccess(
+  role: AppRole | null,
+  dbMap: Partial<Record<FeatureKey, AccessLevel>>,
+  roleHasDbCustomization: boolean,
+): AccessLevel {
+  if (!role) return 'none';
+
+  if (dbMap['tab.reports'] !== undefined) {
+    return resolveAccessLevel(role, 'tab.reports', dbMap['tab.reports'], {
+      roleHasDbCustomization,
+    });
+  }
+
+  let best = resolveAccessLevel(role, 'tab.reports', undefined, {
+    roleHasDbCustomization,
+  });
+
+  if (isPrivilegedRole(role)) return best;
+
+  for (const k of REPORT_SUBFEATURE_KEYS) {
+    const pl = resolveAccessLevel(role, k, dbMap[k], { roleHasDbCustomization });
+    if (accessLevelAtLeast(pl, 'view') && ACCESS_LEVEL_ORDER[pl] > ACCESS_LEVEL_ORDER[best]) {
+      best = pl;
+    }
+  }
+  return best;
 }
 
 /** ระดับ built-in ทุกฟีเจอร์สำหรับ role (ใช้หน้าตั้งค่า) */

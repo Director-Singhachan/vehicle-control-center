@@ -525,6 +525,7 @@ export function EditOrderView({ orderId, onSave, onCancel }: EditOrderViewProps)
               product_id: item.product_id,
               quantity: Number(item.quantity || 0),
               unit_price: item.is_bonus ? 0 : item.unit_price, // ของแถมราคาเป็น 0
+              unit: item.product?.unit ?? null,
               discount_percent: Number(item.discount_percent || 0),
               is_bonus: item.is_bonus || false,
               fulfillment_method: item.fulfillment_method || 'delivery',
@@ -563,6 +564,7 @@ export function EditOrderView({ orderId, onSave, onCancel }: EditOrderViewProps)
             product_id: item.product_id,
             quantity: Number(item.quantity || 0),
             unit_price: item.is_bonus ? 0 : item.unit_price, // ของแถมราคาเป็น 0
+            unit: item.product?.unit ?? null,
             discount_percent: Number(item.discount_percent || 0),
             is_bonus: item.is_bonus || false,
             fulfillment_method: item.fulfillment_method || 'delivery',
