@@ -3,6 +3,7 @@ import {
   accessLevelAtLeast,
   builtInLevel,
   builtInMatrixForRole,
+  effectiveTabReportsAccess,
   isPrivilegedRole,
   matrixForAdminEditor,
   resolveAccessLevel,
@@ -24,6 +25,31 @@ describe('featureAccess', () => {
 
   it('manager has no admin_staff by default', () => {
     expect(builtInLevel('manager', 'tab.admin_staff')).toBe('none');
+  });
+
+  it('executive report feature: executive yes, manager no by default', () => {
+    expect(builtInLevel('executive', 'report.pnl_executive')).toBe('manage');
+    expect(builtInLevel('manager', 'report.pnl_executive')).toBe('none');
+  });
+
+  it('effectiveTabReportsAccess: sales sees reports menu when only a P&L subfeature is in DB', () => {
+    expect(
+      effectiveTabReportsAccess(
+        'sales',
+        { 'report.pnl_executive': 'view' },
+        true,
+      ),
+    ).toBe('view');
+  });
+
+  it('effectiveTabReportsAccess: explicit tab.reports none ignores implied subfeatures', () => {
+    expect(
+      effectiveTabReportsAccess(
+        'sales',
+        { 'tab.reports': 'none', 'report.pnl_trip': 'view' },
+        true,
+      ),
+    ).toBe('none');
   });
 
   it('resolveAccessLevel prefers DB override', () => {

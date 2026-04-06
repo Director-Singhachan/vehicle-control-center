@@ -13,6 +13,7 @@ import type { AppRole } from '../types/database';
 import type { AccessLevel, FeatureKey } from '../types/featureAccess';
 import {
   accessLevelAtLeast,
+  effectiveTabReportsAccess,
   FEATURE_KEYS,
   FEATURE_MATRIX_SURVIVAL_KEYS,
   builtInLevel,
@@ -105,6 +106,9 @@ function useFeatureAccessState(): UseFeatureAccessResult {
           return builtInLevel(appRole, feature);
         }
         return 'none';
+      }
+      if (feature === 'tab.reports') {
+        return effectiveTabReportsAccess(appRole, dbMap, roleHasDbCustomization);
       }
       return resolveAccessLevel(appRole, feature, dbMap[feature], {
         roleHasDbCustomization,
