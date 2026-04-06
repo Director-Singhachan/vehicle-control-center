@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   BarChart,
   Bar,
@@ -13,10 +13,15 @@ import {
   AreaChart,
   Area,
 } from 'recharts';
+import { ChevronDown, SlidersHorizontal } from 'lucide-react';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { useFleetPnl, useFleetPnlMonthly } from '../../hooks/useFleetPnl';
-import { useVehicles } from '../../hooks/useVehicles';
+import { useAuth } from '../../hooks/useAuth';
+import {
+  useExecutivePnlVisibility,
+  type ExecutivePnlVisibility,
+} from '../../hooks/useExecutivePnlVisibility';
 
 interface SummaryKpi {
   label: string;
@@ -35,15 +40,40 @@ function formatPercent(n: number): string {
   return `${(n * 100).toFixed(1)}%`;
 }
 
+const SECTION_LABELS: { key: keyof ExecutivePnlVisibility; title: string; hint: string }[] = [
+  { key: 'summaryKpis', title: 'ตัวเลขสรุป', hint: 'กำไรสุทธิ รายได้ ต้นทุน จำนวนรถ' },
+  { key: 'branchPnl', title: 'P&L ตามสาขา', hint: 'กราฟเปรียบเทียบแต่ละสาขา' },
+  { key: 'vehicleTop10', title: 'กำไรรายคัน Top 10', hint: 'เรียงจากกำไรสูงสุด' },
+  { key: 'monthlyTrend', title: 'เทรนด์รายเดือน', hint: 'รายได้ ต้นทุน กำไรต่อเดือน' },
+  { key: 'costStructure', title: 'โครงสร้างต้นทุนตามเวลา', hint: 'สัดส่วนผันแปร / คงที่ / บุคลากร' },
+];
+
 export const ExecutivePnlDashboard: React.FC<{ isDark?: boolean }> = ({ isDark = false }) => {
+  const { profile } = useAuth();
+  const { visibility, setSection, resetToDefault } = useExecutivePnlVisibility(profile?.id);
+
+  const [showVisibilityPanel, setShowVisibilityPanel] = useState(false);
+  const visibilityPanelRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!showVisibilityPanel) return;
+    const handler = (e: MouseEvent) => {
+      if (
+        visibilityPanelRef.current &&
+        !visibilityPanelRef.current.contains(e.target as Node)
+      ) {
+        setShowVisibilityPanel(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [showVisibilityPanel]);
+
   const today = new Date();
   const end = today.toISOString().split('T')[0];
   const startDateObj = new Date(today);
   startDateObj.setMonth(startDateObj.getMonth() - 5);
   const start = startDateObj.toISOString().split('T')[0];
-
-  const { vehicles } = useVehicles();
-  const vehicleList = (vehicles ?? []) as { id: string; plate: string | null; branch: string | null }[];
 
   const { data: fleetSummary } = useFleetPnl({
     startDate: start,
@@ -158,9 +188,73 @@ export const ExecutivePnlDashboard: React.FC<{ isDark?: boolean }> = ({ isDark =
     });
   }, [monthlyData]);
 
+  const anySectionVisible = Object.values(visibility).some(Boolean);
+
   return (
     <div className={isDark ? 'dark' : ''}>
-      <div className="space-y-6">
+      <div className="space-y-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-50">
+              แดชบอร์ดผู้บริหาร — Fleet P&L
+            </h2>
+            <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
+              เลือกบล็อกที่ต้องการแสดงได้เอง การตั้งค่าจำไว้ตามบัญชีผู้ใช้บนอุปกรณ์นี้
+            </p>
+          </div>
+          <div
+            ref={visibilityPanelRef}
+            className={`relative shrink-0 sm:self-start ${showVisibilityPanel ? 'z-50' : ''}`}
+          >
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => setShowVisibilityPanel((open) => !open)}
+              className="inline-flex items-center gap-2"
+            >
+              <SlidersHorizontal className="w-4 h-4" aria-hidden />
+              ตั้งค่าการมองเห็น
+              <ChevronDown className="w-4 h-4 opacity-70" aria-hidden />
+            </Button>
+            {showVisibilityPanel && (
+              <div className="absolute right-0 mt-2 w-[min(calc(100vw-1.5rem),20rem)] rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-charcoal-900 shadow-lg z-[60] p-3">
+                <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-2">
+                  แสดงบล็อกบนแดชบอร์ด
+                </p>
+                <div className="space-y-2 mb-3 max-h-[min(60vh,22rem)] overflow-y-auto pr-1">
+                  {SECTION_LABELS.map(({ key, title, hint }) => (
+                    <label key={key} className="flex items-start gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        className="mt-1 h-4 w-4 rounded border-slate-300 dark:border-slate-600 bg-white dark:bg-charcoal-900 text-enterprise-600 focus:ring-enterprise-500"
+                        checked={visibility[key]}
+                        onChange={(e) => setSection(key, e.target.checked)}
+                      />
+                      <div>
+                        <p className="text-sm font-medium text-slate-900 dark:text-slate-100">{title}</p>
+                        <p className="text-xs text-slate-500 dark:text-slate-400">{hint}</p>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+                <Button type="button" size="sm" variant="outline" className="w-full" onClick={resetToDefault}>
+                  คืนค่าเริ่มต้น (แสดงทั้งหมด)
+                </Button>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {!anySectionVisible ? (
+          <Card className="p-8 text-center bg-white dark:bg-charcoal-900 border-dashed border-slate-300 dark:border-slate-600">
+            <p className="text-slate-600 dark:text-slate-300">
+              ยังไม่ได้เลือกรายการแสดง — กด 「ตั้งค่าการมองเห็น」 ด้านบนเพื่อเปิดบล็อกที่ต้องการ
+            </p>
+          </Card>
+        ) : (
+          <div className="space-y-6">
+        {visibility.summaryKpis && (
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           {summaryKpis.map((kpi) => (
             <Card
@@ -181,7 +275,9 @@ export const ExecutivePnlDashboard: React.FC<{ isDark?: boolean }> = ({ isDark =
             </Card>
           ))}
         </div>
+        )}
 
+        {visibility.branchPnl && (
         <Card className="p-4 bg-white dark:bg-charcoal-900">
           <div className="flex items-center justify-between mb-4">
             <div>
@@ -227,8 +323,11 @@ export const ExecutivePnlDashboard: React.FC<{ isDark?: boolean }> = ({ isDark =
             </ResponsiveContainer>
           </div>
         </Card>
+        )}
 
+        {(visibility.vehicleTop10 || visibility.monthlyTrend) && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {visibility.vehicleTop10 && (
           <Card className="p-4 bg-white dark:bg-charcoal-900">
             <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-50 mb-1">
               กำไร/ขาดทุนสุทธิรายคัน (Top 10)
@@ -269,7 +368,9 @@ export const ExecutivePnlDashboard: React.FC<{ isDark?: boolean }> = ({ isDark =
               </ResponsiveContainer>
             </div>
           </Card>
+          )}
 
+          {visibility.monthlyTrend && (
           <Card className="p-4 bg-white dark:bg-charcoal-900">
             <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-50 mb-1">
               เทรนด์กำไร/ขาดทุนรายเดือน
@@ -320,8 +421,11 @@ export const ExecutivePnlDashboard: React.FC<{ isDark?: boolean }> = ({ isDark =
               </ResponsiveContainer>
             </div>
           </Card>
+          )}
         </div>
+        )}
 
+        {visibility.costStructure && (
         <Card className="p-4 bg-white dark:bg-charcoal-900">
           <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-50 mb-1">
             โครงสร้างต้นทุนตามเวลา
@@ -375,6 +479,9 @@ export const ExecutivePnlDashboard: React.FC<{ isDark?: boolean }> = ({ isDark =
             </ResponsiveContainer>
           </div>
         </Card>
+        )}
+          </div>
+        )}
       </div>
     </div>
   );

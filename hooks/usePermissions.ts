@@ -12,6 +12,8 @@ interface UsePermissionsResult {
   canViewTripPnl: boolean;
   canViewVehiclePnl: boolean;
   canViewFleetPnl: boolean;
+  /** แท็บ/แดชบอร์ดรายงานผู้บริหาร (report.pnl_executive) */
+  canViewExecutivePnl: boolean;
 }
 
 export const usePermissions = (): UsePermissionsResult => {
@@ -25,11 +27,12 @@ export const usePermissions = (): UsePermissionsResult => {
     return APP_ROLE_TO_BUSINESS_ROLE[appRole] ?? null;
   }, [appRole]);
 
-  const { canViewTripPnl, canViewVehiclePnl, canViewFleetPnl } = useMemo(() => {
+  const { canViewTripPnl, canViewVehiclePnl, canViewFleetPnl, canViewExecutivePnl } = useMemo(() => {
     return {
       canViewTripPnl: accessLevelAtLeast(levelFor('report.pnl_trip'), 'view'),
       canViewVehiclePnl: accessLevelAtLeast(levelFor('report.pnl_vehicle'), 'view'),
       canViewFleetPnl: accessLevelAtLeast(levelFor('report.pnl_fleet'), 'view'),
+      canViewExecutivePnl: accessLevelAtLeast(levelFor('report.pnl_executive'), 'view'),
     };
   }, [levelFor]);
 
@@ -39,5 +42,6 @@ export const usePermissions = (): UsePermissionsResult => {
     canViewTripPnl,
     canViewVehiclePnl,
     canViewFleetPnl,
+    canViewExecutivePnl,
   };
 };
