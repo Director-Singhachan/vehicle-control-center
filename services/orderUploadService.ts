@@ -72,6 +72,18 @@ export const orderUploadService = {
              return idx >= 0 ? row[idx] : null;
           };
 
+          /** แปลงค่าตัวเลขจาก SML/Excel (รองรับข้อความที่มี comma เป็นตัวคั่นหลัก) */
+          const parseSmlNumber = (value: unknown): number => {
+            if (value == null || value === '') return 0;
+            if (typeof value === 'number' && Number.isFinite(value)) return value;
+            if (value instanceof Date) return 0;
+            const raw = String(value).trim();
+            if (!raw) return 0;
+            const normalized = raw.replace(/\s/g, '').replace(/,/g, '');
+            const n = Number(normalized);
+            return Number.isFinite(n) ? n : 0;
+          };
+
           const formatADDate = (dateVal: any): string => {
             if (dateVal instanceof Date) {
               let year = dateVal.getFullYear();
@@ -144,11 +156,11 @@ export const orderUploadService = {
                  customer_code: tempCustomerCode,
                  doc_type: getCell(row, 'ประเภทรายการ'),
                  status: getCell(row, 'สถานะ'),
-                 tax_exempt: Number(getCell(row, 'มูลค่ายกเว้นภาษี')) || 0,
-                 tax_rate: Number(getCell(row, 'อัตราภาษี')) || 0,
-                 vat: Number(getCell(row, 'ภาษีมูลค่าเพิ่ม')) || 0,
+                 tax_exempt: parseSmlNumber(getCell(row, 'มูลค่ายกเว้นภาษี')),
+                 tax_rate: parseSmlNumber(getCell(row, 'อัตราภาษี')),
+                 vat: parseSmlNumber(getCell(row, 'ภาษีมูลค่าเพิ่ม')),
                  tax_type: getCell(row, 'ประเภทภาษี'),
-                 net_value: Number(getCell(row, 'มูลค่าสุทธิ')) || 0,
+                 net_value: parseSmlNumber(getCell(row, 'มูลค่าสุทธิ')),
                };
             } 
             // Otherwise, it's an item row (if it doesn't have "รหัสสินค้า" in the docNo col)
@@ -180,9 +192,9 @@ export const orderUploadService = {
                         unit: cleanUnit,
                         required_date: String(getCell(row, 'ประเภทรายการ') || ''),
                         quantity: qtyVal,
-                        unit_price: Number(getCell(row, 'กลุ่มเอกสาร')) || 0,
-                        discount: Number(getCell(row, 'ผู้ขออนุมัติ')) || 0,
-                        total: Number(getCell(row, 'กลุ่มผู้อนุมัติ')) || 0,
+                        unit_price: parseSmlNumber(getCell(row, 'กลุ่มเอกสาร')),
+                        discount: parseSmlNumber(getCell(row, 'ผู้ขออนุมัติ')),
+                        total: parseSmlNumber(getCell(row, 'กลุ่มผู้อนุมัติ')),
                     };
 
                     const orderKey = currentHeaderRow.doc_no;

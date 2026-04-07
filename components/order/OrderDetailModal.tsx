@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Modal } from '../ui/Modal';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
 
@@ -21,6 +21,18 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
   onClose,
   getStatusBadge,
 }) => {
+  /** ยอดรวมจากบรรทัดสินค้า — สอดคล้องกับตาราง; ใช้แทน total_amount ตอนโหลดรายการแล้ว (กันกรณี trigger/ฐานข้อมูลค้าง) */
+  const displayTotalAmount = useMemo(() => {
+    const fromLines = items.reduce(
+      (sum, item) => sum + Number(item.line_total ?? 0),
+      0
+    );
+    if (!loading && items.length > 0) {
+      return fromLines;
+    }
+    return Number(order?.total_amount ?? 0);
+  }, [loading, items, order?.total_amount]);
+
   return (
     <Modal
       isOpen={!!order}
@@ -79,7 +91,9 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
                 <span className="text-sm font-medium text-slate-500">ยอดรวม</span>
                 <span className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">
                   <span className="text-lg text-slate-400 mr-0.5">฿</span>
-                  {order.total_amount?.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                  {(Number.isFinite(displayTotalAmount) ? displayTotalAmount : 0).toLocaleString(undefined, {
+                    minimumFractionDigits: 2,
+                  })}
                 </span>
               </div>
             </div>

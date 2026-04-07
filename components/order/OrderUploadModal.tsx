@@ -1,4 +1,4 @@
-﻿import React, { useState, useRef, useMemo, useEffect } from 'react';
+import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { Upload, X, FileText, CheckCircle2, AlertCircle, Info, ChevronDown, ChevronUp, Boxes } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
@@ -159,6 +159,7 @@ export function OrderUploadModal({ isOpen, onClose, onSuccess, selectedWarehouse
           discount_percent: Math.round((item.discount / (item.total || 1)) * 100) || 0,
           is_bonus: item.unit_price === 0,
           fulfillment_method: 'delivery' as const,
+          sml_line_total: item.total,
         }));
 
         await ordersService.upsertSmlOrder(orderInsert, itemsToSubmit, null, null);
