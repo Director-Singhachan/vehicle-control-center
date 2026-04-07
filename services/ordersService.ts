@@ -49,6 +49,54 @@ function mapOrdersError(error: any, action: 'create' | 'update' | 'assign' | 'un
   return error;
 }
 
+const roundMoney = (n: number) => Math.round(n * 100) / 100;
+
+/** รายการสินค้าตอนสร้าง/อัปเดตออเดอร์ — รองรับยอดบรรทัดจาก SML */
+type CreateOrderItemInput = {
+  product_id: string;
+  quantity: number;
+  unit_price: number;
+  unit?: string;
+  discount_percent?: number;
+  is_bonus?: boolean;
+  fulfillment_method?: 'delivery' | 'pickup';
+  /** ยอดรวมบรรทัดจาก SML (คอลัมน์ กลุ่มผู้อนุมัติ) — ยึดเมื่อชัดเจนว่ามาจากเอกสาร */
+  sml_line_total?: number | null;
+};
+
+/**
+ * คำนวณ line_total / discount_amount ให้สอดคล้องกับสเปก SML:
+ * ถ้ามี sml_line_total และไม่ใช่กรณี "ยอด SML เป็น 0 แต่มีมูลค่าจากราคา×จำนวน" (น่าจะเป็นคอลัมน์ว่าง)
+ * จะใช้ยอดจาก SML เป็นหลัก
+ */
+function computeLineAndDiscount(item: CreateOrderItemInput): { lineTotal: number; discountAmount: number } {
+  const actualUnitPrice = item.is_bonus ? 0 : item.unit_price;
+  const qty = item.quantity;
+  const gross = actualUnitPrice * qty;
+  const discountFromPercent = (gross * (item.discount_percent || 0)) / 100;
+  let lineTotal = gross - discountFromPercent;
+  let discountAmount = discountFromPercent;
+
+  const smlRaw = item.sml_line_total;
+  const hasSml = smlRaw != null && Number.isFinite(smlRaw) && smlRaw >= 0;
+  const useSml =
+    hasSml &&
+    (smlRaw! > 0.005 ||
+      item.is_bonus ||
+      actualUnitPrice === 0 ||
+      gross <= 0.005);
+
+  if (useSml) {
+    lineTotal = roundMoney(smlRaw as number);
+    discountAmount = roundMoney(Math.max(0, gross - lineTotal));
+  } else {
+    lineTotal = roundMoney(lineTotal);
+    discountAmount = roundMoney(discountAmount);
+  }
+
+  return { lineTotal, discountAmount };
+}
+
 // Temporary types until database.ts is regenerated
 type Order = {
   id: string;
@@ -817,15 +865,7 @@ export const ordersService = {
    */
   async createWithItems(
     orderData: Omit<OrderInsert, 'id' | 'created_at' | 'updated_at'> & { warehouse_id?: string },
-    items: Array<{
-      product_id: string;
-      quantity: number;
-      unit_price: number;
-      unit?: string;
-      discount_percent?: number;
-      is_bonus?: boolean;
-      fulfillment_method?: 'delivery' | 'pickup';
-    }>,
+    items: CreateOrderItemInput[],
     payment_status?: string | null,
     delivery_time_slot?: string | null
   ) {
@@ -855,10 +895,8 @@ export const ordersService = {
 
     // สร้างรายการสินค้า
     const orderItems = items.map((item) => {
-      // ของแถมราคาเป็น 0 เสมอ
       const actualUnitPrice = item.is_bonus ? 0 : item.unit_price;
-      const discountAmount = (actualUnitPrice * item.quantity * (item.discount_percent || 0)) / 100;
-      const lineTotal = (actualUnitPrice * item.quantity) - discountAmount;
+      const { lineTotal, discountAmount } = computeLineAndDiscount(item);
 
       const orderItem: any = {
         order_id: order.id,
@@ -907,15 +945,7 @@ export const ordersService = {
    */
   async upsertSmlOrder(
     orderData: Omit<OrderInsert, 'id' | 'created_at' | 'updated_at'> & { warehouse_id?: string; sml_doc_no?: string },
-    items: Array<{
-      product_id: string;
-      quantity: number;
-      unit_price: number;
-      unit?: string;
-      discount_percent?: number;
-      is_bonus?: boolean;
-      fulfillment_method?: 'delivery' | 'pickup';
-    }>,
+    items: CreateOrderItemInput[],
     payment_status?: string | null,
     delivery_time_slot?: string | null
   ) {
@@ -988,12 +1018,21 @@ export const ordersService = {
       }
 
       // เตรียมรายการใหม่ และหาว่าอะไรที่ต้องเปลี่ยน
-      const newAggregated = new Map<string, typeof items[0]>();
+      const newAggregated = new Map<string, CreateOrderItemInput>();
       for (const item of items) {
           const key = `${item.product_id}_${item.is_bonus ? 'bonus' : 'normal'}_${item.unit || ''}`;
           const existing = newAggregated.get(key);
           if (existing) {
               existing.quantity += item.quantity;
+              const b = item.sml_line_total;
+              const a = existing.sml_line_total;
+              const hasA = a != null && Number.isFinite(a);
+              const hasB = b != null && Number.isFinite(b);
+              if (hasA && hasB) {
+                existing.sml_line_total = (a as number) + (b as number);
+              } else {
+                delete existing.sml_line_total;
+              }
           } else {
               newAggregated.set(key, { ...item });
           }
@@ -1004,20 +1043,23 @@ export const ordersService = {
           const dbAgg = aggregatedDb.get(key);
           const actualUnitPrice = newItem.is_bonus ? 0 : newItem.unit_price;
 
-          // ถ้าไม่มีใน DB หรือ ยอดรวม/ราคา/หน่วย เปลี่ยน -> ลบของเดิมเฉพาะสินค้านี้ แล้วเพิ่มใหม่
-          if (!dbAgg || 
-              Math.abs(dbAgg.quantity - newItem.quantity) > 0.001 || 
-              Math.abs(dbAgg.unit_price - actualUnitPrice) > 0.001) {
-              
+          const dbLineTotal = dbAgg
+            ? dbAgg.items.reduce((s, i) => s + Number(i.line_total ?? 0), 0)
+            : 0;
+          const { lineTotal: expectedLine, discountAmount } = computeLineAndDiscount(newItem);
+
+          // ถ้าไม่มีใน DB หรือ ยอดรวม/ราคา/ยอดบรรทัด เปลี่ยน -> ลบของเดิมเฉพาะสินค้านี้ แล้วเพิ่มใหม่
+          if (
+            !dbAgg ||
+            Math.abs(dbAgg.quantity - newItem.quantity) > 0.001 ||
+            Math.abs(dbAgg.unit_price - actualUnitPrice) > 0.001 ||
+            Math.abs(roundMoney(dbLineTotal) - expectedLine) > 0.01
+          ) {
               if (dbAgg) {
                   // ลบเฉพาะรายการที่เป็นสินค้านี้
                   const itemIdsToDelete = dbAgg.items.map(i => i.id);
                   await supabase.from('order_items').delete().in('id', itemIdsToDelete);
               }
-
-              // เพิ่มรายการใหม่
-              const discountAmount = (actualUnitPrice * newItem.quantity * (newItem.discount_percent || 0)) / 100;
-              const lineTotal = (actualUnitPrice * newItem.quantity) - discountAmount;
 
               await supabase.from('order_items').insert({
                   order_id: existingOrder.id,
@@ -1027,7 +1069,7 @@ export const ordersService = {
                   unit: newItem.unit || null,
                   discount_percent: newItem.discount_percent || 0,
                   discount_amount: discountAmount,
-                  line_total: lineTotal,
+                  line_total: expectedLine,
                   fulfillment_method: newItem.fulfillment_method || 'delivery',
                   is_bonus: newItem.is_bonus || false,
               });
