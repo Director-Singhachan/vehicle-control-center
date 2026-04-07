@@ -16,7 +16,7 @@ import { ActiveTripsWidget } from '../components/ActiveTripsWidget';
 import { ExpiringDocumentsWidget } from '../components/ExpiringDocumentsWidget';
 import { DocumentExpiryChart } from '../components/DocumentExpiryChart';
 import { PageLayout } from '../components/layout/PageLayout';
-import { useDashboard } from '../hooks';
+import { useDashboard, useDebugData } from '../hooks';
 
 interface DashboardProps {
   isDark: boolean;
@@ -36,6 +36,7 @@ export const DashboardView: React.FC<DashboardProps> = ({
   onNavigateToVehicle,
 }) => {
   const { data, loading, error, refetch } = useDashboard();
+  useDebugData('dashboard_raw', data, [data]);
 
   // Debug logging
   React.useEffect(() => {

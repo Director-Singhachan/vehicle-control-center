@@ -3,7 +3,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { supabase, getCurrentProfile } from '../lib/supabase';
 import type { User } from '@supabase/supabase-js';
-import type { Database } from '../types/database';
+import type { Database, AppRole } from '../types/database';
 
 type Profile = Database['public']['Tables']['profiles']['Row'];
 type ServiceStaff = Database['public']['Tables']['service_staff']['Row'];
@@ -16,6 +16,9 @@ interface AuthState {
   loading: boolean;
   error: Error | null;
   initialized: boolean;
+  isDev: boolean;
+  isRealDev: boolean;
+  overriddenRole: AppRole | null;
 
   // Computed properties
   isAdmin: boolean;
@@ -33,6 +36,7 @@ interface AuthState {
   // Actions
   setUser: (user: User | null) => void;
   setProfile: (profile: Profile | null) => void;
+  setOverriddenRole: (role: AppRole | null) => void;
   setAvailableStaff: (staff: ServiceStaff[]) => void;
   setActiveStaff: (staff: ServiceStaff | null) => void;
   setLoading: (loading: boolean) => void;
@@ -77,6 +81,9 @@ export const useAuthStore = create<AuthState>()(
       loading: false,
       error: null,
       initialized: false,
+      isDev: false,
+      isRealDev: false,
+      overriddenRole: null,
 
       // Computed properties (initial values, updated via setProfile)
       isAdmin: false,
@@ -93,19 +100,44 @@ export const useAuthStore = create<AuthState>()(
 
       setUser: (user) => set({ user }),
       setProfile: (profile) => {
+        const currentOverriddenRole = get().overriddenRole;
+        const activeRole = currentOverriddenRole || profile?.role;
+
         set({
           profile,
-          isAdmin: profile?.role === 'admin',
-          isManager: profile?.role === 'manager',
-          isInspector: profile?.role === 'inspector',
-          isExecutive: profile?.role === 'executive',
-          isDriver: profile?.role === 'driver',
-          isSales: profile?.role === 'sales',
-          isServiceStaff: profile?.role === 'service_staff',
-          isHR: profile?.role === 'hr',
-          isAccounting: profile?.role === 'accounting',
-          isWarehouse: profile?.role === 'warehouse',
-          isReadOnly: profile?.role === 'user',
+          isDev: activeRole === 'dev',
+          isRealDev: profile?.role === 'dev',
+          isAdmin: activeRole === 'admin',
+          isManager: activeRole === 'manager',
+          isInspector: activeRole === 'inspector',
+          isExecutive: activeRole === 'executive',
+          isDriver: activeRole === 'driver',
+          isSales: activeRole === 'sales',
+          isServiceStaff: activeRole === 'service_staff',
+          isHR: activeRole === 'hr',
+          isAccounting: activeRole === 'accounting',
+          isWarehouse: activeRole === 'warehouse',
+          isReadOnly: activeRole === 'user',
+        });
+      },
+      setOverriddenRole: (role) => {
+        const profile = get().profile;
+        const activeRole = role || profile?.role;
+        
+        set({
+          overriddenRole: role,
+          isDev: activeRole === 'dev',
+          isAdmin: activeRole === 'admin',
+          isManager: activeRole === 'manager',
+          isInspector: activeRole === 'inspector',
+          isExecutive: activeRole === 'executive',
+          isDriver: activeRole === 'driver',
+          isSales: activeRole === 'sales',
+          isServiceStaff: activeRole === 'service_staff',
+          isHR: activeRole === 'hr',
+          isAccounting: activeRole === 'accounting',
+          isWarehouse: activeRole === 'warehouse',
+          isReadOnly: activeRole === 'user',
         });
       },
       setAvailableStaff: (staff) => set({ availableStaff: staff }),
@@ -120,20 +152,23 @@ export const useAuthStore = create<AuthState>()(
         if (state.user && state.profile) {
           // Re-compute flags to ensure they match profile
           const profile = state.profile;
+          const activeRole = state.overriddenRole || profile.role;
           set({
             initialized: true,
             loading: false,
-            isAdmin: profile.role === 'admin',
-            isManager: profile.role === 'manager',
-            isInspector: profile.role === 'inspector',
-            isExecutive: profile.role === 'executive',
-            isDriver: profile.role === 'driver',
-            isSales: profile.role === 'sales',
-            isServiceStaff: profile.role === 'service_staff',
-            isHR: profile.role === 'hr',
-            isAccounting: profile.role === 'accounting',
-            isWarehouse: profile.role === 'warehouse',
-            isReadOnly: profile.role === 'user',
+            isDev: activeRole === 'dev',
+            isRealDev: profile.role === 'dev',
+            isAdmin: activeRole === 'admin',
+            isManager: activeRole === 'manager',
+            isInspector: activeRole === 'inspector',
+            isExecutive: activeRole === 'executive',
+            isDriver: activeRole === 'driver',
+            isSales: activeRole === 'sales',
+            isServiceStaff: activeRole === 'service_staff',
+            isHR: activeRole === 'hr',
+            isAccounting: activeRole === 'accounting',
+            isWarehouse: activeRole === 'warehouse',
+            isReadOnly: activeRole === 'user',
           });
           console.log('[Auth] Using cached data, verifying session in background...');
         } else {
@@ -309,6 +344,9 @@ export const useAuthStore = create<AuthState>()(
             isAccounting: false,
             isWarehouse: false,
             isReadOnly: false,
+            isDev: false,
+            isRealDev: false,
+            overriddenRole: null,
           });
         } finally {
           set({ loading: false });
@@ -348,6 +386,9 @@ export const useAuthStore = create<AuthState>()(
         isAccounting: state.isAccounting,
         isWarehouse: state.isWarehouse,
         isReadOnly: state.isReadOnly,
+        isDev: state.isDev,
+        isRealDev: state.isRealDev,
+        overriddenRole: state.overriddenRole,
       }),
     }
   )

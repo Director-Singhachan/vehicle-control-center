@@ -45,14 +45,14 @@ async function staffAccountsEffectiveLevel(
 
   if (error) {
     console.warn('[admin-staff] role_feature_access:', error.message);
-    return role === 'admin' || role === 'hr' ? 'manage' : 'none';
+    return role === 'admin' || role === 'hr' || role === 'dev' ? 'manage' : 'none';
   }
 
   const lv = row?.access_level as string | undefined;
   if (lv && ACCESS_ORDER[lv] !== undefined) {
     return lv as 'none' | 'view' | 'edit' | 'manage';
   }
-  if (role === 'admin' || role === 'hr') return 'manage';
+  if (role === 'admin' || role === 'hr' || role === 'dev') return 'manage';
   return 'none';
 }
 

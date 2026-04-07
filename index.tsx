@@ -30,6 +30,7 @@ import {
   Database,
   Upload,
   UserCog,
+  AlertTriangle,
 } from 'lucide-react';
 // Lazy load views เพื่อลด initial bundle และให้หน้าแรกโหลดเร็วขึ้น
 const DashboardView = lazy(() => import('./views/DashboardView').then(m => ({ default: m.DashboardView })));
@@ -94,8 +95,11 @@ import { Avatar } from './components/ui/Avatar';
 import { ConfirmDialog } from './components/ui/ConfirmDialog';
 import { useActivityTicker } from './hooks/useActivityTicker';
 import { HeaderActivityTicker } from './components/layout/HeaderActivityTicker';
+import { DebugDataProvider } from './context/DebugDataContext';
+import { DebugTools } from './components/debug/DebugTools';
+import { useDebugStore } from './stores/debugStore';
 
-const SidebarItem = ({ icon: Icon, label, active, onClick, onMouseEnter, isCollapsed, hasSubmenu, isOpen }: any) => (
+const SidebarItem = ({ icon: Icon, label, active, onClick, onMouseEnter, isCollapsed, hasSubmenu, isOpen, isWarning }: any) => (
   <button
     onClick={onClick}
     onMouseEnter={onMouseEnter}
@@ -104,15 +108,29 @@ const SidebarItem = ({ icon: Icon, label, active, onClick, onMouseEnter, isColla
       : 'text-slate-600 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700/50'
       }`}
   >
-    <Icon size={isCollapsed ? 24 : 20} />
-    {!isCollapsed && <span className="flex-1 text-left">{label}</span>}
+    <div className="relative">
+      <Icon size={isCollapsed ? 24 : 20} />
+      {isWarning && isCollapsed && (
+        <div className="absolute -top-1 -right-1 bg-white dark:bg-slate-900 rounded-full p-0.5 shadow-sm">
+          <AlertTriangle size={10} className="text-amber-500 fill-amber-500/20" />
+        </div>
+      )}
+    </div>
+    {!isCollapsed && (
+      <span className={`flex-1 text-left ${isWarning ? 'text-amber-600 dark:text-amber-400 font-semibold' : ''}`}>
+        {label}
+      </span>
+    )}
+    {!isCollapsed && isWarning && (
+      <AlertTriangle size={14} className="text-amber-500 fill-amber-500/20 animate-pulse" />
+    )}
     {!isCollapsed && hasSubmenu && (
       isOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />
     )}
   </button>
 );
 
-const SubSidebarItem = ({ label, active, onClick, isCollapsed, isFlyout }: any) => (
+const SubSidebarItem = ({ label, active, onClick, isCollapsed, isFlyout, isWarning }: any) => (
   <button
     onClick={onClick}
     className={`w-full flex items-center ${isFlyout ? 'px-4' : 'pl-12 pr-4'} py-2 rounded-lg transition-colors duration-200 ${active
@@ -120,8 +138,56 @@ const SubSidebarItem = ({ label, active, onClick, isCollapsed, isFlyout }: any) 
       : 'text-slate-600 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700/50'
       }`}
   >
-    {!isCollapsed && <span className="text-sm whitespace-nowrap">{label}</span>}
+    {!isCollapsed && (
+      <span className={`text-sm whitespace-nowrap flex-1 text-left ${isWarning ? 'text-amber-600 dark:text-amber-400 font-semibold italic' : ''}`}>
+        {label}
+      </span>
+    )}
+    {!isCollapsed && isWarning && (
+      <AlertTriangle size={12} className="text-amber-500 ml-2" />
+    )}
   </button>
+);
+
+const MaintenanceView = ({ isDev, onReset, featureName, onContact }: { isDev?: boolean, onReset?: () => void, featureName?: string, onContact?: () => void }) => (
+  <div className="flex flex-col items-center justify-center min-h-[60vh] p-8 text-center bg-white dark:bg-charcoal-900 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-xl max-w-2xl mx-auto my-12 animate-in zoom-in-95 duration-300">
+    <div className="relative mb-8">
+      <div className="absolute inset-0 bg-amber-500 blur-3xl opacity-20 animate-pulse"></div>
+      <div className="relative p-6 bg-amber-50 dark:bg-amber-900/20 rounded-3xl border-2 border-amber-100 dark:border-amber-800/50">
+        <AlertTriangle size={64} className="text-amber-500" />
+      </div>
+      <div className="absolute -bottom-2 -right-2 p-2 bg-white dark:bg-slate-900 rounded-xl shadow-lg border border-slate-100 dark:border-slate-800">
+        <Wrench size={16} className="text-slate-400" />
+      </div>
+    </div>
+
+    <h2 className="text-3xl font-black text-slate-900 dark:text-white mb-4 tracking-tight">
+      {isDev || featureName ? "ปิดการเข้าถึงชั่วคราว" : "กำลังปรับปรุงระบบ"}
+    </h2>
+
+    <p className="text-slate-600 dark:text-slate-400 leading-relaxed mb-8 text-lg">
+      {isDev || featureName
+        ? "หน้านี้มีสถานะการเข้าถึงที่ถูก Force Disabled โดยทีมนักพัฒนาอยู่ (Development / Testing Mode) คุณสามารถเปิดใช้งานใหม่ได้ผ่าน Debug Control Center"
+        : "ขออภัยในความไม่สะดวก ฟีเจอร์นี้กำลังอยู่ในช่วงการปรับปรุงและพัฒนาชุดใหม่ เพื่อประสิทธิภาพที่ดียิ่งขึ้น โปรดรอติดตามในเวอร์ชันถัดไป"}
+    </p>
+
+    {(isDev || featureName) && (
+      <button
+        onClick={onReset || onContact}
+        className="px-8 py-3 bg-enterprise-600 hover:bg-enterprise-700 text-white rounded-2xl font-bold shadow-lg shadow-enterprise-600/30 transition-all active:scale-95 flex items-center space-x-2"
+      >
+        <Settings size={18} />
+        <span>จัดการ Feature Flags</span>
+      </button>
+    )}
+
+    {!(isDev || featureName) && (
+      <div className="flex items-center space-x-2 text-slate-400">
+        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+        <span className="text-sm font-medium">ทีมวิศวกรกำลังดำเนินการพัฒนาระบบ</span>
+      </div>
+    )}
+  </div>
 );
 
 const MenuSectionHeader = ({ label }: { label: string }) => (
@@ -135,8 +201,9 @@ const MenuSectionHeader = ({ label }: { label: string }) => (
 
 // Main App Content (wrapped in ProtectedRoute)
 const AppContent = () => {
-  const { user, profile, signOut, isAdmin, isManager, isInspector, isExecutive, isDriver, isSales, isHR, isWarehouse, loading: authLoading, refreshProfile } = useAuth();
+  const { user, profile, signOut, isAdmin, isManager, isInspector, isExecutive, isDriver, isSales, isHR, isWarehouse, isDev, loading: authLoading, refreshProfile } = useAuth();
   const { can, canAccessTab, loading: featureAccessLoading } = useFeatureAccess();
+  const { featureOverrides, setPanelTab } = useDebugStore();
   const showHrMenu =
     can('tab.admin_staff', 'view') ||
     can('tab.service_staff', 'view') ||
@@ -1065,13 +1132,14 @@ const AppContent = () => {
 
         <div className="flex-1 min-h-0 px-3 space-y-1 mt-4 overflow-y-auto overflow-x-clip scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-700 scrollbar-track-transparent hover:scrollbar-thumb-gray-400 dark:hover:scrollbar-thumb-gray-600 [&:has(.group\/menu:hover)]:overflow-x-visible">
           {/* 1. รายงาน (Reports) */}
-          {can('tab.reports', 'view') && (
+          {(can('tab.reports', 'view') || featureOverrides['tab.reports'] === 'off') && (
             <SidebarItem
               icon={FileText}
               label={isSidebarOpen ? "รายงาน" : ""}
               active={activeTab === 'reports'}
               onClick={() => navigateAndCloseMobile('reports')}
               isCollapsed={!isSidebarOpen}
+              isWarning={featureOverrides['tab.reports'] === 'off'}
             />
           )}
 
@@ -1134,39 +1202,102 @@ const AppContent = () => {
               {/* Mobile inline submenu for Orders */}
               {isMobile && mobileOrdersExpanded && isSidebarOpen && (
                 <div className="pl-2 pr-1 space-y-0.5 animate-in fade-in slide-in-from-top-1 duration-150">
-                  {can('tab.create_order', 'view') && (
-                    <SubSidebarItem label="สร้างออเดอร์" active={activeTab === 'create-order'} onClick={() => navigateAndCloseMobile('create-order')} isCollapsed={false} isFlyout={false} />
+                  {(can('tab.create_order', 'view') || featureOverrides['tab.create_order'] === 'off') && (
+                    <SubSidebarItem
+                      label="สร้างออเดอร์"
+                      active={activeTab === 'create-order'}
+                      onClick={() => navigateAndCloseMobile('create-order')}
+                      isCollapsed={false}
+                      isFlyout={false}
+                      isWarning={featureOverrides['tab.create_order'] === 'off'}
+                    />
                   )}
-                  {can('tab.confirm_orders', 'view') && (
-                    <SubSidebarItem label="ยืนยันและแบ่งส่ง" active={activeTab === 'confirm-orders'} onClick={() => navigateAndCloseMobile('confirm-orders')} isCollapsed={false} isFlyout={false} />
+                  {(can('tab.confirm_orders', 'view') || featureOverrides['tab.confirm_orders'] === 'off') && (
+                    <SubSidebarItem
+                      label="ยืนยันและแบ่งส่ง"
+                      active={activeTab === 'confirm-orders'}
+                      onClick={() => navigateAndCloseMobile('confirm-orders')}
+                      isCollapsed={false}
+                      isFlyout={false}
+                      isWarning={featureOverrides['tab.confirm_orders'] === 'off'}
+                    />
                   )}
-                  {can('tab.track_orders', 'view') && (
-                    <SubSidebarItem label="ติดตามออเดอร์" active={activeTab === 'track-orders'} onClick={() => navigateAndCloseMobile('track-orders')} isCollapsed={false} isFlyout={false} />
+                  {(can('tab.track_orders', 'view') || featureOverrides['tab.track_orders'] === 'off') && (
+                    <SubSidebarItem
+                      label="ติดตามออเดอร์"
+                      active={activeTab === 'track-orders'}
+                      onClick={() => navigateAndCloseMobile('track-orders')}
+                      isCollapsed={false}
+                      isFlyout={false}
+                      isWarning={featureOverrides['tab.track_orders'] === 'off'}
+                    />
                   )}
-                  {can('tab.sales_trips', 'view') && (
-                    <SubSidebarItem label="ออกใบแจ้งหนี้" active={activeTab === 'sales-trips'} onClick={() => navigateAndCloseMobile('sales-trips')} isCollapsed={false} isFlyout={false} />
+                  {(can('tab.sales_trips', 'view') || featureOverrides['tab.sales_trips'] === 'off') && (
+                    <SubSidebarItem
+                      label="ออกใบแจ้งหนี้"
+                      active={activeTab === 'sales-trips'}
+                      onClick={() => navigateAndCloseMobile('sales-trips')}
+                      isCollapsed={false}
+                      isFlyout={false}
+                      isWarning={featureOverrides['tab.sales_trips'] === 'off'}
+                    />
                   )}
-                  {(can('tab.cleanup_test_orders', 'view') ||
-                    can('tab.customers', 'view') ||
-                    can('tab.products', 'view') ||
-                    can('tab.product_pricing', 'view') ||
-                    can('tab.customer_tiers', 'view')) && (
-                    <MenuSectionHeader label="เฉพาะเจ้าหน้าที่ / Manager" />
+                  {(can('tab.cleanup_test_orders', 'view') || featureOverrides['tab.cleanup_test_orders'] === 'off' ||
+                    can('tab.customers', 'view') || featureOverrides['tab.customers'] === 'off' ||
+                    can('tab.products', 'view') || featureOverrides['tab.products'] === 'off' ||
+                    can('tab.product_pricing', 'view') || featureOverrides['tab.product_pricing'] === 'off' ||
+                    can('tab.customer_tiers', 'view') || featureOverrides['tab.customer_tiers'] === 'off') && (
+                      <MenuSectionHeader label="เฉพาะเจ้าหน้าที่ / Manager" />
+                    )}
+                  {(can('tab.cleanup_test_orders', 'view') || featureOverrides['tab.cleanup_test_orders'] === 'off') && (
+                    <SubSidebarItem
+                      label="จัดการออเดอร์"
+                      active={activeTab === 'cleanup-test-orders'}
+                      onClick={() => navigateAndCloseMobile('cleanup-test-orders')}
+                      isCollapsed={false}
+                      isFlyout={false}
+                      isWarning={featureOverrides['tab.cleanup_test_orders'] === 'off'}
+                    />
                   )}
-                  {can('tab.cleanup_test_orders', 'view') && (
-                    <SubSidebarItem label="จัดการออเดอร์" active={activeTab === 'cleanup-test-orders'} onClick={() => navigateAndCloseMobile('cleanup-test-orders')} isCollapsed={false} isFlyout={false} />
+                  {(can('tab.customers', 'view') || featureOverrides['tab.customers'] === 'off') && (
+                    <SubSidebarItem
+                      label="จัดการลูกค้า"
+                      active={activeTab === 'customers'}
+                      onClick={() => navigateAndCloseMobile('customers')}
+                      isCollapsed={false}
+                      isFlyout={false}
+                      isWarning={featureOverrides['tab.customers'] === 'off'}
+                    />
                   )}
-                  {can('tab.customers', 'view') && (
-                    <SubSidebarItem label="จัดการลูกค้า" active={activeTab === 'customers'} onClick={() => navigateAndCloseMobile('customers')} isCollapsed={false} isFlyout={false} />
+                  {(can('tab.products', 'view') || featureOverrides['tab.products'] === 'off') && (
+                    <SubSidebarItem
+                      label="จัดการสินค้า / ราคา"
+                      active={activeTab === 'products'}
+                      onClick={() => navigateAndCloseMobile('products')}
+                      isCollapsed={false}
+                      isFlyout={false}
+                      isWarning={featureOverrides['tab.products'] === 'off'}
+                    />
                   )}
-                  {can('tab.products', 'view') && (
-                    <SubSidebarItem label="จัดการสินค้า / ราคา" active={activeTab === 'products'} onClick={() => navigateAndCloseMobile('products')} isCollapsed={false} isFlyout={false} />
+                  {(can('tab.product_pricing', 'view') || featureOverrides['tab.product_pricing'] === 'off') && (
+                    <SubSidebarItem
+                      label="กำหนดราคาตามลูกค้า"
+                      active={activeTab === 'product-pricing'}
+                      onClick={() => navigateAndCloseMobile('product-pricing')}
+                      isCollapsed={false}
+                      isFlyout={false}
+                      isWarning={featureOverrides['tab.product_pricing'] === 'off'}
+                    />
                   )}
-                  {can('tab.product_pricing', 'view') && (
-                    <SubSidebarItem label="กำหนดราคาตามลูกค้า" active={activeTab === 'product-pricing'} onClick={() => navigateAndCloseMobile('product-pricing')} isCollapsed={false} isFlyout={false} />
-                  )}
-                  {can('tab.customer_tiers', 'view') && (
-                    <SubSidebarItem label="ระดับลูกค้า" active={activeTab === 'customer-tiers'} onClick={() => navigateAndCloseMobile('customer-tiers')} isCollapsed={false} isFlyout={false} />
+                  {(can('tab.customer_tiers', 'view') || featureOverrides['tab.customer_tiers'] === 'off') && (
+                    <SubSidebarItem
+                      label="ระดับลูกค้า"
+                      active={activeTab === 'customer-tiers'}
+                      onClick={() => navigateAndCloseMobile('customer-tiers')}
+                      isCollapsed={false}
+                      isFlyout={false}
+                      isWarning={featureOverrides['tab.customer_tiers'] === 'off'}
+                    />
                   )}
                 </div>
               )}
@@ -1188,11 +1319,11 @@ const AppContent = () => {
                       <div className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"></div>
                     </div>
                     <div className="px-2 space-y-0.5">
-                      {(can('tab.create_order', 'view') ||
-                        can('tab.confirm_orders', 'view') ||
-                        can('tab.track_orders', 'view') ||
-                        can('tab.sales_trips', 'view')) && <MenuSectionHeader label="รายการออเดอร์" />}
-                      {can('tab.create_order', 'view') && (
+                      {(can('tab.create_order', 'view') || featureOverrides['tab.create_order'] === 'off' ||
+                        can('tab.confirm_orders', 'view') || featureOverrides['tab.confirm_orders'] === 'off' ||
+                        can('tab.track_orders', 'view') || featureOverrides['tab.track_orders'] === 'off' ||
+                        can('tab.sales_trips', 'view') || featureOverrides['tab.sales_trips'] === 'off') && <MenuSectionHeader label="รายการออเดอร์" />}
+                      {(can('tab.create_order', 'view') || featureOverrides['tab.create_order'] === 'off') && (
                         <SubSidebarItem
                           label="สร้างออเดอร์"
                           active={activeTab === 'create-order'}
@@ -1202,9 +1333,10 @@ const AppContent = () => {
                           }}
                           isCollapsed={false}
                           isFlyout={true}
+                          isWarning={featureOverrides['tab.create_order'] === 'off'}
                         />
                       )}
-                      {can('tab.confirm_orders', 'view') && (
+                      {(can('tab.confirm_orders', 'view') || featureOverrides['tab.confirm_orders'] === 'off') && (
                         <SubSidebarItem
                           label="ยืนยันและแบ่งส่ง"
                           active={activeTab === 'confirm-orders'}
@@ -1214,9 +1346,10 @@ const AppContent = () => {
                           }}
                           isCollapsed={false}
                           isFlyout={true}
+                          isWarning={featureOverrides['tab.confirm_orders'] === 'off'}
                         />
                       )}
-                      {can('tab.track_orders', 'view') && (
+                      {(can('tab.track_orders', 'view') || featureOverrides['tab.track_orders'] === 'off') && (
                         <SubSidebarItem
                           label="ติดตามออเดอร์"
                           active={activeTab === 'track-orders'}
@@ -1226,9 +1359,10 @@ const AppContent = () => {
                           }}
                           isCollapsed={false}
                           isFlyout={true}
+                          isWarning={featureOverrides['tab.track_orders'] === 'off'}
                         />
                       )}
-                      {can('tab.sales_trips', 'view') && (
+                      {(can('tab.sales_trips', 'view') || featureOverrides['tab.sales_trips'] === 'off') && (
                         <SubSidebarItem
                           label="ออกใบแจ้งหนี้"
                           active={activeTab === 'sales-trips'}
@@ -1238,17 +1372,18 @@ const AppContent = () => {
                           }}
                           isCollapsed={false}
                           isFlyout={true}
+                          isWarning={featureOverrides['tab.sales_trips'] === 'off'}
                         />
                       )}
 
-                      {(can('tab.cleanup_test_orders', 'view') ||
-                        can('tab.customers', 'view') ||
-                        can('tab.products', 'view') ||
-                        can('tab.product_pricing', 'view') ||
-                        can('tab.customer_tiers', 'view')) && (
-                        <MenuSectionHeader label="เฉพาะเจ้าหน้าที่ / Manager" />
-                      )}
-                      {can('tab.cleanup_test_orders', 'view') && (
+                      {(can('tab.cleanup_test_orders', 'view') || featureOverrides['tab.cleanup_test_orders'] === 'off' ||
+                        can('tab.customers', 'view') || featureOverrides['tab.customers'] === 'off' ||
+                        can('tab.products', 'view') || featureOverrides['tab.products'] === 'off' ||
+                        can('tab.product_pricing', 'view') || featureOverrides['tab.product_pricing'] === 'off' ||
+                        can('tab.customer_tiers', 'view') || featureOverrides['tab.customer_tiers'] === 'off') && (
+                          <MenuSectionHeader label="เฉพาะเจ้าหน้าที่ / Manager" />
+                        )}
+                      {(can('tab.cleanup_test_orders', 'view') || featureOverrides['tab.cleanup_test_orders'] === 'off') && (
                         <SubSidebarItem
                           label="จัดการออเดอร์"
                           active={activeTab === 'cleanup-test-orders'}
@@ -1258,9 +1393,10 @@ const AppContent = () => {
                           }}
                           isCollapsed={false}
                           isFlyout={true}
+                          isWarning={featureOverrides['tab.cleanup_test_orders'] === 'off'}
                         />
                       )}
-                      {can('tab.customers', 'view') && (
+                      {(can('tab.customers', 'view') || featureOverrides['tab.customers'] === 'off') && (
                         <SubSidebarItem
                           label="จัดการลูกค้า"
                           active={activeTab === 'customers'}
@@ -1270,9 +1406,10 @@ const AppContent = () => {
                           }}
                           isCollapsed={false}
                           isFlyout={true}
+                          isWarning={featureOverrides['tab.customers'] === 'off'}
                         />
                       )}
-                      {can('tab.products', 'view') && (
+                      {(can('tab.products', 'view') || featureOverrides['tab.products'] === 'off') && (
                         <SubSidebarItem
                           label="จัดการสินค้า / ราคา"
                           active={activeTab === 'products'}
@@ -1282,9 +1419,10 @@ const AppContent = () => {
                           }}
                           isCollapsed={false}
                           isFlyout={true}
+                          isWarning={featureOverrides['tab.products'] === 'off'}
                         />
                       )}
-                      {can('tab.product_pricing', 'view') && (
+                      {(can('tab.product_pricing', 'view') || featureOverrides['tab.product_pricing'] === 'off') && (
                         <SubSidebarItem
                           label="กำหนดราคาตามลูกค้า"
                           active={activeTab === 'product-pricing'}
@@ -1294,9 +1432,10 @@ const AppContent = () => {
                           }}
                           isCollapsed={false}
                           isFlyout={true}
+                          isWarning={featureOverrides['tab.product_pricing'] === 'off'}
                         />
                       )}
-                      {can('tab.customer_tiers', 'view') && (
+                      {(can('tab.customer_tiers', 'view') || featureOverrides['tab.customer_tiers'] === 'off') && (
                         <SubSidebarItem
                           label="ระดับลูกค้า"
                           active={activeTab === 'customer-tiers'}
@@ -1306,6 +1445,7 @@ const AppContent = () => {
                           }}
                           isCollapsed={false}
                           isFlyout={true}
+                          isWarning={featureOverrides['tab.customer_tiers'] === 'off'}
                         />
                       )}
                     </div>
@@ -1333,15 +1473,15 @@ const AppContent = () => {
                       setMobileStockExpanded(prev => !prev);
                     } else {
                       const firstStock =
-                        can('tab.stock_dashboard', 'view')
+                        (can('tab.stock_dashboard', 'view') || featureOverrides['tab.stock_dashboard'] === 'off')
                           ? 'stock-dashboard'
-                          : can('tab.confirm_orders', 'view')
+                          : (can('tab.confirm_orders', 'view') || featureOverrides['tab.confirm_orders'] === 'off')
                             ? 'confirm-orders'
-                            : can('tab.warehouses', 'view')
+                            : (can('tab.warehouses', 'view') || featureOverrides['tab.warehouses'] === 'off')
                               ? 'warehouses'
                               : can('tab.purchase_receipts', 'view')
                                 ? 'purchase-receipts'
-                                : can('tab.inventory_receipts', 'view')
+                                : (can('tab.inventory_receipts', 'view') || featureOverrides['tab.inventory_receipts'] === 'off')
                                   ? 'inventory-receipts'
                                   : null;
                       if (firstStock && activeTab !== firstStock) setActiveTab(firstStock);
@@ -1350,26 +1490,60 @@ const AppContent = () => {
                   isCollapsed={!isSidebarOpen}
                   hasSubmenu={true}
                   isOpen={isMobile ? mobileStockExpanded : isStockHovered}
+                  isWarning={
+                    featureOverrides['tab.stock_dashboard'] === 'off' ||
+                    featureOverrides['tab.confirm_orders'] === 'off' ||
+                    featureOverrides['tab.warehouses'] === 'off' ||
+                    featureOverrides['tab.inventory_receipts'] === 'off'
+                  }
                 />
               </div>
 
               {/* Mobile inline submenu for Stock */}
               {isMobile && mobileStockExpanded && isSidebarOpen && (
                 <div className="pl-2 pr-1 space-y-0.5 animate-in fade-in slide-in-from-top-1 duration-150">
-                  {can('tab.stock_dashboard', 'view') && (
-                    <SubSidebarItem label="Stock Dashboard" active={activeTab === 'stock-dashboard'} onClick={() => navigateAndCloseMobile('stock-dashboard')} isCollapsed={false} isFlyout={false} />
+                  {(can('tab.stock_dashboard', 'view') || featureOverrides['tab.stock_dashboard'] === 'off') && (
+                    <SubSidebarItem
+                      label="Stock Dashboard"
+                      active={activeTab === 'stock-dashboard'}
+                      onClick={() => navigateAndCloseMobile('stock-dashboard')}
+                      isCollapsed={false}
+                      isFlyout={false}
+                      isWarning={featureOverrides['tab.stock_dashboard'] === 'off'}
+                    />
                   )}
-                  {can('tab.confirm_orders', 'view') && (
-                    <SubSidebarItem label="ยืนยันและแบ่งส่ง" active={activeTab === 'confirm-orders'} onClick={() => navigateAndCloseMobile('confirm-orders')} isCollapsed={false} isFlyout={false} />
+                  {(can('tab.confirm_orders', 'view') || featureOverrides['tab.confirm_orders'] === 'off') && (
+                    <SubSidebarItem
+                      label="ยืนยันและแบ่งส่ง"
+                      active={activeTab === 'confirm-orders'}
+                      onClick={() => navigateAndCloseMobile('confirm-orders')}
+                      isCollapsed={false}
+                      isFlyout={false}
+                      isWarning={featureOverrides['tab.confirm_orders'] === 'off'}
+                    />
                   )}
-                  {can('tab.warehouses', 'view') && (
-                    <SubSidebarItem label="จัดการคลัง" active={activeTab === 'warehouses'} onClick={() => navigateAndCloseMobile('warehouses')} isCollapsed={false} isFlyout={false} />
+                  {(can('tab.warehouses', 'view') || featureOverrides['tab.warehouses'] === 'off') && (
+                    <SubSidebarItem
+                      label="จัดการคลัง"
+                      active={activeTab === 'warehouses'}
+                      onClick={() => navigateAndCloseMobile('warehouses')}
+                      isCollapsed={false}
+                      isFlyout={false}
+                      isWarning={featureOverrides['tab.warehouses'] === 'off'}
+                    />
                   )}
                   {can('tab.purchase_receipts', 'view') && (
                     <SubSidebarItem label="บันทึกต้นทุนจัดซื้อ" active={activeTab === 'purchase-receipts'} onClick={() => navigateAndCloseMobile('purchase-receipts')} isCollapsed={false} isFlyout={false} />
                   )}
-                  {can('tab.inventory_receipts', 'view') && (
-                    <SubSidebarItem label="ประวัติรับสินค้า" active={activeTab === 'inventory-receipts'} onClick={() => navigateAndCloseMobile('inventory-receipts')} isCollapsed={false} isFlyout={false} />
+                  {(can('tab.inventory_receipts', 'view') || featureOverrides['tab.inventory_receipts'] === 'off') && (
+                    <SubSidebarItem
+                      label="ประวัติรับสินค้า"
+                      active={activeTab === 'inventory-receipts'}
+                      onClick={() => navigateAndCloseMobile('inventory-receipts')}
+                      isCollapsed={false}
+                      isFlyout={false}
+                      isWarning={featureOverrides['tab.inventory_receipts'] === 'off'}
+                    />
                   )}
                 </div>
               )}
@@ -1422,46 +1596,46 @@ const AppContent = () => {
                       {(can('tab.warehouses', 'view') ||
                         can('tab.inventory_receipts', 'view') ||
                         can('tab.purchase_receipts', 'view')) && (
-                        <>
-                          <MenuSectionHeader label="จัดการระบบคลัง" />
-                          {can('tab.warehouses', 'view') && (
-                            <SubSidebarItem
-                              label="จัดการคลัง"
-                              active={activeTab === 'warehouses'}
-                              onClick={() => {
-                                setActiveTab('warehouses');
-                                setIsStockHovered(false);
-                              }}
-                              isCollapsed={false}
-                              isFlyout={true}
-                            />
-                          )}
-                          {can('tab.purchase_receipts', 'view') && (
-                            <SubSidebarItem
-                              label="บันทึกต้นทุนจัดซื้อ"
-                              active={activeTab === 'purchase-receipts'}
-                              onClick={() => {
-                                setActiveTab('purchase-receipts');
-                                setIsStockHovered(false);
-                              }}
-                              isCollapsed={false}
-                              isFlyout={true}
-                            />
-                          )}
-                          {can('tab.inventory_receipts', 'view') && (
-                            <SubSidebarItem
-                              label="ประวัติรับสินค้า"
-                              active={activeTab === 'inventory-receipts'}
-                              onClick={() => {
-                                setActiveTab('inventory-receipts');
-                                setIsStockHovered(false);
-                              }}
-                              isCollapsed={false}
-                              isFlyout={true}
-                            />
-                          )}
-                        </>
-                      )}
+                          <>
+                            <MenuSectionHeader label="จัดการระบบคลัง" />
+                            {can('tab.warehouses', 'view') && (
+                              <SubSidebarItem
+                                label="จัดการคลัง"
+                                active={activeTab === 'warehouses'}
+                                onClick={() => {
+                                  setActiveTab('warehouses');
+                                  setIsStockHovered(false);
+                                }}
+                                isCollapsed={false}
+                                isFlyout={true}
+                              />
+                            )}
+                            {can('tab.purchase_receipts', 'view') && (
+                              <SubSidebarItem
+                                label="บันทึกต้นทุนจัดซื้อ"
+                                active={activeTab === 'purchase-receipts'}
+                                onClick={() => {
+                                  setActiveTab('purchase-receipts');
+                                  setIsStockHovered(false);
+                                }}
+                                isCollapsed={false}
+                                isFlyout={true}
+                              />
+                            )}
+                            {can('tab.inventory_receipts', 'view') && (
+                              <SubSidebarItem
+                                label="ประวัติรับสินค้า"
+                                active={activeTab === 'inventory-receipts'}
+                                onClick={() => {
+                                  setActiveTab('inventory-receipts');
+                                  setIsStockHovered(false);
+                                }}
+                                isCollapsed={false}
+                                isFlyout={true}
+                              />
+                            )}
+                          </>
+                        )}
                     </div>
                   </div>
                 </div>
@@ -1514,7 +1688,7 @@ const AppContent = () => {
                       ] as const;
                       for (const tab of logisticsEntryOrder) {
                         const f = TAB_TO_PRIMARY_FEATURE[tab];
-                        if (f && can(f, 'view')) {
+                        if (f && (can(f, 'view') || featureOverrides[f] === 'off')) {
                           setActiveTab(tab);
                           return;
                         }
@@ -1524,6 +1698,18 @@ const AppContent = () => {
                   isCollapsed={!isSidebarOpen}
                   hasSubmenu={true}
                   isOpen={isMobile ? mobileLogisticsExpanded : isLogisticsHovered}
+                  isWarning={
+                    featureOverrides['tab.dashboard'] === 'off' ||
+                    featureOverrides['tab.vehicles'] === 'off' ||
+                    featureOverrides['tab.maintenance'] === 'off' ||
+                    featureOverrides['tab.triplogs'] === 'off' ||
+                    featureOverrides['tab.fuellogs'] === 'off' ||
+                    featureOverrides['tab.approvals'] === 'off' ||
+                    featureOverrides['tab.daily_summary'] === 'off' ||
+                    featureOverrides['tab.delivery_trips'] === 'off' ||
+                    featureOverrides['tab.packing_simulation'] === 'off' ||
+                    featureOverrides['tab.pending_orders'] === 'off'
+                  }
                 />
               </div>
 
@@ -1536,6 +1722,7 @@ const AppContent = () => {
                     onClick={() => navigateAndCloseMobile('triplogs', () => setTripLogView(isDriver ? 'form' : 'list'))}
                     isCollapsed={false}
                     isFlyout={false}
+                    isWarning={featureOverrides['tab.triplogs'] === 'off'}
                   />
                   <SubSidebarItem
                     label="บันทึกการเติมน้ำมัน"
@@ -1543,6 +1730,7 @@ const AppContent = () => {
                     onClick={() => navigateAndCloseMobile('fuellogs', () => setFuelLogView(isDriver ? 'form' : 'list'))}
                     isCollapsed={false}
                     isFlyout={false}
+                    isWarning={featureOverrides['tab.fuellogs'] === 'off'}
                   />
                   <SubSidebarItem
                     label="แจ้งซ่อม / การซ่อมบำรุง"
@@ -1550,6 +1738,7 @@ const AppContent = () => {
                     onClick={() => navigateAndCloseMobile('maintenance', () => setTicketView(isDriver ? 'form' : 'list'))}
                     isCollapsed={false}
                     isFlyout={false}
+                    isWarning={featureOverrides['tab.maintenance'] === 'off'}
                   />
                   <SubSidebarItem
                     label="จำลองจัดเรียง"
@@ -1557,59 +1746,66 @@ const AppContent = () => {
                     onClick={() => navigateAndCloseMobile('packing-simulation')}
                     isCollapsed={false}
                     isFlyout={false}
+                    isWarning={featureOverrides['tab.packing_simulation'] === 'off'}
                   />
-                  {!isDriver && can('tab.dashboard', 'view') && (
+                  {!isDriver && (can('tab.dashboard', 'view') || featureOverrides['tab.dashboard'] === 'off') && (
                     <SubSidebarItem
                       label="เดชบอร์ด(ฝ่ายขนส่ง)"
                       active={activeTab === 'dashboard'}
                       onClick={() => navigateAndCloseMobile('dashboard')}
                       isCollapsed={false}
                       isFlyout={false}
+                      isWarning={featureOverrides['tab.dashboard'] === 'off'}
                     />
                   )}
-                  {!isDriver && can('tab.vehicles', 'view') && (
+                  {!isDriver && (can('tab.vehicles', 'view') || featureOverrides['tab.vehicles'] === 'off') && (
                     <SubSidebarItem
                       label="ยานพาหนะ"
                       active={activeTab === 'vehicles'}
                       onClick={() => navigateAndCloseMobile('vehicles')}
                       isCollapsed={false}
                       isFlyout={false}
+                      isWarning={featureOverrides['tab.vehicles'] === 'off'}
                     />
                   )}
-                  {can('tab.approvals', 'view') && (
+                  {(can('tab.approvals', 'view') || featureOverrides['tab.approvals'] === 'off') && (
                     <SubSidebarItem
                       label="ภาพรวมการอนุมัติ"
                       active={activeTab === 'approvals'}
                       onClick={() => navigateAndCloseMobile('approvals')}
                       isCollapsed={false}
                       isFlyout={false}
+                      isWarning={featureOverrides['tab.approvals'] === 'off'}
                     />
                   )}
-                  {!isDriver && can('tab.daily_summary', 'view') && (
+                  {!isDriver && (can('tab.daily_summary', 'view') || featureOverrides['tab.daily_summary'] === 'off') && (
                     <SubSidebarItem
                       label="สรุปการใช้รถรายวัน"
                       active={activeTab === 'daily-summary'}
                       onClick={() => navigateAndCloseMobile('daily-summary')}
                       isCollapsed={false}
                       isFlyout={false}
+                      isWarning={featureOverrides['tab.daily_summary'] === 'off'}
                     />
                   )}
-                  {!isDriver && can('tab.delivery_trips', 'view') && (
+                  {!isDriver && (can('tab.delivery_trips', 'view') || featureOverrides['tab.delivery_trips'] === 'off') && (
                     <SubSidebarItem
                       label="ทริปส่งสินค้า"
                       active={activeTab === 'delivery-trips'}
                       onClick={() => navigateAndCloseMobile('delivery-trips', () => { setDeliveryTripView('list'); setSelectedDeliveryTripId(null); })}
                       isCollapsed={false}
                       isFlyout={false}
+                      isWarning={featureOverrides['tab.delivery_trips'] === 'off'}
                     />
                   )}
-                  {!isDriver && can('tab.pending_orders', 'view') && (
+                  {!isDriver && (can('tab.pending_orders', 'view') || featureOverrides['tab.pending_orders'] === 'off') && (
                     <SubSidebarItem
                       label="ออเดอร์รอจัดส่ง"
                       active={activeTab === 'pending-orders'}
                       onClick={() => navigateAndCloseMobile('pending-orders')}
                       isCollapsed={false}
                       isFlyout={false}
+                      isWarning={featureOverrides['tab.pending_orders'] === 'off'}
                     />
                   )}
                 </div>
@@ -1741,8 +1937,8 @@ const AppContent = () => {
                             can('tab.daily_summary', 'view'))) ||
                           can('tab.approvals', 'view') ||
                           can('tab.service_staff', 'view')) && (
-                          <MenuSectionHeader label="เฉพาะเจ้าหน้าที่ / Manager" />
-                        )}
+                            <MenuSectionHeader label="เฉพาะเจ้าหน้าที่ / Manager" />
+                          )}
 
                         {!isDriver && can('tab.dashboard', 'view') && (
                           <SubSidebarItem
@@ -2053,13 +2249,14 @@ const AppContent = () => {
           )}
 
           {/* Database Explorer */}
-          {can('tab.db_explorer', 'view') && (
+          {isDev && (
             <SidebarItem
               icon={Database}
               label={isSidebarOpen ? "เมนูหลังบ้าน (DB)" : ""}
               active={activeTab === 'db-explorer'}
               onClick={() => navigateAndCloseMobile('db-explorer')}
               isCollapsed={!isSidebarOpen}
+              isWarning={featureOverrides['tab.db_explorer'] === 'off'}
             />
           )}
           {/* Settings Menu with Submenu */}
@@ -2086,35 +2283,45 @@ const AppContent = () => {
                 isCollapsed={!isSidebarOpen}
                 hasSubmenu={true}
                 isOpen={isMobile ? mobileSettingsExpanded : isSettingsHovered}
+                isWarning={
+                  featureOverrides['tab.profile'] === 'off' ||
+                  featureOverrides['tab.settings'] === 'off' ||
+                  featureOverrides['tab.role_feature_access'] === 'off'
+                }
               />
             </div>
 
             {/* Mobile inline submenu for Settings */}
             {isMobile && mobileSettingsExpanded && isSidebarOpen && (
               <div className="pl-2 pr-1 space-y-0.5 animate-in fade-in slide-in-from-top-1 duration-150">
-                <SubSidebarItem
-                  label="โปรไฟล์"
-                  active={activeTab === 'profile'}
-                  onClick={() => navigateAndCloseMobile('profile')}
-                  isCollapsed={false}
-                  isFlyout={false}
-                />
-                {can('tab.role_feature_access', 'view') && (
+                {(can('tab.profile', 'view') || featureOverrides['tab.profile'] === 'off') && (
+                  <SubSidebarItem
+                    label="โปรไฟล์"
+                    active={activeTab === 'profile'}
+                    onClick={() => navigateAndCloseMobile('profile')}
+                    isCollapsed={false}
+                    isFlyout={false}
+                    isWarning={featureOverrides['tab.profile'] === 'off'}
+                  />
+                )}
+                {(can('tab.role_feature_access', 'view') || featureOverrides['tab.role_feature_access'] === 'off') && (
                   <SubSidebarItem
                     label="สิทธิ์ตามฟีเจอร์"
                     active={activeTab === 'role-feature-access'}
                     onClick={() => navigateAndCloseMobile('role-feature-access')}
                     isCollapsed={false}
                     isFlyout={false}
+                    isWarning={featureOverrides['tab.role_feature_access'] === 'off'}
                   />
                 )}
-                {can('tab.settings', 'view') && (
+                {(can('tab.settings', 'view') || featureOverrides['tab.settings'] === 'off') && (
                   <SubSidebarItem
                     label="ตั้งค่าแจ้งเตือน"
                     active={activeTab === 'settings'}
                     onClick={() => navigateAndCloseMobile('settings')}
                     isCollapsed={false}
                     isFlyout={false}
+                    isWarning={featureOverrides['tab.settings'] === 'off'}
                   />
                 )}
               </div>
@@ -2397,8 +2604,9 @@ const AppContent = () => {
                                     profile.role === 'hr' ? 'บุคคล' :
                                       profile.role === 'accounting' ? 'บัญชี' :
                                         profile.role === 'warehouse' ? 'คลังสินค้า' :
-                                          profile.role === 'user' ? 'ผู้ใช้ทั่วไป' :
-                                            'ผู้ใช้ทั่วไป';
+                                          profile.role === 'dev' ? 'ผู้พัฒนา' :
+                                            profile.role === 'user' ? 'ผู้ใช้ทั่วไป' :
+                                              'ผู้ใช้ทั่วไป';
                     }
                     // If we have user but no profile AND not loading anymore, show default
                     if (user && !profile && !authLoading) {
@@ -2430,160 +2638,232 @@ const AppContent = () => {
               <span>กำลังโหลด...</span>
             </div>
           }>
-            {activeTab === 'dashboard' ? (
-              <DashboardView
-                onNavigateToVehicle={(vehicleId) => {
-                  setActiveTab('vehicles');
-                  setSelectedVehicleId(vehicleId);
-                  setVehicleView('detail');
-                }}
-                isDark={isDark}
-                onNavigateToTickets={() => {
-                  setActiveTab('maintenance');
-                  setTicketView('list');
-                }}
-                onNavigateToTicketDetail={(ticketId) => {
-                  setActiveTab('maintenance');
-                  setSelectedTicketId(ticketId.toString());
-                  setTicketView('detail');
-                }}
-                onNavigateToTripLogs={() => {
-                  setActiveTab('triplogs');
-                  setTripLogView('list');
-                }}
-                onCheckInTrip={(tripId) => {
-                  setActiveTab('triplogs');
-                  setTripLogMode('checkin');
-                  setSelectedTripId(tripId);
-                  setTripLogView('form');
-                }}
-              />
-            ) : activeTab === 'vehicles' ? (
-              (() => {
-                console.log('[AppContent] ✅✅✅ ENTERED vehicles branch!');
-                console.log('[AppContent] ✅ activeTab is vehicles, vehicleView:', vehicleView, 'selectedVehicleId:', selectedVehicleId);
+            {(() => {
+              const featureKey = TAB_TO_PRIMARY_FEATURE[activeTab];
+              if (featureKey && featureOverrides[featureKey] === 'off') {
+                return (
+                  <MaintenanceView
+                    featureName={activeTab}
+                    onContact={() => {
+                      // Optional: handle contact or refresh
+                    }}
+                  />
+                );
+              }
+              return null;
+            })() || (
+                activeTab === 'dashboard' ? (
+                  <DashboardView
+                    onNavigateToVehicle={(vehicleId) => {
+                      setActiveTab('vehicles');
+                      setSelectedVehicleId(vehicleId);
+                      setVehicleView('detail');
+                    }}
+                    isDark={isDark}
+                    onNavigateToTickets={() => {
+                      setActiveTab('maintenance');
+                      setTicketView('list');
+                    }}
+                    onNavigateToTicketDetail={(ticketId) => {
+                      setActiveTab('maintenance');
+                      setSelectedTicketId(ticketId.toString());
+                      setTicketView('detail');
+                    }}
+                    onNavigateToTripLogs={() => {
+                      setActiveTab('triplogs');
+                      setTripLogView('list');
+                    }}
+                    onCheckInTrip={(tripId) => {
+                      setActiveTab('triplogs');
+                      setTripLogMode('checkin');
+                      setSelectedTripId(tripId);
+                      setTripLogView('form');
+                    }}
+                  />
+                ) : activeTab === 'vehicles' ? (
+                  (() => {
+                    console.log('[AppContent] ✅✅✅ ENTERED vehicles branch!');
+                    console.log('[AppContent] ✅ activeTab is vehicles, vehicleView:', vehicleView, 'selectedVehicleId:', selectedVehicleId);
 
-                // Fix: If vehicleView is 'detail' but no selectedVehicleId, show list instead
-                const effectiveView = (vehicleView === 'detail' && !selectedVehicleId) ? 'list' : vehicleView;
+                    // Fix: If vehicleView is 'detail' but no selectedVehicleId, show list instead
+                    const effectiveView = (vehicleView === 'detail' && !selectedVehicleId) ? 'list' : vehicleView;
 
-                if (effectiveView === 'list') {
-                  console.log('[AppContent] ✅ Rendering VehiclesView (list)');
-                  return (
-                    <VehiclesView
-                      onViewDetail={(id) => {
-                        console.log('[AppContent] onViewDetail called:', id);
-                        setSelectedVehicleId(id);
-                        setVehicleView('detail');
-                      }}
-                      onEdit={(id) => {
-                        console.log('[AppContent] onEdit called:', id);
-                        setSelectedVehicleId(id);
-                        setVehicleView('form');
-                      }}
-                      onCreate={() => {
-                        console.log('[AppContent] onCreate called');
-                        setSelectedVehicleId(undefined);
-                        setVehicleView('form');
-                      }}
-                    />
-                  );
-                } else if (effectiveView === 'detail' && selectedVehicleId) {
-                  console.log('[AppContent] ✅ Rendering VehicleDetailView');
-                  return (
-                    <VehicleDetailView
-                      vehicleId={selectedVehicleId}
-                      onEdit={(id) => {
-                        setSelectedVehicleId(id);
-                        setVehicleView('form');
-                      }}
-                      onBack={() => {
-                        setVehicleView('list');
-                        setSelectedVehicleId(null);
-                      }}
-                      onViewTicket={(ticketId) => {
-                        // ไปหน้ารายละเอียดตั๋วซ่อมบำรุง
-                        setActiveTab('maintenance');
-                        setSelectedTicketId(ticketId.toString());
-                        setTicketView('detail');
-                      }}
-                      onViewDeliveryTrip={(deliveryTripId) => {
-                        setSelectedDeliveryTripId(deliveryTripId);
-                        setDeliveryTripView('detail');
-                        setDeliveryTripReturnContext('vehicles');
-                        setActiveTab('delivery-trips');
-                      }}
-                    />
-                  );
-                } else if (effectiveView === 'form') {
-                  console.log('[AppContent] ✅ Rendering VehicleFormView');
-                  return (
-                    <VehicleFormView
-                      vehicleId={selectedVehicleId || undefined}
-                      onSave={() => {
-                        setVehicleView('list');
-                        setSelectedVehicleId(null);
-                      }}
-                      onCancel={() => {
-                        if (selectedVehicleId) {
-                          setVehicleView('detail');
-                        } else {
-                          setVehicleView('list');
-                          setSelectedVehicleId(null);
-                        }
-                      }}
-                    />
-                  );
-                }
-                console.log('[AppContent] ⚠️ No matching view - returning null');
-                return null;
-              })()
-            ) : activeTab === 'maintenance' ? (
-              (() => {
-                console.log('[AppContent] Maintenance tab - rendering:', {
-                  isDriver,
-                  ticketView,
-                  selectedTicketId,
-                  willRenderTicketsView: !isDriver && ticketView === 'list'
-                });
+                    if (effectiveView === 'list') {
+                      console.log('[AppContent] ✅ Rendering VehiclesView (list)');
+                      return (
+                        <VehiclesView
+                          onViewDetail={(id) => {
+                            console.log('[AppContent] onViewDetail called:', id);
+                            setSelectedVehicleId(id);
+                            setVehicleView('detail');
+                          }}
+                          onEdit={(id) => {
+                            console.log('[AppContent] onEdit called:', id);
+                            setSelectedVehicleId(id);
+                            setVehicleView('form');
+                          }}
+                          onCreate={() => {
+                            console.log('[AppContent] onCreate called');
+                            setSelectedVehicleId(undefined);
+                            setVehicleView('form');
+                          }}
+                        />
+                      );
+                    } else if (effectiveView === 'detail' && selectedVehicleId) {
+                      console.log('[AppContent] ✅ Rendering VehicleDetailView');
+                      return (
+                        <VehicleDetailView
+                          vehicleId={selectedVehicleId}
+                          onEdit={(id) => {
+                            setSelectedVehicleId(id);
+                            setVehicleView('form');
+                          }}
+                          onBack={() => {
+                            setVehicleView('list');
+                            setSelectedVehicleId(null);
+                          }}
+                          onViewTicket={(ticketId) => {
+                            // ไปหน้ารายละเอียดตั๋วซ่อมบำรุง
+                            setActiveTab('maintenance');
+                            setSelectedTicketId(ticketId.toString());
+                            setTicketView('detail');
+                          }}
+                          onViewDeliveryTrip={(deliveryTripId) => {
+                            setSelectedDeliveryTripId(deliveryTripId);
+                            setDeliveryTripView('detail');
+                            setDeliveryTripReturnContext('vehicles');
+                            setActiveTab('delivery-trips');
+                          }}
+                        />
+                      );
+                    } else if (effectiveView === 'form') {
+                      console.log('[AppContent] ✅ Rendering VehicleFormView');
+                      return (
+                        <VehicleFormView
+                          vehicleId={selectedVehicleId || undefined}
+                          onSave={() => {
+                            setVehicleView('list');
+                            setSelectedVehicleId(null);
+                          }}
+                          onCancel={() => {
+                            if (selectedVehicleId) {
+                              setVehicleView('detail');
+                            } else {
+                              setVehicleView('list');
+                              setSelectedVehicleId(null);
+                            }
+                          }}
+                        />
+                      );
+                    }
+                    console.log('[AppContent] ⚠️ No matching view - returning null');
+                    return null;
+                  })()
+                ) : activeTab === 'maintenance' ? (
+                  (() => {
+                    console.log('[AppContent] Maintenance tab - rendering:', {
+                      isDriver,
+                      ticketView,
+                      selectedTicketId,
+                      willRenderTicketsView: !isDriver && ticketView === 'list'
+                    });
 
-                // For drivers, show the form by default if they are in list view
-                if (isDriver && ticketView === 'list') {
-                  return (
-                    <TicketFormView
-                      onSave={() => {
-                        window.location.reload();
-                      }}
-                      onCancel={() => {
-                        // Do nothing or reset form
-                      }}
-                    />
-                  );
-                } else if (ticketView === 'list') {
-                  console.log('[AppContent] Rendering TicketsView');
-                  return (
-                    <TicketsView
-                      onViewDetail={(id) => {
-                        setSelectedTicketId(id.toString());
-                        setTicketView('detail');
-                      }}
-                      onCreate={() => {
-                        setSelectedTicketId(null);
-                        setTicketView('form');
-                      }}
-                    />
-                  );
-                } else if (ticketView === 'detail' && selectedTicketId) {
-                  console.log('[AppContent] Rendering TicketDetailView with ticketId:', selectedTicketId);
-                  // Convert string to number if needed
-                  const ticketIdNum = typeof selectedTicketId === 'string' ? parseInt(selectedTicketId, 10) : selectedTicketId;
-                  if (isNaN(ticketIdNum) || ticketIdNum <= 0) {
-                    console.error('[AppContent] Invalid ticketId, resetting to list');
-                    // Reset state immediately
+                    // For drivers, show the form by default if they are in list view
+                    if (isDriver && ticketView === 'list') {
+                      return (
+                        <TicketFormView
+                          onSave={() => {
+                            window.location.reload();
+                          }}
+                          onCancel={() => {
+                            // Do nothing or reset form
+                          }}
+                        />
+                      );
+                    } else if (ticketView === 'list') {
+                      console.log('[AppContent] Rendering TicketsView');
+                      return (
+                        <TicketsView
+                          onViewDetail={(id) => {
+                            setSelectedTicketId(id.toString());
+                            setTicketView('detail');
+                          }}
+                          onCreate={() => {
+                            setSelectedTicketId(null);
+                            setTicketView('form');
+                          }}
+                        />
+                      );
+                    } else if (ticketView === 'detail' && selectedTicketId) {
+                      console.log('[AppContent] Rendering TicketDetailView with ticketId:', selectedTicketId);
+                      // Convert string to number if needed
+                      const ticketIdNum = typeof selectedTicketId === 'string' ? parseInt(selectedTicketId, 10) : selectedTicketId;
+                      if (isNaN(ticketIdNum) || ticketIdNum <= 0) {
+                        console.error('[AppContent] Invalid ticketId, resetting to list');
+                        // Reset state immediately
+                        setTimeout(() => {
+                          setTicketView('list');
+                          setSelectedTicketId(null);
+                        }, 0);
+                        // Show TicketsView as fallback
+                        return (
+                          <TicketsView
+                            onViewDetail={(id) => {
+                              setSelectedTicketId(id.toString());
+                              setTicketView('detail');
+                            }}
+                            onCreate={() => {
+                              setSelectedTicketId(null);
+                              setTicketView('form');
+                            }}
+                          />
+                        );
+                      }
+                      return (
+                        <TicketDetailView
+                          ticketId={ticketIdNum}
+                          onBack={() => {
+                            setTicketView('list');
+                            setSelectedTicketId(null);
+                          }}
+                          onEdit={(id) => {
+                            setSelectedTicketId(id.toString());
+                            setTicketView('form');
+                          }}
+                        />
+                      );
+                    } else if (ticketView === 'form') {
+                      const ticketIdNumForForm = selectedTicketId ? parseInt(selectedTicketId, 10) : NaN;
+                      const ticketIdForForm =
+                        !isNaN(ticketIdNumForForm) && ticketIdNumForForm > 0
+                          ? ticketIdNumForForm
+                          : undefined;
+                      return (
+                        <TicketFormView
+                          ticketId={ticketIdForForm}
+                          onSave={() => {
+                            setTicketView('list');
+                            setSelectedTicketId(null);
+                          }}
+                          onCancel={() => {
+                            if (selectedTicketId) {
+                              setTicketView('detail');
+                            } else {
+                              setTicketView('list');
+                              setSelectedTicketId(null);
+                            }
+                          }}
+                        />
+                      );
+                    }
+
+                    // Fallback: Show TicketsView if state is invalid
+                    console.warn('[AppContent] Invalid state, resetting and showing TicketsView');
+                    // Reset state immediately using setTimeout to avoid state update during render
                     setTimeout(() => {
                       setTicketView('list');
                       setSelectedTicketId(null);
                     }, 0);
-                    // Show TicketsView as fallback
                     return (
                       <TicketsView
                         onViewDetail={(id) => {
@@ -2596,451 +2876,393 @@ const AppContent = () => {
                         }}
                       />
                     );
-                  }
-                  return (
-                    <TicketDetailView
-                      ticketId={ticketIdNum}
-                      onBack={() => {
-                        setTicketView('list');
-                        setSelectedTicketId(null);
-                      }}
-                      onEdit={(id) => {
-                        setSelectedTicketId(id.toString());
-                        setTicketView('form');
-                      }}
-                    />
-                  );
-                } else if (ticketView === 'form') {
-                  const ticketIdNumForForm = selectedTicketId ? parseInt(selectedTicketId, 10) : NaN;
-                  const ticketIdForForm =
-                    !isNaN(ticketIdNumForForm) && ticketIdNumForForm > 0
-                      ? ticketIdNumForForm
-                      : undefined;
-                  return (
-                    <TicketFormView
-                      ticketId={ticketIdForForm}
+                  })()
+                ) : activeTab === 'triplogs' ? (
+                  // For drivers, always show form, never list
+                  isDriver ? (
+                    <TripLogFormView
+                      vehicleId={selectedVehicleId || undefined}
+                      tripId={selectedTripId || undefined}
+                      mode={tripLogMode}
                       onSave={() => {
-                        setTicketView('list');
-                        setSelectedTicketId(null);
+                        // For drivers, stay on form but reset
+                        setSelectedTripId(null);
+                        setSelectedVehicleId(null);
+                        setTripLogMode('checkout');
+                        // Optional: Reload to ensure fresh state if needed, but component state reset should be enough
                       }}
                       onCancel={() => {
-                        if (selectedTicketId) {
-                          setTicketView('detail');
-                        } else {
-                          setTicketView('list');
-                          setSelectedTicketId(null);
-                        }
+                        // Drivers can't go back to list, so just reset
+                        setSelectedTripId(null);
+                        setSelectedVehicleId(null);
+                        setTripLogMode('checkout');
                       }}
                     />
-                  );
-                }
-
-                // Fallback: Show TicketsView if state is invalid
-                console.warn('[AppContent] Invalid state, resetting and showing TicketsView');
-                // Reset state immediately using setTimeout to avoid state update during render
-                setTimeout(() => {
-                  setTicketView('list');
-                  setSelectedTicketId(null);
-                }, 0);
-                return (
-                  <TicketsView
-                    onViewDetail={(id) => {
-                      setSelectedTicketId(id.toString());
-                      setTicketView('detail');
-                    }}
-                    onCreate={() => {
-                      setSelectedTicketId(null);
-                      setTicketView('form');
-                    }}
-                  />
-                );
-              })()
-            ) : activeTab === 'triplogs' ? (
-              // For drivers, always show form, never list
-              isDriver ? (
-                <TripLogFormView
-                  vehicleId={selectedVehicleId || undefined}
-                  tripId={selectedTripId || undefined}
-                  mode={tripLogMode}
-                  onSave={() => {
-                    // For drivers, stay on form but reset
-                    setSelectedTripId(null);
-                    setSelectedVehicleId(null);
-                    setTripLogMode('checkout');
-                    // Optional: Reload to ensure fresh state if needed, but component state reset should be enough
-                  }}
-                  onCancel={() => {
-                    // Drivers can't go back to list, so just reset
-                    setSelectedTripId(null);
-                    setSelectedVehicleId(null);
-                    setTripLogMode('checkout');
-                  }}
-                />
-              ) : tripLogView === 'list' ? (
-                <TripLogListView
-                  onCreateCheckout={() => {
-                    setTripLogMode('checkout');
-                    setTripLogView('form');
-                    setSelectedTripId(null);
-                  }}
-                  onCreateCheckin={(tripId) => {
-                    setTripLogMode('checkin');
-                    setSelectedTripId(tripId);
-                    setTripLogView('form');
-                  }}
-                  onViewDeliveryTrip={(deliveryTripId) => {
-                    setSelectedDeliveryTripId(deliveryTripId);
-                    setDeliveryTripView('detail');
-                    setDeliveryTripReturnContext('triplogs');
-                    setActiveTab('delivery-trips');
-                  }}
-                />
-              ) : tripLogView === 'form' ? (
-                <TripLogFormView
-                  vehicleId={selectedVehicleId || undefined}
-                  tripId={selectedTripId || undefined}
-                  mode={tripLogMode}
-                  onSave={() => {
-                    setTripLogView('list');
-                    setSelectedTripId(null);
-                    setSelectedVehicleId(null);
-                  }}
-                  onCancel={() => {
-                    setTripLogView('list');
-                    setSelectedTripId(null);
-                    setSelectedVehicleId(null);
-                  }}
-                />
-              ) : null
-            ) : activeTab === 'fuellogs' ? (
-              fuelLogView === 'list' ? (
-                // Don't show list view for drivers - redirect to form
-                isDriver ? (
-                  <FuelLogFormView
-                    vehicleId={selectedVehicleId || undefined}
-                    onSave={() => {
-                      // Stay on form for drivers, don't redirect to list
-                      setSelectedVehicleId(null);
-                    }}
-                    onCancel={() => {
-                      // For drivers, cancel goes back to triplogs form
-                      setActiveTab('triplogs');
-                      setTripLogView('form');
-                      setSelectedVehicleId(null);
-                    }}
-                  />
-                ) : (
-                  <FuelLogListView
-                    onCreate={() => {
-                      setFuelLogView('form');
-                    }}
-                  />
-                )
-              ) : fuelLogView === 'form' ? (
-                <FuelLogFormView
-                  vehicleId={selectedVehicleId || undefined}
-                  onSave={() => {
-                    // For drivers, stay on form; for others, go to list
-                    if (isDriver) {
-                      setSelectedVehicleId(null);
-                    } else {
-                      setFuelLogView('list');
-                      setSelectedVehicleId(null);
-                    }
-                  }}
-                  onCancel={() => {
-                    // For drivers, cancel goes back to triplogs form; for others, go to list
-                    if (isDriver) {
-                      setActiveTab('triplogs');
-                      setTripLogView('form');
-                      setSelectedVehicleId(null);
-                    } else {
-                      setFuelLogView('list');
-                      setSelectedVehicleId(null);
-                    }
-                  }}
-                />
-              ) : null
-            ) : activeTab === 'approvals' ? (
-              // Check permissions - check role directly from profile for reliability
-              (() => {
-                // Show loading only if we truly don't have profile yet
-                if (!profile && authLoading) {
-                  return (
-                    <div className="flex flex-col items-center justify-center h-[60vh] text-slate-400">
-                      <CheckSquare size={48} className="mb-4 opacity-50 animate-pulse" />
-                      <p className="text-sm text-slate-500 dark:text-slate-400">กำลังตรวจสอบสิทธิ์...</p>
-                    </div>
-                  );
-                }
-
-                // Check role directly from profile (more reliable than isManager flags)
-                const hasPermission = can('tab.approvals', 'view');
-
-                if (hasPermission) {
-                  return (
-                    <ApprovalBoardView
-                      onViewDetail={(ticketId) => {
-                        setActiveTab('maintenance');
-                        setSelectedTicketId(ticketId.toString());
-                        setTicketView('detail');
+                  ) : tripLogView === 'list' ? (
+                    <TripLogListView
+                      onCreateCheckout={() => {
+                        setTripLogMode('checkout');
+                        setTripLogView('form');
+                        setSelectedTripId(null);
+                      }}
+                      onCreateCheckin={(tripId) => {
+                        setTripLogMode('checkin');
+                        setSelectedTripId(tripId);
+                        setTripLogView('form');
+                      }}
+                      onViewDeliveryTrip={(deliveryTripId) => {
+                        setSelectedDeliveryTripId(deliveryTripId);
+                        setDeliveryTripView('detail');
+                        setDeliveryTripReturnContext('triplogs');
+                        setActiveTab('delivery-trips');
                       }}
                     />
-                  );
-                }
-
-                // No permission - show error message
-                return (
-                  <div className="flex flex-col items-center justify-center h-[60vh] text-slate-400">
-                    <CheckSquare size={48} className="mb-4 opacity-50" />
-                    <h3 className="text-xl font-medium text-slate-600 dark:text-slate-300">ไม่มีสิทธิ์เข้าถึง</h3>
-                    <p className="text-sm text-slate-500 dark:text-slate-400 mt-2">
-                      หน้านี้จำกัดสำหรับผู้ตรวจสอบ, ผู้จัดการ, ผู้บริหาร และผู้ดูแลระบบเท่านั้น
-                    </p>
-                    <div className="mt-4 p-4 bg-slate-100 dark:bg-slate-800 rounded-lg text-left">
-                      <p className="text-xs font-semibold text-slate-600 dark:text-slate-300 mb-2">ข้อมูล Debug:</p>
-                      <p className="text-xs text-slate-500 dark:text-slate-400">
-                        บทบาท: {profile?.role || 'ไม่พบข้อมูล'}
-                      </p>
-                      <p className="text-xs text-slate-500 dark:text-slate-400">
-                        isAdmin: {isAdmin ? 'true' : 'false'}
-                      </p>
-                      <p className="text-xs text-slate-500 dark:text-slate-400">
-                        isManager: {isManager ? 'true' : 'false'}
-                      </p>
-                      <p className="text-xs text-slate-500 dark:text-slate-400">
-                        isInspector: {isInspector ? 'true' : 'false'}
-                      </p>
-                      <p className="text-xs text-slate-500 dark:text-slate-400">
-                        isExecutive: {isExecutive ? 'true' : 'false'}
-                      </p>
-                      <p className="text-xs text-slate-500 dark:text-slate-400">
-                        Profile ID: {profile?.id || 'ไม่มี'}
-                      </p>
-                    </div>
-                  </div>
-                );
-              })()
-            ) : activeTab === 'profile' ? (
-              <ProfileView />
-            ) : activeTab === 'role-feature-access' ? (
-              <RoleFeatureAccessSettingsView />
-            ) : activeTab === 'daily-summary' ? (
-              <DailySummaryView
-                isDark={isDark}
-                onViewDeliveryTrip={(deliveryTripId) => {
-                  setSelectedDeliveryTripId(deliveryTripId);
-                  setDeliveryTripView('detail');
-                  setDeliveryTripReturnContext('daily-summary');
-                  setActiveTab('delivery-trips');
-                }}
-              />
-            ) : activeTab === 'reports' ? (
-              storeDetailView === 'detail' && selectedStoreId ? (
-                <StoreDeliveryDetailView
-                  storeId={selectedStoreId}
-                  onBack={() => {
-                    setStoreDetailView('list');
-                    setSelectedStoreId(null);
-                  }}
-                  isDark={isDark}
-                />
-              ) : (
-                <ReportsView
-                  key={reportsInitialTab ? `reports-${reportsInitialTab}` : 'reports'}
-                  isDark={isDark}
-                  initialTab={reportsInitialTab ?? undefined}
-                  onNavigateToStoreDetail={(storeId) => {
-                    setSelectedStoreId(storeId);
-                    setStoreDetailView('detail');
-                  }}
-                  onNavigateToVehicleDetail={(vehicleId) => {
-                    setActiveTab('vehicles');
-                    setSelectedVehicleId(vehicleId);
-                    setVehicleView('detail');
-                  }}
-                  onNavigateToTrip={(tripId) => {
-                    setDeliveryTripReturnContext('reports');
-                    setReportsInitialTab('trip-pnl');
-                    setActiveTab('delivery-trips');
-                    setSelectedDeliveryTripId(tripId);
-                    setDeliveryTripView('detail');
-                  }}
-                />
-              )
-            ) : activeTab === 'settings' ? (
-              <SettingsView />
-            ) : activeTab === 'delivery-trips' ? (
-              (() => {
-                if (deliveryTripView === 'metrics' && selectedDeliveryTripId) {
-                  return (
-                    <TripMetricsView
-                      tripId={selectedDeliveryTripId}
-                      onSaved={() => setDeliveryTripView('detail')}
-                      onBack={() => setDeliveryTripView('detail')}
-                    />
-                  );
-                }
-                if (deliveryTripView === 'detail' && selectedDeliveryTripId) {
-                  return (
-                    <DeliveryTripDetailView
-                      tripId={selectedDeliveryTripId}
-                      onEdit={(tripId) => {
-                        setSelectedDeliveryTripId(tripId);
-                        setDeliveryTripView('form');
+                  ) : tripLogView === 'form' ? (
+                    <TripLogFormView
+                      vehicleId={selectedVehicleId || undefined}
+                      tripId={selectedTripId || undefined}
+                      mode={tripLogMode}
+                      onSave={() => {
+                        setTripLogView('list');
+                        setSelectedTripId(null);
+                        setSelectedVehicleId(null);
                       }}
-                      onRecordMetrics={() => setDeliveryTripView('metrics')}
-                      onBack={() => {
-                        // กลับไปหน้าที่เข้ามาล่าสุด
-                        if (deliveryTripReturnContext === 'triplogs') {
+                      onCancel={() => {
+                        setTripLogView('list');
+                        setSelectedTripId(null);
+                        setSelectedVehicleId(null);
+                      }}
+                    />
+                  ) : null
+                ) : activeTab === 'fuellogs' ? (
+                  fuelLogView === 'list' ? (
+                    // Don't show list view for drivers - redirect to form
+                    isDriver ? (
+                      <FuelLogFormView
+                        vehicleId={selectedVehicleId || undefined}
+                        onSave={() => {
+                          // Stay on form for drivers, don't redirect to list
+                          setSelectedVehicleId(null);
+                        }}
+                        onCancel={() => {
+                          // For drivers, cancel goes back to triplogs form
                           setActiveTab('triplogs');
-                        } else if (deliveryTripReturnContext === 'daily-summary') {
-                          setActiveTab('daily-summary');
-                        } else if (deliveryTripReturnContext === 'vehicles') {
-                          setActiveTab('vehicles');
-                          setVehicleView('detail');
-                        } else if (deliveryTripReturnContext === 'service-staff-usage') {
-                          setActiveTab('service-staff');
-                          setServiceStaffView('usage');
-                        } else if (deliveryTripReturnContext === 'reports') {
-                          setActiveTab('reports');
-                        } else {
-                          // ค่าเริ่มต้น: กลับไปหน้ารายการทริปส่งสินค้า
-                          setActiveTab('delivery-trips');
-                          setDeliveryTripView('list');
-                        }
-                        setSelectedDeliveryTripId(null);
-                        setDeliveryTripView('list');
-                      }}
-                    />
-                  );
-                } else if (deliveryTripView === 'form') {
-                  return (
-                    <DeliveryTripFormView
-                      tripId={selectedDeliveryTripId || undefined}
+                          setTripLogView('form');
+                          setSelectedVehicleId(null);
+                        }}
+                      />
+                    ) : (
+                      <FuelLogListView
+                        onCreate={() => {
+                          setFuelLogView('form');
+                        }}
+                      />
+                    )
+                  ) : fuelLogView === 'form' ? (
+                    <FuelLogFormView
+                      vehicleId={selectedVehicleId || undefined}
                       onSave={() => {
-                        setDeliveryTripView('list');
-                        setSelectedDeliveryTripId(null);
+                        // For drivers, stay on form; for others, go to list
+                        if (isDriver) {
+                          setSelectedVehicleId(null);
+                        } else {
+                          setFuelLogView('list');
+                          setSelectedVehicleId(null);
+                        }
                       }}
                       onCancel={() => {
-                        if (selectedDeliveryTripId) {
-                          setDeliveryTripView('detail');
+                        // For drivers, cancel goes back to triplogs form; for others, go to list
+                        if (isDriver) {
+                          setActiveTab('triplogs');
+                          setTripLogView('form');
+                          setSelectedVehicleId(null);
                         } else {
-                          setDeliveryTripView('list');
-                          setSelectedDeliveryTripId(null);
+                          setFuelLogView('list');
+                          setSelectedVehicleId(null);
                         }
                       }}
                     />
-                  );
-                } else {
-                  return (
-                    <DeliveryTripListView
-                      onViewDetail={(tripId) => {
+                  ) : null
+                ) : activeTab === 'approvals' ? (
+                  // Check permissions - check role directly from profile for reliability
+                  (() => {
+                    // Show loading only if we truly don't have profile yet
+                    if (!profile && authLoading) {
+                      return (
+                        <div className="flex flex-col items-center justify-center h-[60vh] text-slate-400">
+                          <CheckSquare size={48} className="mb-4 opacity-50 animate-pulse" />
+                          <p className="text-sm text-slate-500 dark:text-slate-400">กำลังตรวจสอบสิทธิ์...</p>
+                        </div>
+                      );
+                    }
+
+                    // Check role directly from profile (more reliable than isManager flags)
+                    const hasPermission = can('tab.approvals', 'view');
+
+                    if (hasPermission) {
+                      return (
+                        <ApprovalBoardView
+                          onViewDetail={(ticketId) => {
+                            setActiveTab('maintenance');
+                            setSelectedTicketId(ticketId.toString());
+                            setTicketView('detail');
+                          }}
+                        />
+                      );
+                    }
+
+                    // No permission - show error message
+                    return (
+                      <div className="flex flex-col items-center justify-center h-[60vh] text-slate-400">
+                        <CheckSquare size={48} className="mb-4 opacity-50" />
+                        <h3 className="text-xl font-medium text-slate-600 dark:text-slate-300">ไม่มีสิทธิ์เข้าถึง</h3>
+                        <p className="text-sm text-slate-500 dark:text-slate-400 mt-2">
+                          หน้านี้จำกัดสำหรับผู้ตรวจสอบ, ผู้จัดการ, ผู้บริหาร และผู้ดูแลระบบเท่านั้น
+                        </p>
+                        <div className="mt-4 p-4 bg-slate-100 dark:bg-slate-800 rounded-lg text-left">
+                          <p className="text-xs font-semibold text-slate-600 dark:text-slate-300 mb-2">ข้อมูล Debug:</p>
+                          <p className="text-xs text-slate-500 dark:text-slate-400">
+                            บทบาท: {profile?.role || 'ไม่พบข้อมูล'}
+                          </p>
+                          <p className="text-xs text-slate-500 dark:text-slate-400">
+                            isAdmin: {isAdmin ? 'true' : 'false'}
+                          </p>
+                          <p className="text-xs text-slate-500 dark:text-slate-400">
+                            isManager: {isManager ? 'true' : 'false'}
+                          </p>
+                          <p className="text-xs text-slate-500 dark:text-slate-400">
+                            isInspector: {isInspector ? 'true' : 'false'}
+                          </p>
+                          <p className="text-xs text-slate-500 dark:text-slate-400">
+                            isExecutive: {isExecutive ? 'true' : 'false'}
+                          </p>
+                          <p className="text-xs text-slate-500 dark:text-slate-400">
+                            Profile ID: {profile?.id || 'ไม่มี'}
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })()
+                ) : activeTab === 'profile' ? (
+                  <ProfileView />
+                ) : activeTab === 'role-feature-access' ? (
+                  <RoleFeatureAccessSettingsView />
+                ) : activeTab === 'daily-summary' ? (
+                  <DailySummaryView
+                    isDark={isDark}
+                    onViewDeliveryTrip={(deliveryTripId) => {
+                      setSelectedDeliveryTripId(deliveryTripId);
+                      setDeliveryTripView('detail');
+                      setDeliveryTripReturnContext('daily-summary');
+                      setActiveTab('delivery-trips');
+                    }}
+                  />
+                ) : activeTab === 'reports' ? (
+                  storeDetailView === 'detail' && selectedStoreId ? (
+                    <StoreDeliveryDetailView
+                      storeId={selectedStoreId}
+                      onBack={() => {
+                        setStoreDetailView('list');
+                        setSelectedStoreId(null);
+                      }}
+                      isDark={isDark}
+                    />
+                  ) : (
+                    <ReportsView
+                      key={reportsInitialTab ? `reports-${reportsInitialTab}` : 'reports'}
+                      isDark={isDark}
+                      initialTab={reportsInitialTab ?? undefined}
+                      onNavigateToStoreDetail={(storeId) => {
+                        setSelectedStoreId(storeId);
+                        setStoreDetailView('detail');
+                      }}
+                      onNavigateToVehicleDetail={(vehicleId) => {
+                        setActiveTab('vehicles');
+                        setSelectedVehicleId(vehicleId);
+                        setVehicleView('detail');
+                      }}
+                      onNavigateToTrip={(tripId) => {
+                        setDeliveryTripReturnContext('reports');
+                        setReportsInitialTab('trip-pnl');
+                        setActiveTab('delivery-trips');
                         setSelectedDeliveryTripId(tripId);
                         setDeliveryTripView('detail');
-                        setDeliveryTripReturnContext('delivery-list');
-                      }}
-                      onCreate={() => {
-                        setSelectedDeliveryTripId(null);
-                        setDeliveryTripView('form');
                       }}
                     />
-                  );
-                }
-              })()
-            ) : activeTab === 'admin-staff' ? (
-              <AdminStaffManagementView />
-            ) : activeTab === 'service-staff' ? (
-              serviceStaffView === 'usage' && selectedServiceStaffId ? (
-                <StaffVehicleUsageView
-                  staffId={selectedServiceStaffId}
-                  initialState={
-                    serviceStaffUsageNavState?.staffId === selectedServiceStaffId
-                      ? {
-                        from: serviceStaffUsageNavState.from,
-                        to: serviceStaffUsageNavState.to,
-                        page: serviceStaffUsageNavState.page,
-                        scrollY: serviceStaffUsageNavState.scrollY,
+                  )
+                ) : activeTab === 'settings' ? (
+                  <SettingsView />
+                ) : activeTab === 'delivery-trips' ? (
+                  (() => {
+                    if (deliveryTripView === 'metrics' && selectedDeliveryTripId) {
+                      return (
+                        <TripMetricsView
+                          tripId={selectedDeliveryTripId}
+                          onSaved={() => setDeliveryTripView('detail')}
+                          onBack={() => setDeliveryTripView('detail')}
+                        />
+                      );
+                    }
+                    if (deliveryTripView === 'detail' && selectedDeliveryTripId) {
+                      return (
+                        <DeliveryTripDetailView
+                          tripId={selectedDeliveryTripId}
+                          onEdit={(tripId) => {
+                            setSelectedDeliveryTripId(tripId);
+                            setDeliveryTripView('form');
+                          }}
+                          onRecordMetrics={() => setDeliveryTripView('metrics')}
+                          onBack={() => {
+                            // กลับไปหน้าที่เข้ามาล่าสุด
+                            if (deliveryTripReturnContext === 'triplogs') {
+                              setActiveTab('triplogs');
+                            } else if (deliveryTripReturnContext === 'daily-summary') {
+                              setActiveTab('daily-summary');
+                            } else if (deliveryTripReturnContext === 'vehicles') {
+                              setActiveTab('vehicles');
+                              setVehicleView('detail');
+                            } else if (deliveryTripReturnContext === 'service-staff-usage') {
+                              setActiveTab('service-staff');
+                              setServiceStaffView('usage');
+                            } else if (deliveryTripReturnContext === 'reports') {
+                              setActiveTab('reports');
+                            } else {
+                              // ค่าเริ่มต้น: กลับไปหน้ารายการทริปส่งสินค้า
+                              setActiveTab('delivery-trips');
+                              setDeliveryTripView('list');
+                            }
+                            setSelectedDeliveryTripId(null);
+                            setDeliveryTripView('list');
+                          }}
+                        />
+                      );
+                    } else if (deliveryTripView === 'form') {
+                      return (
+                        <DeliveryTripFormView
+                          tripId={selectedDeliveryTripId || undefined}
+                          onSave={() => {
+                            setDeliveryTripView('list');
+                            setSelectedDeliveryTripId(null);
+                          }}
+                          onCancel={() => {
+                            if (selectedDeliveryTripId) {
+                              setDeliveryTripView('detail');
+                            } else {
+                              setDeliveryTripView('list');
+                              setSelectedDeliveryTripId(null);
+                            }
+                          }}
+                        />
+                      );
+                    } else {
+                      return (
+                        <DeliveryTripListView
+                          onViewDetail={(tripId) => {
+                            setSelectedDeliveryTripId(tripId);
+                            setDeliveryTripView('detail');
+                            setDeliveryTripReturnContext('delivery-list');
+                          }}
+                          onCreate={() => {
+                            setSelectedDeliveryTripId(null);
+                            setDeliveryTripView('form');
+                          }}
+                        />
+                      );
+                    }
+                  })()
+                ) : activeTab === 'admin-staff' ? (
+                  <AdminStaffManagementView />
+                ) : activeTab === 'service-staff' ? (
+                  serviceStaffView === 'usage' && selectedServiceStaffId ? (
+                    <StaffVehicleUsageView
+                      staffId={selectedServiceStaffId}
+                      initialState={
+                        serviceStaffUsageNavState?.staffId === selectedServiceStaffId
+                          ? {
+                            from: serviceStaffUsageNavState.from,
+                            to: serviceStaffUsageNavState.to,
+                            page: serviceStaffUsageNavState.page,
+                            scrollY: serviceStaffUsageNavState.scrollY,
+                          }
+                          : undefined
                       }
-                      : undefined
-                  }
-                  onViewTrip={(tripId, state) => {
-                    setServiceStaffUsageNavState({
-                      staffId: selectedServiceStaffId,
-                      from: state.from,
-                      to: state.to,
-                      page: state.page,
-                      scrollY: state.scrollY,
-                    });
-                    setSelectedDeliveryTripId(tripId);
-                    setDeliveryTripView('detail');
-                    setDeliveryTripReturnContext('service-staff-usage');
-                    setActiveTab('delivery-trips');
-                  }}
-                  onBack={() => {
-                    setServiceStaffView('list');
-                    setSelectedServiceStaffId(null);
-                  }}
-                />
-              ) : (
-                <ServiceStaffManagementView
-                  onViewUsage={(staffId: string) => {
-                    setSelectedServiceStaffId(staffId);
-                    setServiceStaffView('usage');
-                    setActiveTab('service-staff');
-                  }}
-                />
-              )
-            ) : activeTab === 'commission' ? (
-              <CommissionManagementView />
-            ) : activeTab === 'commission-rates' ? (
-              <CommissionRatesView />
-            ) : activeTab === 'stock-dashboard' ? (
-              <StockDashboardView />
-            ) : activeTab === 'products' ? (
-              <ProductsManagementView />
-            ) : activeTab === 'warehouses' ? (
-              <WarehouseManagementView />
-            ) : activeTab === 'inventory-receipts' ? (
-              <InventoryReceiptsView />
-            ) : activeTab === 'purchase-receipts' ? (
-              <PurchaseReceiptsManageView />
-            ) : activeTab === 'customer-tiers' ? (
-              <CustomerTiersManagementView />
-            ) : activeTab === 'product-pricing' ? (
-              <ProductTierPricingView />
-            ) : activeTab === 'excel-import' ? (
-              <ExcelImportView />
-            ) : activeTab === 'customers' ? (
-              <CustomerManagementView />
-            ) : activeTab === 'create-order' ? (
-              <CreateOrderView 
-                onNavigateToConfirmOrders={() => setActiveTab('confirm-orders')} 
-                onNavigateToPendingSales={() => setActiveTab('pending-sales')}
-              />
-            ) : activeTab === 'pending-sales' ? (
-              <PendingSalesView />
-            ) : activeTab === 'track-orders' ? (
-              <TrackOrdersView />
-            ) : activeTab === 'confirm-orders' ? (
-              <ConfirmOrderView />
-            ) : activeTab === 'pending-orders' ? (
-              <PendingOrdersView />
-            ) : activeTab === 'packing-simulation' ? (
-              <PackingSimulationView />
-            ) : activeTab === 'sales-trips' ? (
-              <SalesTripsView />
-            ) : activeTab === 'cleanup-test-orders' ? (
-              <CleanupTestOrdersView />
-            ) : activeTab === 'db-explorer' ? (
-              <DatabaseExplorerView />
-            ) : (
-              <div className="flex flex-col items-center justify-center h-[60vh] text-slate-400">
-                <Wrench size={48} className="mb-4 opacity-50" />
-                <h3 className="text-xl font-medium text-slate-600 dark:text-slate-300">กำลังพัฒนา</h3>
-                <p>โมดูล {activeTab} กำลังอยู่ระหว่างการพัฒนา</p>
-              </div>
-            )}
+                      onViewTrip={(tripId, state) => {
+                        setServiceStaffUsageNavState({
+                          staffId: selectedServiceStaffId,
+                          from: state.from,
+                          to: state.to,
+                          page: state.page,
+                          scrollY: state.scrollY,
+                        });
+                        setSelectedDeliveryTripId(tripId);
+                        setDeliveryTripView('detail');
+                        setDeliveryTripReturnContext('service-staff-usage');
+                        setActiveTab('delivery-trips');
+                      }}
+                      onBack={() => {
+                        setServiceStaffView('list');
+                        setSelectedServiceStaffId(null);
+                      }}
+                    />
+                  ) : (
+                    <ServiceStaffManagementView
+                      onViewUsage={(staffId: string) => {
+                        setSelectedServiceStaffId(staffId);
+                        setServiceStaffView('usage');
+                        setActiveTab('service-staff');
+                      }}
+                    />
+                  )
+                ) : activeTab === 'commission' ? (
+                  <CommissionManagementView />
+                ) : activeTab === 'commission-rates' ? (
+                  <CommissionRatesView />
+                ) : activeTab === 'stock-dashboard' ? (
+                  <StockDashboardView />
+                ) : activeTab === 'products' ? (
+                  <ProductsManagementView />
+                ) : activeTab === 'warehouses' ? (
+                  <WarehouseManagementView />
+                ) : activeTab === 'inventory-receipts' ? (
+                  <InventoryReceiptsView />
+                ) : activeTab === 'purchase-receipts' ? (
+                  <PurchaseReceiptsManageView />
+                ) : activeTab === 'customer-tiers' ? (
+                  <CustomerTiersManagementView />
+                ) : activeTab === 'product-pricing' ? (
+                  <ProductTierPricingView />
+                ) : activeTab === 'excel-import' ? (
+                  <ExcelImportView />
+                ) : activeTab === 'customers' ? (
+                  <CustomerManagementView />
+                ) : activeTab === 'create-order' ? (
+                  <CreateOrderView
+                    onNavigateToConfirmOrders={() => setActiveTab('confirm-orders')}
+                    onNavigateToPendingSales={() => setActiveTab('pending-sales')}
+                  />
+                ) : activeTab === 'pending-sales' ? (
+                  <PendingSalesView />
+                ) : activeTab === 'track-orders' ? (
+                  <TrackOrdersView />
+                ) : activeTab === 'confirm-orders' ? (
+                  <ConfirmOrderView />
+                ) : activeTab === 'pending-orders' ? (
+                  <PendingOrdersView />
+                ) : activeTab === 'packing-simulation' ? (
+                  <PackingSimulationView />
+                ) : activeTab === 'sales-trips' ? (
+                  <SalesTripsView />
+                ) : activeTab === 'cleanup-test-orders' ? (
+                  <CleanupTestOrdersView />
+                ) : activeTab === 'db-explorer' ? (
+                  <DatabaseExplorerView />
+                ) : (
+                  <div className="flex flex-col items-center justify-center h-[60vh] text-slate-400">
+                    <Wrench size={48} className="mb-4 opacity-50" />
+                    <h3 className="text-xl font-medium text-slate-600 dark:text-slate-300">กำลังพัฒนา</h3>
+                    <p>โมดูล {activeTab} กำลังอยู่ระหว่างการพัฒนา</p>
+                  </div>
+                ))}
           </Suspense>
         </div>
 
@@ -3065,6 +3287,8 @@ const AppContent = () => {
         }}
         onCancel={() => setShowLogoutConfirm(false)}
       />
+      {/* Debug Tools for Dev role */}
+      <DebugTools onTabChange={(tab) => setActiveTab(tab)} />
     </div>
   );
 };
@@ -3072,11 +3296,13 @@ const AppContent = () => {
 // Main App with Authentication
 const App = () => {
   return (
-    <FeatureAccessProvider>
-      <ProtectedRoute>
-        <AppContent />
-      </ProtectedRoute>
-    </FeatureAccessProvider>
+    <DebugDataProvider>
+      <FeatureAccessProvider>
+        <ProtectedRoute>
+          <AppContent />
+        </ProtectedRoute>
+      </FeatureAccessProvider>
+    </DebugDataProvider>
   );
 };
 
