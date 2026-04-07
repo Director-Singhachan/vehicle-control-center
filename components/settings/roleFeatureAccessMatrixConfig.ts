@@ -58,6 +58,7 @@ export const ROLE_LABELS_TH: Record<AppRole, string> = {
   hr: 'ฝ่ายบุคคล (HR)',
   accounting: 'บัญชี',
   warehouse: 'คลังสินค้า',
+  dev: 'ผู้พัฒนา',
 };
 
 export function levelLabel(l: AccessLevel): string {

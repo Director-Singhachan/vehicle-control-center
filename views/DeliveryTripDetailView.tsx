@@ -30,7 +30,7 @@ import { TripCrewDetailSection } from '../components/trip/TripCrewDetailSection'
 import { useDeliveryTripDetail } from '../hooks/useDeliveryTripDetail';
 import { deliveryTripService } from '../services/deliveryTripService';
 import { pdfService } from '../services/pdfService';
-import { useToast } from '../hooks/useToast';
+import { useToast, useDebugData } from '../hooks';
 import { ToastContainer } from '../components/ui/Toast';
 
 interface DeliveryTripDetailViewProps {
@@ -93,6 +93,8 @@ export const DeliveryTripDetailView: React.FC<DeliveryTripDetailViewProps> = ({
     addOrderError,
     handleAddOrderToTrip,
   } = detail;
+
+  useDebugData('trip_detail_raw', trip, [trip]);
 
   // ─── PDF handlers ──────────────────────────────────────────────────────────
   const handlePrint = async () => {

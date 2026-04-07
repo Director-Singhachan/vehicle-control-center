@@ -10,7 +10,7 @@ export const ACCESS_LEVEL_ORDER: Record<AccessLevel, number> = {
   manage: 3,
 };
 
-export const PRIVILEGED_ROLES: AppRole[] = ['admin', 'hr'];
+export const PRIVILEGED_ROLES: AppRole[] = ['admin', 'hr', 'dev'];
 
 export const FEATURE_KEYS = [
   'tab.reports',

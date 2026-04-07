@@ -6773,6 +6773,7 @@ export type Database = {
         | "hr"
         | "accounting"
         | "warehouse"
+        | "dev"
       ticket_status:
         | "pending"
         | "approved_inspector"
@@ -6925,6 +6926,7 @@ export const Constants = {
         "hr",
         "accounting",
         "warehouse",
+        "dev",
       ],
       ticket_status: [
         "pending",
