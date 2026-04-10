@@ -27,6 +27,8 @@ export interface TripConfirmationStepProps {
   capacitySummary2: CapacitySummary | null;
   capacitySummary3?: CapacitySummary | null;
   palletPackingResult: PalletPackingResult | null;
+  palletPackingResult2?: PalletPackingResult | null;
+  palletPackingResult3?: PalletPackingResult | null;
 }
 
 export function TripConfirmationStep({
@@ -50,6 +52,8 @@ export function TripConfirmationStep({
   capacitySummary2,
   capacitySummary3 = null,
   palletPackingResult,
+  palletPackingResult2 = null,
+  palletPackingResult3 = null,
 }: TripConfirmationStepProps) {
   const hasItems = Array.from(orderItemsMap.values()).some((items: any[]) => Array.isArray(items) && items.length > 0);
   const items2Length = getItemsForVehicle(2).length;
@@ -63,6 +67,134 @@ export function TripConfirmationStep({
     storeDeliveries.length === 0 ||
     (splitIntoTwoTrips && (!selectedVehicleId2 || !selectedDriverId2 || splitValidationErrors.length > 0 || items2Length === 0)) ||
     (splitIntoThreeTrips && (!selectedVehicleId2 || !selectedDriverId2 || !selectedVehicleId3 || !selectedDriverId3 || splitValidationErrors.length > 0 || items2Length === 0 || items3Length === 0));
+
+  const renderCapacityCard = (
+    title: string,
+    summary: CapacitySummary | null,
+    packingResult: PalletPackingResult | null,
+    emptyText: string
+  ) => {
+    if (summary?.loading) {
+      return <div className="text-center py-4 text-gray-500">กำลังคำนวณ...</div>;
+    }
+
+    if (!summary) {
+      return <div className="text-sm text-gray-500">{emptyText}</div>;
+    }
+
+    const displayPallets = packingResult ? packingResult.totalPallets : summary.totalPallets;
+    const nonPalletErrors = summary.errors.filter((msg) => !msg.startsWith('จำนวนพาเลท'));
+    const nonPalletWarnings = summary.warnings.filter((msg) => !msg.startsWith('จำนวนพาเลท'));
+    const palletErrors: string[] = [];
+    const palletWarnings: string[] = [];
+
+    if (summary.vehicleMaxPallets !== null) {
+      if (displayPallets > summary.vehicleMaxPallets) {
+        palletErrors.push(`จำนวนพาเลทเกินความจุ: ${displayPallets} พาเลท (สูงสุด ${summary.vehicleMaxPallets} พาเลท)`);
+      } else if (displayPallets > summary.vehicleMaxPallets * 0.9) {
+        palletWarnings.push(`จำนวนพาเลทใกล้เต็มความจุ: ${displayPallets}/${summary.vehicleMaxPallets} พาเลท (${Math.round((displayPallets / summary.vehicleMaxPallets) * 100)}%)`);
+      }
+    }
+
+    const errorsToShow = [...nonPalletErrors, ...palletErrors];
+    const warningsToShow = [...nonPalletWarnings, ...palletWarnings];
+
+    return (
+      <div className="space-y-3">
+        {errorsToShow.length > 0 && (
+          <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+            <div className="flex items-center gap-2 text-red-800 mb-2">
+              <AlertCircle size={16} />
+              <span className="font-medium">ข้อผิดพลาด:</span>
+            </div>
+            <ul className="list-disc list-inside text-sm text-red-700 space-y-1">
+              {errorsToShow.map((error, idx) => (
+                <li key={idx}>{error}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+        {warningsToShow.length > 0 && (
+          <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
+            <div className="flex items-center gap-2 text-amber-800 mb-2">
+              <AlertCircle size={16} />
+              <span className="font-medium">คำเตือน:</span>
+            </div>
+            <ul className="list-disc list-inside text-sm text-amber-700 space-y-1">
+              {warningsToShow.map((warning, idx) => (
+                <li key={idx}>{warning}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+        <div className="grid grid-cols-2 gap-4">
+          <div className="p-3 bg-gray-50 rounded-lg">
+            <div className="text-sm text-gray-600 mb-1">
+              {packingResult ? 'จำนวนพาเลท (จัดรวม)' : 'จำนวนพาเลท'}
+              <span className="block text-xs text-gray-500 font-normal mt-0.5">
+                {packingResult ? 'หลายชนิดบนพาเลทเดียวกัน ตามน้ำหนัก/ปริมาตร' : '(ค่าประมาณแยกตามชนิดสินค้า การจัดเรียงจริงอาจใช้น้อยกว่าถ้ารวมพาเลทได้)'}
+              </span>
+            </div>
+            <div className="text-2xl font-bold text-gray-900">
+              {displayPallets}
+              {summary.vehicleMaxPallets !== null && (
+                <span className="text-lg font-normal text-gray-500"> / {summary.vehicleMaxPallets}</span>
+              )}
+            </div>
+            {summary.vehicleMaxPallets !== null && (
+              <div className="mt-2">
+                <div className="w-full bg-gray-200 rounded-full h-2">
+                  <div
+                    className={`h-2 rounded-full ${
+                      displayPallets > summary.vehicleMaxPallets
+                        ? 'bg-red-500'
+                        : displayPallets > summary.vehicleMaxPallets * 0.9
+                          ? 'bg-amber-500'
+                          : 'bg-green-500'
+                    }`}
+                    style={{ width: `${Math.min(100, (displayPallets / summary.vehicleMaxPallets) * 100)}%` }}
+                  />
+                </div>
+                <div className="text-xs text-gray-500 mt-1">
+                  {Math.round((displayPallets / summary.vehicleMaxPallets) * 100)}% ของความจุ
+                </div>
+              </div>
+            )}
+          </div>
+          <div className="p-3 bg-gray-50 rounded-lg">
+            <div className="text-sm text-gray-600 mb-1">น้ำหนักรวม</div>
+            <div className="text-2xl font-bold text-gray-900">
+              {summary.totalWeightKg.toFixed(2)} กก.
+              {summary.vehicleMaxWeightKg !== null && (
+                <span className="text-lg font-normal text-gray-500"> / {summary.vehicleMaxWeightKg} กก.</span>
+              )}
+            </div>
+            {summary.vehicleMaxWeightKg !== null && (
+              <div className="mt-2">
+                <div className="w-full bg-gray-200 rounded-full h-2">
+                  <div
+                    className={`h-2 rounded-full ${
+                      summary.totalWeightKg > summary.vehicleMaxWeightKg
+                        ? 'bg-red-500'
+                        : summary.totalWeightKg > summary.vehicleMaxWeightKg * 0.9
+                          ? 'bg-amber-500'
+                          : 'bg-green-500'
+                    }`}
+                    style={{
+                      width: `${Math.min(100, (summary.totalWeightKg / summary.vehicleMaxWeightKg) * 100)}%`,
+                    }}
+                  />
+                </div>
+                <div className="text-xs text-gray-500 mt-1">
+                  {Math.round((summary.totalWeightKg / summary.vehicleMaxWeightKg) * 100)}% ของความจุ
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div className="space-y-6">
@@ -120,122 +252,13 @@ export function TripConfirmationStep({
               <div className="text-center py-4 text-gray-500">
                 <p>กำลังโหลดข้อมูลสินค้า...</p>
               </div>
-            ) : capacitySummary?.loading ? (
-              <div className="text-center py-4 text-gray-500">กำลังคำนวณ...</div>
-            ) : capacitySummary ? (
-              (() => {
-                const displayPallets = palletPackingResult ? palletPackingResult.totalPallets : capacitySummary.totalPallets;
-                const nonPalletErrors = capacitySummary.errors.filter((msg) => !msg.startsWith('จำนวนพาเลท'));
-                const nonPalletWarnings = capacitySummary.warnings.filter((msg) => !msg.startsWith('จำนวนพาเลท'));
-                const palletErrors: string[] = [];
-                const palletWarnings: string[] = [];
-                if (capacitySummary.vehicleMaxPallets !== null) {
-                  if (displayPallets > capacitySummary.vehicleMaxPallets) {
-                    palletErrors.push(`จำนวนพาเลทเกินความจุ: ${displayPallets} พาเลท (สูงสุด ${capacitySummary.vehicleMaxPallets} พาเลท)`);
-                  } else if (displayPallets > capacitySummary.vehicleMaxPallets * 0.9) {
-                    palletWarnings.push(`จำนวนพาเลทใกล้เต็มความจุ: ${displayPallets}/${capacitySummary.vehicleMaxPallets} พาเลท (${Math.round((displayPallets / capacitySummary.vehicleMaxPallets) * 100)}%)`);
-                  }
-                }
-                const errorsToShow = [...nonPalletErrors, ...palletErrors];
-                const warningsToShow = [...nonPalletWarnings, ...palletWarnings];
-                return (
-                  <div className="space-y-3">
-                    {errorsToShow.length > 0 && (
-                      <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
-                        <div className="flex items-center gap-2 text-red-800 mb-2">
-                          <AlertCircle size={16} />
-                          <span className="font-medium">ข้อผิดพลาด:</span>
-                        </div>
-                        <ul className="list-disc list-inside text-sm text-red-700 space-y-1">
-                          {errorsToShow.map((error, idx) => (
-                            <li key={idx}>{error}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-                    {warningsToShow.length > 0 && (
-                      <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
-                        <div className="flex items-center gap-2 text-amber-800 mb-2">
-                          <AlertCircle size={16} />
-                          <span className="font-medium">คำเตือน:</span>
-                        </div>
-                        <ul className="list-disc list-inside text-sm text-amber-700 space-y-1">
-                          {warningsToShow.map((warning, idx) => (
-                            <li key={idx}>{warning}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="p-3 bg-gray-50 rounded-lg">
-                        <div className="text-sm text-gray-600 mb-1">
-                          {palletPackingResult ? 'จำนวนพาเลท (จัดรวม)' : 'จำนวนพาเลท'}
-                          <span className="block text-xs text-gray-500 font-normal mt-0.5">
-                            {palletPackingResult ? 'หลายชนิดบนพาเลทเดียวกัน ตามน้ำหนัก/ปริมาตร' : '(ค่าประมาณแยกตามชนิดสินค้า การจัดเรียงจริงอาจใช้น้อยกว่าถ้ารวมพาเลทได้)'}
-                          </span>
-                        </div>
-                        <div className="text-2xl font-bold text-gray-900">
-                          {displayPallets}
-                          {capacitySummary.vehicleMaxPallets !== null && (
-                            <span className="text-lg font-normal text-gray-500"> / {capacitySummary.vehicleMaxPallets}</span>
-                          )}
-                        </div>
-                        {capacitySummary.vehicleMaxPallets !== null && (
-                          <div className="mt-2">
-                            <div className="w-full bg-gray-200 rounded-full h-2">
-                              <div
-                                className={`h-2 rounded-full ${
-                                  displayPallets > capacitySummary.vehicleMaxPallets
-                                    ? 'bg-red-500'
-                                    : displayPallets > capacitySummary.vehicleMaxPallets * 0.9
-                                      ? 'bg-amber-500'
-                                      : 'bg-green-500'
-                                }`}
-                                style={{ width: `${Math.min(100, (displayPallets / capacitySummary.vehicleMaxPallets) * 100)}%` }}
-                              />
-                            </div>
-                            <div className="text-xs text-gray-500 mt-1">
-                              {Math.round((displayPallets / capacitySummary.vehicleMaxPallets) * 100)}% ของความจุ
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                      <div className="p-3 bg-gray-50 rounded-lg">
-                        <div className="text-sm text-gray-600 mb-1">น้ำหนักรวม</div>
-                        <div className="text-2xl font-bold text-gray-900">
-                          {capacitySummary.totalWeightKg.toFixed(2)} กก.
-                          {capacitySummary.vehicleMaxWeightKg !== null && (
-                            <span className="text-lg font-normal text-gray-500"> / {capacitySummary.vehicleMaxWeightKg} กก.</span>
-                          )}
-                        </div>
-                        {capacitySummary.vehicleMaxWeightKg !== null && (
-                          <div className="mt-2">
-                            <div className="w-full bg-gray-200 rounded-full h-2">
-                              <div
-                                className={`h-2 rounded-full ${
-                                  capacitySummary.totalWeightKg > capacitySummary.vehicleMaxWeightKg
-                                    ? 'bg-red-500'
-                                    : capacitySummary.totalWeightKg > capacitySummary.vehicleMaxWeightKg * 0.9
-                                      ? 'bg-amber-500'
-                                      : 'bg-green-500'
-                                }`}
-                                style={{
-                                  width: `${Math.min(100, (capacitySummary.totalWeightKg / capacitySummary.vehicleMaxWeightKg) * 100)}%`,
-                                }}
-                              />
-                            </div>
-                            <div className="text-xs text-gray-500 mt-1">
-                              {Math.round((capacitySummary.totalWeightKg / capacitySummary.vehicleMaxWeightKg) * 100)}% ของความจุ
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })()
             ) : (
-              <div className="text-sm text-gray-500">กำลังคำนวณความจุ...</div>
+              renderCapacityCard(
+                splitIntoThreeTrips ? 'สรุปความจุ (เที่ยว 1)' : splitIntoTwoTrips ? 'สรุปความจุ (คัน 1)' : 'สรุปความจุ',
+                capacitySummary,
+                palletPackingResult,
+                'กำลังคำนวณความจุ...'
+              )
             )}
           </div>
         </Card>
@@ -246,48 +269,13 @@ export function TripConfirmationStep({
           <div className="p-6">
             <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
               <Package size={20} />
-              สรุปความจุ (คัน 2)
+              {splitIntoThreeTrips ? 'สรุปความจุ (เที่ยว 2)' : 'สรุปความจุ (คัน 2)'}
             </h3>
-            {capacitySummary2?.loading ? (
-              <div className="text-center py-4 text-gray-500">กำลังคำนวณ...</div>
-            ) : capacitySummary2 ? (
-              <div className="space-y-3">
-                {capacitySummary2.errors.length > 0 && (
-                  <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
-                    <div className="flex items-center gap-2 text-red-800 mb-2">
-                      <AlertCircle size={16} />
-                      <span className="font-medium">ข้อผิดพลาด:</span>
-                    </div>
-                    <ul className="list-disc list-inside text-sm text-red-700 space-y-1">
-                      {capacitySummary2.errors.map((error, idx) => (
-                        <li key={idx}>{error}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="p-3 bg-gray-50 rounded-lg">
-                    <div className="text-sm text-gray-600 mb-1">พาเลท</div>
-                    <div className="text-xl font-bold text-gray-900">
-                      {capacitySummary2.totalPallets}
-                      {capacitySummary2.vehicleMaxPallets != null && (
-                        <span className="text-sm font-normal text-gray-500"> / {capacitySummary2.vehicleMaxPallets}</span>
-                      )}
-                    </div>
-                  </div>
-                  <div className="p-3 bg-gray-50 rounded-lg">
-                    <div className="text-sm text-gray-600 mb-1">น้ำหนัก (กก.)</div>
-                    <div className="text-xl font-bold text-gray-900">
-                      {capacitySummary2.totalWeightKg.toFixed(2)}
-                      {capacitySummary2.vehicleMaxWeightKg != null && (
-                        <span className="text-sm font-normal text-gray-500"> / {capacitySummary2.vehicleMaxWeightKg}</span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="text-sm text-gray-500">เลือกรถ{splitIntoThreeTrips ? 'เที่ยวที่ 2' : 'คันที่ 2'} และจัดร้านลง{splitIntoThreeTrips ? 'เที่ยว 2' : 'คัน 2'} เพื่อดูความจุ</div>
+            {renderCapacityCard(
+              splitIntoThreeTrips ? 'สรุปความจุ (เที่ยว 2)' : 'สรุปความจุ (คัน 2)',
+              capacitySummary2,
+              palletPackingResult2,
+              `เลือกรถ${splitIntoThreeTrips ? 'เที่ยวที่ 2' : 'คันที่ 2'} และจัดร้านลง${splitIntoThreeTrips ? 'เที่ยว 2' : 'คัน 2'} เพื่อดูความจุ`
             )}
           </div>
         </Card>
@@ -300,46 +288,11 @@ export function TripConfirmationStep({
               <Package size={20} />
               สรุปความจุ (เที่ยว 3)
             </h3>
-            {capacitySummary3?.loading ? (
-              <div className="text-center py-4 text-gray-500">กำลังคำนวณ...</div>
-            ) : capacitySummary3 ? (
-              <div className="space-y-3">
-                {capacitySummary3.errors.length > 0 && (
-                  <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
-                    <div className="flex items-center gap-2 text-red-800 mb-2">
-                      <AlertCircle size={16} />
-                      <span className="font-medium">ข้อผิดพลาด:</span>
-                    </div>
-                    <ul className="list-disc list-inside text-sm text-red-700 space-y-1">
-                      {capacitySummary3.errors.map((error, idx) => (
-                        <li key={idx}>{error}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="p-3 bg-gray-50 rounded-lg">
-                    <div className="text-sm text-gray-600 mb-1">พาเลท</div>
-                    <div className="text-xl font-bold text-gray-900">
-                      {capacitySummary3.totalPallets}
-                      {capacitySummary3.vehicleMaxPallets != null && (
-                        <span className="text-sm font-normal text-gray-500"> / {capacitySummary3.vehicleMaxPallets}</span>
-                      )}
-                    </div>
-                  </div>
-                  <div className="p-3 bg-gray-50 rounded-lg">
-                    <div className="text-sm text-gray-600 mb-1">น้ำหนัก (กก.)</div>
-                    <div className="text-xl font-bold text-gray-900">
-                      {capacitySummary3.totalWeightKg.toFixed(2)}
-                      {capacitySummary3.vehicleMaxWeightKg != null && (
-                        <span className="text-sm font-normal text-gray-500"> / {capacitySummary3.vehicleMaxWeightKg}</span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="text-sm text-gray-500">เลือกรถเที่ยวที่ 3 และจัดร้านลงเที่ยว 3 เพื่อดูความจุ</div>
+            {renderCapacityCard(
+              'สรุปความจุ (เที่ยว 3)',
+              capacitySummary3,
+              palletPackingResult3,
+              'เลือกรถเที่ยวที่ 3 และจัดร้านลงเที่ยว 3 เพื่อดูความจุ'
             )}
           </div>
         </Card>
