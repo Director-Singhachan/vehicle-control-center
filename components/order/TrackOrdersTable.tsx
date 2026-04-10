@@ -3,6 +3,7 @@ import { Package, ChevronLeft, ChevronRight, Eye, Edit } from 'lucide-react';
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
+import { getOrderDisplayTotalAmount } from '../../utils/orderDisplay';
 
 interface TrackOrdersTableProps {
   orders: any[];
@@ -102,7 +103,10 @@ export const TrackOrdersTable: React.FC<TrackOrdersTableProps> = ({
                   </td>
                   <td className="py-3 px-5 text-right whitespace-nowrap">
                     <span className="font-semibold text-slate-900 dark:text-white">
-                      ฿{order.total_amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      ฿{getOrderDisplayTotalAmount(order).toLocaleString(undefined, {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}
                     </span>
                   </td>
                   <td className="py-3 px-5 text-center whitespace-nowrap">

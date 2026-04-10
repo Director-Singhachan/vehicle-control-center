@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { Modal } from '../ui/Modal';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
+import { getOrderDisplayTotalAmount } from '../../utils/orderDisplay';
 
 interface OrderDetailModalProps {
   order: any;
@@ -30,8 +31,8 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
     if (!loading && items.length > 0) {
       return fromLines;
     }
-    return Number(order?.total_amount ?? 0);
-  }, [loading, items, order?.total_amount]);
+    return getOrderDisplayTotalAmount(order ?? {});
+  }, [loading, items, order]);
 
   return (
     <Modal
