@@ -134,6 +134,8 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
             capacitySummary2={wizard.capacitySummary2}
             capacitySummary3={wizard.capacitySummary3}
             palletPackingResult={wizard.palletPackingResult}
+            palletPackingResult2={wizard.palletPackingResult2}
+            palletPackingResult3={wizard.palletPackingResult3}
           />
         </div>
       </PageLayout>
