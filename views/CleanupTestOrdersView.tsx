@@ -1,5 +1,17 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Trash2, Search, Filter, Calendar, AlertTriangle, CheckCircle, Package, X, ChevronLeft, ChevronRight } from 'lucide-react';
+import {
+  Trash2,
+  Search,
+  Filter,
+  Calendar,
+  AlertTriangle,
+  CheckCircle,
+  Package,
+  ChevronLeft,
+  ChevronRight,
+  Copy,
+  RotateCcw,
+} from 'lucide-react';
 import { ordersService } from '../services/ordersService';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
@@ -21,6 +33,21 @@ interface Order {
   customer_name?: string;
   customer_code?: string;
   delivery_trip_id?: string | null;
+  notes?: string | null;
+  items_count?: number | null;
+  trip_number?: string | null;
+}
+
+type SortKey =
+  | 'created_desc'
+  | 'created_asc'
+  | 'order_date_desc'
+  | 'order_date_asc'
+  | 'amount_desc'
+  | 'amount_asc';
+
+function isOrderAssignedToTrip(order: Order): boolean {
+  return !!(order.delivery_trip_id || order.status === 'assigned');
 }
 
 export function CleanupTestOrdersView() {
@@ -31,9 +58,12 @@ export function CleanupTestOrdersView() {
   const [error, setError] = useState<string | null>(null);
   const [selectedOrders, setSelectedOrders] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState('');
-  const [dateFilter, setDateFilter] = useState('');
+  const [filterDateFrom, setFilterDateFrom] = useState('');
+  const [filterDateTo, setFilterDateTo] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [showWithoutNumber, setShowWithoutNumber] = useState(false);
+  const [showOnlyDeletable, setShowOnlyDeletable] = useState(false);
+  const [sortBy, setSortBy] = useState<SortKey>('created_desc');
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [deleteMode, setDeleteMode] = useState<'selected' | 'all' | 'without_number' | 'date_range'>('selected');
@@ -87,38 +117,107 @@ export function CleanupTestOrdersView() {
     );
   }
 
+  const copyOrderId = async (id: string) => {
+    try {
+      await navigator.clipboard.writeText(id);
+      success('คัดลอกรหัสอ้างอิงแล้ว');
+    } catch {
+      showError('ไม่สามารถคัดลอกได้');
+    }
+  };
+
+  const clearFilterSettings = () => {
+    setSearchQuery('');
+    setFilterDateFrom('');
+    setFilterDateTo('');
+    setStatusFilter('all');
+    setShowWithoutNumber(false);
+    setShowOnlyDeletable(false);
+    setSortBy('created_desc');
+    setDateFrom('');
+    setDateTo('');
+    setSelectedOrders(new Set());
+    setCurrentPage(1);
+    setPageInput('');
+  };
+
   // กรองข้อมูล
   const filteredOrders = useMemo(() => {
     let filtered = orders;
 
-    // กรองตาม search query
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase();
-      filtered = filtered.filter(
-        (order) =>
-          order.order_number?.toLowerCase().includes(query) ||
-          order.customer_name?.toLowerCase().includes(query) ||
-          order.customer_code?.toLowerCase().includes(query)
-      );
+    if (searchQuery.trim()) {
+      const query = searchQuery.trim().toLowerCase();
+      const queryNoDash = query.replace(/-/g, '');
+      filtered = filtered.filter((order) => {
+        const idLower = order.id.toLowerCase();
+        const idNoDash = idLower.replace(/-/g, '');
+        const idMatch =
+          idLower.includes(query) || (queryNoDash.length >= 4 && idNoDash.includes(queryNoDash));
+        return (
+          idMatch ||
+          !!order.order_number?.toLowerCase().includes(query) ||
+          !!order.customer_name?.toLowerCase().includes(query) ||
+          !!order.customer_code?.toLowerCase().includes(query) ||
+          !!order.notes?.toLowerCase().includes(query) ||
+          !!order.trip_number?.toLowerCase().includes(query)
+        );
+      });
     }
 
-    // กรองตามวันที่
-    if (dateFilter) {
-      filtered = filtered.filter((order) => order.order_date === dateFilter);
+    if (filterDateFrom) {
+      filtered = filtered.filter((order) => (order.order_date || '') >= filterDateFrom);
+    }
+    if (filterDateTo) {
+      filtered = filtered.filter((order) => (order.order_date || '') <= filterDateTo);
     }
 
-    // กรองตามสถานะ
     if (statusFilter !== 'all') {
       filtered = filtered.filter((order) => order.status === statusFilter);
     }
 
-    // กรองออเดอร์ที่ไม่มี order_number
     if (showWithoutNumber) {
       filtered = filtered.filter((order) => !order.order_number || order.order_number === '');
     }
 
-    return filtered;
-  }, [orders, searchQuery, dateFilter, statusFilter, showWithoutNumber]);
+    if (showOnlyDeletable) {
+      filtered = filtered.filter((order) => !isOrderAssignedToTrip(order));
+    }
+
+    const sorted = [...filtered].sort((a, b) => {
+      const ta = Number(a.total_amount ?? 0);
+      const tb = Number(b.total_amount ?? 0);
+      const ca = new Date(a.created_at).getTime();
+      const cb = new Date(b.created_at).getTime();
+      const oa = new Date(a.order_date).getTime();
+      const ob = new Date(b.order_date).getTime();
+      switch (sortBy) {
+        case 'created_asc':
+          return ca - cb;
+        case 'order_date_desc':
+          return ob - oa;
+        case 'order_date_asc':
+          return oa - ob;
+        case 'amount_desc':
+          return tb - ta;
+        case 'amount_asc':
+          return ta - tb;
+        case 'created_desc':
+        default:
+          return cb - ca;
+      }
+    });
+
+    return sorted;
+  }, [
+    orders,
+    searchQuery,
+    filterDateFrom,
+    filterDateTo,
+    statusFilter,
+    showWithoutNumber,
+    showOnlyDeletable,
+    sortBy,
+  ]);
 
   // แบ่งหน้า: 1 หน้า 100 แถว (เหมือนหน้าจัดการลูกค้า)
   const offset = (currentPage - 1) * itemsPerPage;
@@ -133,7 +232,7 @@ export function CleanupTestOrdersView() {
   // Reset ไปหน้า 1 เมื่อเปลี่ยนตัวกรอง
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, dateFilter, statusFilter, showWithoutNumber]);
+  }, [searchQuery, filterDateFrom, filterDateTo, statusFilter, showWithoutNumber, showOnlyDeletable, sortBy]);
 
   // Toggle selection
   const toggleOrderSelection = (orderId: string) => {
@@ -173,11 +272,6 @@ export function CleanupTestOrdersView() {
       selectableOnPage.forEach((o) => next.add(o.id));
     }
     setSelectedOrders(next);
-  };
-
-  // ตรวจสอบว่าออเดอร์ถูกกำหนดทริปแล้วหรือไม่
-  const isOrderAssignedToTrip = (order: Order): boolean => {
-    return !!(order.delivery_trip_id || order.status === 'assigned');
   };
 
   // ลบออเดอร์
@@ -368,13 +462,25 @@ export function CleanupTestOrdersView() {
       {/* Filters */}
       <Card className="mb-6">
         <div className="p-6">
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-            <Filter className="w-5 h-5 inline mr-2" />
-            กรองข้อมูล
-          </h3>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+              <Filter className="w-5 h-5 inline mr-2" />
+              กรองข้อมูล
+            </h3>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={clearFilterSettings}
+              className="shrink-0 self-start sm:self-auto"
+            >
+              <RotateCcw className="w-4 h-4 mr-1.5" />
+              ล้างการตั้งค่า
+            </Button>
+          </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             {/* Search */}
-            <div>
+            <div className="lg:col-span-2">
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 <Search className="w-4 h-4 inline mr-1" />
                 ค้นหา
@@ -383,21 +489,33 @@ export function CleanupTestOrdersView() {
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="เลขที่ออเดอร์, ชื่อลูกค้า..."
+                placeholder="เลขที่, ลูกค้า, รหัสอ้างอิง (UUID), หมายเหตุ, เลขทริป..."
                 className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500"
               />
             </div>
 
-            {/* Date Filter */}
+            {/* Date range */}
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 <Calendar className="w-4 h-4 inline mr-1" />
-                วันที่ออเดอร์
+                วันที่ออเดอร์ ตั้งแต่
               </label>
               <input
                 type="date"
-                value={dateFilter}
-                onChange={(e) => setDateFilter(e.target.value)}
+                value={filterDateFrom}
+                onChange={(e) => setFilterDateFrom(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                <Calendar className="w-4 h-4 inline mr-1" />
+                ถึงวันที่
+              </label>
+              <input
+                type="date"
+                value={filterDateTo}
+                onChange={(e) => setFilterDateTo(e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500"
               />
             </div>
@@ -422,17 +540,47 @@ export function CleanupTestOrdersView() {
               </select>
             </div>
 
+            {/* Sort */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                เรียงตาม
+              </label>
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value as SortKey)}
+                className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="created_desc">วันที่สร้าง (ใหม่สุดก่อน)</option>
+                <option value="created_asc">วันที่สร้าง (เก่าสุดก่อน)</option>
+                <option value="order_date_desc">วันที่ออเดอร์ (ใหม่สุดก่อน)</option>
+                <option value="order_date_asc">วันที่ออเดอร์ (เก่าสุดก่อน)</option>
+                <option value="amount_desc">ยอดรวม (มากไปน้อย)</option>
+                <option value="amount_asc">ยอดรวม (น้อยไปมาก)</option>
+              </select>
+            </div>
+
             {/* Show Without Number */}
-            <div className="flex items-end">
+            <div className="flex flex-col justify-end gap-3 md:col-span-2">
               <label className="flex items-center gap-2 cursor-pointer">
                 <input
                   type="checkbox"
                   checked={showWithoutNumber}
                   onChange={(e) => setShowWithoutNumber(e.target.checked)}
-                  className="w-5 h-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                  className="w-5 h-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500 dark:bg-slate-800"
                 />
                 <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
                   แสดงเฉพาะที่ไม่มีเลขกำกับ
+                </span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={showOnlyDeletable}
+                  onChange={(e) => setShowOnlyDeletable(e.target.checked)}
+                  className="w-5 h-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500 dark:bg-slate-800"
+                />
+                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  แสดงเฉพาะที่ลบได้ (ยังไม่กำหนดทริป)
                 </span>
               </label>
             </div>
@@ -606,11 +754,17 @@ export function CleanupTestOrdersView() {
                       className="w-5 h-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
                     />
                   </th>
+                  <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700 dark:text-gray-300 whitespace-nowrap">
+                    รหัสอ้างอิง
+                  </th>
                   <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700 dark:text-gray-300">
                     เลขที่ออเดอร์
                   </th>
                   <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700 dark:text-gray-300">
-                    ลูกค้า
+                    ลูกค้า / หมายเหตุ
+                  </th>
+                  <th className="text-right py-3 px-4 text-sm font-semibold text-gray-700 dark:text-gray-300 whitespace-nowrap">
+                    รายการ
                   </th>
                   <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700 dark:text-gray-300">
                     วันที่ออเดอร์
@@ -648,19 +802,45 @@ export function CleanupTestOrdersView() {
                           }`}
                         />
                       </td>
+                      <td className="py-3 px-4 align-top">
+                        <div className="flex items-center gap-1 flex-wrap">
+                          <span
+                            className="font-mono text-xs text-gray-800 dark:text-gray-200"
+                            title={order.id}
+                          >
+                            {order.id.replace(/-/g, '').slice(0, 8)}…
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => void copyOrderId(order.id)}
+                            className="p-1 rounded-md text-enterprise-600 dark:text-enterprise-400 hover:bg-enterprise-100 dark:hover:bg-enterprise-900/40"
+                            title="คัดลอก UUID เต็ม"
+                            aria-label="คัดลอกรหัสอ้างอิง"
+                          >
+                            <Copy className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </td>
                       <td className="py-3 px-4">
-                        <div className="flex items-center gap-2">
-                          {order.order_number ? (
-                            <span className="font-mono text-sm font-semibold text-blue-600 dark:text-blue-400">
-                              {order.order_number}
+                        <div className="flex flex-col gap-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            {order.order_number ? (
+                              <span className="font-mono text-sm font-semibold text-blue-600 dark:text-blue-400">
+                                {order.order_number}
+                              </span>
+                            ) : (
+                              <span className="text-sm text-gray-400 italic">ไม่มีเลขกำกับ</span>
+                            )}
+                            {isAssigned && (
+                              <Badge variant="info" className="text-xs">
+                                กำหนดทริปแล้ว
+                              </Badge>
+                            )}
+                          </div>
+                          {order.trip_number && (
+                            <span className="text-xs text-slate-600 dark:text-slate-400 font-mono">
+                              ทริป: {order.trip_number}
                             </span>
-                          ) : (
-                            <span className="text-sm text-gray-400 italic">ไม่มีเลขกำกับ</span>
-                          )}
-                          {isAssigned && (
-                            <Badge variant="info" className="text-xs">
-                              กำหนดทริปแล้ว
-                            </Badge>
                           )}
                         </div>
                       </td>
@@ -674,7 +854,18 @@ export function CleanupTestOrdersView() {
                             {order.customer_code}
                           </p>
                         )}
+                        {order.notes && (
+                          <p
+                            className="text-xs text-slate-600 dark:text-slate-400 mt-1 line-clamp-2 max-w-[14rem] sm:max-w-xs"
+                            title={order.notes}
+                          >
+                            {order.notes}
+                          </p>
+                        )}
                       </div>
+                    </td>
+                    <td className="py-3 px-4 text-right text-sm text-gray-700 dark:text-gray-300 whitespace-nowrap">
+                      {order.items_count != null ? order.items_count : '—'}
                     </td>
                     <td className="py-3 px-4 text-sm text-gray-600 dark:text-gray-400">
                       {new Date(order.order_date).toLocaleDateString('th-TH', {
