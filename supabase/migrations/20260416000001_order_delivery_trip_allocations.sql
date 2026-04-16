@@ -121,6 +121,10 @@ LEFT JOIN public.order_item_remaining_quantities r ON r.order_id = o.id
 LEFT JOIN public.order_delivery_trip_allocations a ON a.order_id = o.id
 GROUP BY  o.id, o.store_id, o.branch, o.status;
 
+-- Supabase linter 0010_security_definer_view: ให้ view ใช้สิทธิ์ของผู้ query (RLS ของผู้ใช้) ไม่ใช่ของผู้สร้าง view
+ALTER VIEW public.order_item_remaining_quantities SET (security_invoker = true);
+ALTER VIEW public.order_remaining_summary SET (security_invoker = true);
+
 -- 5. RLS
 ALTER TABLE public.order_delivery_trip_allocations ENABLE ROW LEVEL SECURITY;
 
