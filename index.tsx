@@ -78,6 +78,7 @@ const CreateOrderView = lazy(() => import('./views/CreateOrderView').then(m => (
 const CustomerManagementView = lazy(() => import('./views/CustomerManagementView').then(m => ({ default: m.CustomerManagementView })));
 const PendingOrdersView = lazy(() => import('./views/PendingOrdersView').then(m => ({ default: m.PendingOrdersView })));
 const PendingSalesView = lazy(() => import('./views/PendingSalesView').then(m => ({ default: m.PendingSalesView })));
+const PartialDeliveryOrdersView = lazy(() => import('./views/PartialDeliveryOrdersView').then(m => ({ default: m.PartialDeliveryOrdersView })));
 
 const TrackOrdersView = lazy(() => import('./views/TrackOrdersView').then(m => ({ default: m.TrackOrdersView })));
 const SalesTripsView = lazy(() => import('./views/SalesTripsView').then(m => ({ default: m.SalesTripsView })));
@@ -1808,6 +1809,15 @@ const AppContent = () => {
                       isWarning={featureOverrides['tab.pending_orders'] === 'off'}
                     />
                   )}
+                  {!isDriver && can('tab.pending_orders', 'view') && (
+                    <SubSidebarItem
+                      label="ส่งไม่ครบ"
+                      active={activeTab === 'partial-delivery'}
+                      onClick={() => navigateAndCloseMobile('partial-delivery')}
+                      isCollapsed={false}
+                      isFlyout={false}
+                    />
+                  )}
                 </div>
               )}
 
@@ -1846,6 +1856,19 @@ const AppContent = () => {
                             active={activeTab === 'pending-orders'}
                             onClick={() => {
                               setActiveTab('pending-orders');
+                              setIsLogisticsHovered(false);
+                            }}
+                            isCollapsed={false}
+                            isFlyout={true}
+                          />
+                        )}
+
+                        {!isDriver && can('tab.pending_orders', 'view') && (
+                          <SubSidebarItem
+                            label="ส่งไม่ครบ"
+                            active={activeTab === 'partial-delivery'}
+                            onClick={() => {
+                              setActiveTab('partial-delivery');
                               setIsLogisticsHovered(false);
                             }}
                             isCollapsed={false}
@@ -3248,6 +3271,8 @@ const AppContent = () => {
                   <ConfirmOrderView />
                 ) : activeTab === 'pending-orders' ? (
                   <PendingOrdersView />
+                ) : activeTab === 'partial-delivery' ? (
+                  <PartialDeliveryOrdersView />
                 ) : activeTab === 'packing-simulation' ? (
                   <PackingSimulationView />
                 ) : activeTab === 'sales-trips' ? (

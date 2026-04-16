@@ -12,8 +12,8 @@ import { useAuth } from './useAuth';
 import { useToast } from './useToast';
 import { useVehicles } from './useVehicles';
 import { useDeliveryTrips } from './useDeliveryTrips';
-import type { StoreDelivery, ItemSplitQty, CapacitySummary, SplitMode } from '../types/createTripWizard';
-import { splitKey } from '../types/createTripWizard';
+import type { StoreDelivery, ItemSplitQty, CapacitySummary, SplitMode, TripSlot, MultiTripItemQty } from '../types/createTripWizard';
+import { splitKey, createTripSlot } from '../types/createTripWizard';
 
 export interface UseCreateTripWizardParams {
   selectedOrders: any[];
@@ -932,6 +932,67 @@ export function useCreateTripWizard({ selectedOrders, onSuccess }: UseCreateTrip
         if (ordersForTrip2.length > 0) await ordersService.assignToTrip(ordersForTrip2, trip2.id, user?.id!);
         if (ordersForTrip3.length > 0) await ordersService.assignToTrip(ordersForTrip3, trip3.id, user?.id!);
         success(`สร้างทริป 3 เที่ยวเรียบร้อย (${trip1.trip_number}, ${trip2.trip_number}, ${trip3.trip_number})`);
+      } else if (splitMode === 'multi') {
+        // Dynamic N-slot multi-trip mode
+        const createdTrips: { trip_number: string }[] = [];
+        const allAssignedOrderIds = new Set<string>();
+
+        for (const slot of tripSlots) {
+          if (!slot.vehicleId) continue;
+
+          // Build stores/items for this slot from multiTripItemQty
+          const storesMap = new Map<string, { store_id: string; sequence_order: number; items: any[] }>();
+          const includedOrderIds = new Set<string>();
+
+          for (const delivery of storeDeliveries) {
+            const orderItems = orderItemsMap.get(delivery.order_id) || [];
+            for (const item of orderItems) {
+              const key = splitKey(delivery.order_id, item.id);
+              const qty = multiTripItemQty[key]?.[slot.id] ?? 0;
+              if (qty <= 0) continue;
+              if (!storesMap.has(delivery.store_id)) {
+                storesMap.set(delivery.store_id, {
+                  store_id: delivery.store_id,
+                  sequence_order: delivery.sequence,
+                  items: [],
+                });
+              }
+              storesMap.get(delivery.store_id)!.items.push({
+                product_id: item.product_id,
+                quantity: qty,
+                quantity_picked_up_at_store: 0,
+                notes: item.notes ?? null,
+                is_bonus: item.is_bonus || false,
+                unit: item.unit != null && String(item.unit).trim() !== '' ? String(item.unit).trim() : null,
+              });
+              includedOrderIds.add(delivery.order_id);
+            }
+          }
+
+          const stores = Array.from(storesMap.values());
+          if (stores.length === 0) continue;
+
+          const trip = await deliveryTripService.create({
+            vehicle_id: slot.vehicleId,
+            driver_id: slot.driverId || selectedDriverId,
+            planned_date: tripDate,
+            notes: notes ? `[${slot.label}] ${notes}` : `[${slot.label}]`,
+            stores,
+          });
+          createdTrips.push(trip);
+
+          const newOrderIds = [...includedOrderIds].filter((id) => !allAssignedOrderIds.has(id));
+          if (newOrderIds.length > 0) await ordersService.assignToTrip(newOrderIds, trip.id, user?.id!);
+          newOrderIds.forEach((id) => allAssignedOrderIds.add(id));
+        }
+
+        if (createdTrips.length === 0) {
+          error('กรุณากำหนดจำนวนสินค้าและรถให้กับอย่างน้อย 1 เที่ยว');
+          setIsSubmitting(false);
+          return;
+        }
+
+        success(`สร้างทริป ${createdTrips.length} เที่ยวเรียบร้อย (${createdTrips.map((t) => t.trip_number).join(', ')})`);
       } else {
         const payload = buildStoresPayload(storeDeliveries);
         const stores = payload.stores;
@@ -985,6 +1046,7 @@ export function useCreateTripWizard({ selectedOrders, onSuccess }: UseCreateTrip
     splitValidationErrors, capacitySummary, capacitySummary2, capacitySummary3, palletPackingResult, palletPackingResult2, palletPackingResult3,
     getRemaining, getItemsForVehicle, user?.id, recommendationInput, aiHasFetched, aiRecommendations,
     selectedRecommendationVehicleId, onSuccess, warning, success, error, getCapacityBlockingErrors,
+    tripSlots, multiTripItemQty,
   ]);
 
   const setQuantityInThisTripMapForKey = useCallback((key: string, value: number) => {
@@ -1012,6 +1074,68 @@ export function useCreateTripWizard({ selectedOrders, onSuccess }: UseCreateTrip
       return next;
     });
   }, [getRemaining]);
+
+  // ── Dynamic multi-trip slot state (splitMode === 'multi') ──────────────────
+
+  const [tripSlots, setTripSlots] = useState<TripSlot[]>(() => [createTripSlot(1), createTripSlot(2)]);
+  const [multiTripItemQty, setMultiTripItemQty] = useState<MultiTripItemQty>({});
+
+  const addTripSlot = useCallback(() => {
+    setTripSlots((prev) => {
+      const next = prev.length + 1;
+      return [...prev, createTripSlot(next)];
+    });
+  }, []);
+
+  const removeTripSlot = useCallback((slotId: string) => {
+    setTripSlots((prev) => {
+      if (prev.length <= 2) return prev;
+      return prev.filter((s) => s.id !== slotId);
+    });
+    // Remove qty entries for removed slot
+    setMultiTripItemQty((prev) => {
+      const next = { ...prev };
+      for (const key of Object.keys(next)) {
+        const { [slotId]: _removed, ...rest } = next[key] ?? {};
+        next[key] = rest;
+      }
+      return next;
+    });
+  }, []);
+
+  const updateTripSlot = useCallback(<K extends keyof TripSlot>(slotId: string, field: K, value: TripSlot[K]) => {
+    setTripSlots((prev) => prev.map((s) => (s.id === slotId ? { ...s, [field]: value } : s)));
+  }, []);
+
+  const setMultiTripQty = useCallback((slotId: string, itemKey: string, qty: number) => {
+    setMultiTripItemQty((prev) => ({
+      ...prev,
+      [itemKey]: { ...(prev[itemKey] ?? {}), [slotId]: qty },
+    }));
+  }, []);
+
+  /** Distribute remaining quantity evenly across all slots for a given item. */
+  const distributeEvenlyMulti = useCallback((orderId: string, orderItems: any[]) => {
+    setMultiTripItemQty((prev) => {
+      const next = { ...prev };
+      for (const item of orderItems) {
+        const rem = Math.max(0,
+          Number(item.quantity)
+          - Number(item.quantity_picked_up_at_store ?? 0)
+          - Number(item.quantity_delivered ?? 0)
+        );
+        if (rem <= 0) continue;
+        const key = splitKey(orderId, item.id);
+        const perSlot = Math.floor(rem / tripSlots.length);
+        const slotQty: Record<string, number> = {};
+        tripSlots.forEach((slot, idx) => {
+          slotQty[slot.id] = idx === tripSlots.length - 1 ? rem - perSlot * (tripSlots.length - 1) : perSlot;
+        });
+        next[key] = slotQty;
+      }
+      return next;
+    });
+  }, [tripSlots]);
 
   const setAllSplitForDelivery = useCallback((orderId: string, orderItems: any[], target: 'vehicle1' | 'vehicle2' | 'vehicle3' | 'half') => {
     setItemSplitMap(prev => {
@@ -1127,5 +1251,13 @@ export function useCreateTripWizard({ selectedOrders, onSuccess }: UseCreateTrip
     getItemsForVehicle,
     isSubmitting,
     handleSubmit,
+    // Dynamic multi-trip slots (splitMode === 'multi')
+    tripSlots,
+    addTripSlot,
+    removeTripSlot,
+    updateTripSlot,
+    multiTripItemQty,
+    setMultiTripQty,
+    distributeEvenlyMulti,
   };
 }

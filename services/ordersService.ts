@@ -357,6 +357,30 @@ export const ordersService = {
   },
 
   /**
+   * ดึงออเดอร์ที่ส่งไม่ครบ (มี allocation แล้วแต่ยังมีสินค้าเหลือ) สำหรับ Partial Delivery Queue
+   * ดึงแบบเบา ๆ เพื่อแสดงจำนวน badge เท่านั้น — ข้อมูลละเอียดอยู่ใน allocationService
+   */
+  async getPartiallyDeliveredOrderCount(filters?: { branch?: string; branchesIn?: string[] }): Promise<number> {
+    if (filters?.branchesIn !== undefined && filters.branchesIn.length === 0) return 0;
+
+    let query = supabase
+      .from('order_remaining_summary')
+      .select('order_id', { count: 'exact', head: true })
+      .eq('has_any_allocation', true)
+      .gt('total_remaining', 0);
+
+    if (filters?.branchesIn !== undefined) {
+      query = query.in('branch', filters.branchesIn);
+    } else if (filters?.branch && filters.branch !== 'ALL') {
+      query = query.eq('branch', filters.branch);
+    }
+
+    const { count, error } = await query;
+    if (error) return 0;
+    return count ?? 0;
+  },
+
+  /**
    * ดึงออเดอร์ที่รอการยืนยัน (awaiting_confirmation)
    */
   async getAwaitingDispatchOrders(filters?: { branch?: string; branchesIn?: string[] }) {

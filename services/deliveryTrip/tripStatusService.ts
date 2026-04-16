@@ -1,6 +1,7 @@
 // Trip status service - cancel, updateStoreInvoiceStatus, syncQuantityDeliveredForCompletedTrip, syncStatusWithTripLogs
 import { supabase } from '../../lib/supabase';
 import { tripCrudService } from './tripCrudService';
+import { allocationService } from '../allocationService';
 import type { DeliveryTripWithRelations, DeliveryTripUpdate } from './types';
 
 interface SyncTripLogCandidate {
@@ -192,6 +193,13 @@ export const tripStatusService = {
       }
     }
 
+    // Cancel any non-delivered allocations for this trip so remaining quantities are freed
+    try {
+      await allocationService.cancelTripAllocations(id);
+    } catch (allocErr) {
+      console.error('[deliveryTripService] Error cancelling allocations on trip cancel:', allocErr);
+    }
+
     const updatedTrip = await tripCrudService.getById(id);
     if (!updatedTrip) throw new Error('ไม่สามารถดึงข้อมูลทริปที่ยกเลิกแล้วได้');
     return updatedTrip;
@@ -223,6 +231,13 @@ export const tripStatusService = {
       throw error;
     }
     console.log('[deliveryTripService] Synced quantity_delivered and order status for completed trip:', tripId);
+
+    // Mark corresponding allocations as delivered (best-effort)
+    try {
+      await allocationService.markTripAllocationsDelivered(tripId);
+    } catch (allocErr) {
+      console.error('[deliveryTripService] Error marking allocations delivered:', allocErr);
+    }
   },
 
   async syncStatusWithTripLogs(this: { syncQuantityDeliveredForCompletedTrip: (tripId: string) => Promise<void> }): Promise<{
@@ -281,6 +296,11 @@ export const tripStatusService = {
         await this.syncQuantityDeliveredForCompletedTrip(trip.id);
       } catch {
         // ignore
+      }
+      try {
+        await allocationService.markTripAllocationsDelivered(trip.id);
+      } catch {
+        // ignore — allocation sync is best-effort
       }
     }
     return { updated: updatedTrips.length, details: updatedTrips };

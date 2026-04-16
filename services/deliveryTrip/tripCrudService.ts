@@ -1,6 +1,7 @@
 // Trip CRUD service - getAll, getById, create, update, delete, updatePickedUpQuantity, changeVehicle
 import { supabase } from '../../lib/supabase';
 import { withRetry } from '../../lib/retry';
+import { allocationService } from '../allocationService';
 import {
   recalculateCompletedTripCommission,
   resolveCrewAssignmentStartAt,
@@ -1581,6 +1582,20 @@ export const tripCrudService = {
 
         console.log(`[tripCrudService] Reset quantity_delivered + recalc ${orderIds.length} orders.status (trip not completed)`);
       }
+    }
+
+    // 4.5 Cancel or delete allocations for this trip (frees allocated qty back into remaining pool)
+    try {
+      if (trip.status === 'completed') {
+        // For completed trips: mark as cancelled (keep history but free the allocation slot)
+        await allocationService.cancelTripAllocations(id);
+      } else {
+        // For non-completed trips: hard-delete allocations so remaining quantities are freed
+        await allocationService.deleteTripAllocations(id);
+      }
+    } catch (allocErr) {
+      console.error('[tripCrudService] Error clearing allocations for trip:', allocErr);
+      // Non-blocking — allocation cleanup failure should not prevent trip deletion
     }
 
     // 5. ลบทริป (CASCADE จะลบข้อมูลที่เกี่ยวข้องอัตโนมัติ)

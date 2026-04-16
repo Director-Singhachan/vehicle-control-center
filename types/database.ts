@@ -14,6 +14,70 @@ export type Database = {
   }
   public: {
     Tables: {
+      order_delivery_trip_allocations: {
+        Row: {
+          id: string
+          order_id: string
+          delivery_trip_id: string
+          order_item_id: string
+          allocated_quantity: number
+          delivered_quantity: number
+          status: 'planned' | 'in_delivery' | 'delivered' | 'cancelled'
+          sequence_no: number
+          notes: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          order_id: string
+          delivery_trip_id: string
+          order_item_id: string
+          allocated_quantity?: number
+          delivered_quantity?: number
+          status?: 'planned' | 'in_delivery' | 'delivered' | 'cancelled'
+          sequence_no?: number
+          notes?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          order_id?: string
+          delivery_trip_id?: string
+          order_item_id?: string
+          allocated_quantity?: number
+          delivered_quantity?: number
+          status?: 'planned' | 'in_delivery' | 'delivered' | 'cancelled'
+          sequence_no?: number
+          notes?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "odta_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "odta_delivery_trip_id_fkey"
+            columns: ["delivery_trip_id"]
+            isOneToOne: false
+            referencedRelation: "delivery_trips"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "odta_order_item_id_fkey"
+            columns: ["order_item_id"]
+            isOneToOne: false
+            referencedRelation: "order_items"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       ai_trip_recommendations: {
         Row: {
           accepted_at: string | null
@@ -5300,6 +5364,36 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      order_item_remaining_quantities: {
+        Row: {
+          order_item_id: string
+          order_id: string
+          product_id: string
+          total_quantity: number
+          quantity_picked_up_at_store: number
+          quantity_delivered: number
+          fulfillment_method: string
+          allocated_quantity: number
+          fulfilled_via_allocations: number
+          remaining_unallocated: number
+          has_allocations: boolean
+        }
+        Relationships: []
+      }
+      order_remaining_summary: {
+        Row: {
+          order_id: string
+          store_id: string | null
+          branch: string | null
+          order_status: string | null
+          trip_count: number
+          total_remaining: number
+          total_allocated: number
+          total_delivery_qty: number
+          has_any_allocation: boolean
+        }
+        Relationships: []
       }
       orders_with_details: {
         Row: {
