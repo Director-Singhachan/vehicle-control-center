@@ -46,6 +46,9 @@ export function useCreateTripWizard({ selectedOrders, onSuccess }: UseCreateTrip
   const [itemSplitMap, setItemSplitMap] = useState<Record<string, ItemSplitQty>>({});
   const [quantityInThisTripMap, setQuantityInThisTripMap] = useState<Record<string, number>>({});
   const [expandedStores, setExpandedStores] = useState<Set<string>>(new Set());
+  // Dynamic multi-trip slot state (splitMode === 'multi')
+  const [tripSlots, setTripSlots] = useState<TripSlot[]>(() => [createTripSlot(1), createTripSlot(2)]);
+  const [multiTripItemQty, setMultiTripItemQty] = useState<MultiTripItemQty>({});
 
   const [selectedBranch, setSelectedBranch] = useState('');
   const [vehicleSearch, setVehicleSearch] = useState('');
@@ -1074,11 +1077,6 @@ export function useCreateTripWizard({ selectedOrders, onSuccess }: UseCreateTrip
       return next;
     });
   }, [getRemaining]);
-
-  // ── Dynamic multi-trip slot state (splitMode === 'multi') ──────────────────
-
-  const [tripSlots, setTripSlots] = useState<TripSlot[]>(() => [createTripSlot(1), createTripSlot(2)]);
-  const [multiTripItemQty, setMultiTripItemQty] = useState<MultiTripItemQty>({});
 
   const addTripSlot = useCallback(() => {
     setTripSlots((prev) => {
