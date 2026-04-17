@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { ArrowLeft, Package, Truck, User, Calendar, AlertTriangle, CheckCircle } from 'lucide-react';
+import { ArrowLeft, Package, Truck, User, Calendar, AlertTriangle, CheckCircle, Building2 } from 'lucide-react';
 import { PageLayout } from '../components/ui/PageLayout';
 import { Card } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
@@ -23,9 +23,14 @@ export function OrderShipmentPlanningView({ orderId, onBack, onSuccess }: OrderS
     legItems,
     loading,
     submitting,
-    drivers,
+    filteredDrivers,
+    vehicles,
     filteredVehicles,
     vehiclesLoading,
+    vehiclesError,
+    branches,
+    selectedBranch,
+    setSelectedBranch,
     selectedVehicleId,
     setSelectedVehicleId,
     selectedDriverId,
@@ -81,7 +86,7 @@ export function OrderShipmentPlanningView({ orderId, onBack, onSuccess }: OrderS
                       <Badge variant="warning">ค้างส่งต่อ</Badge>
                     </div>
                     <p className="text-sm text-gray-700 dark:text-gray-300">
-                      {orderDetail?.customer_name || orderDetail?.store_name || '-'}
+                      {orderDetail?.customer_name || '-'}
                     </p>
                     {orderDetail?.delivery_address && (
                       <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
@@ -173,6 +178,35 @@ export function OrderShipmentPlanningView({ orderId, onBack, onSuccess }: OrderS
                 </h3>
 
                 <div className="space-y-4">
+                  {vehiclesError && (
+                    <p className="text-xs text-red-600 dark:text-neon-alert">{vehiclesError.message}</p>
+                  )}
+
+                  {/* Branch filter — กรองทั้งรถและคนขับ (สาขาเดียวกับออเดอร์เป็นค่าเริ่มต้น) */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      <Building2 className="w-3.5 h-3.5 inline mr-1" />
+                      สาขา (กรองรถและคนขับ)
+                    </label>
+                    <select
+                      value={selectedBranch}
+                      onChange={(e) => setSelectedBranch(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-charcoal-700 rounded-lg text-sm bg-white dark:bg-charcoal-900 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-enterprise-500"
+                    >
+                      <option value="">ทุกสาขา</option>
+                      {branches.map((b) => (
+                        <option key={b} value={b}>
+                          {b}
+                        </option>
+                      ))}
+                    </select>
+                    {orderDetail?.branch && (
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                        สาขาออเดอร์: {String(orderDetail.branch)}
+                      </p>
+                    )}
+                  </div>
+
                   {/* Vehicle */}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
@@ -189,14 +223,24 @@ export function OrderShipmentPlanningView({ orderId, onBack, onSuccess }: OrderS
                         <option value="">-- เลือกรถ --</option>
                         {filteredVehicles.map((v: any) => (
                           <option key={v.id} value={v.id}>
-                            {v.plate} {v.make ? `(${v.make})` : ''}
+                            {v.plate}
+                            {v.branch ? ` · ${v.branch}` : ''}
+                            {v.make ? ` (${v.make})` : ''}
                           </option>
                         ))}
                       </select>
                     )}
+                    {!vehiclesLoading && vehicles.length > 0 && filteredVehicles.length === 0 && (
+                      <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+                        ไม่มีรถในสาขาที่เลือก ลองเปลี่ยนเป็น &quot;ทุกสาขา&quot; หรือตรวจสอบว่าทะเบียนมีฟิลด์สาขาตรงกับออเดอร์
+                      </p>
+                    )}
+                    {!vehiclesLoading && vehicles.length === 0 && !vehiclesError && (
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">ไม่พบข้อมูลรถในระบบ</p>
+                    )}
                     {selectedVehicle && (
                       <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                        {(selectedVehicle as any).make} {(selectedVehicle as any).model} · {(selectedVehicle as any).branch ?? ''}
+                        {(selectedVehicle as any).make} {(selectedVehicle as any).model} · {(selectedVehicle as any).branch ?? '—'}
                       </p>
                     )}
                   </div>
@@ -204,6 +248,7 @@ export function OrderShipmentPlanningView({ orderId, onBack, onSuccess }: OrderS
                   {/* Driver */}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      <User className="w-3.5 h-3.5 inline mr-1" />
                       คนขับ
                     </label>
                     <select
@@ -212,10 +257,18 @@ export function OrderShipmentPlanningView({ orderId, onBack, onSuccess }: OrderS
                       className="w-full px-3 py-2 border border-gray-300 dark:border-charcoal-700 rounded-lg text-sm bg-white dark:bg-charcoal-900 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-enterprise-500"
                     >
                       <option value="">-- เลือกคนขับ --</option>
-                      {drivers.map((d) => (
-                        <option key={d.id} value={d.id}>{d.full_name}</option>
+                      {filteredDrivers.map((d) => (
+                        <option key={d.id} value={d.id}>
+                          {d.full_name}
+                          {d.branch ? ` · ${d.branch}` : ''}
+                        </option>
                       ))}
                     </select>
+                    {selectedBranch && filteredDrivers.length === 0 && (
+                      <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+                        ไม่มีคนขับในสาขานี้ ลองเลือก &quot;ทุกสาขา&quot;
+                      </p>
+                    )}
                   </div>
 
                   {/* Date */}

@@ -8,6 +8,7 @@ import { useVehicleRecommendation } from './useVehicleRecommendation';
 import { vehicleRecommendationService, hashRecommendationInput } from '../services/vehicleRecommendationService';
 import type { RecommendationInput } from '../services/vehicleRecommendationService';
 import { tripMetricsService } from '../services/tripMetricsService';
+import { allocationService } from '../services/allocationService';
 import { useAuth } from './useAuth';
 import { useToast } from './useToast';
 import { useVehicles } from './useVehicles';
@@ -778,16 +779,19 @@ export function useCreateTripWizard({ selectedOrders, onSuccess }: UseCreateTrip
               return { item, qty, remaining, pickedUp };
             })
             .filter(({ qty, remaining, pickedUp }) => qty > 0 || (remaining === 0 && pickedUp > 0))
-            .map(({ item }) => ({
-              product_id: item.product_id,
-              quantity: Number(item.quantity),
-              quantity_picked_up_at_store: Number(item.quantity_picked_up_at_store ?? 0),
-              notes: item.notes || undefined,
-              is_bonus: item.is_bonus || false,
-              unit:
-                (item.unit != null && String(item.unit).trim() !== '' ? String(item.unit).trim() : null) ||
-                (item.product?.unit ? String(item.product.unit) : null),
-            }));
+            .map(({ item, qty, remaining, pickedUp }) => {
+              const pickupOnlyOnTrip = remaining === 0 && pickedUp > 0 && !(qty > 0);
+              return {
+                product_id: item.product_id,
+                quantity: pickupOnlyOnTrip ? Number(item.quantity) : qty,
+                quantity_picked_up_at_store: pickupOnlyOnTrip ? pickedUp : 0,
+                notes: item.notes || undefined,
+                is_bonus: item.is_bonus || false,
+                unit:
+                  (item.unit != null && String(item.unit).trim() !== '' ? String(item.unit).trim() : null) ||
+                  (item.product?.unit ? String(item.product.unit) : null),
+              };
+            });
           if (items.length === 0) continue;
           includedOrderIds.add(delivery.order_id);
           const existingStore = storesMap.get(delivery.store_id);
@@ -873,6 +877,97 @@ export function useCreateTripWizard({ selectedOrders, onSuccess }: UseCreateTrip
         };
       };
 
+      const isPickupFulfillment = (item: any) => (item.fulfillment_method ?? 'delivery') === 'pickup';
+
+      const persistAllocationsForTrip = async (
+        tripId: string,
+        itemsByOrderId: Map<string, Array<{ order_item_id: string; allocated_quantity: number }>>,
+      ) => {
+        for (const [orderId, rawItems] of itemsByOrderId) {
+          const merged = new Map<string, number>();
+          for (const row of rawItems) {
+            merged.set(row.order_item_id, (merged.get(row.order_item_id) ?? 0) + row.allocated_quantity);
+          }
+          const items = [...merged.entries()]
+            .filter(([, q]) => q > 0)
+            .map(([order_item_id, allocated_quantity]) => ({ order_item_id, allocated_quantity }));
+          if (items.length === 0) continue;
+          const seqNo = await allocationService.getNextSequenceNo(orderId);
+          await allocationService.createAllocations({
+            order_id: orderId,
+            delivery_trip_id: tripId,
+            sequence_no: seqNo,
+            items,
+          });
+        }
+      };
+
+      const collectAllocationsSingle = () => {
+        const byOrder = new Map<string, Array<{ order_item_id: string; allocated_quantity: number }>>();
+        for (const delivery of storeDeliveries) {
+          const orderItems = orderItemsMap.get(delivery.order_id) || [];
+          for (const item of orderItems) {
+            if (isPickupFulfillment(item)) continue;
+            const remaining = getRemaining(item);
+            const qtyInTrip = quantityInThisTripMap[splitKey(delivery.order_id, item.id)] ?? remaining;
+            const qty = Math.max(0, Math.min(remaining, qtyInTrip));
+            const pickedUp = Number(item.quantity_picked_up_at_store ?? 0);
+            if (qty > 0) {
+              if (!byOrder.has(delivery.order_id)) byOrder.set(delivery.order_id, []);
+              byOrder.get(delivery.order_id)!.push({ order_item_id: item.id, allocated_quantity: qty });
+            } else if (remaining === 0 && pickedUp > 0) {
+              if (!byOrder.has(delivery.order_id)) byOrder.set(delivery.order_id, []);
+              byOrder.get(delivery.order_id)!.push({ order_item_id: item.id, allocated_quantity: Number(item.quantity) });
+            }
+          }
+        }
+        return byOrder;
+      };
+
+      const collectAllocationsSplit = (tripNum: 1 | 2 | 3) => {
+        const byOrder = new Map<string, Array<{ order_item_id: string; allocated_quantity: number }>>();
+        for (const delivery of storeDeliveries) {
+          const orderItems = orderItemsMap.get(delivery.order_id) || [];
+          for (const item of orderItems) {
+            if (isPickupFulfillment(item)) continue;
+            const remaining = getRemaining(item);
+            const pickedUp = Number(item.quantity_picked_up_at_store ?? 0);
+            const key = splitKey(delivery.order_id, item.id);
+            const split = itemSplitMap[key];
+            let qty = 0;
+            if (splitMode === '3trips') {
+              qty = tripNum === 1 ? (split?.trip1Qty ?? remaining) : tripNum === 2 ? (split?.trip2Qty ?? 0) : (split?.trip3Qty ?? 0);
+            } else {
+              qty = split ? (tripNum === 1 ? split.vehicle1Qty : split.vehicle2Qty) : (tripNum === 1 ? remaining : 0);
+            }
+            if (qty > 0) {
+              if (!byOrder.has(delivery.order_id)) byOrder.set(delivery.order_id, []);
+              byOrder.get(delivery.order_id)!.push({ order_item_id: item.id, allocated_quantity: qty });
+            } else if (tripNum === 1 && remaining === 0 && pickedUp > 0) {
+              if (!byOrder.has(delivery.order_id)) byOrder.set(delivery.order_id, []);
+              byOrder.get(delivery.order_id)!.push({ order_item_id: item.id, allocated_quantity: Number(item.quantity) });
+            }
+          }
+        }
+        return byOrder;
+      };
+
+      const collectAllocationsMultiSlot = (slotId: string) => {
+        const byOrder = new Map<string, Array<{ order_item_id: string; allocated_quantity: number }>>();
+        for (const delivery of storeDeliveries) {
+          const orderItems = orderItemsMap.get(delivery.order_id) || [];
+          for (const item of orderItems) {
+            if (isPickupFulfillment(item)) continue;
+            const k = splitKey(delivery.order_id, item.id);
+            const qty = multiTripItemQty[k]?.[slotId] ?? 0;
+            if (qty <= 0) continue;
+            if (!byOrder.has(delivery.order_id)) byOrder.set(delivery.order_id, []);
+            byOrder.get(delivery.order_id)!.push({ order_item_id: item.id, allocated_quantity: qty });
+          }
+        }
+        return byOrder;
+      };
+
       if (splitIntoTwoTrips) {
         const payload1 = buildSplitStoresPayload(1);
         const payload2 = buildSplitStoresPayload(2);
@@ -897,6 +992,8 @@ export function useCreateTripWizard({ selectedOrders, onSuccess }: UseCreateTrip
         const ordersForTrip2 = payload2.orderIds.filter((orderId) => !ordersForTrip1Set.has(orderId));
         if (ordersForTrip1.length > 0) await ordersService.assignToTrip(ordersForTrip1, trip1.id, user?.id!);
         if (ordersForTrip2.length > 0) await ordersService.assignToTrip(ordersForTrip2, trip2.id, user?.id!);
+        await persistAllocationsForTrip(trip1.id, collectAllocationsSplit(1));
+        await persistAllocationsForTrip(trip2.id, collectAllocationsSplit(2));
         success(`สร้างทริป 2 คันเรียบร้อย (ทริป 1: ${trip1.trip_number}, ทริป 2: ${trip2.trip_number})`);
       } else if (splitIntoThreeTrips) {
         const payload1 = buildSplitStoresPayload(1);
@@ -1013,6 +1110,7 @@ export function useCreateTripWizard({ selectedOrders, onSuccess }: UseCreateTrip
         });
         const orderIds = payload.orderIds;
         if (orderIds.length > 0) await ordersService.assignToTrip(orderIds, trip.id, user?.id!);
+        await persistAllocationsForTrip(trip.id, collectAllocationsSingle());
         success('สร้างทริปเรียบร้อย');
       }
 

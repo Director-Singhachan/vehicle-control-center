@@ -33,9 +33,15 @@ interface LegItem {
   quantity_for_this_leg: string | number;
 }
 
+export interface ShipmentPlanningDriver {
+  id: string;
+  full_name: string;
+  branch: string | null;
+}
+
 export function useOrderShipmentPlanning(orderId: string | null, onSuccess?: () => void) {
   const { user } = useAuth();
-  const { vehicles, loading: vehiclesLoading } = useVehicles();
+  const { vehicles, loading: vehiclesLoading, error: vehiclesError } = useVehicles();
   const { success, error: toastError } = useToast();
 
   const [orderDetail, setOrderDetail] = useState<any | null>(null);
@@ -43,7 +49,10 @@ export function useOrderShipmentPlanning(orderId: string | null, onSuccess?: () 
   const [legItems, setLegItems] = useState<LegItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [drivers, setDrivers] = useState<Array<{ id: string; full_name: string }>>([]);
+  const [drivers, setDrivers] = useState<ShipmentPlanningDriver[]>([]);
+
+  /** '' = ทุกสาขา; ค่าเริ่มต้นตั้งจากสาขาของออเดอร์เมื่อโหลดแล้ว */
+  const [selectedBranch, setSelectedBranch] = useState<string>('');
 
   const [selectedVehicleId, setSelectedVehicleId] = useState('');
   const [selectedDriverId, setSelectedDriverId] = useState('');
@@ -62,7 +71,7 @@ export function useOrderShipmentPlanning(orderId: string | null, onSuccess?: () 
         const [detailData, remainingData, driversData] = await Promise.all([
           supabase
             .from('orders_with_details')
-            .select('*, store_name, customer_name, order_number, total_amount, order_date, delivery_date, delivery_address')
+            .select('*')
             .eq('id', orderId)
             .single(),
           allocationService.getRemainingByOrderId(orderId),
@@ -72,11 +81,22 @@ export function useOrderShipmentPlanning(orderId: string | null, onSuccess?: () 
         if (cancelled) return;
 
         if (detailData.error) throw new Error(detailData.error.message);
-        setOrderDetail(detailData.data);
+        const detail = detailData.data;
+        setOrderDetail(detail);
+        const orderBranch = detail?.branch != null && String(detail.branch).trim() !== '' ? String(detail.branch) : '';
+        setSelectedBranch(orderBranch);
+        setSelectedVehicleId('');
+        setSelectedDriverId('');
         setRemainingItems(remainingData);
 
         const driverProfiles = (driversData || []).filter((p: any) => p.role === 'driver');
-        setDrivers(driverProfiles.map((p: any) => ({ id: p.id, full_name: p.full_name || '' })));
+        setDrivers(
+          driverProfiles.map((p: any) => ({
+            id: p.id,
+            full_name: p.full_name || '',
+            branch: p.branch != null && String(p.branch).trim() !== '' ? String(p.branch) : null,
+          }))
+        );
 
         // Load product names for remaining delivery items
         const deliveryItems = remainingData.filter(
@@ -226,10 +246,47 @@ export function useOrderShipmentPlanning(orderId: string | null, onSuccess?: () 
     tripDate, notes, remainingItems, totalLegQty, onSuccess, success, toastError,
   ]);
 
-  const filteredVehicles = useMemo(
-    () => vehicles.filter((v: any) => v.status === 'active'),
-    [vehicles]
-  );
+  const branches = useMemo(() => {
+    if (!vehicles?.length) return [];
+    const unique = new Set<string>();
+    vehicles.forEach((v: any) => {
+      if (v.branch != null && String(v.branch).trim() !== '') unique.add(String(v.branch));
+    });
+    return Array.from(unique).sort();
+  }, [vehicles]);
+
+  /** ตาราง vehicles ไม่มี status — อย่ากรองด้วย status === 'active' (จะได้รายการว่าง); ถ้ามี status ค่อยตัดซ่อมบำรุง/ปลดระวาง */
+  const filteredVehicles = useMemo(() => {
+    let list = vehicles.filter((v: any) => {
+      const s = v.status;
+      if (s == null || s === '') return true;
+      const lower = String(s).toLowerCase();
+      return lower !== 'maintenance' && lower !== 'inactive' && lower !== 'retired';
+    });
+    if (selectedBranch) {
+      list = list.filter((v: any) => v.branch === selectedBranch);
+    }
+    return list;
+  }, [vehicles, selectedBranch]);
+
+  const filteredDrivers = useMemo(() => {
+    if (!selectedBranch) return drivers;
+    return drivers.filter((d) => d.branch === selectedBranch);
+  }, [drivers, selectedBranch]);
+
+  useEffect(() => {
+    if (!selectedVehicleId) return;
+    if (!filteredVehicles.some((v: any) => v.id === selectedVehicleId)) {
+      setSelectedVehicleId('');
+    }
+  }, [filteredVehicles, selectedVehicleId]);
+
+  useEffect(() => {
+    if (!selectedDriverId) return;
+    if (!filteredDrivers.some((d) => d.id === selectedDriverId)) {
+      setSelectedDriverId('');
+    }
+  }, [filteredDrivers, selectedDriverId]);
 
   return {
     orderDetail,
@@ -237,8 +294,14 @@ export function useOrderShipmentPlanning(orderId: string | null, onSuccess?: () 
     loading,
     submitting,
     drivers,
+    vehicles,
+    filteredDrivers,
     filteredVehicles,
     vehiclesLoading,
+    vehiclesError,
+    branches,
+    selectedBranch,
+    setSelectedBranch,
     selectedVehicleId,
     setSelectedVehicleId,
     selectedDriverId,

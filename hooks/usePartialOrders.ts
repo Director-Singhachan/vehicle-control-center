@@ -45,10 +45,11 @@ export function usePartialOrders(filters?: { branch?: string; branchesIn?: strin
       const orderIds = summaries.map((s) => s.order_id);
 
       // Enrich with display fields from orders_with_details
+      // View orders_with_details ไม่มีคอลัมน์ store_name (ชื่อร้านใช้ customer_name จาก stores)
       const { data: details, error: detailsError } = await supabase
         .from('orders_with_details')
         .select(
-          'id, order_number, customer_name, customer_code, total_amount, order_date, delivery_date, delivery_address, store_name'
+          'id, order_number, customer_name, customer_code, total_amount, order_date, delivery_date, delivery_address, store_address'
         )
         .in('id', orderIds);
 
@@ -83,7 +84,7 @@ export function usePartialOrders(filters?: { branch?: string; branchesIn?: strin
           order_date: d.order_date ?? null,
           delivery_date: d.delivery_date ?? null,
           delivery_address: d.delivery_address ?? null,
-          store_name: d.store_name ?? null,
+          store_name: d.customer_name ?? d.store_address ?? null,
           latest_trip_date: latestTripDateMap.get(s.order_id) ?? null,
         };
       });
