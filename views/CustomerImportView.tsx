@@ -11,7 +11,9 @@ import { Progress } from '../components/ui/Progress';
 import { Modal } from '../components/ui/Modal';
 import { useNotification } from '../hooks/useNotification';
 import { useAuth } from '../hooks/useAuth';
+import { storeService } from '../services/storeService';
 import { componentStyles } from '../theme/designTokens';
+import { Clock } from 'lucide-react';
 
 interface CustomerData {
     code: string;
@@ -60,6 +62,7 @@ export function CustomerImportView() {
     const { showNotification } = useNotification();
     
     // UI states
+    const [lastUpdate, setLastUpdate] = useState<string | null>(null);
     const [file, setFile] = useState<File | null>(null);
     const [previewData, setPreviewData] = useState<CustomerData[]>([]);
     const [isProcessing, setIsProcessing] = useState(false);
@@ -70,6 +73,21 @@ export function CustomerImportView() {
     const [showResultModal, setShowResultModal] = useState(false);
     const [resultTab, setResultTab] = useState<'created' | 'updated' | 'failed'>('failed');
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const [isInitialLoading, setIsInitialLoading] = useState(true);
+
+    useEffect(() => {
+        const fetchLastUpdate = async () => {
+            try {
+                const date = await storeService.getLastUpdate();
+                setLastUpdate(date);
+            } catch (err) {
+                console.error('Failed to fetch last update date:', err);
+            } finally {
+                setIsInitialLoading(false);
+            }
+        };
+        fetchLastUpdate();
+    }, []);
 
     // Filter states
     const [searchTerm, setSearchTerm] = useState('');
@@ -293,6 +311,12 @@ export function CustomerImportView() {
         setResultTab(results.failed > 0 ? 'failed' : results.updated > 0 ? 'updated' : 'created');
         setShowResultModal(true);
         setIsImporting(false);
+        
+        // Refresh last update after successful import
+        if (results.created > 0 || results.updated > 0) {
+            storeService.getLastUpdate().then(setLastUpdate);
+        }
+
         showNotification(results.failed === 0 ? 'success' : 'warning', `การนำเข้าเสร็จสมบูรณ์`);
     };
 
@@ -331,7 +355,23 @@ export function CustomerImportView() {
     };
 
     return (
-        <PageLayout title="นำเข้าข้อมูลลูกค้า (Customer Import)">
+        <PageLayout 
+            title="นำเข้าข้อมูลลูกค้า (Customer Import)"
+            actions={
+                <div className="flex items-center gap-2 text-slate-500 bg-slate-100 dark:bg-slate-800/50 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700">
+                    <Clock size={14} className="text-slate-400" />
+                    <span className="text-xs">
+                        อัพเดตนำเข้าข้อมูลล่าสุด: {lastUpdate ? new Date(lastUpdate).toLocaleString('th-TH', {
+                            day: '2-digit',
+                            month: 'short',
+                            year: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                        }) : (isInitialLoading ? 'กำลังโหลด...' : 'ยังไม่มีข้อมูล')}
+                    </span>
+                </div>
+            }
+        >
             {!file ? (
                 <Card className="p-12 border-2 border-dashed border-slate-200 dark:border-slate-700 bg-white/50 dark:bg-slate-800/50 flex flex-col items-center justify-center text-center">
                     <div className="p-4 bg-slate-100 dark:bg-slate-800 rounded-full mb-4">
