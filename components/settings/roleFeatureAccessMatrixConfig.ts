@@ -34,7 +34,8 @@ export const FEATURE_LABELS: Partial<Record<FeatureKey, string>> = {
   'tab.daily_summary': 'สรุปการใช้รถรายวัน',
   'tab.delivery_trips': 'ทริปส่งสินค้า',
   'tab.packing_simulation': 'จำลองจัดเรียง',
-  'tab.pending_orders': 'ออเดอร์รอจัดส่ง',
+  'tab.pending_orders':
+    'ออเดอร์รอจัดส่ง + ออเดอร์แบ่งส่ง (คิวจัดทริปต่อเมื่อมีของเหลือหลังแบ่งส่ง)',
   'tab.pending_sales': 'รายการขายค้าง',
   'tab.admin_staff': 'บัญชีพนักงาน',
   'tab.service_staff': 'ประวัติการปฏิบัติงาน',

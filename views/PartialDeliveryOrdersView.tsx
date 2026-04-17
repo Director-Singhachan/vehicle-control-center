@@ -70,7 +70,7 @@ export function PartialDeliveryOrdersView() {
   return (
     <>
       <ToastContainer toasts={toasts} onDismiss={dismissToast} />
-      <PageLayout title="ออเดอร์ส่งไม่ครบ">
+      <PageLayout title="ออเดอร์แบ่งส่ง">
         {/* Header info — นิยาม B: มีการแบ่งขึ้นทริปแล้ว (allocation) และยังมีของเหลือที่ยังไม่ถูกจัดไปทริป */}
         <div className="mb-4 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg flex items-start gap-3">
           <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
