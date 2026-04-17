@@ -23,8 +23,9 @@ export interface PartialOrder extends OrderRemainingSummary {
 }
 
 /**
- * Hook: returns orders that have at least one active allocation but still have
- * remaining items to deliver (partial delivery / Partial Delivery Queue).
+ * Hook: Partial Delivery Queue (**definition B**).
+ * Orders with ≥1 non-cancelled allocation AND remaining unallocated qty > 0
+ * (includes planned trips, not only after physical delivery).
  */
 export function usePartialOrders(filters?: { branch?: string; branchesIn?: string[] }) {
   const [orders, setOrders] = useState<PartialOrder[]>([]);

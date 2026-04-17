@@ -71,12 +71,13 @@ export function PartialDeliveryOrdersView() {
     <>
       <ToastContainer toasts={toasts} onDismiss={dismissToast} />
       <PageLayout title="ออเดอร์ส่งไม่ครบ">
-        {/* Header info */}
+        {/* Header info — นิยาม B: มีการแบ่งขึ้นทริปแล้ว (allocation) และยังมีของเหลือที่ยังไม่ถูกจัดไปทริป */}
         <div className="mb-4 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg flex items-start gap-3">
           <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
           <p className="text-sm text-amber-800 dark:text-amber-300">
-            ออเดอร์เหล่านี้ถูกส่งไปแล้วบางส่วนและยังมีสินค้าที่ยังไม่ได้จัดทริป
-            คลิก <strong>สร้างทริปถัดไป</strong> เพื่อสร้างทริปจากสินค้าคงเหลือ
+            รายการนี้รวมทั้งออเดอร์ที่<strong>จัดทริปแล้วแต่ยังไม่ส่งครบ</strong> (รวมทริปที่ยังวางแผนอยู่)
+            และกรณีที่<strong>ส่งไปแล้วบางส่วน</strong> แต่ยังมีสินค้าคงเหลือ
+            — คลิก <strong>สร้างทริปถัดไป</strong> เพื่อนำของเหลือไปสร้างทริปรอบถัดไป
           </p>
         </div>
 
@@ -143,8 +144,11 @@ export function PartialDeliveryOrdersView() {
         ) : filteredOrders.length === 0 ? (
           <div className="text-center py-16 text-gray-400">
             <Package className="w-12 h-12 mx-auto mb-3 opacity-40" />
-            <p className="font-medium">ไม่มีออเดอร์ส่งไม่ครบ</p>
-            <p className="text-sm mt-1">ออเดอร์ทั้งหมดได้รับการจัดทริปครบแล้ว</p>
+            <p className="font-medium">ไม่มีออเดอร์ในคิวนี้</p>
+            <p className="text-sm mt-1 max-w-md mx-auto">
+              ออเดอร์ที่มีการแบ่งขึ้นทริปแล้วและยังมีของเหลือจะแสดงที่นี่
+              ถ้าไม่มีรายการ แปลว่ายังไม่มี allocation ค้าง หรือสินค้าถูกจัดครบแล้ว
+            </p>
           </div>
         ) : (
           <div className="space-y-3">
@@ -190,7 +194,7 @@ function PartialOrderCard({ order, onPlanNext }: PartialOrderCardProps) {
             <span className="font-semibold text-gray-900 dark:text-white text-sm">
               {order.order_number || '(ไม่มีเลข)'}
             </span>
-            <Badge variant="warning" className="text-xs">ส่งไม่ครบ</Badge>
+            <Badge variant="warning" className="text-xs">ค้างส่งต่อ</Badge>
             {order.branch && (
               <Badge variant="default" className="text-xs">{getBranchLabel(order.branch)}</Badge>
             )}

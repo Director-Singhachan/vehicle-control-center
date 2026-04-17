@@ -69,9 +69,10 @@ export const allocationService = {
   },
 
   /**
-   * Fetch orders that have at least one non-cancelled allocation and still
-   * have remaining items to deliver. These are the "partially delivered" orders
-   * that belong in the Partial Delivery Queue.
+   * Partial Delivery Queue — **definition B**:
+   * - Has at least one non-cancelled allocation (รวมสถานะ planned / in_delivery / delivered)
+   * - And still has `total_remaining > 0` (ยังมีจำนวนที่ยังไม่ถูก allocate ไปทริปใด)
+   * So this list includes “จัดทริปแล้วแต่ยังไม่ออกรถ” as well as “ส่งแล้วบางส่วน”.
    */
   async getPartiallyDeliveredOrders(filters?: {
     branch?: string;

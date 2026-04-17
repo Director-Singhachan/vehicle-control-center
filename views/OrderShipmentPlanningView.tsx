@@ -78,7 +78,7 @@ export function OrderShipmentPlanningView({ orderId, onBack, onSuccess }: OrderS
                       <span className="font-semibold text-gray-900 dark:text-white">
                         {orderDetail?.order_number || '(ไม่มีเลข)'}
                       </span>
-                      <Badge variant="warning">ส่งไม่ครบ</Badge>
+                      <Badge variant="warning">ค้างส่งต่อ</Badge>
                     </div>
                     <p className="text-sm text-gray-700 dark:text-gray-300">
                       {orderDetail?.customer_name || orderDetail?.store_name || '-'}
