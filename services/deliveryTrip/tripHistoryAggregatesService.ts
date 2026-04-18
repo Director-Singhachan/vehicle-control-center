@@ -61,6 +61,8 @@ export const tripHistoryAggregatesService = {
     product_name: string;
     category: string;
     unit: string;
+    /** แยกบรรทัดสรุปเมื่อสินค้าเดียวกันมีทั้งของแถมและขายปกติ หรือหน่วยบรรทัดต่างกัน */
+    is_bonus: boolean;
     total_quantity: number;
     total_picked_up_at_store: number;
     stores: Array<{
@@ -85,6 +87,7 @@ export const tripHistoryAggregatesService = {
       product_name: string;
       category: string;
       unit: string;
+      is_bonus: boolean;
       total_quantity: number;
       total_picked_up_at_store: number;
       stores: Array<{
@@ -109,26 +112,19 @@ export const tripHistoryAggregatesService = {
             ? String(tripLineUnitRaw).trim()
             : '';
         const isBonus = (item as { is_bonus?: boolean }).is_bonus ? 'bonus' : 'normal';
+        const isBonusBool = (item as { is_bonus?: boolean }).is_bonus === true;
         const orderLineUnit =
           orderUnitByStoreProductBonus.get(`${store.store_id}_${productId}_${isBonus}`) ||
           orderUnitByStoreProduct.get(`${store.store_id}_${productId}`) ||
           '';
         const masterUnit = item.product.unit || '';
         const rowUnit = tripLineUnit || orderLineUnit || masterUnit || '';
+        const aggKey = `${productId}\u0001${isBonusBool ? 'b' : 'n'}\u0001${rowUnit}`;
 
-        const existing = productMap.get(productId);
+        const existing = productMap.get(aggKey);
         if (existing) {
           existing.total_quantity += toDeliver;
           existing.total_picked_up_at_store += pickedUp;
-          if (!existing.unit) {
-            existing.unit = rowUnit;
-          } else if (
-            (tripLineUnit || orderLineUnit) &&
-            existing.unit === masterUnit &&
-            rowUnit !== existing.unit
-          ) {
-            existing.unit = tripLineUnit || orderLineUnit;
-          }
           existing.stores.push({
             store_id: store.store_id,
             customer_code: store.store?.customer_code || '',
@@ -137,12 +133,13 @@ export const tripHistoryAggregatesService = {
             quantity_picked_up_at_store: pickedUp,
           });
         } else {
-          productMap.set(productId, {
+          productMap.set(aggKey, {
             product_id: productId,
             product_code: item.product.product_code,
             product_name: item.product.product_name,
             category: item.product.category,
             unit: rowUnit,
+            is_bonus: isBonusBool,
             total_quantity: toDeliver,
             total_picked_up_at_store: pickedUp,
             stores: [{

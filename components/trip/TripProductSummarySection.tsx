@@ -81,7 +81,7 @@ export const TripProductSummarySection: React.FC<TripProductSummarySectionProps>
         <tbody>
           {products.map((product) => (
             <tr
-              key={product.product_id}
+              key={`${product.product_id}-${product.is_bonus ? 'b' : 'n'}-${product.unit || ''}`}
               className="border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/40"
             >
               <td className="py-2 px-3 text-slate-700 dark:text-slate-300 font-mono text-xs whitespace-nowrap">

@@ -539,13 +539,13 @@ export function useDeliveryTripForm({ tripId, onSave, onCancel }: UseDeliveryTri
         if (!product) return;
         const lineUnit =
           item.unit != null && String(item.unit).trim() !== '' ? String(item.unit).trim() : product.unit || '';
-        const existing = productMap.get(item.product_id);
+        const aggKey = `${item.product_id}\u0001${lineUnit}`;
+        const existing = productMap.get(aggKey);
         if (existing) {
           existing.total_quantity += item.quantity;
-          if (!existing.unit && lineUnit) existing.unit = lineUnit;
           existing.stores.push({ store_id: store.id, customer_name: store.customer_name, quantity: item.quantity });
         } else {
-          productMap.set(item.product_id, {
+          productMap.set(aggKey, {
             product_id: product.id,
             product_code: product.product_code,
             product_name: product.product_name,
