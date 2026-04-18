@@ -8,12 +8,13 @@ import { useVehicleRecommendation } from './useVehicleRecommendation';
 import { vehicleRecommendationService, hashRecommendationInput } from '../services/vehicleRecommendationService';
 import type { RecommendationInput } from '../services/vehicleRecommendationService';
 import { tripMetricsService } from '../services/tripMetricsService';
+import { allocationService } from '../services/allocationService';
 import { useAuth } from './useAuth';
 import { useToast } from './useToast';
 import { useVehicles } from './useVehicles';
 import { useDeliveryTrips } from './useDeliveryTrips';
-import type { StoreDelivery, ItemSplitQty, CapacitySummary, SplitMode } from '../types/createTripWizard';
-import { splitKey } from '../types/createTripWizard';
+import type { StoreDelivery, ItemSplitQty, CapacitySummary, SplitMode, TripSlot, MultiTripItemQty } from '../types/createTripWizard';
+import { splitKey, createTripSlot } from '../types/createTripWizard';
 
 export interface UseCreateTripWizardParams {
   selectedOrders: any[];
@@ -46,6 +47,9 @@ export function useCreateTripWizard({ selectedOrders, onSuccess }: UseCreateTrip
   const [itemSplitMap, setItemSplitMap] = useState<Record<string, ItemSplitQty>>({});
   const [quantityInThisTripMap, setQuantityInThisTripMap] = useState<Record<string, number>>({});
   const [expandedStores, setExpandedStores] = useState<Set<string>>(new Set());
+  // Dynamic multi-trip slot state (splitMode === 'multi')
+  const [tripSlots, setTripSlots] = useState<TripSlot[]>(() => [createTripSlot(1), createTripSlot(2)]);
+  const [multiTripItemQty, setMultiTripItemQty] = useState<MultiTripItemQty>({});
 
   const [selectedBranch, setSelectedBranch] = useState('');
   const [vehicleSearch, setVehicleSearch] = useState('');
@@ -775,16 +779,19 @@ export function useCreateTripWizard({ selectedOrders, onSuccess }: UseCreateTrip
               return { item, qty, remaining, pickedUp };
             })
             .filter(({ qty, remaining, pickedUp }) => qty > 0 || (remaining === 0 && pickedUp > 0))
-            .map(({ item }) => ({
-              product_id: item.product_id,
-              quantity: Number(item.quantity),
-              quantity_picked_up_at_store: Number(item.quantity_picked_up_at_store ?? 0),
-              notes: item.notes || undefined,
-              is_bonus: item.is_bonus || false,
-              unit:
-                (item.unit != null && String(item.unit).trim() !== '' ? String(item.unit).trim() : null) ||
-                (item.product?.unit ? String(item.product.unit) : null),
-            }));
+            .map(({ item, qty, remaining, pickedUp }) => {
+              const pickupOnlyOnTrip = remaining === 0 && pickedUp > 0 && !(qty > 0);
+              return {
+                product_id: item.product_id,
+                quantity: pickupOnlyOnTrip ? Number(item.quantity) : qty,
+                quantity_picked_up_at_store: pickupOnlyOnTrip ? pickedUp : 0,
+                notes: item.notes || undefined,
+                is_bonus: item.is_bonus || false,
+                unit:
+                  (item.unit != null && String(item.unit).trim() !== '' ? String(item.unit).trim() : null) ||
+                  (item.product?.unit ? String(item.product.unit) : null),
+              };
+            });
           if (items.length === 0) continue;
           includedOrderIds.add(delivery.order_id);
           const existingStore = storesMap.get(delivery.store_id);
@@ -870,6 +877,97 @@ export function useCreateTripWizard({ selectedOrders, onSuccess }: UseCreateTrip
         };
       };
 
+      const isPickupFulfillment = (item: any) => (item.fulfillment_method ?? 'delivery') === 'pickup';
+
+      const persistAllocationsForTrip = async (
+        tripId: string,
+        itemsByOrderId: Map<string, Array<{ order_item_id: string; allocated_quantity: number }>>,
+      ) => {
+        for (const [orderId, rawItems] of itemsByOrderId) {
+          const merged = new Map<string, number>();
+          for (const row of rawItems) {
+            merged.set(row.order_item_id, (merged.get(row.order_item_id) ?? 0) + row.allocated_quantity);
+          }
+          const items = [...merged.entries()]
+            .filter(([, q]) => q > 0)
+            .map(([order_item_id, allocated_quantity]) => ({ order_item_id, allocated_quantity }));
+          if (items.length === 0) continue;
+          const seqNo = await allocationService.getNextSequenceNo(orderId);
+          await allocationService.createAllocations({
+            order_id: orderId,
+            delivery_trip_id: tripId,
+            sequence_no: seqNo,
+            items,
+          });
+        }
+      };
+
+      const collectAllocationsSingle = () => {
+        const byOrder = new Map<string, Array<{ order_item_id: string; allocated_quantity: number }>>();
+        for (const delivery of storeDeliveries) {
+          const orderItems = orderItemsMap.get(delivery.order_id) || [];
+          for (const item of orderItems) {
+            if (isPickupFulfillment(item)) continue;
+            const remaining = getRemaining(item);
+            const qtyInTrip = quantityInThisTripMap[splitKey(delivery.order_id, item.id)] ?? remaining;
+            const qty = Math.max(0, Math.min(remaining, qtyInTrip));
+            const pickedUp = Number(item.quantity_picked_up_at_store ?? 0);
+            if (qty > 0) {
+              if (!byOrder.has(delivery.order_id)) byOrder.set(delivery.order_id, []);
+              byOrder.get(delivery.order_id)!.push({ order_item_id: item.id, allocated_quantity: qty });
+            } else if (remaining === 0 && pickedUp > 0) {
+              if (!byOrder.has(delivery.order_id)) byOrder.set(delivery.order_id, []);
+              byOrder.get(delivery.order_id)!.push({ order_item_id: item.id, allocated_quantity: Number(item.quantity) });
+            }
+          }
+        }
+        return byOrder;
+      };
+
+      const collectAllocationsSplit = (tripNum: 1 | 2 | 3) => {
+        const byOrder = new Map<string, Array<{ order_item_id: string; allocated_quantity: number }>>();
+        for (const delivery of storeDeliveries) {
+          const orderItems = orderItemsMap.get(delivery.order_id) || [];
+          for (const item of orderItems) {
+            if (isPickupFulfillment(item)) continue;
+            const remaining = getRemaining(item);
+            const pickedUp = Number(item.quantity_picked_up_at_store ?? 0);
+            const key = splitKey(delivery.order_id, item.id);
+            const split = itemSplitMap[key];
+            let qty = 0;
+            if (splitMode === '3trips') {
+              qty = tripNum === 1 ? (split?.trip1Qty ?? remaining) : tripNum === 2 ? (split?.trip2Qty ?? 0) : (split?.trip3Qty ?? 0);
+            } else {
+              qty = split ? (tripNum === 1 ? split.vehicle1Qty : split.vehicle2Qty) : (tripNum === 1 ? remaining : 0);
+            }
+            if (qty > 0) {
+              if (!byOrder.has(delivery.order_id)) byOrder.set(delivery.order_id, []);
+              byOrder.get(delivery.order_id)!.push({ order_item_id: item.id, allocated_quantity: qty });
+            } else if (tripNum === 1 && remaining === 0 && pickedUp > 0) {
+              if (!byOrder.has(delivery.order_id)) byOrder.set(delivery.order_id, []);
+              byOrder.get(delivery.order_id)!.push({ order_item_id: item.id, allocated_quantity: Number(item.quantity) });
+            }
+          }
+        }
+        return byOrder;
+      };
+
+      const collectAllocationsMultiSlot = (slotId: string) => {
+        const byOrder = new Map<string, Array<{ order_item_id: string; allocated_quantity: number }>>();
+        for (const delivery of storeDeliveries) {
+          const orderItems = orderItemsMap.get(delivery.order_id) || [];
+          for (const item of orderItems) {
+            if (isPickupFulfillment(item)) continue;
+            const k = splitKey(delivery.order_id, item.id);
+            const qty = multiTripItemQty[k]?.[slotId] ?? 0;
+            if (qty <= 0) continue;
+            if (!byOrder.has(delivery.order_id)) byOrder.set(delivery.order_id, []);
+            byOrder.get(delivery.order_id)!.push({ order_item_id: item.id, allocated_quantity: qty });
+          }
+        }
+        return byOrder;
+      };
+
       if (splitIntoTwoTrips) {
         const payload1 = buildSplitStoresPayload(1);
         const payload2 = buildSplitStoresPayload(2);
@@ -894,6 +992,8 @@ export function useCreateTripWizard({ selectedOrders, onSuccess }: UseCreateTrip
         const ordersForTrip2 = payload2.orderIds.filter((orderId) => !ordersForTrip1Set.has(orderId));
         if (ordersForTrip1.length > 0) await ordersService.assignToTrip(ordersForTrip1, trip1.id, user?.id!);
         if (ordersForTrip2.length > 0) await ordersService.assignToTrip(ordersForTrip2, trip2.id, user?.id!);
+        await persistAllocationsForTrip(trip1.id, collectAllocationsSplit(1));
+        await persistAllocationsForTrip(trip2.id, collectAllocationsSplit(2));
         success(`สร้างทริป 2 คันเรียบร้อย (ทริป 1: ${trip1.trip_number}, ทริป 2: ${trip2.trip_number})`);
       } else if (splitIntoThreeTrips) {
         const payload1 = buildSplitStoresPayload(1);
@@ -932,6 +1032,67 @@ export function useCreateTripWizard({ selectedOrders, onSuccess }: UseCreateTrip
         if (ordersForTrip2.length > 0) await ordersService.assignToTrip(ordersForTrip2, trip2.id, user?.id!);
         if (ordersForTrip3.length > 0) await ordersService.assignToTrip(ordersForTrip3, trip3.id, user?.id!);
         success(`สร้างทริป 3 เที่ยวเรียบร้อย (${trip1.trip_number}, ${trip2.trip_number}, ${trip3.trip_number})`);
+      } else if (splitMode === 'multi') {
+        // Dynamic N-slot multi-trip mode
+        const createdTrips: { trip_number: string }[] = [];
+        const allAssignedOrderIds = new Set<string>();
+
+        for (const slot of tripSlots) {
+          if (!slot.vehicleId) continue;
+
+          // Build stores/items for this slot from multiTripItemQty
+          const storesMap = new Map<string, { store_id: string; sequence_order: number; items: any[] }>();
+          const includedOrderIds = new Set<string>();
+
+          for (const delivery of storeDeliveries) {
+            const orderItems = orderItemsMap.get(delivery.order_id) || [];
+            for (const item of orderItems) {
+              const key = splitKey(delivery.order_id, item.id);
+              const qty = multiTripItemQty[key]?.[slot.id] ?? 0;
+              if (qty <= 0) continue;
+              if (!storesMap.has(delivery.store_id)) {
+                storesMap.set(delivery.store_id, {
+                  store_id: delivery.store_id,
+                  sequence_order: delivery.sequence,
+                  items: [],
+                });
+              }
+              storesMap.get(delivery.store_id)!.items.push({
+                product_id: item.product_id,
+                quantity: qty,
+                quantity_picked_up_at_store: 0,
+                notes: item.notes ?? null,
+                is_bonus: item.is_bonus || false,
+                unit: item.unit != null && String(item.unit).trim() !== '' ? String(item.unit).trim() : null,
+              });
+              includedOrderIds.add(delivery.order_id);
+            }
+          }
+
+          const stores = Array.from(storesMap.values());
+          if (stores.length === 0) continue;
+
+          const trip = await deliveryTripService.create({
+            vehicle_id: slot.vehicleId,
+            driver_id: slot.driverId || selectedDriverId,
+            planned_date: tripDate,
+            notes: notes ? `[${slot.label}] ${notes}` : `[${slot.label}]`,
+            stores,
+          });
+          createdTrips.push(trip);
+
+          const newOrderIds = [...includedOrderIds].filter((id) => !allAssignedOrderIds.has(id));
+          if (newOrderIds.length > 0) await ordersService.assignToTrip(newOrderIds, trip.id, user?.id!);
+          newOrderIds.forEach((id) => allAssignedOrderIds.add(id));
+        }
+
+        if (createdTrips.length === 0) {
+          error('กรุณากำหนดจำนวนสินค้าและรถให้กับอย่างน้อย 1 เที่ยว');
+          setIsSubmitting(false);
+          return;
+        }
+
+        success(`สร้างทริป ${createdTrips.length} เที่ยวเรียบร้อย (${createdTrips.map((t) => t.trip_number).join(', ')})`);
       } else {
         const payload = buildStoresPayload(storeDeliveries);
         const stores = payload.stores;
@@ -949,6 +1110,7 @@ export function useCreateTripWizard({ selectedOrders, onSuccess }: UseCreateTrip
         });
         const orderIds = payload.orderIds;
         if (orderIds.length > 0) await ordersService.assignToTrip(orderIds, trip.id, user?.id!);
+        await persistAllocationsForTrip(trip.id, collectAllocationsSingle());
         success('สร้างทริปเรียบร้อย');
       }
 
@@ -985,6 +1147,7 @@ export function useCreateTripWizard({ selectedOrders, onSuccess }: UseCreateTrip
     splitValidationErrors, capacitySummary, capacitySummary2, capacitySummary3, palletPackingResult, palletPackingResult2, palletPackingResult3,
     getRemaining, getItemsForVehicle, user?.id, recommendationInput, aiHasFetched, aiRecommendations,
     selectedRecommendationVehicleId, onSuccess, warning, success, error, getCapacityBlockingErrors,
+    tripSlots, multiTripItemQty,
   ]);
 
   const setQuantityInThisTripMapForKey = useCallback((key: string, value: number) => {
@@ -1012,6 +1175,63 @@ export function useCreateTripWizard({ selectedOrders, onSuccess }: UseCreateTrip
       return next;
     });
   }, [getRemaining]);
+
+  const addTripSlot = useCallback(() => {
+    setTripSlots((prev) => {
+      const next = prev.length + 1;
+      return [...prev, createTripSlot(next)];
+    });
+  }, []);
+
+  const removeTripSlot = useCallback((slotId: string) => {
+    setTripSlots((prev) => {
+      if (prev.length <= 2) return prev;
+      return prev.filter((s) => s.id !== slotId);
+    });
+    // Remove qty entries for removed slot
+    setMultiTripItemQty((prev) => {
+      const next = { ...prev };
+      for (const key of Object.keys(next)) {
+        const { [slotId]: _removed, ...rest } = next[key] ?? {};
+        next[key] = rest;
+      }
+      return next;
+    });
+  }, []);
+
+  const updateTripSlot = useCallback(<K extends keyof TripSlot>(slotId: string, field: K, value: TripSlot[K]) => {
+    setTripSlots((prev) => prev.map((s) => (s.id === slotId ? { ...s, [field]: value } : s)));
+  }, []);
+
+  const setMultiTripQty = useCallback((slotId: string, itemKey: string, qty: number) => {
+    setMultiTripItemQty((prev) => ({
+      ...prev,
+      [itemKey]: { ...(prev[itemKey] ?? {}), [slotId]: qty },
+    }));
+  }, []);
+
+  /** Distribute remaining quantity evenly across all slots for a given item. */
+  const distributeEvenlyMulti = useCallback((orderId: string, orderItems: any[]) => {
+    setMultiTripItemQty((prev) => {
+      const next = { ...prev };
+      for (const item of orderItems) {
+        const rem = Math.max(0,
+          Number(item.quantity)
+          - Number(item.quantity_picked_up_at_store ?? 0)
+          - Number(item.quantity_delivered ?? 0)
+        );
+        if (rem <= 0) continue;
+        const key = splitKey(orderId, item.id);
+        const perSlot = Math.floor(rem / tripSlots.length);
+        const slotQty: Record<string, number> = {};
+        tripSlots.forEach((slot, idx) => {
+          slotQty[slot.id] = idx === tripSlots.length - 1 ? rem - perSlot * (tripSlots.length - 1) : perSlot;
+        });
+        next[key] = slotQty;
+      }
+      return next;
+    });
+  }, [tripSlots]);
 
   const setAllSplitForDelivery = useCallback((orderId: string, orderItems: any[], target: 'vehicle1' | 'vehicle2' | 'vehicle3' | 'half') => {
     setItemSplitMap(prev => {
@@ -1127,5 +1347,13 @@ export function useCreateTripWizard({ selectedOrders, onSuccess }: UseCreateTrip
     getItemsForVehicle,
     isSubmitting,
     handleSubmit,
+    // Dynamic multi-trip slots (splitMode === 'multi')
+    tripSlots,
+    addTripSlot,
+    removeTripSlot,
+    updateTripSlot,
+    multiTripItemQty,
+    setMultiTripQty,
+    distributeEvenlyMulti,
   };
 }

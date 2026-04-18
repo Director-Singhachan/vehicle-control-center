@@ -8,6 +8,8 @@ export * from './useApprovalHistory';
 export * from './useTripLogs';
 export * from './usePendingTickets';
 export * from './usePendingBillingTrips';
+export * from './usePartialDeliveryQueueCount';
+export * from './usePendingOrdersQueueCount';
 export * from './useFuelLogs';
 export * from './useReports';
 export * from './useMaintenanceHistory';

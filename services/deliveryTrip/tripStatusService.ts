@@ -1,7 +1,96 @@
 // Trip status service - cancel, updateStoreInvoiceStatus, syncQuantityDeliveredForCompletedTrip, syncStatusWithTripLogs
 import { supabase } from '../../lib/supabase';
 import { tripCrudService } from './tripCrudService';
+import { allocationService } from '../allocationService';
 import type { DeliveryTripWithRelations, DeliveryTripUpdate } from './types';
+
+interface SyncTripLogCandidate {
+  id: string;
+  driver_id: string | null;
+  odometer_start: number | null;
+  odometer_end: number | null;
+  checkout_time: string;
+  checkin_time: string | null;
+  status: string;
+  delivery_trip_id: string | null;
+}
+
+async function findSafeCompletedTripLogForSync(
+  trip: {
+    id: string;
+    vehicle_id: string;
+    planned_date: string;
+  },
+  pendingTripCountForVehicleDate: number
+): Promise<SyncTripLogCandidate | null> {
+  const checkoutDate = new Date(trip.planned_date).toISOString().split('T')[0];
+
+  const { data: linkedTripLogs, error: linkedError } = await supabase
+    .from('trip_logs')
+    .select('id, driver_id, odometer_start, odometer_end, checkout_time, checkin_time, status, delivery_trip_id')
+    .eq('delivery_trip_id', trip.id)
+    .eq('status', 'checked_in')
+    .order('checkin_time', { ascending: false })
+    .limit(1);
+
+  if (linkedError) {
+    console.error('[deliveryTripService] Error loading linked trip log for sync:', {
+      trip_id: trip.id,
+      error: linkedError,
+    });
+    return null;
+  }
+
+  if (linkedTripLogs && linkedTripLogs.length > 0) {
+    return linkedTripLogs[0] as SyncTripLogCandidate;
+  }
+
+  // Fallback is only safe when there is exactly one unresolved trip for this vehicle+date.
+  // If there are multiple trips on the same day, guessing by vehicle+date can swap trips.
+  if (pendingTripCountForVehicleDate !== 1) {
+    console.warn('[deliveryTripService] Skipping trip-log fallback sync because multiple pending trips share the same vehicle/date.', {
+      trip_id: trip.id,
+      vehicle_id: trip.vehicle_id,
+      planned_date: trip.planned_date,
+      pending_trip_count: pendingTripCountForVehicleDate,
+    });
+    return null;
+  }
+
+  const { data: unlinkedTripLogs, error: unlinkedError } = await supabase
+    .from('trip_logs')
+    .select('id, driver_id, odometer_start, odometer_end, checkout_time, checkin_time, status, delivery_trip_id')
+    .eq('vehicle_id', trip.vehicle_id)
+    .eq('status', 'checked_in')
+    .is('delivery_trip_id', null)
+    .gte('checkout_time', `${checkoutDate}T00:00:00`)
+    .lt('checkout_time', `${checkoutDate}T23:59:59`)
+    .order('checkin_time', { ascending: false })
+    .limit(2);
+
+  if (unlinkedError) {
+    console.error('[deliveryTripService] Error loading unlinked trip logs for fallback sync:', {
+      trip_id: trip.id,
+      error: unlinkedError,
+    });
+    return null;
+  }
+
+  if (unlinkedTripLogs?.length === 1) {
+    return unlinkedTripLogs[0] as SyncTripLogCandidate;
+  }
+
+  if ((unlinkedTripLogs?.length ?? 0) > 1) {
+    console.warn('[deliveryTripService] Skipping trip-log fallback sync because multiple unlinked trip logs were found.', {
+      trip_id: trip.id,
+      vehicle_id: trip.vehicle_id,
+      planned_date: trip.planned_date,
+      unlinked_trip_log_count: unlinkedTripLogs?.length ?? 0,
+    });
+  }
+
+  return null;
+}
 
 export const tripStatusService = {
   /**
@@ -104,6 +193,13 @@ export const tripStatusService = {
       }
     }
 
+    // Cancel any non-delivered allocations for this trip so remaining quantities are freed
+    try {
+      await allocationService.cancelTripAllocations(id);
+    } catch (allocErr) {
+      console.error('[deliveryTripService] Error cancelling allocations on trip cancel:', allocErr);
+    }
+
     const updatedTrip = await tripCrudService.getById(id);
     if (!updatedTrip) throw new Error('ไม่สามารถดึงข้อมูลทริปที่ยกเลิกแล้วได้');
     return updatedTrip;
@@ -135,6 +231,13 @@ export const tripStatusService = {
       throw error;
     }
     console.log('[deliveryTripService] Synced quantity_delivered and order status for completed trip:', tripId);
+
+    // Mark corresponding allocations as delivered (best-effort)
+    try {
+      await allocationService.markTripAllocationsDelivered(tripId);
+    } catch (allocErr) {
+      console.error('[deliveryTripService] Error marking allocations delivered:', allocErr);
+    }
   },
 
   async syncStatusWithTripLogs(this: { syncQuantityDeliveredForCompletedTrip: (tripId: string) => Promise<void> }): Promise<{
@@ -154,21 +257,19 @@ export const tripStatusService = {
     if (fetchError) throw fetchError;
     if (!tripsToFix || tripsToFix.length === 0) return { updated: 0, details: [] };
 
+    const pendingTripCountByVehicleDate = new Map<string, number>();
+    tripsToFix.forEach((trip) => {
+      const key = `${trip.vehicle_id}__${trip.planned_date}`;
+      pendingTripCountByVehicleDate.set(key, (pendingTripCountByVehicleDate.get(key) ?? 0) + 1);
+    });
+
     for (const trip of tripsToFix) {
-      const checkoutDate = new Date(trip.planned_date).toISOString().split('T')[0];
-      const { data: completedTripLogs, error: logError } = await supabase
-        .from('trip_logs')
-        .select('id, driver_id, odometer_start, odometer_end, checkout_time, checkin_time, status, delivery_trip_id')
-        .eq('vehicle_id', trip.vehicle_id)
-        .eq('status', 'checked_in')
-        .gte('checkout_time', `${checkoutDate}T00:00:00`)
-        .lt('checkout_time', `${checkoutDate}T23:59:59`)
-        .order('checkin_time', { ascending: false })
-        .limit(1);
+      const pendingTripCountForVehicleDate = pendingTripCountByVehicleDate.get(
+        `${trip.vehicle_id}__${trip.planned_date}`
+      ) ?? 0;
+      const tripLog = await findSafeCompletedTripLogForSync(trip, pendingTripCountForVehicleDate);
+      if (!tripLog) continue;
 
-      if (logError || !completedTripLogs?.length) continue;
-
-      const tripLog = completedTripLogs[0];
       const updateData: DeliveryTripUpdate = {
         status: 'completed',
         odometer_end: tripLog.odometer_end || trip.odometer_end,
@@ -195,6 +296,11 @@ export const tripStatusService = {
         await this.syncQuantityDeliveredForCompletedTrip(trip.id);
       } catch {
         // ignore
+      }
+      try {
+        await allocationService.markTripAllocationsDelivered(trip.id);
+      } catch {
+        // ignore — allocation sync is best-effort
       }
     }
     return { updated: updatedTrips.length, details: updatedTrips };
