@@ -356,6 +356,16 @@ export const ordersService = {
       .map((o: any) => ({ ...o, items: orderIdToItems.get(o.id) ?? [] }));
   },
 
+  /** จำนวนออเดอร์รอจัดทริป — logic เดียวกับ getPendingOrders (ใช้ badge เมนู / โหลดแบบเบาเมื่อเรียกแยกจากรายการเต็ม) */
+  async getPendingOrdersCount(filters?: { branch?: string; branchesIn?: string[] }): Promise<number> {
+    try {
+      const orders = await this.getPendingOrders(filters);
+      return orders.length;
+    } catch {
+      return 0;
+    }
+  },
+
   /**
    * ดึงออเดอร์ที่ส่งไม่ครบ (มี allocation แล้วแต่ยังมีสินค้าเหลือ) สำหรับ Partial Delivery Queue
    * ดึงแบบเบา ๆ เพื่อแสดงจำนวน badge เท่านั้น — ข้อมูลละเอียดอยู่ใน allocationService
