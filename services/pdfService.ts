@@ -897,9 +897,9 @@ export const pdfService = {
                         { text: 'หมวดหมู่', bold: true },
                         { text: 'จำนวน', bold: true }
                     ],
-                    ...aggregatedProducts.map((product) => [
+                    ...aggregatedProducts.map((product: any) => [
                         product.product_code,
-                        product.product_name,
+                        `${product.product_name}${product.is_bonus ? ' (ของแถม)' : ''}`,
                         product.category,
                         `${product.total_quantity.toLocaleString()} ${product.unit}`
                     ])
@@ -1107,9 +1107,9 @@ export const pdfService = {
                         { text: 'หมวดหมู่', bold: true },
                         { text: 'จำนวน', bold: true }
                     ],
-                    ...aggregatedProducts.map((product) => [
+                    ...aggregatedProducts.map((product: any) => [
                         product.product_code,
-                        product.product_name,
+                        `${product.product_name}${product.is_bonus ? ' (ของแถม)' : ''}`,
                         product.category,
                         `${product.total_quantity.toLocaleString()} ${product.unit}`
                     ])

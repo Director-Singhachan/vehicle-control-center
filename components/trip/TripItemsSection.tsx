@@ -9,6 +9,8 @@ export interface AggregatedProductRow {
   product_name: string;
   category: string;
   unit: string;
+  /** จากสรุปทริป — ใช้คู่กับ unit เพื่อไม่ชนกันเมื่อ SKU เดียวหลายหน่วย */
+  is_bonus?: boolean;
   total_quantity: number;
   stores: Array<{ store_id: string; customer_name: string; quantity: number }>;
 }
@@ -39,7 +41,10 @@ export const TripItemsSection: React.FC<TripItemsSectionProps> = ({ aggregatedPr
           </thead>
           <tbody>
             {aggregatedProducts.map((product) => (
-              <tr key={product.product_id} className="border-b border-slate-100 dark:border-slate-800">
+              <tr
+                key={`${product.product_id}-${product.is_bonus ? 'b' : 'n'}-${product.unit || ''}`}
+                className="border-b border-slate-100 dark:border-slate-800"
+              >
                 <td className="py-2 px-3 text-sm text-slate-900 dark:text-slate-100">{product.product_code}</td>
                 <td className="py-2 px-3 text-sm text-slate-900 dark:text-slate-100">{product.product_name}</td>
                 <td className="py-2 px-3 text-sm text-slate-500 dark:text-slate-400">{product.category}</td>

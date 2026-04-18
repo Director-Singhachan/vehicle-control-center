@@ -25,7 +25,7 @@ export const TripProductsDetailSection: React.FC<TripProductsDetailSectionProps>
           title="สรุปสินค้าทั้งหมดในเที่ยว"
           subtitle={
             aggregatedProducts.length > 0
-              ? `${aggregatedProducts.length} SKU · รวม ${totalItems.toLocaleString('th-TH', { maximumFractionDigits: 0 })} หน่วย`
+              ? `${aggregatedProducts.length} รายการ · รวม ${totalItems.toLocaleString('th-TH', { maximumFractionDigits: 0 })} จำนวน`
               : undefined
           }
         />
@@ -77,15 +77,21 @@ export const TripProductsDetailSection: React.FC<TripProductsDetailSectionProps>
                   const total = Number(product.total_quantity) || 0;
                   const pickedUp = Number(product.total_picked_up_at_store) || 0;
                   const toDeliver = total - pickedUp;
+                  const rowKey = `${product.product_id}-${product.is_bonus ? 'b' : 'n'}-${product.unit || ''}`;
 
                   return (
                     <tr
-                      key={product.product_id}
+                      key={rowKey}
                       className="hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors"
                     >
                       <td className="px-6 py-3">
                         <div className="font-medium text-slate-900 dark:text-slate-100">
                           {product.product_name}
+                          {product.is_bonus && (
+                            <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-green-100 text-green-800 dark:bg-green-900/60 dark:text-green-200">
+                              ของแถม
+                            </span>
+                          )}
                         </div>
                         <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                           {product.product_code}
@@ -120,7 +126,7 @@ export const TripProductsDetailSection: React.FC<TripProductsDetailSectionProps>
               <tfoot>
                 <tr className="border-t-2 border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/30">
                   <td className="px-6 py-3 font-semibold text-slate-700 dark:text-slate-300 text-xs">
-                    รวม {aggregatedProducts.length} SKU
+                    รวม {aggregatedProducts.length} รายการ
                   </td>
                   <td className="px-4 py-3 text-right font-semibold text-slate-700 dark:text-slate-300 text-xs whitespace-nowrap">
                     {totalItems.toLocaleString('th-TH', { maximumFractionDigits: 0 })} หน่วย

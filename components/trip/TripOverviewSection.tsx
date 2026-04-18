@@ -419,7 +419,10 @@ export const TripOverviewSection: React.FC<TripOverviewSectionProps> = ({
         >
           <ul className="space-y-1.5 py-1">
             {aggregatedProducts.slice(0, 3).map((p: any) => (
-              <li key={p.product_id} className="flex items-center justify-between gap-2">
+              <li
+                key={`${p.product_id}-${p.is_bonus ? 'b' : 'n'}-${p.unit || ''}`}
+                className="flex items-center justify-between gap-2"
+              >
                 <span className="truncate text-slate-700 dark:text-slate-300 text-xs">
                   {p.product_code}
                 </span>
@@ -430,7 +433,7 @@ export const TripOverviewSection: React.FC<TripOverviewSectionProps> = ({
               </li>
             ))}
             {skuCount > 3 && (
-              <li className="text-xs text-slate-400 dark:text-slate-500">+{skuCount - 3} SKU อีก...</li>
+              <li className="text-xs text-slate-400 dark:text-slate-500">+{skuCount - 3} รายการอีก...</li>
             )}
           </ul>
         </PreviewCard>
