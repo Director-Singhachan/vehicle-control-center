@@ -31,6 +31,8 @@ interface LegItem {
   total_quantity: number;
   remaining_unallocated: number;
   quantity_for_this_leg: string | number;
+  /** จำนวนที่ถือว่าส่งครบจากบิล/ทริปก่อน (แสดงในหน้าจัดทริปถัดไป) */
+  quantity_fulfilled_prior_bill: number;
 }
 
 export interface ShipmentPlanningDriver {
@@ -68,7 +70,7 @@ export function useOrderShipmentPlanning(orderId: string | null, onSuccess?: () 
       try {
         setLoading(true);
 
-        const [detailData, remainingData, driversData] = await Promise.all([
+        const [detailData, remainingData, driversData, priorItemsRes] = await Promise.all([
           supabase
             .from('orders_with_details')
             .select('*')
@@ -76,6 +78,10 @@ export function useOrderShipmentPlanning(orderId: string | null, onSuccess?: () 
             .single(),
           allocationService.getRemainingByOrderId(orderId),
           profileService.getAll(),
+          supabase
+            .from('order_items')
+            .select('id, quantity_fulfilled_prior_bill')
+            .eq('order_id', orderId),
         ]);
 
         if (cancelled) return;
@@ -117,6 +123,13 @@ export function useOrderShipmentPlanning(orderId: string | null, onSuccess?: () 
         type ProductRow = { id: string; product_name: string | null; product_code: string | null; unit: string | null };
         const productMap = new Map<string, ProductRow>((products ?? []).map((p: any) => [p.id, p as ProductRow]));
 
+        const priorByItemId = new Map<string, number>(
+          ((priorItemsRes.data ?? []) as Array<{ id: string; quantity_fulfilled_prior_bill: number | null }>).map((row) => [
+            row.id,
+            Number(row.quantity_fulfilled_prior_bill ?? 0),
+          ])
+        );
+
         setLegItems(
           deliveryItems.map((r) => {
             const p = productMap.get(r.product_id);
@@ -129,6 +142,7 @@ export function useOrderShipmentPlanning(orderId: string | null, onSuccess?: () 
               total_quantity: r.total_quantity,
               remaining_unallocated: r.remaining_unallocated,
               quantity_for_this_leg: r.remaining_unallocated,
+              quantity_fulfilled_prior_bill: priorByItemId.get(r.order_item_id) ?? 0,
             };
           })
         );

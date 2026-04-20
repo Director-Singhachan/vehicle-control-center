@@ -93,6 +93,11 @@ export function OrderSelectionStep({
                         <Badge variant="info" className="text-xs flex-shrink-0">
                           {delivery.order_number || 'รอจัดทริป'}
                         </Badge>
+                        {delivery.related_prior_order_id ? (
+                          <Badge variant="warning" className="text-xs flex-shrink-0 ring-1 ring-amber-400/80 dark:ring-amber-600 dark:bg-amber-900/40">
+                            เชื่อมบิลเดิม
+                          </Badge>
+                        ) : null}
                       </div>
                       <div className="flex items-start gap-2 text-sm text-gray-600">
                         <MapPin className="w-4 h-4 mt-0.5 flex-shrink-0" />
@@ -190,9 +195,15 @@ export function OrderSelectionStep({
                             return (
                               <tr key={item.id} className="border-t border-gray-50">
                                 <td className="py-2">
-                                  <div className="font-medium text-gray-900">{item.product?.product_name || item.product_name || item.product?.product_code || item.product_code || 'N/A'}</div>
-                                  {item.product?.product_code && <div className="text-xs text-gray-500">{item.product.product_code}</div>}
-                                  {item.is_bonus && <span className="text-xs text-purple-600 font-medium">แถม</span>}
+                                  <div className="font-medium text-gray-900 dark:text-white">{item.product?.product_name || item.product_name || item.product?.product_code || item.product_code || 'N/A'}</div>
+                                  {item.product?.product_code && <div className="text-xs text-gray-500 dark:text-gray-400">{item.product.product_code}</div>}
+                                  {item.is_bonus && <span className="text-xs text-purple-600 dark:text-purple-400 font-medium">แถม</span>}
+                                  {Number(item.quantity_fulfilled_prior_bill ?? 0) > 0 && (
+                                    <div className="text-xs text-amber-800 dark:text-amber-200 mt-0.5">
+                                      เครดิตจากบิลก่อน {Number(item.quantity_fulfilled_prior_bill).toLocaleString('th-TH')}{' '}
+                                      {(item.unit || item.product?.unit) || ''}
+                                    </div>
+                                  )}
                                 </td>
                                 <td className="py-2 text-center font-semibold text-gray-700">
                                   <span>{item.quantity}</span>

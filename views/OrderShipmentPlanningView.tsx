@@ -84,6 +84,21 @@ export function OrderShipmentPlanningView({ orderId, onBack, onSuccess }: OrderS
                         {orderDetail?.order_number || '(ไม่มีเลข)'}
                       </span>
                       <Badge variant="warning">ค้างส่งต่อ</Badge>
+                      {orderDetail?.related_prior_order_id && (
+                        <>
+                          <Badge
+                            variant="warning"
+                            className="ring-1 ring-amber-400/80 dark:ring-amber-600 bg-amber-50 dark:bg-amber-900/40"
+                          >
+                            เชื่อมบิลเดิม / แก้บิล
+                          </Badge>
+                          {orderDetail?.related_prior_order_number?.trim() ? (
+                            <span className="text-xs font-medium text-amber-900 dark:text-amber-100 whitespace-nowrap max-w-[min(100%,12rem)] truncate">
+                              ออเดอร์เดิม: {orderDetail.related_prior_order_number}
+                            </span>
+                          ) : null}
+                        </>
+                      )}
                     </div>
                     <p className="text-sm text-gray-700 dark:text-gray-300">
                       {orderDetail?.customer_name || '-'}
@@ -123,6 +138,9 @@ export function OrderShipmentPlanningView({ orderId, onBack, onSuccess }: OrderS
                           <th className="text-right py-2 pr-4 font-medium text-gray-600 dark:text-gray-400 whitespace-nowrap">
                             คงเหลือ
                           </th>
+                          <th className="text-right py-2 pr-4 font-medium text-gray-600 dark:text-gray-400 whitespace-nowrap">
+                            เครดิตบิลก่อน
+                          </th>
                           <th className="text-right py-2 font-medium text-gray-600 dark:text-gray-400 whitespace-nowrap">
                             ทริปนี้
                           </th>
@@ -140,6 +158,11 @@ export function OrderShipmentPlanningView({ orderId, onBack, onSuccess }: OrderS
                             <td className="text-right py-2.5 pr-4 text-gray-600 dark:text-gray-300 whitespace-nowrap">
                               {item.remaining_unallocated.toLocaleString('th-TH')} {item.unit}
                             </td>
+                            <td className="text-right py-2.5 pr-4 text-amber-800 dark:text-amber-200 whitespace-nowrap text-sm">
+                              {item.quantity_fulfilled_prior_bill > 0
+                                ? `${item.quantity_fulfilled_prior_bill.toLocaleString('th-TH')} ${item.unit}`
+                                : '—'}
+                            </td>
                             <td className="py-2.5 text-right">
                               <input
                                 type="number"
@@ -155,7 +178,7 @@ export function OrderShipmentPlanningView({ orderId, onBack, onSuccess }: OrderS
                       </tbody>
                       <tfoot>
                         <tr className="border-t-2 border-gray-200 dark:border-charcoal-700">
-                          <td className="py-2 font-medium text-gray-900 dark:text-white" colSpan={2}>
+                          <td className="py-2 font-medium text-gray-900 dark:text-white" colSpan={3}>
                             รวมที่จะนำไปส่งในทริปนี้
                           </td>
                           <td className="py-2 text-right font-bold text-enterprise-600 dark:text-enterprise-400">

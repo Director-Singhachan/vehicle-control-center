@@ -5440,6 +5440,7 @@ export type Database = {
           order_date: string | null
           order_number: string | null
           related_prior_order_id: string | null
+          related_prior_order_number: string | null
           replaces_sml_doc_no: string | null
           status: string | null
           store_address: string | null

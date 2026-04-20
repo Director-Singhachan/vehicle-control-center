@@ -4,6 +4,7 @@ import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
 import { getOrderDisplayTotalAmount } from '../../utils/orderDisplay';
+import { BillCorrectionBadges } from './BillCorrectionBadges';
 
 interface TrackOrdersTableProps {
   orders: any[];
@@ -70,7 +71,12 @@ export const TrackOrdersTable: React.FC<TrackOrdersTableProps> = ({
               <th className="py-4 px-5 text-sm font-bold text-slate-700 dark:text-slate-300 whitespace-nowrap">เลขออเดอร์</th>
               <th className="py-4 px-5 text-sm font-bold text-slate-700 dark:text-slate-300 whitespace-nowrap">ร้านค้า</th>
               <th className="py-4 px-5 text-sm font-bold text-slate-700 dark:text-slate-300 whitespace-nowrap text-right">ยอดรวม</th>
-              <th className="py-4 px-5 text-sm font-bold text-slate-700 dark:text-slate-300 whitespace-nowrap text-center">สถานะ</th>
+              <th
+                className="py-4 px-5 text-sm font-bold text-slate-700 dark:text-slate-300 whitespace-nowrap text-center min-w-[10rem]"
+                title="สถานะการจัดส่ง และเคสแก้บิล / บิลเก่าที่มีบิลใหม่แทน"
+              >
+                สถานะ
+              </th>
               <th className="py-4 px-5 text-sm font-bold text-slate-700 dark:text-slate-300 whitespace-nowrap">วันที่นัดส่ง</th>
               <th className="py-4 px-5 text-sm font-bold text-slate-700 dark:text-slate-300 whitespace-nowrap">วันที่สร้าง</th>
               <th className="py-4 px-5 text-sm font-bold text-slate-700 dark:text-slate-300 whitespace-nowrap text-center">จัดการ</th>
@@ -109,9 +115,12 @@ export const TrackOrdersTable: React.FC<TrackOrdersTableProps> = ({
                       })}
                     </span>
                   </td>
-                  <td className="py-3 px-5 text-center whitespace-nowrap">
-                    <div className="inline-flex drop-shadow-sm">
-                      {getStatusBadge(order)}
+                  <td className="py-3 px-3 sm:px-5 text-center align-top">
+                    <div className="flex flex-col items-center gap-1.5 max-w-[220px] mx-auto">
+                      <div className="inline-flex drop-shadow-sm justify-center">
+                        {getStatusBadge(order)}
+                      </div>
+                      <BillCorrectionBadges order={order} className="justify-center" />
                     </div>
                   </td>
                   <td className="py-3 px-5 whitespace-nowrap">

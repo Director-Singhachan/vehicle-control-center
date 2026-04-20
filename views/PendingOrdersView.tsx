@@ -29,6 +29,8 @@ import {
 } from '../utils/branchLabels';
 import { useOrderBranchScope } from '../hooks/useOrderBranchScope';
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
+import { BillCorrectionBadges } from '../components/order/BillCorrectionBadges';
+import { OrderEffectiveStatusBadge } from '../components/order/OrderEffectiveStatusBadge';
 
 // Memoized OrderCard component to prevent unnecessary re-renders
 interface OrderCardProps {
@@ -121,12 +123,12 @@ const OrderCard = memo(({
                 <p className="text-sm text-gray-500 dark:text-gray-400">
                   {formattedOrderDate}
                 </p>
+                <div className="flex flex-wrap items-center gap-2 mt-1.5">
+                  <span className="text-xs font-medium text-gray-500 dark:text-gray-400">สถานะจัดส่ง</span>
+                  <OrderEffectiveStatusBadge order={order} />
+                  <BillCorrectionBadges order={order} />
+                </div>
                 {/* ✅ แสดง pickup summary ถ้ามีการรับที่ร้าน/ส่งแล้วบางส่วน */}
-                {order.status === 'partial' && (
-                  <span className="inline-flex items-center gap-1 mt-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-300 border border-orange-200 dark:border-orange-700">
-                    ⏳ ส่งบางส่วนแล้ว
-                  </span>
-                )}
                 {pickupSummary && pickupSummary.totalPickedUp > 0 && (
                   <span className="inline-flex items-center gap-1 mt-1 ml-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-700">
                     🏪 รับที่ร้าน {pickupSummary.totalPickedUp.toLocaleString()} ชิ้น
@@ -268,6 +270,13 @@ const OrderCard = memo(({
 }, (prevProps, nextProps) => {
   // Custom comparison function for better performance
   if (prevProps.order.id !== nextProps.order.id) return false;
+  if (prevProps.order.related_prior_order_id !== nextProps.order.related_prior_order_id) return false;
+  if (prevProps.order.related_prior_order_number !== nextProps.order.related_prior_order_number) return false;
+  if (prevProps.order.exclude_from_vehicle_revenue_rollup !== nextProps.order.exclude_from_vehicle_revenue_rollup) return false;
+  if (prevProps.order.replaces_sml_doc_no !== nextProps.order.replaces_sml_doc_no) return false;
+  if (prevProps.order.status !== nextProps.order.status) return false;
+  if (prevProps.order.delivery_trip_id !== nextProps.order.delivery_trip_id) return false;
+  if (prevProps.order.trip_status !== nextProps.order.trip_status) return false;
   if (prevProps.isSelected !== nextProps.isSelected) return false;
   if (prevProps.isExpanded !== nextProps.isExpanded) return false;
   if (prevProps.savingPickupItemId !== nextProps.savingPickupItemId) return false;

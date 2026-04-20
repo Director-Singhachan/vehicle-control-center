@@ -13,6 +13,8 @@ export interface StoreDelivery {
   total_amount: number;
   sequence: number;
   delivery_date: string | null;
+  /** ออเดอร์นี้เชื่อมกับบิลเดิม (เคสแก้บิล) — ใช้แสดงป้ายในขั้นจัดทริป */
+  related_prior_order_id?: string | null;
 }
 
 /**
