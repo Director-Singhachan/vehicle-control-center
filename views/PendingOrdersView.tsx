@@ -89,9 +89,10 @@ const OrderCard = memo(({
     if (!orderItems || orderItems.length === 0) return null;
     const totalPickedUp = orderItems.reduce((sum: number, item: any) => sum + Number(item.quantity_picked_up_at_store ?? 0), 0);
     const totalDelivered = orderItems.reduce((sum: number, item: any) => sum + Number(item.quantity_delivered ?? 0), 0);
+    const totalPriorBill = orderItems.reduce((sum: number, item: any) => sum + Number(item.quantity_fulfilled_prior_bill ?? 0), 0);
     const totalQty = orderItems.reduce((sum: number, item: any) => sum + Number(item.quantity), 0);
-    if (totalPickedUp === 0 && totalDelivered === 0) return null;
-    return { totalPickedUp, totalDelivered, totalQty };
+    if (totalPickedUp === 0 && totalDelivered === 0 && totalPriorBill === 0) return null;
+    return { totalPickedUp, totalDelivered, totalPriorBill, totalQty };
   }, [orderItems]);
 
   const isShippingForbidden = order.payment_status === 'รอชำระ' || order.payment_status === 'รอชำระหนี้คงค้าง';
@@ -134,6 +135,11 @@ const OrderCard = memo(({
                     🏪 รับที่ร้าน {pickupSummary.totalPickedUp.toLocaleString()} ชิ้น
                   </span>
                 )}
+                {pickupSummary && pickupSummary.totalPriorBill > 0 && (
+                  <span className="inline-flex items-center gap-1 mt-1 ml-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-teal-50 dark:bg-teal-950/50 text-teal-900 dark:text-teal-200 border border-teal-200 dark:border-teal-800">
+                    ส่งจากบิลก่อน {pickupSummary.totalPriorBill.toLocaleString()} ชิ้น
+                  </span>
+                )}
                 {order.payment_status && (
                   <div className="mt-2">
                     <PaymentStatusBadge status={order.payment_status} />
@@ -152,7 +158,15 @@ const OrderCard = memo(({
                 </p>
                 {pickupSummary && (
                   <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
-                    คงเหลือ {Math.max(0, pickupSummary.totalQty - pickupSummary.totalPickedUp - pickupSummary.totalDelivered).toLocaleString()} / {pickupSummary.totalQty.toLocaleString()} ชิ้น
+                    คงเหลือส่ง{' '}
+                    {Math.max(
+                      0,
+                      pickupSummary.totalQty -
+                        pickupSummary.totalPickedUp -
+                        pickupSummary.totalDelivered -
+                        pickupSummary.totalPriorBill
+                    ).toLocaleString()}{' '}
+                    / {pickupSummary.totalQty.toLocaleString()} ชิ้น
                   </p>
                 )}
               </div>
