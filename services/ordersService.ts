@@ -895,6 +895,38 @@ export const ordersService = {
   },
 
   /**
+   * ค้นหาออเดอร์เดิมจากเลขที่ออเดอร์หรือ UUID (ใช้ตอนเชื่อมเคสแก้บิล / บิล SML ใหม่)
+   */
+  async resolvePriorOrderLookup(lookup: string): Promise<{ id: string; order_number: string | null } | null> {
+    const q = lookup.trim();
+    if (!q) return null;
+
+    const uuidRe =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    if (uuidRe.test(q)) {
+      const { data, error } = await supabase.from('orders').select('id, order_number').eq('id', q).maybeSingle();
+      if (error || !data) return null;
+      return data;
+    }
+
+    const { data: exact } = await supabase
+      .from('orders')
+      .select('id, order_number')
+      .eq('order_number', q)
+      .maybeSingle();
+    if (exact) return exact;
+
+    const { data: fuzzy } = await supabase
+      .from('orders')
+      .select('id, order_number')
+      .ilike('order_number', `%${q}%`)
+      .limit(2);
+
+    if (fuzzy && fuzzy.length === 1) return fuzzy[0];
+    return null;
+  },
+
+  /**
    * สร้างออเดอร์ใหม่พร้อมรายการสินค้า
    */
   async createWithItems(

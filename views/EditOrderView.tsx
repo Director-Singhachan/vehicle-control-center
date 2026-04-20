@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { ShoppingCart, Plus, Trash2, Search, Check, Edit, AlertTriangle, Grid3x3, Clock, Gift, Truck, Store } from 'lucide-react';
+import { ShoppingCart, Plus, Trash2, Search, Check, Edit, AlertTriangle, Grid3x3, Clock, Gift, Truck, Store, Link2 } from 'lucide-react';
 import { useProducts, useWarehouses, useProductCategories } from '../hooks/useInventory';
 import { ordersService, orderItemsService } from '../services/ordersService';
 import { orderTripSyncService } from '../services/orderTripSyncService';
@@ -649,6 +649,28 @@ export function EditOrderView({ orderId, onSave, onCancel }: EditOrderViewProps)
               <div className="text-sm text-orange-700 dark:text-orange-400">
                 การแก้ไขออเดอร์นี้อาจส่งผลกระทบต่อทริปที่กำหนดไว้แล้ว กรุณาตรวจสอบและยืนยันการแก้ไข
               </div>
+            </div>
+          </div>
+        </Card>
+      )}
+
+      {Boolean((order as { related_prior_order_id?: string | null }).related_prior_order_id) && (
+        <Card className="mb-6 border-rose-200 dark:border-rose-800 bg-rose-50 dark:bg-rose-950/30">
+          <div className="p-4 flex items-start gap-3">
+            <Link2 className="w-5 h-5 text-rose-600 dark:text-rose-400 mt-0.5 flex-shrink-0" />
+            <div className="text-sm text-rose-900 dark:text-rose-100">
+              <div className="font-semibold mb-1">เชื่อมจากออเดอร์เดิม (แก้บิล / บิล SML ใหม่)</div>
+              <p>
+                ออเดอร์ก่อนหน้า:{' '}
+                <code className="text-xs bg-white/60 dark:bg-slate-800/80 px-1 rounded">
+                  {(order as { related_prior_order_id?: string }).related_prior_order_id}
+                </code>
+              </p>
+              {(order as { replaces_sml_doc_no?: string | null }).replaces_sml_doc_no ? (
+                <p className="mt-1 text-rose-800 dark:text-rose-200">
+                  เลขเอกสาร SML เดิมอ้างอิง: {(order as { replaces_sml_doc_no?: string }).replaces_sml_doc_no}
+                </p>
+              ) : null}
             </div>
           </div>
         </Card>

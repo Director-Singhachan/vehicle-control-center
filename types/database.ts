@@ -2230,6 +2230,8 @@ export type Database = {
           order_date: string
           order_number: string | null
           payment_status: string | null
+          related_prior_order_id: string | null
+          replaces_sml_doc_no: string | null
           status: string
           store_id: string
           subtotal: number | null
@@ -2256,6 +2258,8 @@ export type Database = {
           order_date?: string
           order_number?: string | null
           payment_status?: string | null
+          related_prior_order_id?: string | null
+          replaces_sml_doc_no?: string | null
           status?: string
           store_id: string
           subtotal?: number | null
@@ -2282,6 +2286,8 @@ export type Database = {
           order_date?: string
           order_number?: string | null
           payment_status?: string | null
+          related_prior_order_id?: string | null
+          replaces_sml_doc_no?: string | null
           status?: string
           store_id?: string
           subtotal?: number | null
@@ -2304,6 +2310,13 @@ export type Database = {
             columns: ["created_by"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orders_related_prior_order_id_fkey"
+            columns: ["related_prior_order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
             referencedColumns: ["id"]
           },
           {
@@ -5419,6 +5432,8 @@ export type Database = {
           notes: string | null
           order_date: string | null
           order_number: string | null
+          related_prior_order_id: string | null
+          replaces_sml_doc_no: string | null
           status: string | null
           store_address: string | null
           store_id: string | null
