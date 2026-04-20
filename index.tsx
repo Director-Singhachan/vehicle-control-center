@@ -85,6 +85,7 @@ const SalesTripsView = lazy(() => import('./views/SalesTripsView').then(m => ({ 
 const CleanupTestOrdersView = lazy(() => import('./views/CleanupTestOrdersView').then(m => ({ default: m.CleanupTestOrdersView })));
 const PackingSimulationView = lazy(() => import('./views/PackingSimulationView').then(m => ({ default: m.PackingSimulationView })));
 const ExcelImportView = lazy(() => import('./views/ExcelImportView').then(m => ({ default: m.ExcelImportView })));
+const CustomerImportView = lazy(() => import('./views/CustomerImportView').then(m => ({ default: m.CustomerImportView })));
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { FeatureAccessProvider, useFeatureAccess } from './hooks/useFeatureAccess';
 import { firstAccessibleTabId, NAV_FALLBACK_TAB_ORDER, TAB_TO_PRIMARY_FEATURE } from './types/featureAccess';
@@ -2314,6 +2315,17 @@ const AppContent = () => {
                         isCollapsed={false}
                         isFlyout={true}
                       />
+                      <SubSidebarItem
+                        label="ข้อมูลลูกค้า"
+                        active={activeTab === 'customer-import'}
+                        onClick={() => {
+                          setActiveTab('customer-import');
+                          setIsImportHovered(false);
+                          setHoveredImportDept(null);
+                        }}
+                        isCollapsed={false}
+                        isFlyout={true}
+                      />
                     </div>
                   )}
                 </div>
@@ -3306,6 +3318,8 @@ const AppContent = () => {
                   <ProductTierPricingView />
                 ) : activeTab === 'excel-import' ? (
                   <ExcelImportView />
+                ) : activeTab === 'customer-import' ? (
+                  <CustomerImportView />
                 ) : activeTab === 'customers' ? (
                   <CustomerManagementView />
                 ) : activeTab === 'create-order' ? (

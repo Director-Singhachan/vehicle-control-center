@@ -1,5 +1,5 @@
 import React from 'react';
-import { UserPlus, ShieldAlert, Upload, Mail } from 'lucide-react';
+import { UserPlus, ShieldAlert, Upload, Mail, Clock } from 'lucide-react';
 import { PageLayout } from '../components/layout/PageLayout';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
@@ -13,6 +13,8 @@ import { StaffBulkEmailModal } from '../components/staff/StaffBulkEmailModal';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { useAdminStaffManagement } from '../hooks/useAdminStaffManagement';
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
+import { supabase } from '../lib/supabase';
+import { useState, useEffect } from 'react';
 
 export const AdminStaffManagementView: React.FC = () => {
   const { can } = useFeatureAccess();
@@ -65,6 +67,31 @@ export const AdminStaffManagementView: React.FC = () => {
     notifyWarning,
   } = useAdminStaffManagement();
 
+  const [lastUpdate, setLastUpdate] = useState<string | null>(null);
+  const [isInitialLoadingLastUpdate, setIsInitialLoadingLastUpdate] = useState(true);
+
+  const fetchLastUpdate = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('updated_at')
+        .order('updated_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (error) throw error;
+      if (data) setLastUpdate(data.updated_at);
+    } catch (err) {
+      console.error('Failed to fetch last update date:', err);
+    } finally {
+      setIsInitialLoadingLastUpdate(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchLastUpdate();
+  }, []);
+
   if (!canView) {
     return (
       <PageLayout title="จัดการบัญชีพนักงาน">
@@ -82,19 +109,33 @@ export const AdminStaffManagementView: React.FC = () => {
       subtitle={`พนักงานทั้งหมด ${staffList.length} คน`}
       actions={
         canEdit ? (
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={openImport}>
-              <Upload size={16} className="mr-1.5" />
-              นำเข้าพนักงาน (Excel)
-            </Button>
-            <Button variant="outline" onClick={openBulkEmail}>
-              <Mail size={16} className="mr-1.5" />
-              เปลี่ยนอีเมล
-            </Button>
-            <Button onClick={openCreate}>
-              <UserPlus size={16} className="mr-1.5" />
-              สร้างพนักงานใหม่
-            </Button>
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2 px-4 py-2 bg-blue-50/50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900/30 rounded-2xl">
+              <Clock size={16} className="text-blue-500" />
+              <span className="text-xs font-black text-blue-700 dark:text-blue-400">
+                อัพเดตพนักงานล่าสุด: {isInitialLoadingLastUpdate ? 'กำลังโหลด...' : lastUpdate ? new Date(lastUpdate).toLocaleString('th-TH', {
+                  year: 'numeric',
+                  month: 'short',
+                  day: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit'
+                }) : 'ยังไม่มีข้อมูล'}
+              </span>
+            </div>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={openImport}>
+                <Upload size={16} className="mr-1.5" />
+                นำเข้าพนักงาน (Excel)
+              </Button>
+              <Button variant="outline" onClick={openBulkEmail}>
+                <Mail size={16} className="mr-1.5" />
+                เปลี่ยนอีเมล
+              </Button>
+              <Button onClick={openCreate}>
+                <UserPlus size={16} className="mr-1.5" />
+                สร้างพนักงานใหม่
+              </Button>
+            </div>
           </div>
         ) : undefined
       }
@@ -148,7 +189,10 @@ export const AdminStaffManagementView: React.FC = () => {
         isOpen={modals.bulkEmail}
         onClose={closeBulkEmail}
         existingStaff={staffDirectoryFull}
-        onSuccessRefetch={refetch}
+        onSuccessRefetch={() => {
+          refetch();
+          fetchLastUpdate();
+        }}
         onBatchComplete={(r) => {
           if (r.total === 0) {
             notifyWarning('กรุณากรอกอย่างน้อยหนึ่งแถว (รหัสพนักงาน + อีเมลใหม่)');
@@ -186,7 +230,10 @@ export const AdminStaffManagementView: React.FC = () => {
         isOpen={modals.import}
         existingStaff={staffDirectoryFull}
         onClose={closeImport}
-        onSuccess={refetch}
+        onSuccess={() => {
+          refetch();
+          fetchLastUpdate();
+        }}
         onImportBatchComplete={({ success: ok, failed, errors, total }) => {
           if (total === 0) {
             notifyWarning('ไม่มีรายการที่ต้องบันทึก (ทุกแถวถูกข้าม)');

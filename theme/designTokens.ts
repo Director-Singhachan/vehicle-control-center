@@ -114,7 +114,7 @@ export const componentStyles = {
     padding: 'p-6',
   },
   button: {
-    primary: 'bg-gradient-to-r from-enterprise-600 to-enterprise-500 hover:from-enterprise-700 hover:to-enterprise-600 text-white shadow-lg shadow-enterprise-500/30',
+    primary: 'bg-enterprise-600 hover:bg-enterprise-700 text-white shadow-lg shadow-enterprise-600/30',
     secondary: 'bg-slate-100 dark:bg-slate-800/50 backdrop-blur-sm hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-900 dark:text-white border border-transparent hover:border-slate-300 dark:hover:border-slate-600',
     outline: 'border border-slate-300 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-800/50 text-slate-700 dark:text-slate-300',
     base: 'px-4 py-2 rounded-lg font-medium transition-all duration-200 active:scale-95',

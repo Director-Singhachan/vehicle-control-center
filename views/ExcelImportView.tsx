@@ -140,9 +140,32 @@ export function ExcelImportView() {
     const [importProgress, setImportProgress] = useState(0);
     const [showTemplateExample, setShowTemplateExample] = useState(false);
     const [importResult, setImportResult] = useState<ImportResult | null>(null);
+    const [lastUpdate, setLastUpdate] = useState<string | null>(null);
     const [showResultModal, setShowResultModal] = useState(false);
     const [resultTab, setResultTab] = useState<'created' | 'updated' | 'failed'>('failed');
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const [isInitialLoading, setIsInitialLoading] = useState(true);
+
+    useEffect(() => {
+        const fetchLastUpdate = async () => {
+            try {
+                const { data, error } = await supabase
+                    .from('product_import_logs')
+                    .select('created_at')
+                    .order('created_at', { ascending: false })
+                    .limit(1)
+                    .maybeSingle();
+
+                if (error) throw error;
+                if (data) setLastUpdate(data.created_at);
+            } catch (err) {
+                console.error('Failed to fetch last update date:', err);
+            } finally {
+                setIsInitialLoading(false);
+            }
+        };
+        fetchLastUpdate();
+    }, []);
 
     // History states
     const [logs, setLogs] = useState<ImportLogRow[]>([]);
@@ -589,8 +612,15 @@ export function ExcelImportView() {
         setFile(null);
         if (fileInputRef.current) fileInputRef.current.value = '';
 
-        // Refetch logs to update the history tab
+        // Refetch logs and last update to update the history tab and header
         fetchLogs();
+        const { data: latest } = await supabase
+            .from('product_import_logs')
+            .select('created_at')
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+        if (latest) setLastUpdate(latest.created_at);
     };
 
     const filteredLogs = logs.filter(log =>
@@ -675,7 +705,25 @@ export function ExcelImportView() {
     }
 
     return (
-        <PageLayout title="นำเข้าข้อมูล (ฝ่ายขาย - Step Pricing)">
+        <PageLayout 
+            title="นำเข้าข้อมูล (ฝ่ายขาย - Step Pricing)"
+            actions={
+                <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-2 px-4 py-2 bg-blue-50/50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900/30 rounded-2xl">
+                        <Clock size={16} className="text-blue-500" />
+                        <span className="text-xs font-black text-blue-700 dark:text-blue-400">
+                            อัพเดตนำเข้าข้อมูลล่าสุด: {isInitialLoading ? 'กำลังโหลด...' : lastUpdate ? new Date(lastUpdate).toLocaleString('th-TH', {
+                                year: 'numeric',
+                                month: 'short',
+                                day: 'numeric',
+                                hour: '2-digit',
+                                minute: '2-digit'
+                            }) : 'ยังไม่มีข้อมูล'}
+                        </span>
+                    </div>
+                </div>
+            }
+        >
             <div className="flex gap-4 mb-6">
                 <Button
                     onClick={() => setActiveSubTab('import')}
