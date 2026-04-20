@@ -1215,6 +1215,7 @@ export type Database = {
           edit_reason: string | null
           had_packing_issues: boolean | null
           has_item_changes: boolean
+          has_sales_data_issue: boolean
           id: string
           last_item_change_at: string | null
           notes: string | null
@@ -1246,6 +1247,7 @@ export type Database = {
           edit_reason?: string | null
           had_packing_issues?: boolean | null
           has_item_changes?: boolean
+          has_sales_data_issue?: boolean
           id?: string
           last_item_change_at?: string | null
           notes?: string | null
@@ -1277,6 +1279,7 @@ export type Database = {
           edit_reason?: string | null
           had_packing_issues?: boolean | null
           has_item_changes?: boolean
+          has_sales_data_issue?: boolean
           id?: string
           last_item_change_at?: string | null
           notes?: string | null

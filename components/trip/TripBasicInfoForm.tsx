@@ -12,6 +12,8 @@ export interface TripBasicInfoFormData {
   planned_date: string;
   odometer_start: string;
   notes: string;
+  /** ทริปนี้มีปัญหาข้อมูลการขาย/บิล (คีย์ผิด แก้บิลหลังส่ง ฯลฯ) */
+  has_sales_data_issue: boolean;
   trip_revenue?: string;
   trip_start_date?: string;
   trip_end_date?: string;
@@ -255,6 +257,27 @@ export const TripBasicInfoForm: React.FC<TripBasicInfoFormProps> = ({
             onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
             placeholder="หมายเหตุเพิ่มเติม"
           />
+        </div>
+
+        <div className="md:col-span-2">
+          <label className="flex items-start gap-3 cursor-pointer rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50/80 dark:bg-slate-800/40 px-3 py-2.5">
+            <input
+              type="checkbox"
+              className="mt-0.5 h-4 w-4 rounded border-slate-300 dark:border-slate-600 text-enterprise-600 focus:ring-enterprise-500 dark:bg-slate-800"
+              checked={formData.has_sales_data_issue}
+              onChange={(e) =>
+                setFormData((prev) => ({ ...prev, has_sales_data_issue: e.target.checked }))
+              }
+            />
+            <span className="text-sm text-slate-700 dark:text-slate-300">
+              <span className="font-medium text-slate-900 dark:text-slate-100">
+                ทริปนี้มีปัญหาข้อมูลการขายหรือบิล
+              </span>
+              <span className="block text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                เช่น คีย์สินค้าผิด ลูกค้าเปลี่ยน/ยกเลิกรายการหลังออกรถ แก้บิลเลขเอกสารใหม่ — ใช้เตือนฝ่ายขนส่ง/บัญชี ไม่แก้ประวัติการขนส่งในทริป
+              </span>
+            </span>
+          </label>
         </div>
 
         {/* รายได้เที่ยว — สำหรับ P&L (กำไรจากสินค้าในเที่ยว / ค่าจ้างส่ง) */}

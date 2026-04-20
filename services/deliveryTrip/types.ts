@@ -103,6 +103,8 @@ export interface CreateDeliveryTripData {
   odometer_start?: number;
   manual_distance_km?: number;
   notes?: string;
+  /** ทริปนี้มีปัญหาข้อมูลการขาย/บิล (คีย์ผิด แก้บิลหลังส่ง ฯลฯ) */
+  has_sales_data_issue?: boolean;
   sequence_order?: number;
   stores: Array<{
     store_id: string;
@@ -132,6 +134,7 @@ export interface UpdateDeliveryTripData {
   odometer_end?: number;
   status?: 'planned' | 'in_progress' | 'completed' | 'cancelled';
   notes?: string;
+  has_sales_data_issue?: boolean;
   sequence_order?: number;
   stores?: Array<{
     store_id: string;
