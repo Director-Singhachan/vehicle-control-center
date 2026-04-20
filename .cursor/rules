@@ -137,6 +137,15 @@ import { vehicleService } from '../services';
 import type { Database } from '../types/database';
 ```
 
+### Delivery trips — หน่วยสินค้า (ห้าม regression)
+
+ปัญหา **หน่วยเพี้ยน** (ออเดอร์ถูก แต่หลังจัดทริป/ดูรายละเอียดทริปกลายเป็นหน่วย master เช่น ลัง/ถาด แทนขวดของแถม) เคยเกิดซ้ำหลายรอบ
+
+- **แสดงผล:** ใช้ `delivery_trip_items.unit` (หรือบรรทัดออเดอร์) ก่อน แล้วค่อย fallback `products.unit` — ห้ามผูกแสดงจำนวนกับ `product.unit` อย่างเดียวเมื่อมี item จากทริป
+- **สรุปยอดในเที่ยว:** ห้าม aggregate แค่ `product_id`; ต้องแยกตาม **หน่วยบรรทัด + ของแถม/ปกติ** อย่างน้อย (ดู `tripHistoryAggregatesService.getAggregatedProducts`)
+
+รายละเอียด ไฟล์ที่ต้องระวัง และ checklist: **`.cursor/notes/delivery-trip-unit-mismatch.md`**
+
 ## Styling Guidelines
 
 ### Tailwind CSS (100% Usage)

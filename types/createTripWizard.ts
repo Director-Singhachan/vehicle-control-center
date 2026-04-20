@@ -1,4 +1,4 @@
-/** Types for Create Trip From Orders wizard (Phase 3.3) */
+/** Types for Create Trip From Orders wizard */
 
 export interface StoreDelivery {
   id: string;
@@ -15,18 +15,39 @@ export interface StoreDelivery {
   delivery_date: string | null;
 }
 
-export type SplitMode = 'single' | '2vehicles' | '3trips';
+/**
+ * SplitMode:
+ * - 'single'    – one vehicle, one trip
+ * - '2vehicles' – two vehicles, fixed (backward compat)
+ * - '3trips'    – three trips same vehicle, fixed (backward compat)
+ * - 'multi'     – N dynamic trip slots (new)
+ */
+export type SplitMode = 'single' | '2vehicles' | '3trips' | 'multi';
 
-/** การแบ่งสินค้าระดับรายการ: key = `${orderId}_${itemId}` → จำนวนที่ขึ้นแต่ละคัน/เที่ยว */
+/** Per-item quantity split for legacy 2/3 modes */
 export interface ItemSplitQty {
   /** โหมดแบ่ง 2 คัน */
   vehicle1Qty: number;
   vehicle2Qty: number;
-  /** โหมดแบ่ง 3 เที่ยว (ใช้เมื่อ splitMode = '3trips') */
+  /** โหมดแบ่ง 3 เที่ยว */
   trip1Qty?: number;
   trip2Qty?: number;
   trip3Qty?: number;
 }
+
+/** One slot in the dynamic multi-trip wizard */
+export interface TripSlot {
+  id: string;
+  label: string;
+  vehicleId: string;
+  driverId: string;
+}
+
+/**
+ * Per-item quantity allocation across dynamic trip slots.
+ * key = order_item unique key (see splitKey()), value = map of slotId → quantity
+ */
+export type MultiTripItemQty = Record<string, Record<string, number>>;
 
 export type CapacitySummary = {
   totalPallets: number;
@@ -42,4 +63,14 @@ export type CapacitySummary = {
 
 export function splitKey(orderId: string, itemId: string): string {
   return `${orderId}_${itemId}`;
+}
+
+/** Create a blank TripSlot */
+export function createTripSlot(index: number): TripSlot {
+  return {
+    id: `slot-${index}`,
+    label: `เที่ยวที่ ${index}`,
+    vehicleId: '',
+    driverId: '',
+  };
 }

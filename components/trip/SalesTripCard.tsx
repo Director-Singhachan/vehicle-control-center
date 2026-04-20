@@ -1,7 +1,7 @@
 import React, { useMemo, memo } from 'react';
 import {
     Truck, MapPin, Package, Calendar, User, Phone,
-    CheckCircle, CheckSquare, Square, Eye, ChevronDown, ChevronUp, Layers,
+    CheckCircle, CheckSquare, Square, Eye, ChevronDown, ChevronUp, Layers, Info,
 } from 'lucide-react';
 import { Card } from '../ui/Card';
 import { Badge } from '../ui/Badge';
@@ -9,6 +9,18 @@ import { Badge } from '../ui/Badge';
 // ────────────────────────────────────────────
 // TripCard — ใช้สำหรับ by-trip view
 // ────────────────────────────────────────────
+
+function sameReadonlyStringSet(a?: ReadonlySet<string>, b?: ReadonlySet<string>): boolean {
+    if (a === b) return true;
+    if (!a && !b) return true;
+    if (!a || !b) return false;
+    if (a.size !== b.size) return false;
+    for (const x of a) {
+        if (!b.has(x)) return false;
+    }
+    return true;
+}
+
 export interface TripCardProps {
     trip: any;
     expandedStores: Set<string>;
@@ -19,6 +31,10 @@ export interface TripCardProps {
     onFetchFullDetails?: (tripId: string) => Promise<void>;
     tripsWithFullDetails?: Set<string>;
     hasPackingLayout?: boolean;
+    /** ร้านที่มีการแบ่งส่งหลายทริปในวันเดียวกัน (จากหน้าออกบิล) — แสดงคำเตือนต่อจุดส่ง */
+    storeIdsSplitAcrossTrips?: ReadonlySet<string>;
+    /** สลับไปมุมมองรายร้านเพื่อออกบิลรวม */
+    onSuggestByStoreInvoiceView?: () => void;
 }
 
 export const TripCard = memo(({
@@ -31,6 +47,8 @@ export const TripCard = memo(({
     onFetchFullDetails,
     tripsWithFullDetails,
     hasPackingLayout,
+    storeIdsSplitAcrossTrips,
+    onSuggestByStoreInvoiceView,
 }: TripCardProps) => {
     // Memoize formatted date
     const formattedDate = useMemo(() => {
@@ -46,6 +64,17 @@ export const TripCard = memo(({
         if (!trip.stores) return [];
         return [...trip.stores].sort((a: any, b: any) => a.sequence_order - b.sequence_order);
     }, [trip.stores]);
+
+    /** แบ่งส่งจากออเดอร์เดียว / หลายทริป — แนะนำมุมมองรายร้านตอนออกบิล */
+    const tripSplitBillingSummary = useMemo(() => {
+        const perStore = sortedStores.map((store: any) => {
+            const multiTrip = storeIdsSplitAcrossTrips?.has(store.store_id) ?? false;
+            const partialOrder =
+                store.order_status === 'partial' || store.order_status === 'assigned';
+            return { multiTrip, partialOrder, show: multiTrip || partialOrder };
+        });
+        return { perStore, any: perStore.some((p) => p.show) };
+    }, [sortedStores, storeIdsSplitAcrossTrips]);
 
     // Invoice progress for this trip
     const tripInvoiceProgress = useMemo(() => {
@@ -147,6 +176,32 @@ export const TripCard = memo(({
                     </div>
                 </div>
 
+                {tripSplitBillingSummary.any && (
+                    <div
+                        className="mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 rounded-lg border border-amber-200 dark:border-amber-800/80 bg-amber-50 dark:bg-amber-950/35 px-3 py-2.5 text-xs text-amber-950 dark:text-amber-50"
+                        role="status"
+                    >
+                        <div className="flex items-start gap-2 min-w-0">
+                            <Info className="w-4 h-4 flex-shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" aria-hidden />
+                            <p className="leading-relaxed">
+                                <span className="font-semibold">ออกบิล:</span> ทริปนี้มีจุดส่งที่สินค้าแบ่งจากออเดอร์เดียวไปหลายทริป
+                                หรือส่งไม่ครบในทริปเดียว — แนะนำใช้มุมมอง{' '}
+                                <span className="font-semibold">รายร้าน</span> เพื่อดูยอดรวมต่อสินค้าและยืนยันออกบิลครั้งเดียวต่อร้าน
+                            </p>
+                        </div>
+                        {onSuggestByStoreInvoiceView ? (
+                            <button
+                                type="button"
+                                onClick={onSuggestByStoreInvoiceView}
+                                className="flex-shrink-0 inline-flex items-center justify-center gap-1 rounded-md border border-amber-300 dark:border-amber-700 bg-white/90 dark:bg-charcoal-900 px-2.5 py-1.5 text-xs font-medium text-amber-950 dark:text-amber-100 hover:bg-amber-100 dark:hover:bg-amber-900/40"
+                            >
+                                <MapPin className="w-3.5 h-3.5" />
+                                ไปมุมมองรายร้าน
+                            </button>
+                        ) : null}
+                    </div>
+                )}
+
                 {/* Quick Store Index */}
                 {sortedStores.length > 0 && (
                     <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-900/10 border border-blue-200 dark:border-blue-800 rounded-lg">
@@ -186,6 +241,8 @@ export const TripCard = memo(({
                             const storeKey = `${trip.id}-${store.store_id}`;
                             const isExpanded = expandedStores.has(storeKey);
                             const isUpdating = updatingStatus.has(storeKey);
+                            const splitHint = tripSplitBillingSummary.perStore[index];
+                            const showSplitBillingHint = splitHint?.show;
 
                             return (
                                 <div
@@ -226,6 +283,45 @@ export const TripCard = memo(({
                                             <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
                                                 <Phone className="w-4 h-4" />
                                                 <p>{store.store.phone}</p>
+                                            </div>
+                                        )}
+
+                                        {showSplitBillingHint && splitHint && (
+                                            <div className="mt-3 rounded-lg border border-amber-200 dark:border-amber-800/80 bg-amber-50/90 dark:bg-amber-950/40 px-3 py-2 text-xs text-amber-950 dark:text-amber-50">
+                                                <div className="flex items-start gap-2">
+                                                    <Info className="w-3.5 h-3.5 flex-shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" aria-hidden />
+                                                    <div className="min-w-0 space-y-1">
+                                                        <p className="font-semibold">แนะนำตอนออกบิล</p>
+                                                        {splitHint.multiTrip && splitHint.partialOrder && (
+                                                            <p className="leading-relaxed text-amber-900/95 dark:text-amber-100/90">
+                                                                ร้านนี้มีสินค้าแบ่งไปหลายทริปในวันเดียวกัน และจุดส่งนี้เป็นเพียงบางส่วนของออเดอร์
+                                                                — ควรเปิดมุมมอง <span className="font-semibold">รายร้าน</span> เพื่อดูยอดรวมและเช็คออกบิลใบเดียว
+                                                            </p>
+                                                        )}
+                                                        {splitHint.multiTrip && !splitHint.partialOrder && (
+                                                            <p className="leading-relaxed text-amber-900/95 dark:text-amber-100/90">
+                                                                ร้านนี้มีการจัดส่งแบ่งหลายทริปในวันเดียวกัน — มุมมองทริปอาจทำให้มองยอดสินค้าต่อออเดอร์สับสน
+                                                                แนะนำ <span className="font-semibold">รายร้าน</span> เพื่อออกบิลตามยอดรวมจริง
+                                                            </p>
+                                                        )}
+                                                        {!splitHint.multiTrip && splitHint.partialOrder && (
+                                                            <p className="leading-relaxed text-amber-900/95 dark:text-amber-100/90">
+                                                                จุดส่งนี้เป็นเพียงส่วนหนึ่งของออเดอร์ (ส่งไม่ครบในทริปเดียวหรือมีของค้างส่ง) — แนะนำเช็คยอดที่มุมมอง{' '}
+                                                                <span className="font-semibold">รายร้าน</span>
+                                                            </p>
+                                                        )}
+                                                        {onSuggestByStoreInvoiceView && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={onSuggestByStoreInvoiceView}
+                                                                className="mt-1 inline-flex items-center gap-1 font-medium text-amber-800 dark:text-amber-200 underline-offset-2 hover:underline"
+                                                            >
+                                                                <MapPin className="w-3 h-3" />
+                                                                เปิดมุมมองรายร้าน
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                </div>
                                             </div>
                                         )}
 
@@ -394,12 +490,17 @@ export const TripCard = memo(({
     if (prevProps.expandedStores !== nextProps.expandedStores) return false;
     if (prevProps.updatingStatus !== nextProps.updatingStatus) return false;
     if (prevProps.hasPackingLayout !== nextProps.hasPackingLayout) return false;
-    // Deep compare stores invoice_status
+    if (!sameReadonlyStringSet(prevProps.storeIdsSplitAcrossTrips, nextProps.storeIdsSplitAcrossTrips)) {
+        return false;
+    }
+    if (prevProps.onSuggestByStoreInvoiceView !== nextProps.onSuggestByStoreInvoiceView) return false;
+    // Deep compare stores invoice_status + order_status (เตือนแบ่งส่ง/ออกบิล)
     const prevStores = prevProps.trip.stores || [];
     const nextStores = nextProps.trip.stores || [];
     if (prevStores.length !== nextStores.length) return false;
     for (let i = 0; i < prevStores.length; i++) {
         if (prevStores[i].invoice_status !== nextStores[i].invoice_status) return false;
+        if (prevStores[i].order_status !== nextStores[i].order_status) return false;
     }
     return true; // Props are equal, skip re-render
 });

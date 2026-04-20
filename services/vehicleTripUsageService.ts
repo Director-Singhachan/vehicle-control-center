@@ -227,7 +227,7 @@ export const vehicleTripUsageService = {
 
     const productMap = new Map<
       string,
-      { product_code: string; product_name: string; category: string; unit: string; total_quantity: number }
+      { product_id: string; product_code: string; product_name: string; category: string; unit: string; total_quantity: number }
     >();
 
     // โหลดสินค้าของทุกทริปแบบขนาน แทนทีละทริป
@@ -238,11 +238,13 @@ export const vehicleTripUsageService = {
 
     for (const items of allItemsArrays) {
       for (const item of items) {
-        const existing = productMap.get(item.product_id);
+        const rowKey = `${item.product_id}\u0001${item.unit}\u0001${item.is_bonus ? 'b' : 'n'}`;
+        const existing = productMap.get(rowKey);
         if (existing) {
           existing.total_quantity += item.total_quantity;
         } else {
-          productMap.set(item.product_id, {
+          productMap.set(rowKey, {
+            product_id: item.product_id,
             product_code: item.product_code,
             product_name: item.product_name,
             category: item.category,
@@ -253,16 +255,7 @@ export const vehicleTripUsageService = {
       }
     }
 
-    const result: VehicleProductSummaryItem[] = Array.from(productMap.entries()).map(
-      ([product_id, v]) => ({
-        product_id,
-        product_code: v.product_code,
-        product_name: v.product_name,
-        category: v.category,
-        unit: v.unit,
-        total_quantity: v.total_quantity,
-      })
-    );
+    const result: VehicleProductSummaryItem[] = Array.from(productMap.values());
 
     result.sort(
       (a, b) =>
