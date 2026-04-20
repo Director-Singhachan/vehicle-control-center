@@ -8,6 +8,11 @@
 // - ใช้ service role key → bypass RLS เพื่อเขียน commission_logs ได้แม้ user ปกติทำการเช็คอิน
 // - Idempotent: ลบทุกรายการ commission_logs ของทริปนั้นก่อน แล้วคำนวณใหม่ทุกครั้ง
 // - ถ้าไม่พบเรทค่าคอม หรือไม่พบ crew → log warning และ return success:false (ไม่ throw 500)
+//
+// หมายเหตุ (บิลแก้ / related_prior_order_id):
+// - ค่าคอมคิดจากจำนวนสินค้าที่ส่งจริงใน delivery_trip_items ต่อทริป ไม่ใช่ยอดรายได้จาก orders
+// - การกันยอดรายได้ซ้ำระหว่างบิลเก่า/ใหม่ทำที่ orders.exclude_from_vehicle_revenue_rollup + สรุปรายได้ต่อรถ
+//   ไม่ได้แก้สูตรค่าคอมอัตโนมัติต่อเคส SKU ผิดในอดีต — ถ้าต้องปรับย้อนหลังให้ทำทางบัญชี/ทริป
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 

@@ -2077,6 +2077,7 @@ export type Database = {
           product_id: string
           quantity: number
           quantity_delivered: number
+          quantity_fulfilled_prior_bill: number
           quantity_picked_up_at_store: number
           unit_price: number
           updated_at: string
@@ -2094,6 +2095,7 @@ export type Database = {
           product_id: string
           quantity: number
           quantity_delivered?: number
+          quantity_fulfilled_prior_bill?: number
           quantity_picked_up_at_store?: number
           unit_price: number
           updated_at?: string
@@ -2111,6 +2113,7 @@ export type Database = {
           product_id?: string
           quantity?: number
           quantity_delivered?: number
+          quantity_fulfilled_prior_bill?: number
           quantity_picked_up_at_store?: number
           unit_price?: number
           updated_at?: string
@@ -2224,6 +2227,7 @@ export type Database = {
           delivery_time_slot: string | null
           delivery_trip_id: string | null
           discount_amount: number | null
+          exclude_from_vehicle_revenue_rollup: boolean
           id: string
           internal_notes: string | null
           notes: string | null
@@ -2252,6 +2256,7 @@ export type Database = {
           delivery_time_slot?: string | null
           delivery_trip_id?: string | null
           discount_amount?: number | null
+          exclude_from_vehicle_revenue_rollup?: boolean
           id?: string
           internal_notes?: string | null
           notes?: string | null
@@ -2280,6 +2285,7 @@ export type Database = {
           delivery_time_slot?: string | null
           delivery_trip_id?: string | null
           discount_amount?: number | null
+          exclude_from_vehicle_revenue_rollup?: boolean
           id?: string
           internal_notes?: string | null
           notes?: string | null
@@ -5426,6 +5432,7 @@ export type Database = {
           delivery_date: string | null
           delivery_trip_id: string | null
           discount_amount: number | null
+          exclude_from_vehicle_revenue_rollup: boolean | null
           id: string | null
           internal_notes: string | null
           items_count: number | null

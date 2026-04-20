@@ -1,5 +1,5 @@
 import React, { useState, useRef, useMemo, useEffect } from 'react';
-import { Upload, X, FileText, CheckCircle2, AlertCircle, Info, ChevronDown, ChevronUp, Boxes } from 'lucide-react';
+import { Upload, X, FileText, CheckCircle2, AlertCircle, Info, ChevronDown, ChevronUp, Boxes, Link2 } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
 import { Badge } from '../ui/Badge';
@@ -31,6 +31,14 @@ export function OrderUploadModal({ isOpen, onClose, onSuccess, selectedWarehouse
   const [parsedOrders, setParsedOrders] = useState<UploadedOrder[]>([]);
   const [selectedBranch, setSelectedBranch] = useState<string>('all');
   const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
+
+  /** เชื่อมออเดอร์เดิม — ใช้กับออเดอร์ใหม่จากไฟล์ (เลขเอกสาร SML ใหม่) เท่านั้น */
+  const [linkPriorOrder, setLinkPriorOrder] = useState(false);
+  const [priorOrderLookup, setPriorOrderLookup] = useState('');
+  const [priorOrderResolved, setPriorOrderResolved] = useState<{ id: string; order_number: string | null } | null>(null);
+  const [priorOrderLookupError, setPriorOrderLookupError] = useState<string | null>(null);
+  const [resolvingPrior, setResolvingPrior] = useState(false);
+  const [replacesSmlDocNo, setReplacesSmlDocNo] = useState('');
 
   const filteredOrders = useMemo(() => {
     if (selectedBranch === 'all') return parsedOrders;
@@ -122,7 +130,20 @@ export function OrderUploadModal({ isOpen, onClose, onSuccess, selectedWarehouse
     const validOrders = filteredOrders.filter(o => !o.error && o.action !== 'skip' && o.action !== 'locked');
     const invalidOrders = filteredOrders.filter(o => o.error && o.action !== 'locked');
     const skippedOrders = filteredOrders.filter(o => !o.error && o.action === 'skip');
-    const lockedOrders = filteredOrders.filter(o => o.action === 'locked');
+
+    if (linkPriorOrder && !priorOrderResolved) {
+      error('กรุณากด「ตรวจสอบ」ให้พบออเดอร์เดิม หรือปิดการเชื่อมออเดอร์เดิม');
+      return;
+    }
+
+    const newOrdersInSave = validOrders.filter((o) => o.action === 'new');
+    const wantsPriorMeta =
+      (linkPriorOrder && Boolean(priorOrderResolved)) || Boolean(replacesSmlDocNo.trim());
+    if (wantsPriorMeta && newOrdersInSave.length === 0) {
+      warning(
+        'ไม่มีออเดอร์ใหม่ในรายการที่จะบันทึก — การผูกออเดอร์เดิม/เลขเอกสาร SML เดิม จะถูกใช้เฉพาะแถวที่เป็น「ออเดอร์ใหม่」(เลขเอกสารใหม่ในระบบ)'
+      );
+    }
     
     if (validOrders.length === 0 && invalidOrders.length === 0) {
       success(`ข้อมูลเหมือนเดิม ไม่มีการอัพเดต (ข้าม ${skippedOrders.length} รายการ)`);
@@ -141,6 +162,18 @@ export function OrderUploadModal({ isOpen, onClose, onSuccess, selectedWarehouse
       let processedCount = 0;
 
       for (const order of validOrders) {
+        const internalNotesParts: string[] = [];
+        if (order.action === 'new') {
+          if (linkPriorOrder && priorOrderResolved) {
+            internalNotesParts.push(
+              `ต่อจากออเดอร์เดิม: ${priorOrderResolved.order_number || '—'} (${priorOrderResolved.id})`
+            );
+          }
+          if (replacesSmlDocNo.trim()) {
+            internalNotesParts.push(`เลขเอกสาร SML เดิมอ้างอิง: ${replacesSmlDocNo.trim()}`);
+          }
+        }
+
         const orderInsert = {
           sml_doc_no: order.doc_no, // เก็บรหัส SML หลังบ้าน
           store_id: order.store_id!,
@@ -149,6 +182,15 @@ export function OrderUploadModal({ isOpen, onClose, onSuccess, selectedWarehouse
           notes: `(อัพโหลดจาก SML)`,
           created_by: profile?.id,
           warehouse_id: order.warehouse_id!,
+          ...(order.action === 'new' && linkPriorOrder && priorOrderResolved
+            ? { related_prior_order_id: priorOrderResolved.id }
+            : {}),
+          ...(order.action === 'new' && replacesSmlDocNo.trim()
+            ? { replaces_sml_doc_no: replacesSmlDocNo.trim() }
+            : {}),
+          ...(order.action === 'new' && internalNotesParts.length > 0
+            ? { internal_notes: internalNotesParts.join('\n') }
+            : {}),
         };
 
         const itemsToSubmit = order.items.map(item => ({
@@ -214,6 +256,11 @@ export function OrderUploadModal({ isOpen, onClose, onSuccess, selectedWarehouse
   const resetUpload = () => {
     setParsedOrders([]);
     setSelectedBranch('all');
+    setLinkPriorOrder(false);
+    setPriorOrderLookup('');
+    setPriorOrderResolved(null);
+    setPriorOrderLookupError(null);
+    setReplacesSmlDocNo('');
   };
 
   const toggleExpand = (docNo: string) => {
@@ -363,6 +410,110 @@ export function OrderUploadModal({ isOpen, onClose, onSuccess, selectedWarehouse
                         <p className="text-2xl font-bold text-orange-700 dark:text-orange-300">{lockedCount}</p>
                     </div>
                     )}
+                 </div>
+
+                 {/* เชื่อมออเดอร์เดิม — ใช้เมื่อไฟล์มีเลขเอกสารใหม่ (ออเดอร์ใหม่); ไม่กระทบแถว「อัพเดต」ตามเลขเดิม */}
+                 <div className="bg-rose-50/80 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-900/50 rounded-xl p-4 space-y-3">
+                   <label className="flex items-start gap-3 cursor-pointer">
+                     <input
+                       type="checkbox"
+                       className="mt-1 h-4 w-4 rounded border-gray-300 dark:border-slate-600 text-rose-600 focus:ring-rose-500 dark:bg-slate-800"
+                       checked={linkPriorOrder}
+                       onChange={(e) => {
+                         setLinkPriorOrder(e.target.checked);
+                         if (!e.target.checked) {
+                           setPriorOrderLookup('');
+                           setPriorOrderResolved(null);
+                           setPriorOrderLookupError(null);
+                         }
+                       }}
+                     />
+                     <span>
+                       <span className="flex items-center gap-2 font-semibold text-rose-900 dark:text-rose-100">
+                         <Link2 className="w-4 h-4 shrink-0" />
+                         เชื่อมกับออเดอร์เดิม (แก้บิล / เลข SML ใหม่)
+                       </span>
+                       <span className="block text-sm text-rose-800/90 dark:text-rose-200/90 mt-1">
+                         บันทึกลงเฉพาะรายการที่เป็น「ออเดอร์ใหม่」ในไฟล์นี้ — แถว「อัพเดต」ตามเลขเอกสารเดิมจะไม่ถูกเปลี่ยนการผูก
+                       </span>
+                     </span>
+                   </label>
+
+                   {linkPriorOrder && (
+                     <div className="flex flex-col sm:flex-row gap-2 sm:items-end pl-1 border-l-2 border-rose-300 dark:border-rose-800 ml-1">
+                       <div className="flex-1 min-w-0">
+                         <label className="block text-sm font-medium text-rose-900 dark:text-rose-200 mb-1">
+                           เลขที่ออเดอร์เดิม หรือ UUID
+                         </label>
+                         <input
+                           type="text"
+                           value={priorOrderLookup}
+                           onChange={(e) => {
+                             setPriorOrderLookup(e.target.value);
+                             setPriorOrderResolved(null);
+                             setPriorOrderLookupError(null);
+                           }}
+                           placeholder="เช่น SD250118-0123 หรือ uuid"
+                           className="w-full px-3 py-2 border border-rose-200 dark:border-rose-800 rounded-lg bg-white dark:bg-slate-900 text-gray-900 dark:text-white"
+                         />
+                       </div>
+                       <Button
+                         type="button"
+                         variant="outline"
+                         disabled={resolvingPrior || !priorOrderLookup.trim()}
+                         onClick={async () => {
+                           setPriorOrderLookupError(null);
+                           setPriorOrderResolved(null);
+                           const q = priorOrderLookup.trim();
+                           if (!q) {
+                             setPriorOrderLookupError('กรุณากรอกเลขที่ออเดอร์หรือ UUID');
+                             return;
+                           }
+                           setResolvingPrior(true);
+                           try {
+                             const res = await ordersService.resolvePriorOrderLookup(q);
+                             if (!res) {
+                               setPriorOrderLookupError(
+                                 'ไม่พบออเดอร์ หรือมีหลายรายการที่ใกล้เคียง — ใส่เลขที่เต็มหรือ UUID'
+                               );
+                               return;
+                             }
+                             setPriorOrderResolved(res);
+                           } catch {
+                             setPriorOrderLookupError('ตรวจสอบไม่สำเร็จ');
+                           } finally {
+                             setResolvingPrior(false);
+                           }
+                         }}
+                         className="shrink-0 border-rose-300 dark:border-rose-700"
+                       >
+                         {resolvingPrior ? 'กำลังตรวจ…' : 'ตรวจสอบ'}
+                       </Button>
+                     </div>
+                   )}
+
+                   {priorOrderLookupError && (
+                     <p className="text-sm text-red-600 dark:text-red-400 pl-1">{priorOrderLookupError}</p>
+                   )}
+                   {priorOrderResolved && (
+                     <p className="text-sm text-emerald-800 dark:text-emerald-200 pl-1">
+                       พบออเดอร์เดิม: <strong>{priorOrderResolved.order_number || '—'}</strong>
+                       <span className="text-xs text-gray-500 dark:text-gray-400 ml-2 font-mono">{priorOrderResolved.id}</span>
+                     </p>
+                   )}
+
+                   <div>
+                     <label className="block text-sm font-medium text-rose-900 dark:text-rose-200 mb-1">
+                       เลขเอกสาร SML เดิมที่แทนที่ (ถ้ามี)
+                     </label>
+                     <input
+                       type="text"
+                       value={replacesSmlDocNo}
+                       onChange={(e) => setReplacesSmlDocNo(e.target.value)}
+                       placeholder="บันทึกมือ — ใช้กับออเดอร์ใหม่ในไฟล์นี้"
+                       className="w-full px-3 py-2 border border-rose-200 dark:border-rose-800 rounded-lg bg-white dark:bg-slate-900 text-gray-900 dark:text-white"
+                     />
+                   </div>
                  </div>
 
                  {/* Order List */}

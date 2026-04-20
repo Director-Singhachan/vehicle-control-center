@@ -143,6 +143,11 @@ type OrderInsert = {
   warehouse_id?: string | null;
   payment_status?: string | null;
   delivery_time_slot?: string | null;
+  internal_notes?: string | null;
+  sml_doc_no?: string | null;
+  related_prior_order_id?: string | null;
+  replaces_sml_doc_no?: string | null;
+  exclude_from_vehicle_revenue_rollup?: boolean;
 };
 
 type OrderUpdate = Partial<OrderInsert>;
@@ -154,8 +159,9 @@ type OrderItem = {
   quantity: number;
   quantity_picked_up_at_store: number; // ลูกค้ารับที่หน้าร้านแล้ว (sales บันทึก)
   quantity_delivered: number;           // ส่งแล้ว (รวมทุก completed trips — auto)
+  quantity_fulfilled_prior_bill?: number; // เคสบิลแก้: จำนวนที่ถือว่าส่งครบจากทริป/บิลก่อน (ลดค้างส่ง)
   // computed (from view or service):
-  quantity_remaining?: number;          // = quantity - picked_up - delivered
+  quantity_remaining?: number;          // = quantity - picked_up - delivered - prior_bill
   unit_price: number | null;
   unit: string | null;
   discount_percent: number | null;
@@ -305,7 +311,9 @@ export const ordersService = {
 
     const { data: items, error: itemsError } = await supabase
       .from('order_items')
-      .select('order_id, product_id, quantity, quantity_picked_up_at_store, quantity_delivered, fulfillment_method, unit, is_bonus')
+      .select(
+        'order_id, product_id, quantity, quantity_picked_up_at_store, quantity_delivered, quantity_fulfilled_prior_bill, fulfillment_method, unit, is_bonus'
+      )
       .in('order_id', orderIds);
 
     if (itemsError) {
@@ -322,7 +330,8 @@ export const ordersService = {
 
       const pickedUp = Number(row.quantity_picked_up_at_store ?? 0);
       const delivered = Number(row.quantity_delivered ?? 0);
-      const rem = Math.max(0, Number(row.quantity) - pickedUp - delivered);
+      const priorBill = Number((row as { quantity_fulfilled_prior_bill?: number }).quantity_fulfilled_prior_bill ?? 0);
+      const rem = Math.max(0, Number(row.quantity) - pickedUp - delivered - priorBill);
       orderIdToRemaining.set(row.order_id, (orderIdToRemaining.get(row.order_id) ?? 0) + rem);
     }
 
@@ -332,7 +341,8 @@ export const ordersService = {
       if (method === 'pickup') continue;
       const pickedUp = Number(row.quantity_picked_up_at_store ?? 0);
       const delivered = Number(row.quantity_delivered ?? 0);
-      const rem = Math.max(0, Number(row.quantity) - pickedUp - delivered);
+      const priorBill = Number((row as { quantity_fulfilled_prior_bill?: number }).quantity_fulfilled_prior_bill ?? 0);
+      const rem = Math.max(0, Number(row.quantity) - pickedUp - delivered - priorBill);
       if (rem <= 0) continue;
       const arr = orderIdToItems.get(row.order_id) ?? [];
       arr.push({
@@ -1028,7 +1038,8 @@ export const ordersService = {
       .maybeSingle();
 
     if (existingOrder) {
-      // 1. UPDATE ข้อมูลออเดอร์เดิม + เคลียร์ trip/order_number/สถานะให้กลับมารอคอนเฟิร์ม
+      // 1. UPDATE ข้อมูลออเดอร์เดิม — ไม่แตะ related_prior_order_id / replaces_sml_doc_no / internal_notes
+      //    (การผูกเคสแก้บิลใช้เฉพาะตอนสร้างออเดอร์ใหม่จากเลขเอกสาร SML ใหม่)
       const updatePayload: Record<string, unknown> = {
         store_id: orderData.store_id,
         order_date: orderData.order_date,
@@ -1507,11 +1518,13 @@ export const orderItemsService = {
       ...item,
       quantity_picked_up_at_store: Number(item.quantity_picked_up_at_store ?? 0),
       quantity_delivered: Number(item.quantity_delivered ?? 0),
+      quantity_fulfilled_prior_bill: Number(item.quantity_fulfilled_prior_bill ?? 0),
       quantity_remaining: Math.max(
         0,
         Number(item.quantity)
         - Number(item.quantity_picked_up_at_store ?? 0)
         - Number(item.quantity_delivered ?? 0)
+        - Number(item.quantity_fulfilled_prior_bill ?? 0)
       ),
     }));
   },
