@@ -18,6 +18,15 @@ import { TripCard } from '../components/trip/SalesTripCard';
 // โหมดแสดงผล: ดูแบบทริป vs ดูแบบรายร้าน
 type ViewMode = 'by_trip' | 'by_store';
 
+/** ข้อความใต้ชื่อสินค้า — เปรียบเทียบบรรทัดออเดอร์กับรายการในทริปวันนี้ */
+const MSG_PRODUCT_NOT_ON_TRIP_TODAY =
+  'ยังไม่มีในรายการทริปวันนี้ — จะมีเมื่อจัดสินค้านี้ลงทริป';
+const MSG_PRODUCT_ON_TRIP_WITH_BREAKDOWN =
+  'จัดลงทริปวันนี้แล้ว — ยอดส่งต่อรถอยู่ด้านล่าง';
+const MSG_PRODUCT_ON_TRIP_MODAL_MULTI_TRIP =
+  'จัดลงทริปวันนี้แล้ว — ยอดส่งต่อรถดูในคอลัมน์แบ่งตามรถ';
+const MSG_PRODUCT_ON_TRIP_COMPACT = 'จัดลงทริปวันนี้แล้ว';
+
 // สินค้ารวมยอด: product_id เดียวกันจากหลายทริป → แสดงเป็นแถวเดียว + breakdown
 interface SummaryItem {
   product_id: string;
@@ -321,7 +330,14 @@ const StoreCard = memo(
                               </div>
                               {!summarySi && (
                                 <p className="text-[11px] text-amber-700 dark:text-amber-300 mt-1">
-                                  ยังไม่มีรายการนี้ในทริปที่เลือกวันนี้ — จัดส่งจะตามเมื่อจัดลงทริป
+                                  {MSG_PRODUCT_NOT_ON_TRIP_TODAY}
+                                </p>
+                              )}
+                              {summarySi && (
+                                <p className="text-[11px] text-enterprise-600 dark:text-enterprise-400 mt-1">
+                                  {showTripBreakdown
+                                    ? MSG_PRODUCT_ON_TRIP_WITH_BREAKDOWN
+                                    : MSG_PRODUCT_ON_TRIP_COMPACT}
                                 </p>
                               )}
                             </div>
@@ -2044,7 +2060,14 @@ export function SalesTripsView() {
                                         <div>{productNameDisp}</div>
                                         {invLine && !breakdownSi && (
                                           <p className="text-[11px] text-amber-700 dark:text-amber-300 mt-1">
-                                            ยังไม่มีในทริปวันนี้ — จะแสดงเมื่อจัดลงทริป
+                                            {MSG_PRODUCT_NOT_ON_TRIP_TODAY}
+                                          </p>
+                                        )}
+                                        {invLine && breakdownSi && (
+                                          <p className="text-[11px] text-enterprise-600 dark:text-enterprise-400 mt-1">
+                                            {ms.trips.length > 1
+                                              ? MSG_PRODUCT_ON_TRIP_MODAL_MULTI_TRIP
+                                              : MSG_PRODUCT_ON_TRIP_COMPACT}
                                           </p>
                                         )}
                                       </td>
