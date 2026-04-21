@@ -220,6 +220,23 @@ export interface PickupPendingItem {
 // Orders Service
 // ========================================
 
+/** บรรทัดสินค้าตามออเดอร์จริง — ใช้หน้าออกบิลแบบรายร้าน */
+export interface OrderInvoiceDisplayLine {
+  rowKey: string;
+  product_id: string;
+  is_bonus: boolean;
+  unit: string;
+  ordered: number;
+  pickedUp: number;
+  delivered: number;
+  product: {
+    product_code?: string;
+    product_name?: string;
+    unit?: string;
+    category?: string | null;
+  } | null;
+}
+
 export const ordersService = {
   /**
    * ดึงออเดอร์ทั้งหมด
@@ -742,45 +759,223 @@ export const ordersService = {
   },
 
   /**
-   * ดึงยอดรวมต่อสินค้า (จาก order_items) สำหรับร้านนี้ในทริปนี้
-   * ใช้สำหรับหน้าออกบิล — แสดง "สั่งทั้งหมด" และ "รับที่ร้านแล้ว" ที่ถูกต้อง (รวม delivery + pickup)
+   * บรรทัดแสดงใบแจ้งหนี้ต่อร้าน — ครบทุกรายการที่ลูกค้าสั่ง (รวมที่ยังไม่ถูกจัดลงทริปในวันนี้)
    */
-  async getOrderQuantitiesByProductForStoreInTrip(
-    tripId: string,
-    storeId: string
-  ): Promise<Map<string, { ordered: number; pickedUp: number }>> {
-    const { data: orders, error: ordersError } = await supabase
-      .from('orders')
-      .select('id')
-      .eq('delivery_trip_id', tripId)
-      .eq('store_id', storeId);
+  async getInvoiceBundleForStoreAcrossTrips(
+    tripIds: string[],
+    storeId: string,
+  ): Promise<{
+    qtyMap: Map<string, { ordered: number; pickedUp: number; delivered: number }>;
+    lines: OrderInvoiceDisplayLine[];
+  }> {
+    const orderIds = await this.resolveOrderIdsForTripsAndStore(tripIds, storeId);
+    if (!orderIds.length) {
+      return { qtyMap: new Map(), lines: [] };
+    }
 
-    if (ordersError) throw ordersError;
-    if (!orders?.length) return new Map();
+    const { data: raw, error } = await supabase
+      .from('order_items')
+      .select(
+        `
+        product_id,
+        quantity,
+        quantity_picked_up_at_store,
+        quantity_delivered,
+        is_bonus,
+        unit,
+        products (
+          product_code,
+          product_name,
+          unit,
+          category
+        )
+      `,
+      )
+      .in('order_id', orderIds);
 
-    const orderIds = orders.map((o: any) => o.id);
+    if (error) throw error;
+
+    const qtyMap = new Map<string, { ordered: number; pickedUp: number; delivered: number }>();
+    const lineAgg = new Map<
+      string,
+      {
+        rowKey: string;
+        product_id: string;
+        is_bonus: boolean;
+        unit: string;
+        ordered: number;
+        pickedUp: number;
+        delivered: number;
+        product: {
+          product_code?: string;
+          product_name?: string;
+          unit?: string;
+          category?: string | null;
+        } | null;
+      }
+    >();
+
+    for (const row of raw ?? []) {
+      const r = row as {
+        product_id: string;
+        quantity?: number | null;
+        quantity_picked_up_at_store?: number | null;
+        quantity_delivered?: number | null;
+        is_bonus?: boolean | null;
+        unit?: string | null;
+        products?: {
+          product_code?: string;
+          product_name?: string;
+          unit?: string;
+          category?: string | null;
+        } | null;
+      };
+      const unitNorm = r.unit != null && String(r.unit).trim() !== '' ? String(r.unit).trim() : '';
+      const mapKey = `${r.product_id}_${r.is_bonus ? 'bonus' : 'normal'}_${unitNorm}`;
+      const ordered = Number(r.quantity ?? 0);
+      const pickedUp = Number(r.quantity_picked_up_at_store ?? 0);
+      const delivered = Number(r.quantity_delivered ?? 0);
+
+      const prevM = qtyMap.get(mapKey);
+      if (prevM) {
+        prevM.ordered += ordered;
+        prevM.pickedUp += pickedUp;
+        prevM.delivered += delivered;
+      } else {
+        qtyMap.set(mapKey, { ordered, pickedUp, delivered });
+      }
+
+      const pr = r.products && !Array.isArray(r.products) ? r.products : null;
+      const productFlat = pr
+        ? {
+            product_code: pr.product_code,
+            product_name: pr.product_name,
+            unit: pr.unit,
+            category: pr.category ?? null,
+          }
+        : null;
+
+      const prevL = lineAgg.get(mapKey);
+      if (prevL) {
+        prevL.ordered += ordered;
+        prevL.pickedUp += pickedUp;
+        prevL.delivered += delivered;
+      } else {
+        lineAgg.set(mapKey, {
+          rowKey: mapKey,
+          product_id: r.product_id,
+          is_bonus: !!r.is_bonus,
+          unit: unitNorm,
+          ordered,
+          pickedUp,
+          delivered,
+          product: productFlat,
+        });
+      }
+    }
+
+    const lines = Array.from(lineAgg.values()).sort((a, b) => {
+      const na = (a.product?.product_name || '').localeCompare(b.product?.product_name || '', 'th');
+      if (na !== 0) return na;
+      return a.rowKey.localeCompare(b.rowKey);
+    });
+
+    return { qtyMap, lines };
+  },
+
+  /**
+   * ยอดต่อบรรทัด order_items สำหรับหน้าออกบิล — รวมยอดสั่ง / รับที่ร้าน / จัดส่งแล้ว (quantity_delivered)
+   */
+  async buildOrderQtyMapFromOrderIds(
+    orderIds: string[],
+  ): Promise<Map<string, { ordered: number; pickedUp: number; delivered: number }>> {
+    if (!orderIds.length) return new Map();
     const { data: items, error: itemsError } = await supabase
       .from('order_items')
-      .select('product_id, quantity, quantity_picked_up_at_store, is_bonus, unit')
+      .select('product_id, quantity, quantity_picked_up_at_store, quantity_delivered, is_bonus, unit')
       .in('order_id', orderIds);
 
     if (itemsError) throw itemsError;
     if (!items?.length) return new Map();
 
-    const map = new Map<string, { ordered: number; pickedUp: number }>();
+    const map = new Map<string, { ordered: number; pickedUp: number; delivered: number }>();
     for (const row of items) {
       const key = `${row.product_id}_${row.is_bonus ? 'bonus' : 'normal'}_${row.unit || ''}`;
       const ordered = Number(row.quantity ?? 0);
       const pickedUp = Number(row.quantity_picked_up_at_store ?? 0);
+      const delivered = Number(row.quantity_delivered ?? 0);
       const existing = map.get(key);
       if (existing) {
         existing.ordered += ordered;
         existing.pickedUp += pickedUp;
+        existing.delivered += delivered;
       } else {
-        map.set(key, { ordered, pickedUp });
+        map.set(key, { ordered, pickedUp, delivered });
       }
     }
     return map;
+  },
+
+  /**
+   * หา order_id ที่เกี่ยวกับจุดส่ง (ร้าน + ทริป)
+   * - orders.delivery_trip_id (ทริปหลัก / backward compatible)
+   * - order_delivery_trip_allocations (แบ่งส่งหลายทริป — ทริปที่ 2+ ไม่มี delivery_trip_id บน orders)
+   */
+  async resolveOrderIdsForTripsAndStore(tripIds: string[], storeId: string): Promise<string[]> {
+    if (!tripIds.length) return [];
+    const orderIdSet = new Set<string>();
+
+    const { data: direct, error: e1 } = await supabase
+      .from('orders')
+      .select('id')
+      .eq('store_id', storeId)
+      .in('delivery_trip_id', tripIds);
+
+    if (e1) throw e1;
+    (direct ?? []).forEach((o: { id: string }) => orderIdSet.add(o.id));
+
+    const { data: allocRows, error: e2 } = await supabase
+      .from('order_delivery_trip_allocations')
+      .select('order_id')
+      .in('delivery_trip_id', tripIds);
+
+    if (e2) throw e2;
+    const fromAlloc = [...new Set((allocRows ?? []).map((r: { order_id: string }) => r.order_id))];
+    if (fromAlloc.length > 0) {
+      const { data: ordersMatch, error: e3 } = await supabase
+        .from('orders')
+        .select('id')
+        .eq('store_id', storeId)
+        .in('id', fromAlloc);
+
+      if (e3) throw e3;
+      (ordersMatch ?? []).forEach((o: { id: string }) => orderIdSet.add(o.id));
+    }
+
+    return Array.from(orderIdSet);
+  },
+
+  /**
+   * ดึงยอดรวมต่อสินค้า (จาก order_items) สำหรับร้านนี้ในทริปนี้
+   * ใช้สำหรับหน้าออกบิล — แสดง "สั่งทั้งหมด" และ "รับที่ร้านแล้ว" ที่ถูกต้อง (รวม delivery + pickup)
+   */
+  async getOrderQuantitiesByProductForStoreInTrip(
+    tripId: string,
+    storeId: string,
+  ): Promise<Map<string, { ordered: number; pickedUp: number; delivered: number }>> {
+    const { qtyMap } = await this.getInvoiceBundleForStoreAcrossTrips([tripId], storeId);
+    return qtyMap;
+  },
+
+  /**
+   * ยอดออเดอร์เต็มต่อร้านเมื่อสินค้าแบ่งหลายทริปในวันเดียวกัน — รวม order ที่ผูกกับทริปใดทริปหนึ่งในรายการ
+   */
+  async getOrderQuantitiesByProductForStoreAcrossTrips(
+    tripIds: string[],
+    storeId: string,
+  ): Promise<Map<string, { ordered: number; pickedUp: number; delivered: number }>> {
+    const { qtyMap } = await this.getInvoiceBundleForStoreAcrossTrips(tripIds, storeId);
+    return qtyMap;
   },
 
   /**
