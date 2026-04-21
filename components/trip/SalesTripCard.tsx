@@ -10,6 +10,26 @@ import { Badge } from '../ui/Badge';
 // TripCard — ใช้สำหรับ by-trip view
 // ────────────────────────────────────────────
 
+function aggregateOrderQtyForProduct(
+    map: Map<string, { ordered: number; pickedUp: number; delivered?: number }>,
+    productId: string,
+    isBonus: boolean,
+): { ordered: number; pickedUp: number; delivered: number } {
+    const token = isBonus ? 'bonus' : 'normal';
+    const prefix = `${productId}_${token}_`;
+    let ordered = 0;
+    let pickedUp = 0;
+    let delivered = 0;
+    for (const [k, v] of map) {
+        if (k === `${productId}_${token}_` || k.startsWith(prefix)) {
+            ordered += v.ordered;
+            pickedUp += v.pickedUp;
+            delivered += v.delivered ?? 0;
+        }
+    }
+    return { ordered, pickedUp, delivered };
+}
+
 function sameReadonlyStringSet(a?: ReadonlySet<string>, b?: ReadonlySet<string>): boolean {
     if (a === b) return true;
     if (!a && !b) return true;
@@ -33,8 +53,12 @@ export interface TripCardProps {
     hasPackingLayout?: boolean;
     /** ร้านที่มีการแบ่งส่งหลายทริปในวันเดียวกัน (จากหน้าออกบิล) — แสดงคำเตือนต่อจุดส่ง */
     storeIdsSplitAcrossTrips?: ReadonlySet<string>;
+    /** key `${tripId}__${storeId}` — ทริปนี้แสดงไม่ครบยอดตามใบแจ้งหนี้รวมเมื่อเทียบของในทริปกับ order_items */
+    tripStoreInvoiceGapHints?: ReadonlySet<string>;
     /** สลับไปมุมมองรายร้านเพื่อออกบิลรวม */
     onSuggestByStoreInvoiceView?: () => void;
+    /** key `${tripId}__${storeId}` → ยอดตาม order_items */
+    orderQtyByTripStore?: Map<string, Map<string, { ordered: number; pickedUp: number; delivered: number }>>;
 }
 
 export const TripCard = memo(({
@@ -48,7 +72,9 @@ export const TripCard = memo(({
     tripsWithFullDetails,
     hasPackingLayout,
     storeIdsSplitAcrossTrips,
+    tripStoreInvoiceGapHints,
     onSuggestByStoreInvoiceView,
+    orderQtyByTripStore,
 }: TripCardProps) => {
     // Memoize formatted date
     const formattedDate = useMemo(() => {
@@ -68,13 +94,20 @@ export const TripCard = memo(({
     /** แบ่งส่งจากออเดอร์เดียว / หลายทริป — แนะนำมุมมองรายร้านตอนออกบิล */
     const tripSplitBillingSummary = useMemo(() => {
         const perStore = sortedStores.map((store: any) => {
+            const key = `${trip.id}__${store.store_id}`;
             const multiTrip = storeIdsSplitAcrossTrips?.has(store.store_id) ?? false;
+            const invoiceGap = tripStoreInvoiceGapHints?.has(key) ?? false;
             const partialOrder =
                 store.order_status === 'partial' || store.order_status === 'assigned';
-            return { multiTrip, partialOrder, show: multiTrip || partialOrder };
+            return {
+                multiTrip,
+                partialOrder,
+                invoiceGap,
+                show: multiTrip || partialOrder || invoiceGap,
+            };
         });
         return { perStore, any: perStore.some((p) => p.show) };
-    }, [sortedStores, storeIdsSplitAcrossTrips]);
+    }, [sortedStores, storeIdsSplitAcrossTrips, tripStoreInvoiceGapHints, trip.id]);
 
     // Invoice progress for this trip
     const tripInvoiceProgress = useMemo(() => {
@@ -310,6 +343,14 @@ export const TripCard = memo(({
                                                                 <span className="font-semibold">รายร้าน</span>
                                                             </p>
                                                         )}
+                                                        {splitHint.invoiceGap &&
+                                                            !splitHint.multiTrip &&
+                                                            !splitHint.partialOrder && (
+                                                            <p className="leading-relaxed text-amber-900/95 dark:text-amber-100/90">
+                                                                ที่นี่แสดงเฉพาะสินค้าที่ผูกกับทริปนี้ — ถ้าตามใบแจ้งหนี้มีจำนวนหรือรายการมากกว่าที่เห็นในทริปนี้ ให้เปิดมุมมอง{' '}
+                                                                <span className="font-semibold">รายร้าน</span> เพื่อดูรายการตามออเดอร์ครบและเช็คออกบิลให้ตรงยอด
+                                                            </p>
+                                                        )}
                                                         {onSuggestByStoreInvoiceView && (
                                                             <button
                                                                 type="button"
@@ -367,7 +408,19 @@ export const TripCard = memo(({
                                                 {/* แสดงรายการสินค้าเมื่อ expand */}
                                                 {isExpanded && store.items && store.items.length > 0 && (
                                                     <div className="p-3 bg-white dark:bg-slate-900/50 rounded-lg border border-gray-200 dark:border-slate-700 space-y-2 max-h-96 overflow-y-auto">
-                                                        {store.items.map((item: any, itemIndex: number) => (
+                                                        {store.items.map((item: any, itemIndex: number) => {
+                                                            const unit = item.unit || item.product?.unit || 'ชิ้น';
+                                                            const tripQty = Math.floor(Number(item.quantity) || 0);
+                                                            const orderMap = orderQtyByTripStore?.get(`${trip.id}__${store.store_id}`);
+                                                            const agg =
+                                                                orderMap && orderMap.size > 0
+                                                                    ? aggregateOrderQtyForProduct(orderMap, item.product_id, !!item.is_bonus)
+                                                                    : null;
+                                                            const pct =
+                                                                agg && agg.ordered > 0
+                                                                    ? Math.min(100, Math.round((agg.delivered / agg.ordered) * 100))
+                                                                    : null;
+                                                            return (
                                                             <div key={item.id} className="flex items-center justify-between text-sm py-2 px-2 border-b border-gray-100 dark:border-slate-700 last:border-b-0 hover:bg-gray-50 dark:hover:bg-slate-800/50 rounded">
                                                                 <div className="flex items-start gap-3 flex-1 min-w-0">
                                                                     <span className="text-xs text-gray-400 dark:text-gray-500 font-mono w-6 flex-shrink-0">
@@ -389,15 +442,32 @@ export const TripCard = memo(({
                                                                                 หมวดหมู่: {item.product.category}
                                                                             </p>
                                                                         )}
+                                                                        {agg && agg.ordered > 0 && (
+                                                                            <p className="text-xs text-enterprise-600 dark:text-enterprise-400 mt-1">
+                                                                                ใบแจ้งหนี้ (ยอดสั่ง):{' '}
+                                                                                {agg.ordered.toLocaleString('th-TH', { maximumFractionDigits: 0 })}{' '}
+                                                                                {unit}
+                                                                                {pct != null ? (
+                                                                                    <>
+                                                                                        {' '}
+                                                                                        · จัดส่งแล้ว {agg.delivered.toLocaleString('th-TH', {
+                                                                                            maximumFractionDigits: 0,
+                                                                                        })}{' '}
+                                                                                        ({pct}%)
+                                                                                    </>
+                                                                                ) : null}
+                                                                            </p>
+                                                                        )}
                                                                     </div>
                                                                 </div>
                                                                 <div className="text-right ml-4 flex-shrink-0">
                                                                     <span className="text-gray-700 dark:text-gray-300 font-semibold text-sm">
-                                                                        {Math.floor(Number(item.quantity) || 0).toLocaleString('th-TH', { maximumFractionDigits: 0 })} {item.unit || item.product?.unit || 'ชิ้น'}
+                                                                        {tripQty.toLocaleString('th-TH', { maximumFractionDigits: 0 })} {unit}
                                                                     </span>
+                                                                    <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">ในทริปนี้</p>
                                                                     {(Number(item.quantity_picked_up_at_store) || 0) > 0 && (
                                                                         <p className="text-xs text-amber-600 dark:text-amber-400 mt-0.5">
-                                                                            รับที่ร้านแล้ว {Math.floor(Number(item.quantity_picked_up_at_store)).toLocaleString('th-TH', { maximumFractionDigits: 0 })} {item.unit || item.product?.unit || 'ชิ้น'}
+                                                                            รับที่ร้านแล้ว {Math.floor(Number(item.quantity_picked_up_at_store)).toLocaleString('th-TH', { maximumFractionDigits: 0 })} {unit}
                                                                         </p>
                                                                     )}
                                                                     {item.product?.base_price && (
@@ -407,7 +477,8 @@ export const TripCard = memo(({
                                                                     )}
                                                                 </div>
                                                             </div>
-                                                        ))}
+                                                            );
+                                                        })}
                                                     </div>
                                                 )}
                                             </div>
@@ -493,7 +564,11 @@ export const TripCard = memo(({
     if (!sameReadonlyStringSet(prevProps.storeIdsSplitAcrossTrips, nextProps.storeIdsSplitAcrossTrips)) {
         return false;
     }
+    if (!sameReadonlyStringSet(prevProps.tripStoreInvoiceGapHints, nextProps.tripStoreInvoiceGapHints)) {
+        return false;
+    }
     if (prevProps.onSuggestByStoreInvoiceView !== nextProps.onSuggestByStoreInvoiceView) return false;
+    if (prevProps.orderQtyByTripStore !== nextProps.orderQtyByTripStore) return false;
     // Deep compare stores invoice_status + order_status (เตือนแบ่งส่ง/ออกบิล)
     const prevStores = prevProps.trip.stores || [];
     const nextStores = nextProps.trip.stores || [];
@@ -515,6 +590,8 @@ TripCard.displayName = 'TripCard';
 export interface SummaryItem {
     product_id: string;
     product: any;
+    /** หน่วยจากบรรทัดทริป (delivery_trip_items.unit) — ถ้ามีให้ใช้ก่อนหน่วยจากสินค้า */
+    line_unit?: string | null;
     totalQuantity: number;
     totalPickedUp: number;
     is_bonus: boolean;
