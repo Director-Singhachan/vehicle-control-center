@@ -53,6 +53,8 @@ export interface TripCardProps {
     hasPackingLayout?: boolean;
     /** ร้านที่มีการแบ่งส่งหลายทริปในวันเดียวกัน (จากหน้าออกบิล) — แสดงคำเตือนต่อจุดส่ง */
     storeIdsSplitAcrossTrips?: ReadonlySet<string>;
+    /** key `${tripId}__${storeId}` — ทริปนี้แสดงไม่ครบยอดตามใบแจ้งหนี้รวมเมื่อเทียบของในทริปกับ order_items */
+    tripStoreInvoiceGapHints?: ReadonlySet<string>;
     /** สลับไปมุมมองรายร้านเพื่อออกบิลรวม */
     onSuggestByStoreInvoiceView?: () => void;
     /** key `${tripId}__${storeId}` → ยอดตาม order_items */
@@ -70,6 +72,7 @@ export const TripCard = memo(({
     tripsWithFullDetails,
     hasPackingLayout,
     storeIdsSplitAcrossTrips,
+    tripStoreInvoiceGapHints,
     onSuggestByStoreInvoiceView,
     orderQtyByTripStore,
 }: TripCardProps) => {
@@ -91,13 +94,20 @@ export const TripCard = memo(({
     /** แบ่งส่งจากออเดอร์เดียว / หลายทริป — แนะนำมุมมองรายร้านตอนออกบิล */
     const tripSplitBillingSummary = useMemo(() => {
         const perStore = sortedStores.map((store: any) => {
+            const key = `${trip.id}__${store.store_id}`;
             const multiTrip = storeIdsSplitAcrossTrips?.has(store.store_id) ?? false;
+            const invoiceGap = tripStoreInvoiceGapHints?.has(key) ?? false;
             const partialOrder =
                 store.order_status === 'partial' || store.order_status === 'assigned';
-            return { multiTrip, partialOrder, show: multiTrip || partialOrder };
+            return {
+                multiTrip,
+                partialOrder,
+                invoiceGap,
+                show: multiTrip || partialOrder || invoiceGap,
+            };
         });
         return { perStore, any: perStore.some((p) => p.show) };
-    }, [sortedStores, storeIdsSplitAcrossTrips]);
+    }, [sortedStores, storeIdsSplitAcrossTrips, tripStoreInvoiceGapHints, trip.id]);
 
     // Invoice progress for this trip
     const tripInvoiceProgress = useMemo(() => {
@@ -333,6 +343,14 @@ export const TripCard = memo(({
                                                                 <span className="font-semibold">รายร้าน</span>
                                                             </p>
                                                         )}
+                                                        {splitHint.invoiceGap &&
+                                                            !splitHint.multiTrip &&
+                                                            !splitHint.partialOrder && (
+                                                            <p className="leading-relaxed text-amber-900/95 dark:text-amber-100/90">
+                                                                ที่นี่แสดงเฉพาะสินค้าที่ผูกกับทริปนี้ — ถ้าตามใบแจ้งหนี้มีจำนวนหรือรายการมากกว่าที่เห็นในทริปนี้ ให้เปิดมุมมอง{' '}
+                                                                <span className="font-semibold">รายร้าน</span> เพื่อดูรายการตามออเดอร์ครบและเช็คออกบิลให้ตรงยอด
+                                                            </p>
+                                                        )}
                                                         {onSuggestByStoreInvoiceView && (
                                                             <button
                                                                 type="button"
@@ -546,6 +564,9 @@ export const TripCard = memo(({
     if (!sameReadonlyStringSet(prevProps.storeIdsSplitAcrossTrips, nextProps.storeIdsSplitAcrossTrips)) {
         return false;
     }
+    if (!sameReadonlyStringSet(prevProps.tripStoreInvoiceGapHints, nextProps.tripStoreInvoiceGapHints)) {
+        return false;
+    }
     if (prevProps.onSuggestByStoreInvoiceView !== nextProps.onSuggestByStoreInvoiceView) return false;
     if (prevProps.orderQtyByTripStore !== nextProps.orderQtyByTripStore) return false;
     // Deep compare stores invoice_status + order_status (เตือนแบ่งส่ง/ออกบิล)
@@ -569,6 +590,8 @@ TripCard.displayName = 'TripCard';
 export interface SummaryItem {
     product_id: string;
     product: any;
+    /** หน่วยจากบรรทัดทริป (delivery_trip_items.unit) — ถ้ามีให้ใช้ก่อนหน่วยจากสินค้า */
+    line_unit?: string | null;
     totalQuantity: number;
     totalPickedUp: number;
     is_bonus: boolean;

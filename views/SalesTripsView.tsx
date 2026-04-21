@@ -117,6 +117,34 @@ function buildSingleTripInvoiceRows(items: any[]): Array<{
   return Array.from(rowMap.values());
 }
 
+/**
+ * มุมมองทริปแสดงเฉพาะรายการที่ผูกกับทริปนี้ — ถ้ายอดตามใบแจ้งหนี้รวมของร้านมากกว่าที่โผล่ในทริปนี้ ควรไปมุมมองรายร้านเพื่อดูครบ
+ */
+function tripStopShowsPartialOrderVersusInvoice(
+  invoiceLines: OrderInvoiceDisplayLine[] | undefined,
+  tripItems: any[] | undefined,
+): boolean {
+  if (!invoiceLines?.length) return false;
+  const orderedByKey = new Map<string, number>();
+  for (const line of invoiceLines) {
+    const key = `${line.product_id}_${line.is_bonus}`;
+    orderedByKey.set(key, (orderedByKey.get(key) ?? 0) + (Math.floor(Number(line.ordered)) || 0));
+  }
+  const tripQtyByKey = new Map<string, number>();
+  for (const it of tripItems || []) {
+    const pid = it?.product_id;
+    if (!pid) continue;
+    const key = `${pid}_${!!it.is_bonus}`;
+    tripQtyByKey.set(key, (tripQtyByKey.get(key) ?? 0) + Math.floor(Number(it.quantity) || 0));
+  }
+  for (const [key, ordered] of orderedByKey) {
+    if (ordered <= 0) continue;
+    const tripQty = tripQtyByKey.get(key) ?? 0;
+    if (tripQty < ordered) return true;
+  }
+  return false;
+}
+
 // Merged store: ร้านเดียวกันจากหลายทริป รวมเป็นก้อนเดียว
 interface MergedStoreEntry {
   store_id: string;
@@ -791,6 +819,21 @@ export function SalesTripsView() {
     return { count: storeIds.size, storeIds };
   }, [mergedStores]);
 
+  /** key `${tripId}__${storeId}` เมื่อทริปนี้แสดงไม่ครบยอดตามใบแจ้งหนี้รวมของร้าน (เทียบ order_items vs delivery_trip_items ในทริปนี้) */
+  const tripStoreInvoiceGapHints = useMemo(() => {
+    const keys = new Set<string>();
+    for (const trip of myTrips) {
+      for (const store of trip.stores || []) {
+        const lines = orderInvoiceLinesByStoreId.get(store.store_id);
+        if (!lines?.length) continue;
+        if (tripStopShowsPartialOrderVersusInvoice(lines, store.items)) {
+          keys.add(`${trip.id}__${store.store_id}`);
+        }
+      }
+    }
+    return keys;
+  }, [myTrips, orderInvoiceLinesByStoreId]);
+
   useEffect(() => {
     if (!mergedStores.length) {
       setOrderQtyByStoreId(new Map());
@@ -965,7 +1008,8 @@ export function SalesTripsView() {
             </div>
           </div>
 
-          {viewMode === 'by_trip' && splitAcrossTripsInfo.count > 0 && (
+          {viewMode === 'by_trip' &&
+            (splitAcrossTripsInfo.count > 0 || tripStoreInvoiceGapHints.size > 0) && (
             <div
               className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-xl border border-amber-200 dark:border-amber-800/80 bg-amber-50 dark:bg-amber-950/40 px-4 py-3 text-sm text-amber-900 dark:text-amber-100"
               role="status"
@@ -974,11 +1018,20 @@ export function SalesTripsView() {
                 <Info className="w-5 h-5 flex-shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" aria-hidden />
                 <div className="min-w-0">
                   <p className="font-semibold text-amber-950 dark:text-amber-50">
-                    แนะนำ: สลับไปดูแบบรายร้านเมื่อมีการแบ่งส่งหลายทริป
+                    {splitAcrossTripsInfo.count > 0 && tripStoreInvoiceGapHints.size > 0
+                      ? 'แนะนำ: สลับไปดูแบบรายร้าน (แบ่งหลายทริปหรือรายการในออเดอร์ไม่ครบในทริปเดียว)'
+                      : splitAcrossTripsInfo.count > 0
+                        ? 'แนะนำ: สลับไปดูแบบรายร้านเมื่อมีการแบ่งส่งหลายทริป'
+                        : 'แนะนำ: สลับไปดูแบบรายร้านเพื่อดูรายการตามใบแจ้งหนี้ครบ'}
                   </p>
                   <p className="mt-1 text-amber-900/90 dark:text-amber-200/90 leading-relaxed">
-                    วันนี้มี {splitAcrossTripsInfo.count} ร้านที่สินค้าแบ่งไปกับมากกว่าหนึ่งทริป — มุมมองแบบทริปจะเห็นทีละคันอาจทำให้เช็คยอดออกบิลสับสนได้
-                    การดูแบบรายร้านจะรวมยอดต่อสินค้าและเช็คออกบิลครั้งเดียวต่อร้านตามที่ออกใบแจ้งหนี้จริง
+                    {splitAcrossTripsInfo.count > 0 && (
+                      <>วันนี้มี {splitAcrossTripsInfo.count} ร้านที่สินค้าแบ่งไปกับมากกว่าหนึ่งทริป — </>
+                    )}
+                    {tripStoreInvoiceGapHints.size > 0 && (
+                      <>มุมมองทริปแต่ละคันจะแสดงเฉพาะของที่ผูกกับทริปนั้น — ถ้ายอดตามออเดอร์มีมากกว่าที่เห็นในทริปให้เปิดแบบรายร้าน — </>
+                    )}
+                    การมองทีละคันอาจทำให้เช็คยอดออกบิลสับสนได้ การดูแบบรายร้านจะรวมยอดต่อสินค้าและเช็คออกบิลครั้งเดียวต่อร้านตามที่ออกใบแจ้งหนี้จริง
                   </p>
                 </div>
               </div>
@@ -1262,6 +1315,7 @@ export function SalesTripsView() {
                     onToggleInvoiceStatus={handleToggleInvoiceStatus}
                     hasPackingLayout={tripsWithLayout.has(trip.id)}
                     storeIdsSplitAcrossTrips={splitAcrossTripsInfo.storeIds}
+                    tripStoreInvoiceGapHints={tripStoreInvoiceGapHints}
                     onSuggestByStoreInvoiceView={openByStoreInvoiceView}
                     orderQtyByTripStore={orderQtyByTripStoreKey}
                   />
