@@ -1,5 +1,5 @@
 // Commission Rates Management View - Manage commission rate configurations
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Plus, Edit2, Trash2, DollarSign, Truck, Calendar, AlertCircle } from 'lucide-react';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
@@ -18,6 +18,7 @@ const SERVICE_TYPE_OPTIONS = [
 
 export const CommissionRatesView: React.FC = () => {
     const [rates, setRates] = useState<CommissionRate[]>([]);
+    const [vehicleTypeOptions, setVehicleTypeOptions] = useState<string[]>([]);
     const [loading, setLoading] = useState(true);
     const [showForm, setShowForm] = useState(false);
     const [editingRate, setEditingRate] = useState<CommissionRate | null>(null);
@@ -53,9 +54,48 @@ export const CommissionRatesView: React.FC = () => {
         }
     };
 
+    const fetchVehicleTypeOptions = async () => {
+        try {
+            const { data, error } = await supabase
+                .from('vehicles')
+                .select('type')
+                .not('type', 'is', null);
+
+            if (error) throw error;
+
+            const typeMap = new Map<string, string>();
+            (data || []).forEach((row: { type: string | null }) => {
+                const raw = row.type;
+                const trimmed = raw?.trim();
+                if (!trimmed) return;
+                const key = trimmed.toLowerCase();
+                if (!typeMap.has(key)) {
+                    typeMap.set(key, trimmed);
+                }
+            });
+
+            const options = Array.from(typeMap.values()).sort((a, b) => a.localeCompare(b, 'th'));
+            setVehicleTypeOptions(options);
+        } catch (err) {
+            console.error('[CommissionRatesView] Error fetching vehicle type options:', err);
+            // Do not block the page if this fails; fallback to legacy value handling below.
+            setVehicleTypeOptions([]);
+        }
+    };
+
     useEffect(() => {
         fetchRates();
+        fetchVehicleTypeOptions();
     }, []);
+
+    const vehicleTypeSelectOptions = useMemo(() => {
+        const options = [...vehicleTypeOptions];
+        const currentVehicleType = formData.vehicle_type.trim();
+        if (currentVehicleType && !options.some((v) => v.toLowerCase() === currentVehicleType.toLowerCase())) {
+            return [`${currentVehicleType} (ค่าที่บันทึกเดิม)`, ...options];
+        }
+        return options;
+    }, [vehicleTypeOptions, formData.vehicle_type]);
 
     // Handle form submit
     const handleSubmit = async (e: React.FormEvent) => {
@@ -241,13 +281,22 @@ export const CommissionRatesView: React.FC = () => {
                                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                                     ประเภทรถ
                                 </label>
-                                <Input
-                                    type="text"
+                                <select
                                     value={formData.vehicle_type}
                                     onChange={(e) => setFormData({ ...formData, vehicle_type: e.target.value })}
-                                    placeholder="เช่น 4-wheel, 6-wheel, 10-wheel"
-                                />
-                                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">เว้นว่างถ้าใช้กับทุกประเภทรถ</p>
+                                    className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-transparent"
+                                >
+                                    <option value="">ทุกประเภทรถ</option>
+                                    {vehicleTypeSelectOptions.map((vehicleType) => {
+                                        const normalizedValue = vehicleType.replace(' (ค่าที่บันทึกเดิม)', '');
+                                        return (
+                                            <option key={vehicleType} value={normalizedValue}>
+                                                {vehicleType}
+                                            </option>
+                                        );
+                                    })}
+                                </select>
+                                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">เลือกจากประเภทรถจริงในระบบ เพื่อลดการพิมพ์ไม่ตรงกัน</p>
                             </div>
 
                             <div>
