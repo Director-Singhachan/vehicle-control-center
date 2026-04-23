@@ -10,6 +10,12 @@ import type { Database } from '../types/database';
 
 type CommissionRate = Database['public']['Tables']['commission_rates']['Row'];
 
+const SERVICE_TYPE_OPTIONS = [
+    { value: 'standard', label: 'มาตรฐาน (standard)' },
+    { value: 'carry_in', label: 'ลงมือ (carry_in)' },
+    { value: 'lift_off', label: 'ตักลง (lift_off)' },
+] as const;
+
 export const CommissionRatesView: React.FC = () => {
     const [rates, setRates] = useState<CommissionRate[]>([]);
     const [loading, setLoading] = useState(true);
@@ -18,7 +24,7 @@ export const CommissionRatesView: React.FC = () => {
     const [formData, setFormData] = useState({
         rate_name: '',
         vehicle_type: '',
-        service_type: '',
+        service_type: 'standard',
         rate_per_unit: '',
         is_active: true,
         effective_from: new Date().toISOString().split('T')[0],
@@ -102,7 +108,7 @@ export const CommissionRatesView: React.FC = () => {
             setFormData({
                 rate_name: '',
                 vehicle_type: '',
-                service_type: '',
+                service_type: 'standard',
                 rate_per_unit: '',
                 is_active: true,
                 effective_from: new Date().toISOString().split('T')[0],
@@ -126,7 +132,7 @@ export const CommissionRatesView: React.FC = () => {
         setFormData({
             rate_name: rate.rate_name,
             vehicle_type: rate.vehicle_type || '',
-            service_type: rate.service_type || '',
+            service_type: rate.service_type || 'standard',
             rate_per_unit: rate.rate_per_unit.toString(),
             is_active: rate.is_active,
             effective_from: rate.effective_from,
@@ -164,7 +170,7 @@ export const CommissionRatesView: React.FC = () => {
         setFormData({
             rate_name: '',
             vehicle_type: '',
-            service_type: '',
+            service_type: 'standard',
             rate_per_unit: '',
             is_active: true,
             effective_from: new Date().toISOString().split('T')[0],
@@ -248,13 +254,18 @@ export const CommissionRatesView: React.FC = () => {
                                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                                     ประเภทบริการ
                                 </label>
-                                <Input
-                                    type="text"
+                                <select
                                     value={formData.service_type}
                                     onChange={(e) => setFormData({ ...formData, service_type: e.target.value })}
-                                    placeholder="เช่น standard, express, special"
-                                />
-                                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">เว้นว่างถ้าใช้กับทุกประเภทบริการ</p>
+                                    className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-transparent"
+                                >
+                                    {SERVICE_TYPE_OPTIONS.map((option) => (
+                                        <option key={option.value} value={option.value}>
+                                            {option.label}
+                                        </option>
+                                    ))}
+                                </select>
+                                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">เลือกประเภทให้ตรงกับทริปที่สร้าง (ลงมือ/ตักลง)</p>
                             </div>
 
                             <div>
@@ -376,7 +387,10 @@ export const CommissionRatesView: React.FC = () => {
                                         {rate.service_type && (
                                             <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
                                                 <span className="text-xs">🎯</span>
-                                                <span>บริการ: {rate.service_type}</span>
+                                                <span>
+                                                    บริการ:{' '}
+                                                    {SERVICE_TYPE_OPTIONS.find((option) => option.value === rate.service_type)?.label || rate.service_type}
+                                                </span>
                                             </div>
                                         )}
                                     </div>

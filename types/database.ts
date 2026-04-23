@@ -1224,6 +1224,7 @@ export type Database = {
           packing_efficiency_score: number | null
           packing_issues_notes: string | null
           planned_date: string
+          service_type: string
           sequence_order: number
           space_utilization_percent: number | null
           status: string
@@ -1256,6 +1257,7 @@ export type Database = {
           packing_efficiency_score?: number | null
           packing_issues_notes?: string | null
           planned_date: string
+          service_type?: string
           sequence_order?: number
           space_utilization_percent?: number | null
           status?: string
@@ -1288,6 +1290,7 @@ export type Database = {
           packing_efficiency_score?: number | null
           packing_issues_notes?: string | null
           planned_date?: string
+          service_type?: string
           sequence_order?: number
           space_utilization_percent?: number | null
           status?: string

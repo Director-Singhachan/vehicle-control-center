@@ -81,6 +81,8 @@ export function CreateTripFromOrdersView({ selectedOrders, onBack, onSuccess }: 
               setSelectedDriverId3={wizard.setSelectedDriverId3}
               tripDate={wizard.tripDate}
               setTripDate={wizard.setTripDate}
+              serviceType={wizard.serviceType}
+              setServiceType={wizard.setServiceType}
               notes={wizard.notes}
               setNotes={wizard.setNotes}
               skipStockDeduction={wizard.skipStockDeduction}

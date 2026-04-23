@@ -13,7 +13,7 @@ import { useAuth } from './useAuth';
 import { useToast } from './useToast';
 import { useVehicles } from './useVehicles';
 import { useDeliveryTrips } from './useDeliveryTrips';
-import type { StoreDelivery, ItemSplitQty, CapacitySummary, SplitMode, TripSlot, MultiTripItemQty } from '../types/createTripWizard';
+import type { StoreDelivery, ItemSplitQty, CapacitySummary, SplitMode, TripSlot, MultiTripItemQty, TripServiceType } from '../types/createTripWizard';
 import { splitKey, createTripSlot } from '../types/createTripWizard';
 
 export interface UseCreateTripWizardParams {
@@ -32,6 +32,7 @@ export function useCreateTripWizard({ selectedOrders, onSuccess }: UseCreateTrip
   const [selectedVehicleId, setSelectedVehicleId] = useState('');
   const [selectedDriverId, setSelectedDriverId] = useState('');
   const [tripDate, setTripDate] = useState(new Date().toISOString().split('T')[0]);
+  const [serviceType, setServiceType] = useState<TripServiceType>('carry_in');
   const [notes, setNotes] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [orderItemsMap, setOrderItemsMap] = useState<Map<string, any[]>>(new Map());
@@ -998,6 +999,7 @@ export function useCreateTripWizard({ selectedOrders, onSuccess }: UseCreateTrip
         const trip1 = await deliveryTripService.create({
           vehicle_id: selectedVehicleId,
           driver_id: selectedDriverId,
+          service_type: serviceType,
           planned_date: tripDate,
           notes: notes ? `[คัน 1] ${notes}` : '[คัน 1]',
           stores: stores1,
@@ -1005,6 +1007,7 @@ export function useCreateTripWizard({ selectedOrders, onSuccess }: UseCreateTrip
         const trip2 = await deliveryTripService.create({
           vehicle_id: selectedVehicleId2,
           driver_id: selectedDriverId2,
+          service_type: serviceType,
           planned_date: tripDate,
           notes: notes ? `[คัน 2] ${notes}` : '[คัน 2]',
           stores: stores2,
@@ -1027,6 +1030,7 @@ export function useCreateTripWizard({ selectedOrders, onSuccess }: UseCreateTrip
         const trip1 = await deliveryTripService.create({
           vehicle_id: selectedVehicleId,
           driver_id: selectedDriverId,
+          service_type: serviceType,
           planned_date: tripDate,
           notes: notes ? `[เที่ยว 1] ${notes}` : '[เที่ยว 1]',
           stores: stores1,
@@ -1034,6 +1038,7 @@ export function useCreateTripWizard({ selectedOrders, onSuccess }: UseCreateTrip
         const trip2 = await deliveryTripService.create({
           vehicle_id: selectedVehicleId2,
           driver_id: selectedDriverId2,
+          service_type: serviceType,
           planned_date: tripDate,
           notes: notes ? `[เที่ยว 2] ${notes}` : '[เที่ยว 2]',
           stores: stores2,
@@ -1041,6 +1046,7 @@ export function useCreateTripWizard({ selectedOrders, onSuccess }: UseCreateTrip
         const trip3 = await deliveryTripService.create({
           vehicle_id: selectedVehicleId3,
           driver_id: selectedDriverId3,
+          service_type: serviceType,
           planned_date: tripDate,
           notes: notes ? `[เที่ยว 3] ${notes}` : '[เที่ยว 3]',
           stores: stores3,
@@ -1097,6 +1103,7 @@ export function useCreateTripWizard({ selectedOrders, onSuccess }: UseCreateTrip
           const trip = await deliveryTripService.create({
             vehicle_id: slot.vehicleId,
             driver_id: slot.driverId || selectedDriverId,
+            service_type: serviceType,
             planned_date: tripDate,
             notes: notes ? `[${slot.label}] ${notes}` : `[${slot.label}]`,
             stores,
@@ -1126,6 +1133,7 @@ export function useCreateTripWizard({ selectedOrders, onSuccess }: UseCreateTrip
         const trip = await deliveryTripService.create({
           vehicle_id: selectedVehicleId,
           driver_id: selectedDriverId,
+          service_type: serviceType,
           planned_date: tripDate,
           notes: notes || undefined,
           stores,
@@ -1168,7 +1176,7 @@ export function useCreateTripWizard({ selectedOrders, onSuccess }: UseCreateTrip
     storeDeliveries, orderItemsMap, splitIntoTwoTrips, splitIntoThreeTrips, splitMode, itemSplitMap, quantityInThisTripMap,
     splitValidationErrors, capacitySummary, capacitySummary2, capacitySummary3, palletPackingResult, palletPackingResult2, palletPackingResult3,
     getRemaining, getItemsForVehicle, user?.id, recommendationInput, aiHasFetched, aiRecommendations,
-    selectedRecommendationVehicleId, onSuccess, warning, success, error, getCapacityBlockingErrors,
+    selectedRecommendationVehicleId, onSuccess, warning, success, error, getCapacityBlockingErrors, serviceType,
     tripSlots, multiTripItemQty,
   ]);
 
@@ -1342,6 +1350,8 @@ export function useCreateTripWizard({ selectedOrders, onSuccess }: UseCreateTrip
     setSelectedDriverId3,
     tripDate,
     setTripDate,
+    serviceType,
+    setServiceType,
     notes,
     setNotes,
     skipStockDeduction,

@@ -26,6 +26,9 @@ export interface StoreDelivery {
  */
 export type SplitMode = 'single' | '2vehicles' | '3trips' | 'multi';
 
+/** ประเภทงานขนส่งที่ใช้เลือกเรทค่าคอมมิชชั่น */
+export type TripServiceType = 'carry_in' | 'lift_off';
+
 /** Per-item quantity split for legacy 2/3 modes */
 export interface ItemSplitQty {
   /** โหมดแบ่ง 2 คัน */

@@ -94,6 +94,7 @@ Deno.serve(async (req) => {
       .select(`
         id,
         status,
+        service_type,
         vehicle_id,
         vehicles (
           id,
@@ -207,27 +208,45 @@ Deno.serve(async (req) => {
     }
 
     let selectedRate: CommissionRate | null = null;
-    const serviceType = 'standard'; // TODO: ทำให้ configurable ถ้าต้องการในอนาคต
+    const requestedServiceType = (trip as any).service_type || 'standard';
+    let appliedServiceType = requestedServiceType;
 
     if (rates && rates.length > 0) {
-      selectedRate = (rates as CommissionRate[]).find(
-        (r) => r.vehicle_type === vehicleType && r.service_type === serviceType,
-      ) || null;
+      const typedRates = rates as CommissionRate[];
+      const findExact = (serviceType: string) =>
+        typedRates.find((r) => r.vehicle_type === vehicleType && r.service_type === serviceType) || null;
+
+      selectedRate = findExact(requestedServiceType);
+      if (!selectedRate && requestedServiceType !== 'standard') {
+        selectedRate = findExact('standard');
+        if (selectedRate) {
+          appliedServiceType = 'standard';
+        }
+      }
 
       if (!selectedRate) {
-        selectedRate = (rates as CommissionRate[]).find(
+        selectedRate = typedRates.find(
           (r) => r.vehicle_type === vehicleType && !r.service_type,
         ) || null;
       }
 
       if (!selectedRate) {
-        selectedRate = (rates as CommissionRate[]).find(
-          (r) => !r.vehicle_type && r.service_type === serviceType,
+        selectedRate = typedRates.find(
+          (r) => !r.vehicle_type && r.service_type === requestedServiceType,
         ) || null;
       }
 
+      if (!selectedRate && requestedServiceType !== 'standard') {
+        selectedRate = typedRates.find(
+          (r) => !r.vehicle_type && r.service_type === 'standard',
+        ) || null;
+        if (selectedRate) {
+          appliedServiceType = 'standard';
+        }
+      }
+
       if (!selectedRate) {
-        selectedRate = (rates as CommissionRate[]).find(
+        selectedRate = typedRates.find(
           (r) => !r.vehicle_type && !r.service_type,
         ) || null;
       }
@@ -235,7 +254,7 @@ Deno.serve(async (req) => {
 
     if (!selectedRate) {
       const msg =
-        `No commission rate found for vehicle type: ${vehicleType}, service type: ${serviceType}`;
+        `No commission rate found for vehicle type: ${vehicleType}, service type: ${requestedServiceType}`;
       console.warn('[auto-commission-worker]', msg, { tripId });
       return new Response(
         JSON.stringify({
@@ -399,7 +418,7 @@ Deno.serve(async (req) => {
       work_percentage: crew.workPercentage,
       actual_commission: crew.commissionAmount,
       calculated_by: null, // คำนวณโดยระบบ
-      notes: `Auto-calculated (${source || 'system'}) for ${vehicleType} - ${serviceType}`,
+      notes: `Auto-calculated (${source || 'system'}) for ${vehicleType} - ${appliedServiceType}`,
     }));
 
     const { data: logs, error: insertError } = await supabase

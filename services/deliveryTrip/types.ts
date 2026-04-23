@@ -99,6 +99,8 @@ export interface CreateDeliveryTripData {
   driver_id?: string;
   driver_staff_id?: string;
   helpers?: string[];
+  /** ประเภทงานสำหรับเลือกเรทค่าคอมมิชชั่น (carry_in=ลงมือ, lift_off=ตักลง) */
+  service_type?: string;
   planned_date: string;
   odometer_start?: number;
   manual_distance_km?: number;
@@ -126,6 +128,8 @@ export interface UpdateDeliveryTripData {
   vehicle_id?: string;
   driver_id?: string;
   driver_staff_id?: string;
+  /** ประเภทงานสำหรับเลือกเรทค่าคอมมิชชั่น (carry_in=ลงมือ, lift_off=ตักลง) */
+  service_type?: string;
   planned_date?: string;
   trip_revenue?: number | null;
   trip_start_date?: string | null;

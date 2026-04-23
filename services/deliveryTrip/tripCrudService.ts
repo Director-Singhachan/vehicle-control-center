@@ -524,6 +524,7 @@ export const tripCrudService = {
     const tripData: DeliveryTripInsert = {
       vehicle_id: data.vehicle_id,
       driver_id: resolvedDriverId,
+      service_type: data.service_type || 'standard',
       planned_date: data.planned_date,
       odometer_start: data.odometer_start,
       notes: data.notes,
@@ -820,6 +821,7 @@ export const tripCrudService = {
     const updateData: DeliveryTripUpdate = {
       vehicle_id: data.vehicle_id,
       driver_id: data.driver_id,
+      service_type: data.service_type,
       planned_date: data.planned_date,
       trip_revenue: data.trip_revenue,
       trip_start_date: data.trip_start_date,
@@ -875,7 +877,7 @@ export const tripCrudService = {
     const newValues: Record<string, any> = {};
 
     // Track which fields are being changed
-    const fieldsToTrack = ['vehicle_id', 'driver_id', 'planned_date', 'trip_revenue', 'trip_start_date', 'trip_end_date', 'odometer_start', 'odometer_end', 'status', 'notes', 'has_sales_data_issue', 'sequence_order'];
+    const fieldsToTrack = ['vehicle_id', 'driver_id', 'service_type', 'planned_date', 'trip_revenue', 'trip_start_date', 'trip_end_date', 'odometer_start', 'odometer_end', 'status', 'notes', 'has_sales_data_issue', 'sequence_order'];
     fieldsToTrack.forEach(field => {
       if (field in updateData && updateData[field as keyof typeof updateData] !== undefined) {
         oldValues[field] = currentTrip[field as keyof typeof currentTrip];
