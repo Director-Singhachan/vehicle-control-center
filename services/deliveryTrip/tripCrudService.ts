@@ -890,14 +890,32 @@ export const tripCrudService = {
       (updateData as any).edit_reason = editReason;
     }
 
-    const { error: updateError } = await supabase
+    // ใช้ .select().single() เพื่อยืนยันว่ามีแถวถูกอัปเดต — ถ้า RLS อนุญาต SELECT แต่ไม่อนุญาต UPDATE
+    // บางโปรเจกต์จะอัปเดต 0 แถว โดย error ยัง null ทำให้ดูเหมือนบันทึกได้แต่ vehicle_id/ฟิลด์อื่นไม่เปลี่ยน
+    const { data: updatedTripRow, error: updateError } = await supabase
       .from('delivery_trips')
       .update(updateData)
-      .eq('id', id);
+      .eq('id', id)
+      .select('id, vehicle_id')
+      .single();
 
     if (updateError) {
       console.error('[tripCrudService] Error updating trip:', updateError);
+      if (updateError.code === 'PGRST116') {
+        throw new Error(
+          'ไม่สามารถบันทึกการแก้ไขทริปได้: ไม่มีแถวถูกอัปเดต มักเกิดจากสิทธิ์ RLS บน delivery_trips (เช่น บทบาทยังไม่ถูกใส่ใน policy UPDATE) หรือทริปไม่พบ แอดมินอาจยังอัปเดตได้เพราะถูกใส่ใน policy — รัน migration ล่าสุดบน Supabase แล้วลองอีกครั้ง'
+        );
+      }
       throw updateError;
+    }
+    if (updatedTripRow && 'vehicle_id' in updateData && data.vehicle_id != null) {
+      const want = data.vehicle_id;
+      if (String(updatedTripRow.vehicle_id) !== String(want)) {
+        console.warn(
+          '[tripCrudService] After update, vehicle_id mismatch (unexpected):',
+          { want, got: updatedTripRow.vehicle_id, tripId: id }
+        );
+      }
     }
 
     // Save audit log if edit_reason was provided
@@ -1666,8 +1684,8 @@ export const tripCrudService = {
       newVehicleBranch = vehicleRow.branch;
     }
 
-    // อัปเดตรถใหม่และสาขา
-    const { error: updateError } = await supabase
+    // อัปเดตรถใหม่และสาขา (select เพื่อยืนยันว่า RLS อัปเดตแถวจริง)
+    const { error: changeVehicleUpdateError } = await supabase
       .from('delivery_trips')
       .update({
         vehicle_id: newVehicleId,
@@ -1675,11 +1693,18 @@ export const tripCrudService = {
         updated_at: new Date().toISOString(),
         updated_by: user.id,
       })
-      .eq('id', tripId);
+      .eq('id', tripId)
+      .select('id, vehicle_id')
+      .single();
 
-    if (updateError) {
-      console.error('[tripCrudService] Error updating vehicle:', updateError);
-      throw updateError;
+    if (changeVehicleUpdateError) {
+      console.error('[tripCrudService] Error updating vehicle:', changeVehicleUpdateError);
+      if (changeVehicleUpdateError.code === 'PGRST116') {
+        throw new Error(
+          'ไม่สามารถเปลี่ยนรถได้: ไม่มีแถวถูกอัปเดต มักเกิดจากสิทธิ์ RLS บน delivery_trips หรือรัน migration ที่ให้บทบาทของคุณอัปเดตทริป'
+        );
+      }
+      throw changeVehicleUpdateError;
     }
 
     // บันทึก log การเปลี่ยนรถ
