@@ -1,7 +1,7 @@
 import React from 'react';
 import { Users, Calendar } from 'lucide-react';
 import { Card } from '../ui/Card';
-import type { SplitMode } from '../../types/createTripWizard';
+import type { SplitMode, TripServiceType } from '../../types/createTripWizard';
 
 export interface CrewAssignmentStepProps {
   splitIntoTwoTrips: boolean;
@@ -30,6 +30,8 @@ export interface CrewAssignmentStepProps {
   /** Trip date, notes, skip stock */
   tripDate: string;
   setTripDate: (date: string) => void;
+  serviceType: TripServiceType;
+  setServiceType: (serviceType: TripServiceType) => void;
   notes: string;
   setNotes: (notes: string) => void;
   skipStockDeduction: boolean;
@@ -63,6 +65,8 @@ export function CrewAssignmentStep({
   setSelectedDriverId3,
   tripDate,
   setTripDate,
+  serviceType,
+  setServiceType,
   notes,
   setNotes,
   skipStockDeduction,
@@ -314,6 +318,23 @@ export function CrewAssignmentStep({
               </div>
             </div>
           )}
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              ประเภทงาน *
+            </label>
+            <select
+              value={serviceType}
+              onChange={(e) => setServiceType(e.target.value as TripServiceType)}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white text-gray-900 dark:bg-slate-900 dark:text-white dark:border-slate-600"
+            >
+              <option value="carry_in">ลงมือ</option>
+              <option value="lift_off">ตักลง</option>
+            </select>
+            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              ใช้เลือกเรทค่าคอมมิชชั่นตามประเภทงาน
+            </p>
+          </div>
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">

@@ -68,7 +68,7 @@ export const tripCrudService = {
       let query = supabase
         .from('delivery_trips')
         .select(lite
-          ? 'id, trip_number, status, planned_date, vehicle_id, driver_id, has_item_changes, odometer_start, notes, sequence_order, created_at, actual_pallets_used'
+          ? 'id, trip_number, status, planned_date, vehicle_id, driver_id, has_item_changes, has_sales_data_issue, odometer_start, notes, sequence_order, created_at, actual_pallets_used'
           : '*',
           { count: 'exact' }
         )
@@ -524,9 +524,11 @@ export const tripCrudService = {
     const tripData: DeliveryTripInsert = {
       vehicle_id: data.vehicle_id,
       driver_id: resolvedDriverId,
+      service_type: data.service_type || 'standard',
       planned_date: data.planned_date,
       odometer_start: data.odometer_start,
       notes: data.notes,
+      has_sales_data_issue: data.has_sales_data_issue === true,
       sequence_order: sequenceOrder,
       branch: vehicleBranch,
       created_by: user.id,
@@ -787,7 +789,7 @@ export const tripCrudService = {
     // Validate edit_reason if this is a data edit (not just status change)
     const isDataEdit = data.vehicle_id || data.driver_id || data.driver_staff_id || data.planned_date ||
       data.trip_revenue !== undefined || data.trip_start_date !== undefined || data.trip_end_date !== undefined ||
-      data.odometer_start !== undefined || data.notes !== undefined ||
+      data.odometer_start !== undefined || data.notes !== undefined || data.has_sales_data_issue !== undefined ||
       data.stores || data.helpers;
 
     if (isDataEdit && (!data.edit_reason || !data.edit_reason.trim())) {
@@ -819,6 +821,7 @@ export const tripCrudService = {
     const updateData: DeliveryTripUpdate = {
       vehicle_id: data.vehicle_id,
       driver_id: data.driver_id,
+      service_type: data.service_type,
       planned_date: data.planned_date,
       trip_revenue: data.trip_revenue,
       trip_start_date: data.trip_start_date,
@@ -827,6 +830,7 @@ export const tripCrudService = {
       odometer_end: data.odometer_end,
       status: data.status,
       notes: data.notes,
+      has_sales_data_issue: data.has_sales_data_issue,
       sequence_order: data.sequence_order,
       updated_by: user.id,
     };
@@ -873,7 +877,7 @@ export const tripCrudService = {
     const newValues: Record<string, any> = {};
 
     // Track which fields are being changed
-    const fieldsToTrack = ['vehicle_id', 'driver_id', 'planned_date', 'trip_revenue', 'trip_start_date', 'trip_end_date', 'odometer_start', 'odometer_end', 'status', 'notes', 'sequence_order'];
+    const fieldsToTrack = ['vehicle_id', 'driver_id', 'service_type', 'planned_date', 'trip_revenue', 'trip_start_date', 'trip_end_date', 'odometer_start', 'odometer_end', 'status', 'notes', 'has_sales_data_issue', 'sequence_order'];
     fieldsToTrack.forEach(field => {
       if (field in updateData && updateData[field as keyof typeof updateData] !== undefined) {
         oldValues[field] = currentTrip[field as keyof typeof currentTrip];

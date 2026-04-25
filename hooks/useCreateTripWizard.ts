@@ -13,7 +13,7 @@ import { useAuth } from './useAuth';
 import { useToast } from './useToast';
 import { useVehicles } from './useVehicles';
 import { useDeliveryTrips } from './useDeliveryTrips';
-import type { StoreDelivery, ItemSplitQty, CapacitySummary, SplitMode, TripSlot, MultiTripItemQty } from '../types/createTripWizard';
+import type { StoreDelivery, ItemSplitQty, CapacitySummary, SplitMode, TripSlot, MultiTripItemQty, TripServiceType } from '../types/createTripWizard';
 import { splitKey, createTripSlot } from '../types/createTripWizard';
 
 export interface UseCreateTripWizardParams {
@@ -32,9 +32,12 @@ export function useCreateTripWizard({ selectedOrders, onSuccess }: UseCreateTrip
   const [selectedVehicleId, setSelectedVehicleId] = useState('');
   const [selectedDriverId, setSelectedDriverId] = useState('');
   const [tripDate, setTripDate] = useState(new Date().toISOString().split('T')[0]);
+  const [serviceType, setServiceType] = useState<TripServiceType>('carry_in');
   const [notes, setNotes] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [orderItemsMap, setOrderItemsMap] = useState<Map<string, any[]>>(new Map());
+  /** คงเหลือจริงต่อบรรทัดจาก view order_item_remaining_quantities (หักเครดิตบิลก่อน + allocate แล้ว) */
+  const [itemRemainingByItemId, setItemRemainingByItemId] = useState<Record<string, number>>({});
   const [skipStockDeduction, setSkipStockDeduction] = useState(true);
 
   const [splitMode, setSplitMode] = useState<SplitMode>('single');
@@ -75,6 +78,7 @@ export function useCreateTripWizard({ selectedOrders, onSuccess }: UseCreateTrip
       total_amount: order.total_amount,
       sequence: index + 1,
       delivery_date: order.delivery_date || null,
+      related_prior_order_id: (order as { related_prior_order_id?: string | null }).related_prior_order_id ?? null,
     }))
   );
 
@@ -122,11 +126,42 @@ export function useCreateTripWizard({ selectedOrders, onSuccess }: UseCreateTrip
     fetchOrderItems();
   }, [selectedOrders]);
 
-  const getRemaining = useCallback((item: any) => Math.max(0,
-    Number(item.quantity)
-    - Number(item.quantity_picked_up_at_store ?? 0)
-    - Number(item.quantity_delivered ?? 0)
-  ), []);
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      if (selectedOrders.length === 0) {
+        if (!cancelled) setItemRemainingByItemId({});
+        return;
+      }
+      const map: Record<string, number> = {};
+      for (const order of selectedOrders) {
+        try {
+          const rows = await allocationService.getRemainingByOrderId(order.id);
+          for (const r of rows) {
+            map[r.order_item_id] = r.remaining_unallocated;
+          }
+        } catch (e) {
+          console.error('[useCreateTripWizard] getRemainingByOrderId:', e);
+        }
+      }
+      if (!cancelled) setItemRemainingByItemId(map);
+    };
+    load();
+    return () => { cancelled = true; };
+  }, [selectedOrders]);
+
+  const getRemaining = useCallback((item: any) => {
+    const id = item?.id as string | undefined;
+    if (id != null && itemRemainingByItemId[id] !== undefined) {
+      return Math.max(0, itemRemainingByItemId[id]);
+    }
+    return Math.max(0,
+      Number(item.quantity)
+      - Number(item.quantity_picked_up_at_store ?? 0)
+      - Number(item.quantity_delivered ?? 0)
+      - Number(item.quantity_fulfilled_prior_bill ?? 0)
+    );
+  }, [itemRemainingByItemId]);
 
   useEffect(() => {
     if (splitMode === 'single') return;
@@ -134,11 +169,7 @@ export function useCreateTripWizard({ selectedOrders, onSuccess }: UseCreateTrip
     for (const delivery of storeDeliveries) {
       const items = orderItemsMap.get(delivery.order_id) || [];
       for (const item of items) {
-        const remaining = Math.max(0,
-          Number(item.quantity)
-          - Number(item.quantity_picked_up_at_store ?? 0)
-          - Number(item.quantity_delivered ?? 0)
-        );
+        const remaining = getRemaining(item);
         if (remaining <= 0) continue;
         const key = splitKey(delivery.order_id, item.id);
         if (!itemSplitMap[key]) {
@@ -155,7 +186,7 @@ export function useCreateTripWizard({ selectedOrders, onSuccess }: UseCreateTrip
     if (Object.keys(newMap).length > 0) {
       setItemSplitMap(prev => ({ ...prev, ...newMap }));
     }
-  }, [splitMode, storeDeliveries, orderItemsMap]);
+  }, [splitMode, storeDeliveries, orderItemsMap, getRemaining]);
 
   const handleSplitQtyChange = useCallback((orderId: string, itemId: string, target: 1 | 2 | 3, value: number, totalQty: number) => {
     const key = splitKey(orderId, itemId);
@@ -187,11 +218,7 @@ export function useCreateTripWizard({ selectedOrders, onSuccess }: UseCreateTrip
     for (const delivery of storeDeliveries) {
       const orderItems = orderItemsMap.get(delivery.order_id) || [];
       for (const item of orderItems) {
-        const remaining = Math.max(0,
-          Number(item.quantity)
-          - Number(item.quantity_picked_up_at_store ?? 0)
-          - Number(item.quantity_delivered ?? 0)
-        );
+        const remaining = getRemaining(item);
         const key = splitKey(delivery.order_id, item.id);
         const split = itemSplitMap[key];
         let qty = 0;
@@ -204,7 +231,7 @@ export function useCreateTripWizard({ selectedOrders, onSuccess }: UseCreateTrip
       }
     }
     return items;
-  }, [storeDeliveries, orderItemsMap, itemSplitMap, splitMode]);
+  }, [storeDeliveries, orderItemsMap, itemSplitMap, splitMode, getRemaining]);
 
   const getCapacityBlockingErrors = useCallback((
     summary: CapacitySummary | null,
@@ -229,11 +256,7 @@ export function useCreateTripWizard({ selectedOrders, onSuccess }: UseCreateTrip
     for (const delivery of storeDeliveries) {
       const items = orderItemsMap.get(delivery.order_id) || [];
       for (const item of items) {
-        const remaining = Math.max(0,
-          Number(item.quantity)
-          - Number(item.quantity_picked_up_at_store ?? 0)
-          - Number(item.quantity_delivered ?? 0)
-        );
+        const remaining = getRemaining(item);
         if (remaining <= 0) continue;
         const key = splitKey(delivery.order_id, item.id);
         const split = itemSplitMap[key];
@@ -248,7 +271,7 @@ export function useCreateTripWizard({ selectedOrders, onSuccess }: UseCreateTrip
       }
     }
     return errors;
-  }, [splitMode, storeDeliveries, orderItemsMap, itemSplitMap]);
+  }, [splitMode, storeDeliveries, orderItemsMap, itemSplitMap, getRemaining]);
 
   useEffect(() => {
     if (!selectedVehicleId || storeDeliveries.length === 0) {
@@ -976,6 +999,7 @@ export function useCreateTripWizard({ selectedOrders, onSuccess }: UseCreateTrip
         const trip1 = await deliveryTripService.create({
           vehicle_id: selectedVehicleId,
           driver_id: selectedDriverId,
+          service_type: serviceType,
           planned_date: tripDate,
           notes: notes ? `[คัน 1] ${notes}` : '[คัน 1]',
           stores: stores1,
@@ -983,6 +1007,7 @@ export function useCreateTripWizard({ selectedOrders, onSuccess }: UseCreateTrip
         const trip2 = await deliveryTripService.create({
           vehicle_id: selectedVehicleId2,
           driver_id: selectedDriverId2,
+          service_type: serviceType,
           planned_date: tripDate,
           notes: notes ? `[คัน 2] ${notes}` : '[คัน 2]',
           stores: stores2,
@@ -1005,6 +1030,7 @@ export function useCreateTripWizard({ selectedOrders, onSuccess }: UseCreateTrip
         const trip1 = await deliveryTripService.create({
           vehicle_id: selectedVehicleId,
           driver_id: selectedDriverId,
+          service_type: serviceType,
           planned_date: tripDate,
           notes: notes ? `[เที่ยว 1] ${notes}` : '[เที่ยว 1]',
           stores: stores1,
@@ -1012,6 +1038,7 @@ export function useCreateTripWizard({ selectedOrders, onSuccess }: UseCreateTrip
         const trip2 = await deliveryTripService.create({
           vehicle_id: selectedVehicleId2,
           driver_id: selectedDriverId2,
+          service_type: serviceType,
           planned_date: tripDate,
           notes: notes ? `[เที่ยว 2] ${notes}` : '[เที่ยว 2]',
           stores: stores2,
@@ -1019,6 +1046,7 @@ export function useCreateTripWizard({ selectedOrders, onSuccess }: UseCreateTrip
         const trip3 = await deliveryTripService.create({
           vehicle_id: selectedVehicleId3,
           driver_id: selectedDriverId3,
+          service_type: serviceType,
           planned_date: tripDate,
           notes: notes ? `[เที่ยว 3] ${notes}` : '[เที่ยว 3]',
           stores: stores3,
@@ -1075,6 +1103,7 @@ export function useCreateTripWizard({ selectedOrders, onSuccess }: UseCreateTrip
           const trip = await deliveryTripService.create({
             vehicle_id: slot.vehicleId,
             driver_id: slot.driverId || selectedDriverId,
+            service_type: serviceType,
             planned_date: tripDate,
             notes: notes ? `[${slot.label}] ${notes}` : `[${slot.label}]`,
             stores,
@@ -1104,6 +1133,7 @@ export function useCreateTripWizard({ selectedOrders, onSuccess }: UseCreateTrip
         const trip = await deliveryTripService.create({
           vehicle_id: selectedVehicleId,
           driver_id: selectedDriverId,
+          service_type: serviceType,
           planned_date: tripDate,
           notes: notes || undefined,
           stores,
@@ -1146,7 +1176,7 @@ export function useCreateTripWizard({ selectedOrders, onSuccess }: UseCreateTrip
     storeDeliveries, orderItemsMap, splitIntoTwoTrips, splitIntoThreeTrips, splitMode, itemSplitMap, quantityInThisTripMap,
     splitValidationErrors, capacitySummary, capacitySummary2, capacitySummary3, palletPackingResult, palletPackingResult2, palletPackingResult3,
     getRemaining, getItemsForVehicle, user?.id, recommendationInput, aiHasFetched, aiRecommendations,
-    selectedRecommendationVehicleId, onSuccess, warning, success, error, getCapacityBlockingErrors,
+    selectedRecommendationVehicleId, onSuccess, warning, success, error, getCapacityBlockingErrors, serviceType,
     tripSlots, multiTripItemQty,
   ]);
 
@@ -1215,11 +1245,7 @@ export function useCreateTripWizard({ selectedOrders, onSuccess }: UseCreateTrip
     setMultiTripItemQty((prev) => {
       const next = { ...prev };
       for (const item of orderItems) {
-        const rem = Math.max(0,
-          Number(item.quantity)
-          - Number(item.quantity_picked_up_at_store ?? 0)
-          - Number(item.quantity_delivered ?? 0)
-        );
+        const rem = getRemaining(item);
         if (rem <= 0) continue;
         const key = splitKey(orderId, item.id);
         const perSlot = Math.floor(rem / tripSlots.length);
@@ -1231,17 +1257,13 @@ export function useCreateTripWizard({ selectedOrders, onSuccess }: UseCreateTrip
       }
       return next;
     });
-  }, [tripSlots]);
+  }, [tripSlots, getRemaining]);
 
   const setAllSplitForDelivery = useCallback((orderId: string, orderItems: any[], target: 'vehicle1' | 'vehicle2' | 'vehicle3' | 'half') => {
     setItemSplitMap(prev => {
       const next = { ...prev };
       for (const item of orderItems) {
-        const rem = Math.max(0,
-          Number(item.quantity)
-          - Number(item.quantity_picked_up_at_store ?? 0)
-          - Number(item.quantity_delivered ?? 0)
-        );
+        const rem = getRemaining(item);
         if (rem <= 0) continue;
         const key = splitKey(orderId, item.id);
         if (splitMode === '3trips') {
@@ -1260,7 +1282,7 @@ export function useCreateTripWizard({ selectedOrders, onSuccess }: UseCreateTrip
       }
       return next;
     });
-  }, [splitMode]);
+  }, [splitMode, getRemaining]);
 
   return {
     currentStep,
@@ -1328,6 +1350,8 @@ export function useCreateTripWizard({ selectedOrders, onSuccess }: UseCreateTrip
     setSelectedDriverId3,
     tripDate,
     setTripDate,
+    serviceType,
+    setServiceType,
     notes,
     setNotes,
     skipStockDeduction,

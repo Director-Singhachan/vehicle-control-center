@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { ShoppingCart, Plus, Trash2, Search, Check, Grid3x3, Clock, Gift, Truck, Store, FileText, History } from 'lucide-react';
+import { ShoppingCart, Plus, Trash2, Search, Check, Grid3x3, Clock, Gift, Truck, Store, FileText, History, Link2 } from 'lucide-react';
 import { useIncompleteOrdersCount } from '../hooks/useIncompleteOrdersCount';
 import { useProducts, useWarehouses, useProductCategories } from '../hooks/useInventory';
 import { ordersService } from '../services/ordersService';
@@ -68,6 +68,14 @@ export const CreateOrderView: React.FC<CreateOrderViewProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
+
+  /** เชื่อมออเดอร์เดิม (กรณีแก้บิลหลังส่ง / เลขเอกสาร SML ใหม่) — ตามแผน wrong-key workflow */
+  const [linkPriorOrder, setLinkPriorOrder] = useState(false);
+  const [priorOrderLookup, setPriorOrderLookup] = useState('');
+  const [priorOrderResolved, setPriorOrderResolved] = useState<{ id: string; order_number: string | null } | null>(null);
+  const [priorOrderLookupError, setPriorOrderLookupError] = useState<string | null>(null);
+  const [resolvingPrior, setResolvingPrior] = useState(false);
+  const [replacesSmlDocNo, setReplacesSmlDocNo] = useState('');
 
   const filteredWarehouses = useMemo(() => {
     if (!warehouses) return [];
@@ -440,14 +448,34 @@ export const CreateOrderView: React.FC<CreateOrderViewProps> = ({
       return;
     }
 
+    if (linkPriorOrder) {
+      if (!priorOrderResolved) {
+        error('กรุณากด「ตรวจสอบ」ให้พบออเดอร์เดิม หรือปิดการเชื่อมออเดอร์เดิม');
+        return;
+      }
+    }
+
     setIsSubmitting(true);
 
     try {
+      const internalNotesParts: string[] = [];
+      if (linkPriorOrder && priorOrderResolved) {
+        internalNotesParts.push(
+          `ต่อจากออเดอร์เดิม: ${priorOrderResolved.order_number || '—'} (${priorOrderResolved.id})`
+        );
+      }
+      if (replacesSmlDocNo.trim()) {
+        internalNotesParts.push(`เลขเอกสาร SML เดิมอ้างอิง: ${replacesSmlDocNo.trim()}`);
+      }
+
       const orderInsert = {
         store_id: selectedStore.id,
         order_date: new Date().toISOString().split('T')[0],
         status: 'awaiting_confirmation',
         notes: notes || null,
+        internal_notes: internalNotesParts.length > 0 ? internalNotesParts.join('\n') : null,
+        related_prior_order_id: linkPriorOrder && priorOrderResolved ? priorOrderResolved.id : undefined,
+        replaces_sml_doc_no: replacesSmlDocNo.trim() || undefined,
         delivery_address: selectedStore.address || null,
         // บันทึกวันที่ต้องการส่ง (ถ้าไม่ได้เลือก ให้เป็น null)
         delivery_date: deliveryDate || null,
@@ -482,6 +510,11 @@ export const CreateOrderView: React.FC<CreateOrderViewProps> = ({
       setDeliveryDate('');
       setDeliveryTimeSlot(null);
       setPaymentStatus('');
+      setLinkPriorOrder(false);
+      setPriorOrderLookup('');
+      setPriorOrderResolved(null);
+      setPriorOrderLookupError(null);
+      setReplacesSmlDocNo('');
     } catch (err: any) {
       error(err.message || 'เกิดข้อผิดพลาดในการสร้างออเดอร์');
     } finally {
@@ -634,6 +667,110 @@ export const CreateOrderView: React.FC<CreateOrderViewProps> = ({
               </div>
             </Card>
 
+            {/* เชื่อมออเดอร์เดิม — กรณีแก้บิลหลังส่ง / เลขเอกสาร SML ใหม่ */}
+            <Card>
+              <div className="p-6">
+                <label className="flex items-start gap-3 cursor-pointer mb-4">
+                  <input
+                    type="checkbox"
+                    className="mt-1 h-4 w-4 rounded border-gray-300 dark:border-slate-600 text-blue-600 focus:ring-blue-500 dark:bg-slate-800"
+                    checked={linkPriorOrder}
+                    onChange={(e) => {
+                      setLinkPriorOrder(e.target.checked);
+                      if (!e.target.checked) {
+                        setPriorOrderLookup('');
+                        setPriorOrderResolved(null);
+                        setPriorOrderLookupError(null);
+                      }
+                    }}
+                  />
+                  <span>
+                    <span className="flex items-center gap-2 font-semibold text-gray-900 dark:text-white">
+                      <Link2 className="w-4 h-4 text-rose-600 dark:text-rose-400" />
+                      เชื่อมกับออเดอร์เดิม (แก้บิล / บิล SML ใหม่)
+                    </span>
+                    <span className="block text-sm text-gray-600 dark:text-gray-400 mt-1">
+                      ใช้เมื่อเลขเอกสาร SML เปลี่ยนและระบบสร้างออเดอร์ใหม่ — อ้างอิงออเดอร์ที่ขึ้นทริปเดิมได้
+                    </span>
+                  </span>
+                </label>
+
+                {linkPriorOrder && (
+                  <div className="space-y-3 pl-1 border-l-2 border-rose-200 dark:border-rose-800 ml-1 py-1">
+                    <div className="flex flex-col sm:flex-row gap-2 sm:items-end">
+                      <div className="flex-1">
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                          เลขที่ออเดอร์เดิม หรือ UUID
+                        </label>
+                        <input
+                          type="text"
+                          value={priorOrderLookup}
+                          onChange={(e) => {
+                            setPriorOrderLookup(e.target.value);
+                            setPriorOrderResolved(null);
+                            setPriorOrderLookupError(null);
+                          }}
+                          placeholder="เช่น SD250118-0123 หรือ uuid"
+                          className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-gray-900 dark:text-white"
+                        />
+                      </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        disabled={resolvingPrior || !priorOrderLookup.trim()}
+                        onClick={async () => {
+                          setPriorOrderLookupError(null);
+                          setPriorOrderResolved(null);
+                          const q = priorOrderLookup.trim();
+                          if (!q) {
+                            setPriorOrderLookupError('กรุณากรอกเลขที่ออเดอร์หรือ UUID');
+                            return;
+                          }
+                          setResolvingPrior(true);
+                          try {
+                            const res = await ordersService.resolvePriorOrderLookup(q);
+                            if (!res) {
+                              setPriorOrderLookupError(
+                                'ไม่พบออเดอร์ หรือมีหลายรายการที่ใกล้เคียง — ใส่เลขที่เต็มหรือ UUID'
+                              );
+                              return;
+                            }
+                            setPriorOrderResolved(res);
+                          } catch {
+                            setPriorOrderLookupError('ไม่สามารถค้นหาได้');
+                          } finally {
+                            setResolvingPrior(false);
+                          }
+                        }}
+                      >
+                        {resolvingPrior ? 'กำลังค้น…' : 'ตรวจสอบ'}
+                      </Button>
+                    </div>
+                    {priorOrderLookupError && (
+                      <p className="text-sm text-red-600 dark:text-red-400">{priorOrderLookupError}</p>
+                    )}
+                    {priorOrderResolved && (
+                      <div className="text-sm text-green-700 dark:text-green-300 bg-green-50 dark:bg-green-900/20 rounded-lg px-3 py-2">
+                        พบออเดอร์เดิม: <strong>{priorOrderResolved.order_number || '—'}</strong>
+                        <span className="text-xs text-gray-500 dark:text-gray-400 ml-2 font-mono">{priorOrderResolved.id}</span>
+                      </div>
+                    )}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                        เลขเอกสาร SML เดิม (ถ้าต้องการอ้างอิง) — ไม่บังคับ
+                      </label>
+                      <input
+                        type="text"
+                        value={replacesSmlDocNo}
+                        onChange={(e) => setReplacesSmlDocNo(e.target.value)}
+                        placeholder="บันทึกมือเมื่อต้องเทียบกับบิลเก่า"
+                        className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-gray-900 dark:text-white"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            </Card>
 
             {/* Products Selection */}
             <Card className={`overflow-visible ${(productSearch || showProductBrowser) && filteredProducts.length > 0 ? 'relative z-50' : ''}`}>

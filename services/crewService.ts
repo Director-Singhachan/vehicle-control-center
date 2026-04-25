@@ -366,6 +366,7 @@ export const crewService = {
             .select(`
         id,
         status,
+        service_type,
         vehicle_id,
         vehicles (
           id,
@@ -446,13 +447,23 @@ export const crewService = {
 
         // Find best matching rate
         let selectedRate: CommissionRate | null = null;
-        const serviceType = 'standard'; // TODO: Get from trip or make configurable
+        const requestedServiceType = (trip as any).service_type || 'standard';
+        let appliedServiceType = requestedServiceType;
 
         if (rates && rates.length > 0) {
+            const findExact = (serviceType: string) =>
+                rates.find(
+                    r => r.vehicle_type === vehicleType && r.service_type === serviceType
+                ) || null;
+
             // Try to find exact match (vehicle_type + service_type)
-            selectedRate = rates.find(
-                r => r.vehicle_type === vehicleType && r.service_type === serviceType
-            ) || null;
+            selectedRate = findExact(requestedServiceType);
+            if (!selectedRate && requestedServiceType !== 'standard') {
+                selectedRate = findExact('standard');
+                if (selectedRate) {
+                    appliedServiceType = 'standard';
+                }
+            }
 
             // Fallback to vehicle_type only
             if (!selectedRate) {
@@ -464,8 +475,16 @@ export const crewService = {
             // Fallback to service_type only
             if (!selectedRate) {
                 selectedRate = rates.find(
-                    r => !r.vehicle_type && r.service_type === serviceType
+                    r => !r.vehicle_type && r.service_type === requestedServiceType
                 ) || null;
+            }
+            if (!selectedRate && requestedServiceType !== 'standard') {
+                selectedRate = rates.find(
+                    r => !r.vehicle_type && r.service_type === 'standard'
+                ) || null;
+                if (selectedRate) {
+                    appliedServiceType = 'standard';
+                }
             }
 
             // Fallback to default rate (no vehicle_type, no service_type)
@@ -476,7 +495,7 @@ export const crewService = {
 
         if (!selectedRate) {
             throw new Error(
-                `No commission rate found for vehicle type: ${vehicleType}, service type: ${serviceType}`
+                `No commission rate found for vehicle type: ${vehicleType}, service type: ${requestedServiceType}`
             );
         }
 
@@ -549,7 +568,7 @@ export const crewService = {
         return {
             tripId,
             vehicleType,
-            serviceType,
+            serviceType: appliedServiceType,
             totalItemsDelivered,
             rateApplied: ratePerUnit,
             totalCommission: Math.round(totalCommission * 100) / 100,

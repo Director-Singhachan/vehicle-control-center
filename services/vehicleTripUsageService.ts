@@ -58,7 +58,7 @@ export interface VehicleCostSummary {
   total_cost: number;
 }
 
-/** สรุปการเงิน: ต้นทุน + รายได้ + กำไร/ขาดทุน (รายได้จาก orders.total_amount ที่ผูก delivery_trip_id) */
+/** สรุปการเงิน: ต้นทุน + รายได้ + กำไร/ขาดทุน (รายได้จาก orders.total_amount ที่ผูก delivery_trip_id — ไม่รวมออเดอร์ที่ถูกทำเครื่องหมาย exclude_from_vehicle_revenue_rollup) */
 export interface VehicleFinancialSummary extends VehicleCostSummary {
   revenue: number;
   profit: number;
@@ -319,7 +319,7 @@ export const vehicleTripUsageService = {
 
   /**
    * สรุปการเงินของรถในช่วงวันที่: ต้นทุน + รายได้จากออเดอร์ที่ผูกทริป + กำไร/ขาดทุน
-   * รายได้ = sum(orders.total_amount) ที่ delivery_trip_id อยู่ในทริปของรถในช่วง
+   * รายได้ = sum(orders.total_amount) ที่ delivery_trip_id อยู่ในทริปของรถในช่วง (ยกเว้นออเดอร์ที่ถูกแทนที่โดยบิลแก้ — exclude_from_vehicle_revenue_rollup)
    */
   getVehicleFinancialSummary: async (
     options: GetVehicleDailyUsageOptions
@@ -344,7 +344,8 @@ export const vehicleTripUsageService = {
       const { data: orderRows } = await (supabase as any)
         .from('orders')
         .select('total_amount')
-        .in('delivery_trip_id', tripIds);
+        .in('delivery_trip_id', tripIds)
+        .eq('exclude_from_vehicle_revenue_rollup', false);
       if (orderRows?.length) {
         has_revenue_data = true;
         revenue = orderRows.reduce(
@@ -461,7 +462,11 @@ export const vehicleTripUsageService = {
           .from('commission_logs')
           .select('actual_commission')
           .in('delivery_trip_id', tripIds),
-        (supabase as any).from('orders').select('total_amount').in('delivery_trip_id', tripIds),
+        (supabase as any)
+          .from('orders')
+          .select('total_amount')
+          .in('delivery_trip_id', tripIds)
+          .eq('exclude_from_vehicle_revenue_rollup', false),
       ]);
       if (logsRes.data) {
         const sum = logsRes.data.reduce((s, r) => s + (Number(r.actual_commission) || 0), 0);

@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import { Modal } from '../ui/Modal';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
 import { getOrderDisplayTotalAmount } from '../../utils/orderDisplay';
+import { BillCorrectionBadges } from './BillCorrectionBadges';
 
 interface OrderDetailModalProps {
   order: any;
@@ -62,8 +63,14 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
               <div className="text-sm font-medium text-enterprise-600 dark:text-enterprise-400">{order.customer_code}</div>
             </div>
             
-            <div className="flex flex-col md:items-end gap-3">
-              <div className="drop-shadow-sm">{getStatusBadge(order)}</div>
+            <div className="flex flex-col md:items-end gap-3 w-full md:max-w-md">
+              <div className="w-full flex flex-col items-end gap-1.5">
+                <span className="text-xs font-medium text-slate-500 dark:text-slate-400">สถานะจัดส่ง · เคสบิล</span>
+                <div className="flex flex-col items-end gap-2">
+                  <div className="drop-shadow-sm">{getStatusBadge(order)}</div>
+                  <BillCorrectionBadges order={order} className="justify-end" />
+                </div>
+              </div>
               
               <div className="text-sm text-slate-600 dark:text-slate-400 space-y-1.5 md:text-right">
                 <div className="flex items-center gap-2 md:justify-end">

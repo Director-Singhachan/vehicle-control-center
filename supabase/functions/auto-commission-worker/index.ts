@@ -8,6 +8,11 @@
 // - ใช้ service role key → bypass RLS เพื่อเขียน commission_logs ได้แม้ user ปกติทำการเช็คอิน
 // - Idempotent: ลบทุกรายการ commission_logs ของทริปนั้นก่อน แล้วคำนวณใหม่ทุกครั้ง
 // - ถ้าไม่พบเรทค่าคอม หรือไม่พบ crew → log warning และ return success:false (ไม่ throw 500)
+//
+// หมายเหตุ (บิลแก้ / related_prior_order_id):
+// - ค่าคอมคิดจากจำนวนสินค้าที่ส่งจริงใน delivery_trip_items ต่อทริป ไม่ใช่ยอดรายได้จาก orders
+// - การกันยอดรายได้ซ้ำระหว่างบิลเก่า/ใหม่ทำที่ orders.exclude_from_vehicle_revenue_rollup + สรุปรายได้ต่อรถ
+//   ไม่ได้แก้สูตรค่าคอมอัตโนมัติต่อเคส SKU ผิดในอดีต — ถ้าต้องปรับย้อนหลังให้ทำทางบัญชี/ทริป
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
@@ -89,6 +94,7 @@ Deno.serve(async (req) => {
       .select(`
         id,
         status,
+        service_type,
         vehicle_id,
         vehicles (
           id,
@@ -202,27 +208,45 @@ Deno.serve(async (req) => {
     }
 
     let selectedRate: CommissionRate | null = null;
-    const serviceType = 'standard'; // TODO: ทำให้ configurable ถ้าต้องการในอนาคต
+    const requestedServiceType = (trip as any).service_type || 'standard';
+    let appliedServiceType = requestedServiceType;
 
     if (rates && rates.length > 0) {
-      selectedRate = (rates as CommissionRate[]).find(
-        (r) => r.vehicle_type === vehicleType && r.service_type === serviceType,
-      ) || null;
+      const typedRates = rates as CommissionRate[];
+      const findExact = (serviceType: string) =>
+        typedRates.find((r) => r.vehicle_type === vehicleType && r.service_type === serviceType) || null;
+
+      selectedRate = findExact(requestedServiceType);
+      if (!selectedRate && requestedServiceType !== 'standard') {
+        selectedRate = findExact('standard');
+        if (selectedRate) {
+          appliedServiceType = 'standard';
+        }
+      }
 
       if (!selectedRate) {
-        selectedRate = (rates as CommissionRate[]).find(
+        selectedRate = typedRates.find(
           (r) => r.vehicle_type === vehicleType && !r.service_type,
         ) || null;
       }
 
       if (!selectedRate) {
-        selectedRate = (rates as CommissionRate[]).find(
-          (r) => !r.vehicle_type && r.service_type === serviceType,
+        selectedRate = typedRates.find(
+          (r) => !r.vehicle_type && r.service_type === requestedServiceType,
         ) || null;
       }
 
+      if (!selectedRate && requestedServiceType !== 'standard') {
+        selectedRate = typedRates.find(
+          (r) => !r.vehicle_type && r.service_type === 'standard',
+        ) || null;
+        if (selectedRate) {
+          appliedServiceType = 'standard';
+        }
+      }
+
       if (!selectedRate) {
-        selectedRate = (rates as CommissionRate[]).find(
+        selectedRate = typedRates.find(
           (r) => !r.vehicle_type && !r.service_type,
         ) || null;
       }
@@ -230,7 +254,7 @@ Deno.serve(async (req) => {
 
     if (!selectedRate) {
       const msg =
-        `No commission rate found for vehicle type: ${vehicleType}, service type: ${serviceType}`;
+        `No commission rate found for vehicle type: ${vehicleType}, service type: ${requestedServiceType}`;
       console.warn('[auto-commission-worker]', msg, { tripId });
       return new Response(
         JSON.stringify({
@@ -394,7 +418,7 @@ Deno.serve(async (req) => {
       work_percentage: crew.workPercentage,
       actual_commission: crew.commissionAmount,
       calculated_by: null, // คำนวณโดยระบบ
-      notes: `Auto-calculated (${source || 'system'}) for ${vehicleType} - ${serviceType}`,
+      notes: `Auto-calculated (${source || 'system'}) for ${vehicleType} - ${appliedServiceType}`,
     }));
 
     const { data: logs, error: insertError } = await supabase

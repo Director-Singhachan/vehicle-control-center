@@ -1,11 +1,13 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { Clock } from 'lucide-react';
 import { PageLayout } from '../components/ui/PageLayout';
-import { Badge } from '../components/ui/Badge';
 import { ordersService, orderItemsService } from '../services/ordersService';
 import { EditOrderView } from './EditOrderView';
 import { useOrderBranchScope } from '../hooks/useOrderBranchScope';
 import { supabase } from '../lib/supabase';
+import { getEffectiveOrderUiStatus } from '../utils/orderEffectiveStatus';
+import { orderMatchesTrackBillIssueFilter, type TrackBillIssueFilter } from '../utils/orderBillCorrection';
+import { OrderEffectiveStatusBadge } from '../components/order/OrderEffectiveStatusBadge';
 import {
   BRANCH_ALL_LABEL,
   BRANCH_ALL_VALUE,
@@ -31,6 +33,10 @@ interface Order {
   branch?: string | null;
   delivery_trip_id?: string | null;
   trip_status?: 'planned' | 'in_progress' | 'completed' | 'cancelled' | null;
+  related_prior_order_id?: string | null;
+  related_prior_order_number?: string | null;
+  exclude_from_vehicle_revenue_rollup?: boolean | null;
+  replaces_sml_doc_no?: string | null;
 }
 
 export function TrackOrdersView() {
@@ -39,6 +45,7 @@ export function TrackOrdersView() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [billIssueFilter, setBillIssueFilter] = useState<TrackBillIssueFilter>('all');
   const [branchFilter, setBranchFilter] = useState<string>('ALL');
   const [detailOrder, setDetailOrder] = useState<any | null>(null);
   const [detailItems, setDetailItems] = useState<any[]>([]);
@@ -142,46 +149,14 @@ export function TrackOrdersView() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, statusFilter, branchFilter]);
+  }, [searchTerm, statusFilter, branchFilter, billIssueFilter]);
 
-  // สถานะที่ใช้แสดงผลบน UI (คำนวณจาก orders.status + trip_status + delivery_trip_id)
-  const getEffectiveStatus = (order: Order): string => {
-    const baseStatus = (order.status || '').toLowerCase();
-    const tripStatus = order.trip_status || null;
-    const hasTrip = !!order.delivery_trip_id;
+  const billCaseCountInList = useMemo(
+    () => orders.filter((o) => orderMatchesTrackBillIssueFilter(o, 'any')).length,
+    [orders]
+  );
 
-    // ยกเลิก = จบนัด
-    if (baseStatus === 'cancelled') return 'cancelled';
-
-    // ถ้ายังไม่ได้ผูกทริป
-    if (!hasTrip) {
-      if (baseStatus === 'delivered' || baseStatus === 'partial') return baseStatus;
-      // pending/confirmed/assigned ที่ไม่มีทริป → รอจัดทริป
-      return 'pending';
-    }
-
-    // มีทริปแล้ว → ใช้สถานะทริปเป็นหลักในการบอก "กำหนดทริปแล้ว / กำลังจัดส่ง / ส่งเสร็จแล้ว"
-    switch (tripStatus) {
-      case 'planned':
-        return 'assigned';
-      case 'in_progress':
-        return 'in_delivery';
-      case 'completed':
-        // ถ้า DB คำนวณ delivered/partial ไว้แล้ว ให้ใช้ผลนั้น
-        if (baseStatus === 'delivered' || baseStatus === 'partial') return baseStatus;
-        // กันกรณี trigger/RPC พลาด แต่ทริปถูกปิดแล้ว → ถือว่าส่งเสร็จ
-        return 'delivered';
-      case 'cancelled':
-        // ทริปถูกยกเลิก แต่ order ยังผูกทริปไว้ → ให้กลับไปมองเป็น "รอจัดทริป"
-        return 'pending';
-      default:
-        // ไม่รู้สถานะทริป → ถ้า DB มีสถานะที่รู้จักให้ใช้ต่อ, ไม่งั้นถือว่ารอจัดทริป
-        if (['pending', 'confirmed', 'assigned', 'in_delivery', 'delivered', 'partial'].includes(baseStatus)) {
-          return baseStatus;
-        }
-        return 'pending';
-    }
-  };
+  const getEffectiveStatus = (order: Order): string => getEffectiveOrderUiStatus(order);
 
   // Subscribe realtime changes on orders so Track Orders auto-refreshes
   useEffect(() => {
@@ -219,16 +194,24 @@ export function TrackOrdersView() {
     return orders.filter((order) => {
       const uiStatus = getEffectiveStatus(order);
 
-      // Search filter
+      // Search filter (รวมเลข SML อ้างอิงบิลเดิม)
       if (searchTerm) {
         const search = searchTerm.toLowerCase();
+        const sml = String(order.replaces_sml_doc_no ?? '').toLowerCase();
+        const priorNo = String(order.related_prior_order_number ?? '').toLowerCase();
         if (
           !order.order_number?.toLowerCase().includes(search) &&
           !order.customer_name?.toLowerCase().includes(search) &&
-          !order.customer_code?.toLowerCase().includes(search)
+          !order.customer_code?.toLowerCase().includes(search) &&
+          !(sml && sml.includes(search)) &&
+          !(priorNo && priorNo.includes(search))
         ) {
           return false;
         }
+      }
+
+      if (!orderMatchesTrackBillIssueFilter(order, billIssueFilter)) {
+        return false;
       }
 
       // Status filter
@@ -262,7 +245,7 @@ export function TrackOrdersView() {
 
       return true;
     });
-  }, [orders, searchTerm, statusFilter, branchFilter]);
+  }, [orders, searchTerm, statusFilter, branchFilter, billIssueFilter]);
 
   const offset = (currentPage - 1) * itemsPerPage;
   const paginatedOrders = useMemo(
@@ -273,43 +256,7 @@ export function TrackOrdersView() {
   const startIndex = offset;
   const endIndex = Math.min(offset + itemsPerPage, filteredOrders.length);
 
-  const getStatusBadge = (order: Order) => {
-    const status = getEffectiveStatus(order);
-    const deliveryTripId = order.delivery_trip_id;
-    
-    // ถ้า delivery_trip_id เป็น null แล้ว ไม่ควรแสดง "กำหนดทริปแล้ว" แม้ว่า status จะเป็น 'assigned' ก็ตาม
-    // (กรณีที่ลบทริปแล้วแต่ status ยังไม่ถูกอัปเดต)
-    if (status === 'assigned' && !deliveryTripId) {
-      return <Badge variant="warning">รอจัดทริป</Badge>;
-    }
-    
-    switch (status) {
-      case 'pending':
-        return <Badge variant="warning">รอจัดทริป</Badge>;
-      case 'partial':
-        return (
-          <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-300 border border-orange-200 dark:border-orange-700">
-            ⏳ ส่งบางส่วน
-          </span>
-        );
-      case 'assigned':
-        return <Badge variant="info">กำหนดทริปแล้ว</Badge>;
-      case 'in_delivery':
-        return <Badge variant="default">กำลังจัดส่ง</Badge>;
-      case 'delivered':
-        return !deliveryTripId ? (
-          <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300 border border-green-200 dark:border-green-700">
-            ✓ จัดส่งสำเร็จ มารับเอง
-          </span>
-        ) : (
-          <Badge variant="success">จัดส่งแล้ว</Badge>
-        );
-      case 'cancelled':
-        return <Badge variant="error">ยกเลิก</Badge>;
-      default:
-        return <Badge>{status}</Badge>;
-    }
-  };
+  const getStatusBadge = (order: Order) => <OrderEffectiveStatusBadge order={order} />;
 
   const stats = useMemo(() => {
     return {
@@ -368,6 +315,9 @@ export function TrackOrdersView() {
         branchSelectDisabled={trackBranchSelectDisabled}
         statusFilter={statusFilter}
         onStatusChange={setStatusFilter}
+        billIssueFilter={billIssueFilter}
+        onBillIssueFilterChange={setBillIssueFilter}
+        billCaseCountInList={billCaseCountInList}
         onRefresh={loadOrders}
         loading={loading}
       />

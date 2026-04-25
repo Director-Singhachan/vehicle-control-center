@@ -20,6 +20,14 @@ export interface PartialOrder extends OrderRemainingSummary {
   delivery_address: string | null;
   store_name: string | null;
   latest_trip_date: string | null;
+  related_prior_order_id?: string | null;
+  related_prior_order_number?: string | null;
+  exclude_from_vehicle_revenue_rollup?: boolean | null;
+  replaces_sml_doc_no?: string | null;
+  /** สำหรับ OrderEffectiveStatusBadge */
+  status?: string | null;
+  delivery_trip_id?: string | null;
+  trip_status?: string | null;
 }
 
 /**
@@ -49,7 +57,7 @@ export function usePartialOrders(filters?: { branch?: string; branchesIn?: strin
       const { data: details, error: detailsError } = await supabase
         .from('orders_with_details')
         .select(
-          'id, order_number, customer_name, customer_code, total_amount, order_date, delivery_date, delivery_address, store_address'
+          'id, order_number, customer_name, customer_code, total_amount, order_date, delivery_date, delivery_address, store_address, related_prior_order_id, related_prior_order_number, exclude_from_vehicle_revenue_rollup, replaces_sml_doc_no, status, delivery_trip_id, trip_status'
         )
         .in('id', orderIds);
 
@@ -86,6 +94,13 @@ export function usePartialOrders(filters?: { branch?: string; branchesIn?: strin
           delivery_address: d.delivery_address ?? null,
           store_name: d.customer_name ?? d.store_address ?? null,
           latest_trip_date: latestTripDateMap.get(s.order_id) ?? null,
+          related_prior_order_id: d.related_prior_order_id ?? null,
+          related_prior_order_number: d.related_prior_order_number ?? null,
+          exclude_from_vehicle_revenue_rollup: d.exclude_from_vehicle_revenue_rollup ?? null,
+          replaces_sml_doc_no: d.replaces_sml_doc_no ?? null,
+          status: d.status ?? s.order_status ?? null,
+          delivery_trip_id: d.delivery_trip_id ?? null,
+          trip_status: d.trip_status ?? null,
         };
       });
 

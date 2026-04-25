@@ -29,6 +29,8 @@ import {
 } from '../utils/branchLabels';
 import { useOrderBranchScope } from '../hooks/useOrderBranchScope';
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
+import { BillCorrectionBadges } from '../components/order/BillCorrectionBadges';
+import { OrderEffectiveStatusBadge } from '../components/order/OrderEffectiveStatusBadge';
 
 // Memoized OrderCard component to prevent unnecessary re-renders
 interface OrderCardProps {
@@ -87,9 +89,10 @@ const OrderCard = memo(({
     if (!orderItems || orderItems.length === 0) return null;
     const totalPickedUp = orderItems.reduce((sum: number, item: any) => sum + Number(item.quantity_picked_up_at_store ?? 0), 0);
     const totalDelivered = orderItems.reduce((sum: number, item: any) => sum + Number(item.quantity_delivered ?? 0), 0);
+    const totalPriorBill = orderItems.reduce((sum: number, item: any) => sum + Number(item.quantity_fulfilled_prior_bill ?? 0), 0);
     const totalQty = orderItems.reduce((sum: number, item: any) => sum + Number(item.quantity), 0);
-    if (totalPickedUp === 0 && totalDelivered === 0) return null;
-    return { totalPickedUp, totalDelivered, totalQty };
+    if (totalPickedUp === 0 && totalDelivered === 0 && totalPriorBill === 0) return null;
+    return { totalPickedUp, totalDelivered, totalPriorBill, totalQty };
   }, [orderItems]);
 
   const isShippingForbidden = order.payment_status === 'รอชำระ' || order.payment_status === 'รอชำระหนี้คงค้าง';
@@ -121,15 +124,20 @@ const OrderCard = memo(({
                 <p className="text-sm text-gray-500 dark:text-gray-400">
                   {formattedOrderDate}
                 </p>
+                <div className="flex flex-wrap items-center gap-2 mt-1.5">
+                  <span className="text-xs font-medium text-gray-500 dark:text-gray-400">สถานะจัดส่ง</span>
+                  <OrderEffectiveStatusBadge order={order} />
+                  <BillCorrectionBadges order={order} />
+                </div>
                 {/* ✅ แสดง pickup summary ถ้ามีการรับที่ร้าน/ส่งแล้วบางส่วน */}
-                {order.status === 'partial' && (
-                  <span className="inline-flex items-center gap-1 mt-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-300 border border-orange-200 dark:border-orange-700">
-                    ⏳ ส่งบางส่วนแล้ว
-                  </span>
-                )}
                 {pickupSummary && pickupSummary.totalPickedUp > 0 && (
                   <span className="inline-flex items-center gap-1 mt-1 ml-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-700">
                     🏪 รับที่ร้าน {pickupSummary.totalPickedUp.toLocaleString()} ชิ้น
+                  </span>
+                )}
+                {pickupSummary && pickupSummary.totalPriorBill > 0 && (
+                  <span className="inline-flex items-center gap-1 mt-1 ml-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-teal-50 dark:bg-teal-950/50 text-teal-900 dark:text-teal-200 border border-teal-200 dark:border-teal-800">
+                    ส่งจากบิลก่อน {pickupSummary.totalPriorBill.toLocaleString()} ชิ้น
                   </span>
                 )}
                 {order.payment_status && (
@@ -150,7 +158,15 @@ const OrderCard = memo(({
                 </p>
                 {pickupSummary && (
                   <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
-                    คงเหลือ {Math.max(0, pickupSummary.totalQty - pickupSummary.totalPickedUp - pickupSummary.totalDelivered).toLocaleString()} / {pickupSummary.totalQty.toLocaleString()} ชิ้น
+                    คงเหลือส่ง{' '}
+                    {Math.max(
+                      0,
+                      pickupSummary.totalQty -
+                        pickupSummary.totalPickedUp -
+                        pickupSummary.totalDelivered -
+                        pickupSummary.totalPriorBill
+                    ).toLocaleString()}{' '}
+                    / {pickupSummary.totalQty.toLocaleString()} ชิ้น
                   </p>
                 )}
               </div>
@@ -268,6 +284,13 @@ const OrderCard = memo(({
 }, (prevProps, nextProps) => {
   // Custom comparison function for better performance
   if (prevProps.order.id !== nextProps.order.id) return false;
+  if (prevProps.order.related_prior_order_id !== nextProps.order.related_prior_order_id) return false;
+  if (prevProps.order.related_prior_order_number !== nextProps.order.related_prior_order_number) return false;
+  if (prevProps.order.exclude_from_vehicle_revenue_rollup !== nextProps.order.exclude_from_vehicle_revenue_rollup) return false;
+  if (prevProps.order.replaces_sml_doc_no !== nextProps.order.replaces_sml_doc_no) return false;
+  if (prevProps.order.status !== nextProps.order.status) return false;
+  if (prevProps.order.delivery_trip_id !== nextProps.order.delivery_trip_id) return false;
+  if (prevProps.order.trip_status !== nextProps.order.trip_status) return false;
   if (prevProps.isSelected !== nextProps.isSelected) return false;
   if (prevProps.isExpanded !== nextProps.isExpanded) return false;
   if (prevProps.savingPickupItemId !== nextProps.savingPickupItemId) return false;

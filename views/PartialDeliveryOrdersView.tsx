@@ -5,6 +5,8 @@ import {
 import { PageLayout } from '../components/ui/PageLayout';
 import { Card } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
+import { BillCorrectionBadges } from '../components/order/BillCorrectionBadges';
+import { OrderEffectiveStatusBadge } from '../components/order/OrderEffectiveStatusBadge';
 import { Button } from '../components/ui/Button';
 import { LoadingSpinner } from '../components/ui/LoadingSpinner';
 import { ToastContainer } from '../components/ui/Toast';
@@ -198,6 +200,11 @@ function PartialOrderCard({ order, onPlanNext }: PartialOrderCardProps) {
             {order.branch && (
               <Badge variant="default" className="text-xs">{getBranchLabel(order.branch)}</Badge>
             )}
+          </div>
+          <div className="flex flex-wrap items-center gap-2 mb-1.5">
+            <span className="text-xs font-medium text-gray-500 dark:text-gray-400">สถานะจัดส่ง</span>
+            <OrderEffectiveStatusBadge order={order} />
+            <BillCorrectionBadges order={order} />
           </div>
 
           <p className="text-sm text-gray-700 dark:text-gray-300 truncate">

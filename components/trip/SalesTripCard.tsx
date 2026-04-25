@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { Card } from '../ui/Card';
 import { Badge } from '../ui/Badge';
+import { tripHasSalesDataIssue } from '../../utils/tripSalesDataIssue';
 
 // ────────────────────────────────────────────
 // TripCard — ใช้สำหรับ by-trip view
@@ -144,6 +145,12 @@ export const TripCard = memo(({
                                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-teal-100 text-teal-800 dark:bg-teal-900 dark:text-teal-200">
                                     <Layers size={11} />
                                     จัดเรียงแล้ว
+                                </span>
+                            )}
+                            {tripHasSalesDataIssue(trip) && (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-rose-100 text-rose-800 dark:bg-rose-900/60 dark:text-rose-200">
+                                    <Info size={11} />
+                                    บิล/ข้อมูลขาย
                                 </span>
                             )}
                         </div>

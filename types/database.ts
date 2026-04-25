@@ -1215,6 +1215,7 @@ export type Database = {
           edit_reason: string | null
           had_packing_issues: boolean | null
           has_item_changes: boolean
+          has_sales_data_issue: boolean
           id: string
           last_item_change_at: string | null
           notes: string | null
@@ -1223,6 +1224,7 @@ export type Database = {
           packing_efficiency_score: number | null
           packing_issues_notes: string | null
           planned_date: string
+          service_type: string
           sequence_order: number
           space_utilization_percent: number | null
           status: string
@@ -1246,6 +1248,7 @@ export type Database = {
           edit_reason?: string | null
           had_packing_issues?: boolean | null
           has_item_changes?: boolean
+          has_sales_data_issue?: boolean
           id?: string
           last_item_change_at?: string | null
           notes?: string | null
@@ -1254,6 +1257,7 @@ export type Database = {
           packing_efficiency_score?: number | null
           packing_issues_notes?: string | null
           planned_date: string
+          service_type?: string
           sequence_order?: number
           space_utilization_percent?: number | null
           status?: string
@@ -1277,6 +1281,7 @@ export type Database = {
           edit_reason?: string | null
           had_packing_issues?: boolean | null
           has_item_changes?: boolean
+          has_sales_data_issue?: boolean
           id?: string
           last_item_change_at?: string | null
           notes?: string | null
@@ -1285,6 +1290,7 @@ export type Database = {
           packing_efficiency_score?: number | null
           packing_issues_notes?: string | null
           planned_date?: string
+          service_type?: string
           sequence_order?: number
           space_utilization_percent?: number | null
           status?: string
@@ -2074,6 +2080,7 @@ export type Database = {
           product_id: string
           quantity: number
           quantity_delivered: number
+          quantity_fulfilled_prior_bill: number
           quantity_picked_up_at_store: number
           unit_price: number
           updated_at: string
@@ -2091,6 +2098,7 @@ export type Database = {
           product_id: string
           quantity: number
           quantity_delivered?: number
+          quantity_fulfilled_prior_bill?: number
           quantity_picked_up_at_store?: number
           unit_price: number
           updated_at?: string
@@ -2108,6 +2116,7 @@ export type Database = {
           product_id?: string
           quantity?: number
           quantity_delivered?: number
+          quantity_fulfilled_prior_bill?: number
           quantity_picked_up_at_store?: number
           unit_price?: number
           updated_at?: string
@@ -2221,12 +2230,15 @@ export type Database = {
           delivery_time_slot: string | null
           delivery_trip_id: string | null
           discount_amount: number | null
+          exclude_from_vehicle_revenue_rollup: boolean
           id: string
           internal_notes: string | null
           notes: string | null
           order_date: string
           order_number: string | null
           payment_status: string | null
+          related_prior_order_id: string | null
+          replaces_sml_doc_no: string | null
           status: string
           store_id: string
           subtotal: number | null
@@ -2247,12 +2259,15 @@ export type Database = {
           delivery_time_slot?: string | null
           delivery_trip_id?: string | null
           discount_amount?: number | null
+          exclude_from_vehicle_revenue_rollup?: boolean
           id?: string
           internal_notes?: string | null
           notes?: string | null
           order_date?: string
           order_number?: string | null
           payment_status?: string | null
+          related_prior_order_id?: string | null
+          replaces_sml_doc_no?: string | null
           status?: string
           store_id: string
           subtotal?: number | null
@@ -2273,12 +2288,15 @@ export type Database = {
           delivery_time_slot?: string | null
           delivery_trip_id?: string | null
           discount_amount?: number | null
+          exclude_from_vehicle_revenue_rollup?: boolean
           id?: string
           internal_notes?: string | null
           notes?: string | null
           order_date?: string
           order_number?: string | null
           payment_status?: string | null
+          related_prior_order_id?: string | null
+          replaces_sml_doc_no?: string | null
           status?: string
           store_id?: string
           subtotal?: number | null
@@ -2301,6 +2319,13 @@ export type Database = {
             columns: ["created_by"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orders_related_prior_order_id_fkey"
+            columns: ["related_prior_order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
             referencedColumns: ["id"]
           },
           {
@@ -5410,12 +5435,16 @@ export type Database = {
           delivery_date: string | null
           delivery_trip_id: string | null
           discount_amount: number | null
+          exclude_from_vehicle_revenue_rollup: boolean | null
           id: string | null
           internal_notes: string | null
           items_count: number | null
           notes: string | null
           order_date: string | null
           order_number: string | null
+          related_prior_order_id: string | null
+          related_prior_order_number: string | null
+          replaces_sml_doc_no: string | null
           status: string | null
           store_address: string | null
           store_id: string | null
