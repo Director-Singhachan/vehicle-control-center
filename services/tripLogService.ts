@@ -197,6 +197,28 @@ export const tripLogService = {
     }
 
     // ========================================
+    // เลขไมล์ขาออกต้อง ≥ เลขไมล์ล่าสุด (trip_logs / fuel) — ยกเว้นโหมด manual_distance
+    // เคยพบ: UI แสดง warning แต่ submit ยัง execute ได้ — บังคับฝั่ง service
+    // ========================================
+    if (
+      data.odometer_start != null &&
+      typeof data.odometer_start === 'number' &&
+      data.odometer_start > 0 &&
+      (data.manual_distance_km == null || data.manual_distance_km === undefined)
+    ) {
+      const odometerCheck = await tripLogService.validateOdometer(
+        data.vehicle_id,
+        data.odometer_start
+      );
+      if (!odometerCheck.valid) {
+        throw new Error(
+          odometerCheck.warning ||
+            'ไม่สามารถบันทึกเลขไมล์ขาออกที่น้อยกว่าเลขไมล์ล่าสุด'
+        );
+      }
+    }
+
+    // ========================================
     // ผูกทริปถัดไปที่ยังไม่มี trip_log + ตรวจคนขับเฉพาะทริปนั้น
     // (รถ 1 คันหลายทริปในวันเดียวกัน — ห้ามใช้เงื่อนไขว่า "มีทริปใดคนละคนขับ" แล้วบล็อกทุกคัน)
     // ========================================
@@ -1159,7 +1181,8 @@ export const tripLogService = {
   },
 
 
-  // Get last odometer reading for a vehicle
+  // เลขไมล์อ้างอิงล่าสุดต่อรถ (ใช้ในฟอร์มจัดทริป / บันทึกขาออก ฯลฯ) — ไม่อ่านจาก delivery_trips
+  // ลำดับ: check-in ล่าสุด (odometer_end) > check-out ล่าสุด (odometer_start) แล้วเทียบ max กับ fuel_records
   getLastOdometer: async (vehicleId: string): Promise<number | null> => {
     // Get last known odometer reading
     const [fuelResult, tripCheckinResult, tripCheckoutResult] = await Promise.all([
