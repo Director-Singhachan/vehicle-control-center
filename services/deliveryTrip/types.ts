@@ -99,10 +99,14 @@ export interface CreateDeliveryTripData {
   driver_id?: string;
   driver_staff_id?: string;
   helpers?: string[];
+  /** ประเภทงานสำหรับเลือกเรทค่าคอมมิชชั่น (carry_in=ลงมือ, lift_off=ตักลง) */
+  service_type?: string;
   planned_date: string;
   odometer_start?: number;
   manual_distance_km?: number;
   notes?: string;
+  /** ทริปนี้มีปัญหาข้อมูลการขาย/บิล (คีย์ผิด แก้บิลหลังส่ง ฯลฯ) */
+  has_sales_data_issue?: boolean;
   sequence_order?: number;
   stores: Array<{
     store_id: string;
@@ -124,6 +128,8 @@ export interface UpdateDeliveryTripData {
   vehicle_id?: string;
   driver_id?: string;
   driver_staff_id?: string;
+  /** ประเภทงานสำหรับเลือกเรทค่าคอมมิชชั่น (carry_in=ลงมือ, lift_off=ตักลง) */
+  service_type?: string;
   planned_date?: string;
   trip_revenue?: number | null;
   trip_start_date?: string | null;
@@ -132,6 +138,7 @@ export interface UpdateDeliveryTripData {
   odometer_end?: number;
   status?: 'planned' | 'in_progress' | 'completed' | 'cancelled';
   notes?: string;
+  has_sales_data_issue?: boolean;
   sequence_order?: number;
   stores?: Array<{
     store_id: string;

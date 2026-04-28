@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { ShoppingCart, Plus, Trash2, Search, Check, Edit, AlertTriangle, Grid3x3, Clock, Gift, Truck, Store } from 'lucide-react';
+import { ShoppingCart, Plus, Trash2, Search, Check, Edit, AlertTriangle, Grid3x3, Clock, Gift, Truck, Store, Link2 } from 'lucide-react';
 import { useProducts, useWarehouses, useProductCategories } from '../hooks/useInventory';
 import { ordersService, orderItemsService } from '../services/ordersService';
 import { orderTripSyncService } from '../services/orderTripSyncService';
@@ -24,6 +24,8 @@ interface OrderItem {
   discount_percent: number | '';
   is_bonus?: boolean; // ของแถม
   fulfillment_method?: 'delivery' | 'pickup'; // วิธีรับสินค้า
+  /** บิลแก้: จำนวนที่ถือว่าส่งครบจากทริป/บิลก่อน — ลดค้างส่ง (delta) */
+  quantity_fulfilled_prior_bill?: number | '';
 }
 
 // LocalStorage keys
@@ -80,6 +82,13 @@ export function EditOrderView({ orderId, onSave, onCancel }: EditOrderViewProps)
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showWarningDialog, setShowWarningDialog] = useState(false);
   const [hasAssignedTrip, setHasAssignedTrip] = useState(false);
+
+  const [linkPriorOrder, setLinkPriorOrder] = useState(false);
+  const [priorOrderLookup, setPriorOrderLookup] = useState('');
+  const [priorOrderResolved, setPriorOrderResolved] = useState<{ id: string; order_number: string | null } | null>(null);
+  const [priorOrderLookupError, setPriorOrderLookupError] = useState<string | null>(null);
+  const [resolvingPrior, setResolvingPrior] = useState(false);
+  const [replacesSmlDocNo, setReplacesSmlDocNo] = useState('');
 
   // Refs สำหรับ click outside
   const storeDropdownRef = useRef<HTMLDivElement>(null);
@@ -140,12 +149,36 @@ export function EditOrderView({ orderId, onSave, onCancel }: EditOrderViewProps)
           discount_percent: item.discount_percent || '',
           is_bonus: item.is_bonus || false,
           fulfillment_method: item.fulfillment_method || 'delivery',
+          quantity_fulfilled_prior_bill:
+            Number(item.quantity_fulfilled_prior_bill ?? 0) === 0
+              ? ''
+              : Number(item.quantity_fulfilled_prior_bill ?? 0),
         }))
       );
 
       setNotes(orderData.notes || '');
       setDeliveryDate(orderData.delivery_date || '');
       setPaymentStatus(orderData.payment_status || '');
+
+      const rid = (orderData as { related_prior_order_id?: string | null }).related_prior_order_id;
+      const rdoc = (orderData as { replaces_sml_doc_no?: string | null }).replaces_sml_doc_no;
+      setReplacesSmlDocNo(rdoc?.trim() ? rdoc : '');
+      setPriorOrderLookupError(null);
+      if (rid) {
+        setLinkPriorOrder(true);
+        const res = await ordersService.resolvePriorOrderLookup(rid);
+        if (res) {
+          setPriorOrderResolved(res);
+          setPriorOrderLookup(res.order_number || res.id);
+        } else {
+          setPriorOrderResolved({ id: rid, order_number: null });
+          setPriorOrderLookup(rid);
+        }
+      } else {
+        setLinkPriorOrder(false);
+        setPriorOrderLookup('');
+        setPriorOrderResolved(null);
+      }
     } catch (error: any) {
       showNotification('error', 'เกิดข้อผิดพลาดในการโหลดข้อมูลออเดอร์');
       console.error('Error loading order:', error);
@@ -405,6 +438,19 @@ export function EditOrderView({ orderId, onSave, onCancel }: EditOrderViewProps)
     setOrderItems(updated);
   };
 
+  /** บิลแก้ (มีผูกออเดอร์เดิม): จำนวนที่ถือว่าส่งครบจากทริปก่อน — ลดค้างส่ง (delta) */
+  const handleUpdatePriorFulfillment = (index: number, value: string) => {
+    const updated = [...orderItems];
+    const raw = value.trim();
+    if (raw === '') {
+      updated[index] = { ...updated[index], quantity_fulfilled_prior_bill: '' };
+    } else {
+      const n = Math.max(0, Number(raw) || 0);
+      updated[index] = { ...updated[index], quantity_fulfilled_prior_bill: n };
+    }
+    setOrderItems(updated);
+  };
+
   // ลบสินค้า
   const handleRemoveItem = (index: number) => {
     setOrderItems(orderItems.filter((_, i) => i !== index));
@@ -483,6 +529,11 @@ export function EditOrderView({ orderId, onSave, onCancel }: EditOrderViewProps)
       return;
     }
 
+    if (linkPriorOrder && !priorOrderResolved) {
+      showNotification('error', 'กรุณากด「ตรวจสอบ」ให้พบออเดอร์เดิม หรือปิดการเชื่อมออเดอร์เดิม');
+      return;
+    }
+
     // ถ้าออเดอร์ถูก assign กับทริปแล้ว แสดง warning
     if (hasAssignedTrip) {
       setShowWarningDialog(true);
@@ -505,7 +556,19 @@ export function EditOrderView({ orderId, onSave, onCancel }: EditOrderViewProps)
         warehouse_id: selectedWarehouse?.id || null,
         updated_by: user?.id,
         payment_status: paymentStatus || null,
+        related_prior_order_id: linkPriorOrder && priorOrderResolved ? priorOrderResolved.id : null,
+        replaces_sml_doc_no: replacesSmlDocNo.trim() ? replacesSmlDocNo.trim() : null,
       });
+
+      setOrder((prev: Record<string, unknown> | null) =>
+        prev
+          ? {
+              ...prev,
+              related_prior_order_id: linkPriorOrder && priorOrderResolved ? priorOrderResolved.id : null,
+              replaces_sml_doc_no: replacesSmlDocNo.trim() ? replacesSmlDocNo.trim() : null,
+            }
+          : prev
+      );
 
       // 2. ดึง order items ที่มีอยู่
       const existingItems = await orderItemsService.getByOrderId(orderId);
@@ -529,6 +592,7 @@ export function EditOrderView({ orderId, onSave, onCancel }: EditOrderViewProps)
               discount_percent: Number(item.discount_percent || 0),
               is_bonus: item.is_bonus || false,
               fulfillment_method: item.fulfillment_method || 'delivery',
+              quantity_fulfilled_prior_bill: Number(item.quantity_fulfilled_prior_bill || 0),
             },
           });
         } else if (!item.id) {
@@ -568,6 +632,7 @@ export function EditOrderView({ orderId, onSave, onCancel }: EditOrderViewProps)
             discount_percent: Number(item.discount_percent || 0),
             is_bonus: item.is_bonus || false,
             fulfillment_method: item.fulfillment_method || 'delivery',
+            quantity_fulfilled_prior_bill: Number(item.quantity_fulfilled_prior_bill || 0),
           });
         }
       }
@@ -636,6 +701,10 @@ export function EditOrderView({ orderId, onSave, onCancel }: EditOrderViewProps)
     );
   }
 
+  const orderHasPriorLink = Boolean(
+    (order as { related_prior_order_id?: string | null }).related_prior_order_id
+  );
+
   return (
     <PageLayout title={`แก้ไขออเดอร์ ${order.order_number || ''}`}>
       {hasAssignedTrip && (
@@ -653,6 +722,115 @@ export function EditOrderView({ orderId, onSave, onCancel }: EditOrderViewProps)
           </div>
         </Card>
       )}
+
+      <Card className="mb-6 border-rose-200 dark:border-rose-800 bg-rose-50 dark:bg-rose-950/30">
+        <div className="p-4 space-y-3">
+          <div className="flex items-start gap-3">
+            <Link2 className="w-5 h-5 text-rose-600 dark:text-rose-400 mt-0.5 flex-shrink-0" />
+            <div className="flex-1 min-w-0">
+              <div className="font-semibold text-rose-900 dark:text-rose-100 mb-1">
+                เชื่อมกับออเดอร์เดิม (แก้บิล / บิล SML ใหม่)
+              </div>
+              <p className="text-sm text-rose-800/90 dark:text-rose-200/90">
+                ใช้เมื่ออัปโหลดจาก SML แล้วได้เลขเอกสารใหม่ — กำหนดการผูกได้ที่นี่แล้วกดบันทึกออเดอร์ด้านล่าง
+              </p>
+            </div>
+          </div>
+
+          <label className="flex items-start gap-3 cursor-pointer">
+            <input
+              type="checkbox"
+              className="mt-1 h-4 w-4 rounded border-gray-300 dark:border-slate-600 text-rose-600 focus:ring-rose-500 dark:bg-slate-800"
+              checked={linkPriorOrder}
+              onChange={(e) => {
+                setLinkPriorOrder(e.target.checked);
+                if (!e.target.checked) {
+                  setPriorOrderLookup('');
+                  setPriorOrderResolved(null);
+                  setPriorOrderLookupError(null);
+                }
+              }}
+            />
+            <span className="text-sm text-rose-900 dark:text-rose-100">เชื่อมกับออเดอร์ที่ขึ้นทริป/บิลเดิม</span>
+          </label>
+
+          {linkPriorOrder && (
+            <div className="flex flex-col sm:flex-row gap-2 sm:items-end pl-1 border-l-2 border-rose-300 dark:border-rose-800 ml-1">
+              <div className="flex-1 min-w-0">
+                <label className="block text-sm font-medium text-rose-900 dark:text-rose-200 mb-1">
+                  เลขที่ออเดอร์เดิม หรือ UUID
+                </label>
+                <input
+                  type="text"
+                  value={priorOrderLookup}
+                  onChange={(e) => {
+                    setPriorOrderLookup(e.target.value);
+                    setPriorOrderResolved(null);
+                    setPriorOrderLookupError(null);
+                  }}
+                  placeholder="เช่น SD250118-0123 หรือ uuid"
+                  className="w-full px-3 py-2 border border-rose-200 dark:border-rose-800 rounded-lg bg-white dark:bg-slate-900 text-gray-900 dark:text-white"
+                />
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={resolvingPrior || !priorOrderLookup.trim()}
+                onClick={async () => {
+                  setPriorOrderLookupError(null);
+                  setPriorOrderResolved(null);
+                  const q = priorOrderLookup.trim();
+                  if (!q) {
+                    setPriorOrderLookupError('กรุณากรอกเลขที่ออเดอร์หรือ UUID');
+                    return;
+                  }
+                  setResolvingPrior(true);
+                  try {
+                    const res = await ordersService.resolvePriorOrderLookup(q);
+                    if (!res) {
+                      setPriorOrderLookupError(
+                        'ไม่พบออเดอร์ หรือมีหลายรายการที่ใกล้เคียง — ใส่เลขที่เต็มหรือ UUID'
+                      );
+                      return;
+                    }
+                    setPriorOrderResolved(res);
+                  } catch {
+                    setPriorOrderLookupError('ตรวจสอบไม่สำเร็จ');
+                  } finally {
+                    setResolvingPrior(false);
+                  }
+                }}
+                className="shrink-0 border-rose-300 dark:border-rose-700"
+              >
+                {resolvingPrior ? 'กำลังตรวจ…' : 'ตรวจสอบ'}
+              </Button>
+            </div>
+          )}
+
+          {priorOrderLookupError && (
+            <p className="text-sm text-red-600 dark:text-red-400">{priorOrderLookupError}</p>
+          )}
+          {priorOrderResolved && (
+            <p className="text-sm text-emerald-800 dark:text-emerald-200">
+              พบออเดอร์เดิม: <strong>{priorOrderResolved.order_number || '—'}</strong>
+              <span className="text-xs text-gray-500 dark:text-gray-400 ml-2 font-mono">{priorOrderResolved.id}</span>
+            </p>
+          )}
+
+          <div>
+            <label className="block text-sm font-medium text-rose-900 dark:text-rose-200 mb-1">
+              เลขเอกสาร SML เดิมที่แทนที่ (ถ้ามี)
+            </label>
+            <input
+              type="text"
+              value={replacesSmlDocNo}
+              onChange={(e) => setReplacesSmlDocNo(e.target.value)}
+              placeholder="บันทึกมือ"
+              className="w-full px-3 py-2 border border-rose-200 dark:border-rose-800 rounded-lg bg-white dark:bg-slate-900 text-gray-900 dark:text-white"
+            />
+          </div>
+        </div>
+      </Card>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left: Store & Products Selection */}
@@ -1038,6 +1216,14 @@ export function EditOrderView({ orderId, onSave, onCancel }: EditOrderViewProps)
                         <th className="text-center py-3 px-2 text-sm font-semibold text-gray-700 dark:text-gray-300">หน่วย</th>
                         <th className="text-right py-3 px-2 text-sm font-semibold text-gray-700 dark:text-gray-300">ราคา</th>
                         <th className="text-center py-3 px-2 text-sm font-semibold text-gray-700 dark:text-gray-300">จำนวน</th>
+                        {orderHasPriorLink && (
+                          <th
+                            className="text-center py-3 px-2 text-sm font-semibold text-rose-800 dark:text-rose-200 max-w-[7rem]"
+                            title="จำนวนที่ถือว่าส่งครบจากทริป/บิลก่อน (ลดค้างส่ง delta ไม่แก้ยอดบรรทัด)"
+                          >
+                            เครดิตบิลก่อน
+                          </th>
+                        )}
                         <th className="text-center py-3 px-2 text-sm font-semibold text-gray-700 dark:text-gray-300">ส่วนลด%</th>
                         <th className="text-right py-3 px-2 text-sm font-semibold text-gray-700 dark:text-gray-300">รวม</th>
                         <th className="text-center py-3 px-2 text-sm font-semibold text-gray-700 dark:text-gray-300">วิธีรับ</th>
@@ -1098,6 +1284,28 @@ export function EditOrderView({ orderId, onSave, onCancel }: EditOrderViewProps)
                                 placeholder="จำนวน"
                               />
                             </td>
+                            {orderHasPriorLink && (
+                              <td className="py-3 px-2 text-center align-top">
+                                {item.fulfillment_method === 'pickup' ? (
+                                  <span className="text-xs text-gray-400 dark:text-gray-500">—</span>
+                                ) : (
+                                  <input
+                                    type="number"
+                                    value={
+                                      item.quantity_fulfilled_prior_bill === '' ||
+                                      item.quantity_fulfilled_prior_bill === undefined
+                                        ? ''
+                                        : item.quantity_fulfilled_prior_bill
+                                    }
+                                    onChange={(e) => handleUpdatePriorFulfillment(index, e.target.value)}
+                                    className="w-full min-w-0 px-2 py-1 border border-rose-200 dark:border-rose-800 rounded text-center bg-white dark:bg-slate-800 text-gray-900 dark:text-white"
+                                    min="0"
+                                    inputMode="decimal"
+                                    placeholder="0"
+                                  />
+                                )}
+                              </td>
+                            )}
                             <td className="py-3 px-2 text-center align-top">
                               <input
                                 type="number"
@@ -1295,6 +1503,25 @@ export function EditOrderView({ orderId, onSave, onCancel }: EditOrderViewProps)
                                 </Badge>
                               )}
                             </div>
+                            {orderHasPriorLink && item.fulfillment_method !== 'pickup' && (
+                              <div className="mt-2 flex items-center gap-2 flex-wrap">
+                                <span className="text-xs text-rose-800 dark:text-rose-200">เครดิตบิลก่อน (delta):</span>
+                                <input
+                                  type="number"
+                                  value={
+                                    item.quantity_fulfilled_prior_bill === '' ||
+                                    item.quantity_fulfilled_prior_bill === undefined
+                                      ? ''
+                                      : item.quantity_fulfilled_prior_bill
+                                  }
+                                  onChange={(e) => handleUpdatePriorFulfillment(index, e.target.value)}
+                                  className="w-24 px-2 py-1 border border-rose-200 dark:border-rose-800 rounded text-sm bg-white dark:bg-slate-800 text-gray-900 dark:text-white"
+                                  min="0"
+                                  inputMode="decimal"
+                                  placeholder="0"
+                                />
+                              </div>
+                            )}
                           </div>
                         </div>
                       </div>

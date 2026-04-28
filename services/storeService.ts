@@ -292,5 +292,22 @@ export const storeService = {
 
     return imported;
   },
+
+  // Get the latest update timestamp from the stores table
+  getLastUpdate: async (): Promise<string | null> => {
+    const { data, error } = await supabase
+      .from('stores')
+      .select('updated_at')
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (error) {
+      console.error('[storeService] Error fetching last update:', error);
+      throw error;
+    }
+
+    return data?.updated_at || null;
+  },
 };
 

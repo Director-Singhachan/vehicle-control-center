@@ -1,6 +1,7 @@
 import React, { memo } from 'react';
 import { ChevronDown, ChevronRight, MapPin } from 'lucide-react';
 import { Badge } from '../ui/Badge';
+import { getOrderDisplayTotalAmount } from '../../utils/orderDisplay';
 
 interface AreaGroupedOrderListProps {
     groupedOrders: Array<{
@@ -94,7 +95,7 @@ export const AreaGroupedOrderList = memo(function AreaGroupedOrderList({
                                                     {areaOrders.length} ร้าน
                                                 </span>
                                                 <span className="text-xs font-medium text-indigo-600 dark:text-indigo-400">
-                                                    ฿{areaOrders.reduce((s: number, o: any) => s + (o.total_amount || 0), 0).toLocaleString()}
+                                                    ฿{areaOrders.reduce((s: number, o: any) => s + getOrderDisplayTotalAmount(o), 0).toLocaleString()}
                                                 </span>
                                             </div>
 

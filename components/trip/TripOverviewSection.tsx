@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { Card } from '../ui/Card';
 import type { TripTabId } from '../ui/TripDetailTabs';
+import { tripHasSalesDataIssue } from '../../utils/tripSalesDataIssue';
 
 interface TripOverviewSectionProps {
   trip: any;
@@ -211,8 +212,27 @@ export const TripOverviewSection: React.FC<TripOverviewSectionProps> = ({
     (trip.driver || hasDriverCrew) &&
     !hasHelperCrew;
 
+  const salesDataIssue = tripHasSalesDataIssue(trip);
+
   return (
     <div className="space-y-6 animate-fade-in">
+      {salesDataIssue && (
+        <div className="p-4 rounded-xl border border-rose-300 bg-rose-50 dark:border-rose-800 dark:bg-rose-950/30 flex items-start gap-3 z-10">
+          <AlertCircle
+            size={20}
+            className="text-rose-600 dark:text-rose-400 flex-shrink-0 mt-0.5"
+          />
+          <div>
+            <p className="text-sm font-medium text-rose-900 dark:text-rose-100">
+              ทริปนี้มีปัญหาข้อมูลการขายหรือบิล
+            </p>
+            <p className="text-xs text-rose-800 dark:text-rose-200/90 mt-1">
+              รายการสินค้าบนทริปอาจไม่ตรงกับบิลที่แก้แล้วหรือการส่งจริง — ตรวจสอบกับบิลแก้ / ออเดอร์ใหม่จาก SML และ delta การขนส่งก่อนใช้ยอดไปคำนวณกำไรหรือค่าคอม
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* ── Basic Info Card ─────────────────────────────────────────── */}
       <Card>
         <div className="flex flex-wrap items-start justify-between gap-3 mb-5">
@@ -419,7 +439,10 @@ export const TripOverviewSection: React.FC<TripOverviewSectionProps> = ({
         >
           <ul className="space-y-1.5 py-1">
             {aggregatedProducts.slice(0, 3).map((p: any) => (
-              <li key={p.product_id} className="flex items-center justify-between gap-2">
+              <li
+                key={`${p.product_id}-${p.is_bonus ? 'b' : 'n'}-${p.unit || ''}`}
+                className="flex items-center justify-between gap-2"
+              >
                 <span className="truncate text-slate-700 dark:text-slate-300 text-xs">
                   {p.product_code}
                 </span>
@@ -430,7 +453,7 @@ export const TripOverviewSection: React.FC<TripOverviewSectionProps> = ({
               </li>
             ))}
             {skuCount > 3 && (
-              <li className="text-xs text-slate-400 dark:text-slate-500">+{skuCount - 3} SKU อีก...</li>
+              <li className="text-xs text-slate-400 dark:text-slate-500">+{skuCount - 3} รายการอีก...</li>
             )}
           </ul>
         </PreviewCard>

@@ -386,7 +386,9 @@ export const TripOrdersSection: React.FC<TripOrdersSectionProps> = ({
                                 />
                                 {(item.quantity_picked_up_at_store ?? 0) > 0 && (
                                   <div className="text-[10px] text-green-600 dark:text-green-400 text-right">
-                                    ส่ง: {Math.max(0, item.quantity - (item.quantity_picked_up_at_store ?? 0)).toLocaleString()} {product.unit}
+                                    ส่ง:{' '}
+                                    {Math.max(0, item.quantity - (item.quantity_picked_up_at_store ?? 0)).toLocaleString()}{' '}
+                                    {(item.unit != null && String(item.unit).trim() !== '' ? item.unit : product.unit) || '—'}
                                   </div>
                                 )}
                               </div>

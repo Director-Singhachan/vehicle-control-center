@@ -1,4 +1,4 @@
-﻿import React, { useState, useRef, useMemo, useEffect } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import { Upload, X, FileText, CheckCircle2, AlertCircle, Info, ChevronDown, ChevronUp, Boxes } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
@@ -122,8 +122,7 @@ export function OrderUploadModal({ isOpen, onClose, onSuccess, selectedWarehouse
     const validOrders = filteredOrders.filter(o => !o.error && o.action !== 'skip' && o.action !== 'locked');
     const invalidOrders = filteredOrders.filter(o => o.error && o.action !== 'locked');
     const skippedOrders = filteredOrders.filter(o => !o.error && o.action === 'skip');
-    const lockedOrders = filteredOrders.filter(o => o.action === 'locked');
-    
+
     if (validOrders.length === 0 && invalidOrders.length === 0) {
       success(`ข้อมูลเหมือนเดิม ไม่มีการอัพเดต (ข้าม ${skippedOrders.length} รายการ)`);
       onSuccess();
@@ -159,6 +158,7 @@ export function OrderUploadModal({ isOpen, onClose, onSuccess, selectedWarehouse
           discount_percent: Math.round((item.discount / (item.total || 1)) * 100) || 0,
           is_bonus: item.unit_price === 0,
           fulfillment_method: 'delivery' as const,
+          sml_line_total: item.total,
         }));
 
         await ordersService.upsertSmlOrder(orderInsert, itemsToSubmit, null, null);
@@ -363,6 +363,10 @@ export function OrderUploadModal({ isOpen, onClose, onSuccess, selectedWarehouse
                     </div>
                     )}
                  </div>
+
+                 <p className="text-sm text-gray-500 dark:text-gray-400">
+                   กรณีแก้บิล / ต้องเชื่อมกับออเดอร์เดิม — ไปกำหนดได้ที่หน้าแก้ไขออเดอร์หลังอัปโหลด
+                 </p>
 
                  {/* Order List */}
                  <div className="space-y-3">

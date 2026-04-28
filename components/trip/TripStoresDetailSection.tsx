@@ -117,6 +117,10 @@ export const TripStoresDetailSection: React.FC<TripStoresDetailSectionProps> = (
                           if (!product) return null;
                           const qty = Number(item.quantity) || 0;
                           const pickedUp = Number(item.quantity_picked_up_at_store ?? 0);
+                          const displayUnit =
+                            item.unit != null && String(item.unit).trim() !== ''
+                              ? String(item.unit).trim()
+                              : product.unit || '';
 
                           return (
                             <div
@@ -134,7 +138,7 @@ export const TripStoresDetailSection: React.FC<TripStoresDetailSectionProps> = (
                               </div>
                               <div className="flex-shrink-0 flex items-center gap-2">
                                 <span className="font-medium text-slate-800 dark:text-slate-200">
-                                  {qty.toLocaleString()} {product.unit}
+                                  {qty.toLocaleString()} {displayUnit}
                                 </span>
                                 {pickedUp > 0 && (
                                   <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-700">

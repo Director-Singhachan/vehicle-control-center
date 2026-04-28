@@ -1,6 +1,8 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Modal } from '../ui/Modal';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
+import { getOrderDisplayTotalAmount } from '../../utils/orderDisplay';
+import { BillCorrectionBadges } from './BillCorrectionBadges';
 
 interface OrderDetailModalProps {
   order: any;
@@ -21,6 +23,18 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
   onClose,
   getStatusBadge,
 }) => {
+  /** ยอดรวมจากบรรทัดสินค้า — สอดคล้องกับตาราง; ใช้แทน total_amount ตอนโหลดรายการแล้ว (กันกรณี trigger/ฐานข้อมูลค้าง) */
+  const displayTotalAmount = useMemo(() => {
+    const fromLines = items.reduce(
+      (sum, item) => sum + Number(item.line_total ?? 0),
+      0
+    );
+    if (!loading && items.length > 0) {
+      return fromLines;
+    }
+    return getOrderDisplayTotalAmount(order ?? {});
+  }, [loading, items, order]);
+
   return (
     <Modal
       isOpen={!!order}
@@ -49,8 +63,14 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
               <div className="text-sm font-medium text-enterprise-600 dark:text-enterprise-400">{order.customer_code}</div>
             </div>
             
-            <div className="flex flex-col md:items-end gap-3">
-              <div className="drop-shadow-sm">{getStatusBadge(order)}</div>
+            <div className="flex flex-col md:items-end gap-3 w-full md:max-w-md">
+              <div className="w-full flex flex-col items-end gap-1.5">
+                <span className="text-xs font-medium text-slate-500 dark:text-slate-400">สถานะจัดส่ง · เคสบิล</span>
+                <div className="flex flex-col items-end gap-2">
+                  <div className="drop-shadow-sm">{getStatusBadge(order)}</div>
+                  <BillCorrectionBadges order={order} className="justify-end" />
+                </div>
+              </div>
               
               <div className="text-sm text-slate-600 dark:text-slate-400 space-y-1.5 md:text-right">
                 <div className="flex items-center gap-2 md:justify-end">
@@ -79,7 +99,9 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
                 <span className="text-sm font-medium text-slate-500">ยอดรวม</span>
                 <span className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">
                   <span className="text-lg text-slate-400 mr-0.5">฿</span>
-                  {order.total_amount?.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                  {(Number.isFinite(displayTotalAmount) ? displayTotalAmount : 0).toLocaleString(undefined, {
+                    minimumFractionDigits: 2,
+                  })}
                 </span>
               </div>
             </div>

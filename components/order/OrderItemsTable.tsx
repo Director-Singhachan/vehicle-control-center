@@ -54,10 +54,16 @@ export function OrderItemsTable({
             <th className="text-right py-2 px-2 font-semibold text-orange-600 dark:text-orange-400" title="จำนวนที่ลูกค้ามารับที่ร้านแล้ว">
               รับที่ร้าน 🏪
             </th>
-            <th className="text-right py-2 px-2 font-semibold text-green-600 dark:text-green-400" title="จำนวนที่ส่งให้ลูกค้าแล้ว">
-              ส่งแล้ว ✅
+            <th className="text-right py-2 px-2 font-semibold text-green-600 dark:text-green-400" title="จำนวนที่ส่งจากทริปของออเดอร์นี้แล้ว">
+              ส่งแล้ว (ทริปนี้) ✅
             </th>
-            <th className="text-right py-2 px-2 font-semibold text-blue-600 dark:text-blue-400">คงเหลือ</th>
+            <th
+              className="text-right py-2 px-2 font-semibold text-amber-700 dark:text-amber-400"
+              title="เคสแก้บิล: จำนวนที่ถือว่าส่งครบจากบิล/ทริปก่อน — ไม่ต้องส่งซ้ำในรอบนี้"
+            >
+              บิลก่อน
+            </th>
+            <th className="text-right py-2 px-2 font-semibold text-blue-600 dark:text-blue-400">คงเหลือส่ง</th>
             <th className="text-left py-2 px-2 font-semibold text-gray-700 dark:text-gray-300">หน่วย</th>
           </tr>
         </thead>
@@ -65,14 +71,24 @@ export function OrderItemsTable({
           {items.map((item: any, idx: number) => {
             const pickedUp = Number(item.quantity_picked_up_at_store ?? 0);
             const delivered = Number(item.quantity_delivered ?? 0);
-            const remaining = Math.max(0, Number(item.quantity) - pickedUp - delivered);
+            const priorBill = Number(item.quantity_fulfilled_prior_bill ?? 0);
+            const remaining = Math.max(
+              0,
+              Number(item.quantity) - pickedUp - delivered - priorBill
+            );
             const isFulfilled = remaining === 0;
             const displayPickup = pendingPickupValues[item.id] !== undefined ? pendingPickupValues[item.id] : pickedUp;
 
             return (
               <tr
                 key={idx}
-                className={`border-b border-gray-200 dark:border-gray-700 last:border-0 ${isFulfilled ? 'opacity-50' : ''}`}
+                className={`border-b border-gray-200 dark:border-gray-700 last:border-0 ${
+                  isFulfilled
+                    ? priorBill > 0
+                      ? 'bg-emerald-50/70 dark:bg-emerald-950/25 opacity-95'
+                      : 'opacity-50'
+                    : ''
+                }`}
               >
                 <td className="py-2 px-2 text-gray-500 dark:text-gray-400">
                   {item.product?.product_code || '-'}
@@ -92,9 +108,21 @@ export function OrderItemsTable({
                       </Badge>
                     )}
                     {isFulfilled && (
-                      <span className="inline-flex items-center gap-1 text-xs text-green-600 dark:text-green-400 font-medium">
-                        <CheckCircle2 className="w-3 h-3" /> ครบแล้ว
+                      <span
+                        className={`inline-flex items-center gap-1 text-xs font-medium ${
+                          priorBill > 0
+                            ? 'text-amber-800 dark:text-amber-200'
+                            : 'text-green-600 dark:text-green-400'
+                        }`}
+                      >
+                        <CheckCircle2 className="w-3 h-3" />
+                        {priorBill > 0 ? 'ครบแล้ว (นับจากบิลก่อน)' : 'ครบแล้ว'}
                       </span>
+                    )}
+                    {!isFulfilled && priorBill > 0 && (
+                      <Badge variant="warning" className="text-[10px] px-1.5 py-0 ring-1 ring-amber-400/60 dark:ring-amber-600">
+                        มีจากบิลก่อน
+                      </Badge>
                     )}
                   </div>
                 </td>
@@ -133,7 +161,10 @@ export function OrderItemsTable({
                   )}
                 </td>
                 <td className="py-2 px-2 text-right text-green-600 dark:text-green-400 font-semibold">
-                  {delivered > 0 ? delivered.toLocaleString() : <span className="text-gray-300">—</span>}
+                  {delivered > 0 ? delivered.toLocaleString() : <span className="text-gray-300 dark:text-gray-600">—</span>}
+                </td>
+                <td className="py-2 px-2 text-right text-amber-800 dark:text-amber-200 font-semibold">
+                  {priorBill > 0 ? priorBill.toLocaleString() : <span className="text-gray-300 dark:text-gray-600">—</span>}
                 </td>
                 <td className="py-2 px-2 text-right">
                   <span
@@ -169,12 +200,18 @@ export function OrderItemsTable({
             <td className="py-2 px-2 text-right font-bold text-green-600 dark:text-green-400">
               {items.reduce((s: number, i: any) => s + Number(i.quantity_delivered ?? 0), 0).toLocaleString()}
             </td>
+            <td className="py-2 px-2 text-right font-bold text-amber-800 dark:text-amber-200">
+              {items.reduce((s: number, i: any) => s + Number(i.quantity_fulfilled_prior_bill ?? 0), 0).toLocaleString()}
+            </td>
             <td className="py-2 px-2 text-right font-bold text-blue-600 dark:text-blue-400">
               {items
                 .reduce((s: number, i: any) => {
                   const rem = Math.max(
                     0,
-                    Number(i.quantity) - Number(i.quantity_picked_up_at_store ?? 0) - Number(i.quantity_delivered ?? 0)
+                    Number(i.quantity)
+                      - Number(i.quantity_picked_up_at_store ?? 0)
+                      - Number(i.quantity_delivered ?? 0)
+                      - Number(i.quantity_fulfilled_prior_bill ?? 0)
                   );
                   return s + rem;
                 }, 0)
@@ -187,7 +224,7 @@ export function OrderItemsTable({
       {showHint && (
         <p className="mt-2 text-xs text-gray-400 dark:text-gray-500">
           💡 กรอก <span className="text-orange-500 font-medium">&quot;รับที่ร้าน&quot;</span> เป็นจำนวนเต็มเมื่อลูกค้ามารับสินค้าที่หน้าร้าน
-          — คงเหลือส่ง = สั่ง − รับที่ร้าน − ส่งแล้ว
+          — คงเหลือส่ง = สั่ง − รับที่ร้าน − ส่งแล้ว (ทริปนี้) − บิลก่อน (เคสแก้บิล)
         </p>
       )}
     </div>

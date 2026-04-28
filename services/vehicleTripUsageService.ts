@@ -58,7 +58,7 @@ export interface VehicleCostSummary {
   total_cost: number;
 }
 
-/** สรุปการเงิน: ต้นทุน + รายได้ + กำไร/ขาดทุน (รายได้จาก orders.total_amount ที่ผูก delivery_trip_id) */
+/** สรุปการเงิน: ต้นทุน + รายได้ + กำไร/ขาดทุน (รายได้จาก orders.total_amount ที่ผูก delivery_trip_id — ไม่รวมออเดอร์ที่ถูกทำเครื่องหมาย exclude_from_vehicle_revenue_rollup) */
 export interface VehicleFinancialSummary extends VehicleCostSummary {
   revenue: number;
   profit: number;
@@ -227,7 +227,7 @@ export const vehicleTripUsageService = {
 
     const productMap = new Map<
       string,
-      { product_code: string; product_name: string; category: string; unit: string; total_quantity: number }
+      { product_id: string; product_code: string; product_name: string; category: string; unit: string; total_quantity: number }
     >();
 
     // โหลดสินค้าของทุกทริปแบบขนาน แทนทีละทริป
@@ -238,11 +238,13 @@ export const vehicleTripUsageService = {
 
     for (const items of allItemsArrays) {
       for (const item of items) {
-        const existing = productMap.get(item.product_id);
+        const rowKey = `${item.product_id}\u0001${item.unit}\u0001${item.is_bonus ? 'b' : 'n'}`;
+        const existing = productMap.get(rowKey);
         if (existing) {
           existing.total_quantity += item.total_quantity;
         } else {
-          productMap.set(item.product_id, {
+          productMap.set(rowKey, {
+            product_id: item.product_id,
             product_code: item.product_code,
             product_name: item.product_name,
             category: item.category,
@@ -253,16 +255,7 @@ export const vehicleTripUsageService = {
       }
     }
 
-    const result: VehicleProductSummaryItem[] = Array.from(productMap.entries()).map(
-      ([product_id, v]) => ({
-        product_id,
-        product_code: v.product_code,
-        product_name: v.product_name,
-        category: v.category,
-        unit: v.unit,
-        total_quantity: v.total_quantity,
-      })
-    );
+    const result: VehicleProductSummaryItem[] = Array.from(productMap.values());
 
     result.sort(
       (a, b) =>
@@ -326,7 +319,7 @@ export const vehicleTripUsageService = {
 
   /**
    * สรุปการเงินของรถในช่วงวันที่: ต้นทุน + รายได้จากออเดอร์ที่ผูกทริป + กำไร/ขาดทุน
-   * รายได้ = sum(orders.total_amount) ที่ delivery_trip_id อยู่ในทริปของรถในช่วง
+   * รายได้ = sum(orders.total_amount) ที่ delivery_trip_id อยู่ในทริปของรถในช่วง (ยกเว้นออเดอร์ที่ถูกแทนที่โดยบิลแก้ — exclude_from_vehicle_revenue_rollup)
    */
   getVehicleFinancialSummary: async (
     options: GetVehicleDailyUsageOptions
@@ -351,7 +344,8 @@ export const vehicleTripUsageService = {
       const { data: orderRows } = await (supabase as any)
         .from('orders')
         .select('total_amount')
-        .in('delivery_trip_id', tripIds);
+        .in('delivery_trip_id', tripIds)
+        .eq('exclude_from_vehicle_revenue_rollup', false);
       if (orderRows?.length) {
         has_revenue_data = true;
         revenue = orderRows.reduce(
@@ -468,7 +462,11 @@ export const vehicleTripUsageService = {
           .from('commission_logs')
           .select('actual_commission')
           .in('delivery_trip_id', tripIds),
-        (supabase as any).from('orders').select('total_amount').in('delivery_trip_id', tripIds),
+        (supabase as any)
+          .from('orders')
+          .select('total_amount')
+          .in('delivery_trip_id', tripIds)
+          .eq('exclude_from_vehicle_revenue_rollup', false),
       ]);
       if (logsRes.data) {
         const sum = logsRes.data.reduce((s, r) => s + (Number(r.actual_commission) || 0), 0);

@@ -1,10 +1,10 @@
 import React, { useState, useMemo, useCallback, memo, useEffect, useRef } from 'react';
-import { Truck, MapPin, Package, Calendar, User, Phone, CheckCircle, Clock, CheckSquare, Square, Eye, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Building2, Layers } from 'lucide-react';
+import { Truck, MapPin, Package, Calendar, User, Phone, CheckCircle, Clock, CheckSquare, Square, Eye, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Building2, Layers, Info } from 'lucide-react';
 import { useAuth, useToast } from '../hooks';
 import { useDeliveryTrips } from '../hooks/useDeliveryTrips';
 import { useInvoiceStatus } from '../hooks/useInvoiceStatus';
 import { deliveryTripService } from '../services/deliveryTripService';
-import { ordersService } from '../services/ordersService';
+import { ordersService, type OrderInvoiceDisplayLine } from '../services/ordersService';
 import { tripMetricsService } from '../services/tripMetricsService';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
@@ -17,6 +17,15 @@ import { TripCard } from '../components/trip/SalesTripCard';
 
 // โหมดแสดงผล: ดูแบบทริป vs ดูแบบรายร้าน
 type ViewMode = 'by_trip' | 'by_store';
+
+/** ข้อความใต้ชื่อสินค้า — เปรียบเทียบบรรทัดออเดอร์กับรายการในทริปวันนี้ */
+const MSG_PRODUCT_NOT_ON_TRIP_TODAY =
+  'ยังไม่มีในรายการทริปวันนี้ — จะมีเมื่อจัดสินค้านี้ลงทริป';
+const MSG_PRODUCT_ON_TRIP_WITH_BREAKDOWN =
+  'จัดลงทริปวันนี้แล้ว — ยอดส่งต่อรถอยู่ด้านล่าง';
+const MSG_PRODUCT_ON_TRIP_MODAL_MULTI_TRIP =
+  'จัดลงทริปวันนี้แล้ว — ยอดส่งต่อรถดูในคอลัมน์แบ่งตามรถ';
+const MSG_PRODUCT_ON_TRIP_COMPACT = 'จัดลงทริปวันนี้แล้ว';
 
 // สินค้ารวมยอด: product_id เดียวกันจากหลายทริป → แสดงเป็นแถวเดียว + breakdown
 interface SummaryItem {
@@ -39,6 +48,101 @@ interface SummaryItem {
 
 function getMergedSummaryCheckKey(si: SummaryItem): string {
   return `${si.product_id}-${si.is_bonus ? 'bonus' : 'normal'}`;
+}
+
+/** orderQuantities map keys are `${product_id}_${bonus|normal}_${unit}` — aggregate all unit variants for billing */
+function aggregateOrderQtyForProduct(
+  map: Map<string, { ordered: number; pickedUp: number; delivered?: number }>,
+  productId: string,
+  isBonus: boolean,
+): { ordered: number; pickedUp: number; delivered: number } {
+  const token = isBonus ? 'bonus' : 'normal';
+  const prefix = `${productId}_${token}_`;
+  let ordered = 0;
+  let pickedUp = 0;
+  let delivered = 0;
+  for (const [k, v] of map) {
+    if (k === `${productId}_${token}_` || k.startsWith(prefix)) {
+      ordered += v.ordered;
+      pickedUp += v.pickedUp;
+      delivered += v.delivered ?? 0;
+    }
+  }
+  return { ordered, pickedUp, delivered };
+}
+
+/** รวมบรรทัด delivery_trip_items ในทริปเดียว → แถวเดียวต่อสินค้า (ใบแจ้งหนี้) */
+function buildSingleTripInvoiceRows(items: any[]): Array<{
+  rowKey: string;
+  product_id: string;
+  is_bonus: boolean;
+  product: any;
+  line_unit: string;
+  tripQuantity: number;
+  tripPickedUp: number;
+}> {
+  const rowMap = new Map<
+    string,
+    {
+      rowKey: string;
+      product_id: string;
+      is_bonus: boolean;
+      product: any;
+      line_unit: string;
+      tripQuantity: number;
+      tripPickedUp: number;
+    }
+  >();
+  for (const item of items || []) {
+    const rowKey = `${item.product_id}-${item.is_bonus ? 'bonus' : 'normal'}`;
+    if (!rowMap.has(rowKey)) {
+      const lu =
+        item.unit != null && String(item.unit).trim() !== ''
+          ? String(item.unit).trim()
+          : (item.product?.unit ?? 'ชิ้น');
+      rowMap.set(rowKey, {
+        rowKey,
+        product_id: item.product_id,
+        is_bonus: !!item.is_bonus,
+        product: item.product,
+        line_unit: lu,
+        tripQuantity: 0,
+        tripPickedUp: 0,
+      });
+    }
+    const row = rowMap.get(rowKey)!;
+    row.tripQuantity += Number(item.quantity) || 0;
+    row.tripPickedUp += Math.floor(Number(item.quantity_picked_up_at_store) || 0);
+  }
+  return Array.from(rowMap.values());
+}
+
+/**
+ * มุมมองทริปแสดงเฉพาะรายการที่ผูกกับทริปนี้ — ถ้ายอดตามใบแจ้งหนี้รวมของร้านมากกว่าที่โผล่ในทริปนี้ ควรไปมุมมองรายร้านเพื่อดูครบ
+ */
+function tripStopShowsPartialOrderVersusInvoice(
+  invoiceLines: OrderInvoiceDisplayLine[] | undefined,
+  tripItems: any[] | undefined,
+): boolean {
+  if (!invoiceLines?.length) return false;
+  const orderedByKey = new Map<string, number>();
+  for (const line of invoiceLines) {
+    const key = `${line.product_id}_${line.is_bonus}`;
+    orderedByKey.set(key, (orderedByKey.get(key) ?? 0) + (Math.floor(Number(line.ordered)) || 0));
+  }
+  const tripQtyByKey = new Map<string, number>();
+  for (const it of tripItems || []) {
+    const pid = it?.product_id;
+    if (!pid) continue;
+    const key = `${pid}_${!!it.is_bonus}`;
+    tripQtyByKey.set(key, (tripQtyByKey.get(key) ?? 0) + Math.floor(Number(it.quantity) || 0));
+  }
+  for (const [key, ordered] of orderedByKey) {
+    if (ordered <= 0) continue;
+    const tripQty = tripQtyByKey.get(key) ?? 0;
+    if (tripQty < ordered) return true;
+  }
+  return false;
 }
 
 // Merged store: ร้านเดียวกันจากหลายทริป รวมเป็นก้อนเดียว
@@ -73,6 +177,10 @@ interface StoreCardProps {
   /** เปิด modal เช็ครายการสินค้าทีละรายการ (เดียวกับมุมมองแบบทริป) — ถ้าไม่ส่ง จะใช้ onViewDetail แบบเดิม */
   onOpenInvoiceChecklist?: (entry: MergedStoreEntry) => void;
   onToggleInvoiceStatus: (tripId: string, storeId: string, currentStatus: string) => void;
+  /** ยอดตาม order_items (ใบแจ้งหนี้) + quantity_delivered — โหลดแยกจากทริป */
+  orderQtyMap?: Map<string, { ordered: number; pickedUp: number; delivered: number }>;
+  /** รายการตามบรรทัดออเดอร์จริง (ครบทุกรายการที่สั่ง) — ถ้ามีจะใช้แทน summaryItems */
+  orderInvoiceLines?: OrderInvoiceDisplayLine[];
 }
 
 const StoreCard = memo(
@@ -84,6 +192,8 @@ const StoreCard = memo(
     onViewDetail,
     onOpenInvoiceChecklist,
     onToggleInvoiceStatus,
+    orderQtyMap,
+    orderInvoiceLines,
   }: StoreCardProps) => {
   const isExpanded = expandedStores.has(entry.store_id);
   const isSplit = entry.trips.length > 1;
@@ -179,7 +289,10 @@ const StoreCard = memo(
           <div className="flex items-center justify-between mb-2">
             <p className="text-xs font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
               <Package className="w-3 h-3" />
-              รายการสินค้า ({entry.summaryItems.length} รายการ{isSplit ? `, รวมจาก ${entry.trips.length} คัน` : ''})
+              รายการสินค้า (
+              {orderInvoiceLines?.length ?? entry.summaryItems.length} รายการ
+              {orderInvoiceLines?.length ? ' ตามออเดอร์' : ''}
+              {isSplit ? `, รวมจาก ${entry.trips.length} คัน` : ''})
             </p>
             <div className="flex items-center gap-2">
               <button
@@ -205,52 +318,176 @@ const StoreCard = memo(
             </div>
           </div>
 
-          {isExpanded && entry.summaryItems.length > 0 && (
+          {isExpanded &&
+            ((orderInvoiceLines?.length ?? 0) > 0 || entry.summaryItems.length > 0) && (
             <div className="p-3 bg-white dark:bg-slate-900/50 rounded-lg border border-gray-200 dark:border-slate-700 space-y-2 max-h-96 overflow-y-auto">
-              {entry.summaryItems.map((si, idx) => (
-                <div key={`${si.product_id}-${si.is_bonus}`} className="py-2 px-2 border-b border-gray-100 dark:border-slate-700 last:border-b-0 hover:bg-gray-50 dark:hover:bg-slate-800/50 rounded">
-                  <div className="flex items-center justify-between text-sm">
-                    <div className="flex items-start gap-3 flex-1 min-w-0">
-                      <span className="text-xs text-gray-400 font-mono w-6 flex-shrink-0">{idx + 1}.</span>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-gray-900 dark:text-white font-medium">
-                            {si.product?.product_name || 'ไม่ระบุชื่อ'}
-                          </span>
-                          {si.product?.product_code && (
-                            <Badge variant="info" className="text-xs font-mono">{si.product.product_code}</Badge>
-                          )}
-                          {si.is_bonus && <Badge variant="success" className="text-xs">ของแถม</Badge>}
+              {orderInvoiceLines && orderInvoiceLines.length > 0
+                ? orderInvoiceLines.map((line, idx) => {
+                    const summarySi = entry.summaryItems.find(
+                      (si) => si.product_id === line.product_id && si.is_bonus === line.is_bonus,
+                    );
+                    const unitLabel =
+                      line.unit || line.product?.unit || summarySi?.line_unit || summarySi?.product?.unit || 'ชิ้น';
+                    const deliverPct =
+                      line.ordered > 0
+                        ? Math.min(100, Math.round((line.delivered / line.ordered) * 100))
+                        : null;
+                    const remaining = line.ordered > 0 ? Math.max(0, line.ordered - line.delivered) : null;
+                    const showTripBreakdown =
+                      summarySi &&
+                      (isSplit ? summarySi.breakdown.length >= 1 : summarySi.breakdown.length > 1);
+                    return (
+                      <div
+                        key={line.rowKey}
+                        className="py-2 px-2 border-b border-gray-100 dark:border-slate-700 last:border-b-0 hover:bg-gray-50 dark:hover:bg-slate-800/50 rounded"
+                      >
+                        <div className="flex items-center justify-between text-sm">
+                          <div className="flex items-start gap-3 flex-1 min-w-0">
+                            <span className="text-xs text-gray-400 font-mono w-6 flex-shrink-0">{idx + 1}.</span>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="text-gray-900 dark:text-white font-medium">
+                                  {line.product?.product_name || summarySi?.product?.product_name || 'ไม่ระบุชื่อ'}
+                                </span>
+                                {(line.product?.product_code || summarySi?.product?.product_code) && (
+                                  <Badge variant="info" className="text-xs font-mono">
+                                    {line.product?.product_code || summarySi?.product?.product_code}
+                                  </Badge>
+                                )}
+                                {line.is_bonus && <Badge variant="success" className="text-xs">ของแถม</Badge>}
+                              </div>
+                              {!summarySi && (
+                                <p className="text-[11px] text-amber-700 dark:text-amber-300 mt-1">
+                                  {MSG_PRODUCT_NOT_ON_TRIP_TODAY}
+                                </p>
+                              )}
+                              {summarySi && (
+                                <p className="text-[11px] text-enterprise-600 dark:text-enterprise-400 mt-1">
+                                  {showTripBreakdown
+                                    ? MSG_PRODUCT_ON_TRIP_WITH_BREAKDOWN
+                                    : MSG_PRODUCT_ON_TRIP_COMPACT}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                          <div className="text-right ml-4 flex-shrink-0">
+                            <span className="text-gray-900 dark:text-white font-bold text-sm">
+                              {Math.floor(line.ordered).toLocaleString('th-TH', { maximumFractionDigits: 0 })}{' '}
+                              {unitLabel}
+                            </span>
+                            <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">ตามออเดอร์ (ออกบิล)</p>
+                            {line.ordered > 0 && deliverPct != null && remaining != null && (
+                              <p className="text-xs text-enterprise-600 dark:text-enterprise-400 mt-1 font-medium">
+                                จัดส่งแล้ว {line.delivered.toLocaleString('th-TH', { maximumFractionDigits: 0 })} /{' '}
+                                {line.ordered.toLocaleString('th-TH', { maximumFractionDigits: 0 })} ({deliverPct}%) ·
+                                คงเหลือ {remaining.toLocaleString('th-TH', { maximumFractionDigits: 0 })}
+                              </p>
+                            )}
+                            {line.pickedUp > 0 && (
+                              <p className="text-xs text-amber-600 dark:text-amber-400 mt-0.5">
+                                รับที่ร้านแล้ว {line.pickedUp.toLocaleString('th-TH', { maximumFractionDigits: 0 })}{' '}
+                                {unitLabel}
+                              </p>
+                            )}
+                          </div>
                         </div>
+                        {showTripBreakdown && summarySi && (
+                          <div className="ml-9 mt-1 flex flex-wrap gap-2">
+                            <span className="text-[10px] text-gray-500 dark:text-gray-400 mr-1">จัดในทริป:</span>
+                            {summarySi.breakdown.map((b, bi) => (
+                              <span
+                                key={bi}
+                                className="inline-flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-slate-800 px-2 py-0.5 rounded"
+                              >
+                                <Truck className="w-3 h-3" />
+                                {b.vehicle_plate}:{' '}
+                                {Math.floor(b.quantity || 0).toLocaleString('th-TH', {
+                                  maximumFractionDigits: 0,
+                                })}
+                                {b.pickedUp != null && b.pickedUp > 0 && (
+                                  <span className="text-amber-600 dark:text-amber-400"> (รับที่ร้าน {b.pickedUp})</span>
+                                )}
+                              </span>
+                            ))}
+                          </div>
+                        )}
                       </div>
-                    </div>
-                    <div className="text-right ml-4 flex-shrink-0">
-                      <span className="text-gray-900 dark:text-white font-bold text-sm">
-                        {Math.floor(si.totalQuantity).toLocaleString('th-TH', { maximumFractionDigits: 0 })} {si.line_unit || si.product?.unit || 'ชิ้น'}
-                      </span>
-                      {si.totalPickedUp > 0 && (
-                        <p className="text-xs text-amber-600 dark:text-amber-400 mt-0.5">
-                          รับที่ร้านแล้ว {si.totalPickedUp.toLocaleString('th-TH', { maximumFractionDigits: 0 })} {si.line_unit || si.product?.unit || 'ชิ้น'}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                  {/* breakdown เมื่อแบ่งหลายคัน */}
-                  {isSplit && si.breakdown.length > 1 && (
-                    <div className="ml-9 mt-1 flex flex-wrap gap-2">
-                      {si.breakdown.map((b, bi) => (
-                        <span key={bi} className="inline-flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-slate-800 px-2 py-0.5 rounded">
-                          <Truck className="w-3 h-3" />
-                          {b.vehicle_plate}: {Math.floor(b.quantity || 0).toLocaleString('th-TH', { maximumFractionDigits: 0 })}
-                          {b.pickedUp != null && b.pickedUp > 0 && (
-                            <span className="text-amber-600 dark:text-amber-400"> (รับที่ร้าน {b.pickedUp})</span>
-                          )}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              ))}
+                    );
+                  })
+                : entry.summaryItems.map((si, idx) => {
+                    const agg = orderQtyMap?.size
+                      ? aggregateOrderQtyForProduct(orderQtyMap, si.product_id, si.is_bonus)
+                      : null;
+                    const billQty = agg && agg.ordered > 0 ? agg.ordered : si.totalQuantity;
+                    const unitLabel = si.line_unit || si.product?.unit || 'ชิ้น';
+                    const deliverPct =
+                      agg && agg.ordered > 0 ? Math.min(100, Math.round((agg.delivered / agg.ordered) * 100)) : null;
+                    const remaining =
+                      agg && agg.ordered > 0 ? Math.max(0, agg.ordered - agg.delivered) : null;
+                    return (
+                      <div
+                        key={`${si.product_id}-${si.is_bonus}`}
+                        className="py-2 px-2 border-b border-gray-100 dark:border-slate-700 last:border-b-0 hover:bg-gray-50 dark:hover:bg-slate-800/50 rounded"
+                      >
+                        <div className="flex items-center justify-between text-sm">
+                          <div className="flex items-start gap-3 flex-1 min-w-0">
+                            <span className="text-xs text-gray-400 font-mono w-6 flex-shrink-0">{idx + 1}.</span>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="text-gray-900 dark:text-white font-medium">
+                                  {si.product?.product_name || 'ไม่ระบุชื่อ'}
+                                </span>
+                                {si.product?.product_code && (
+                                  <Badge variant="info" className="text-xs font-mono">
+                                    {si.product.product_code}
+                                  </Badge>
+                                )}
+                                {si.is_bonus && <Badge variant="success" className="text-xs">ของแถม</Badge>}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="text-right ml-4 flex-shrink-0">
+                            <span className="text-gray-900 dark:text-white font-bold text-sm">
+                              {Math.floor(billQty).toLocaleString('th-TH', { maximumFractionDigits: 0 })} {unitLabel}
+                            </span>
+                            <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
+                              {agg && agg.ordered > 0 ? 'ตามออเดอร์ (ออกบิล)' : 'รวมจากทริป'}
+                            </p>
+                            {agg && agg.ordered > 0 && deliverPct != null && remaining != null && (
+                              <p className="text-xs text-enterprise-600 dark:text-enterprise-400 mt-1 font-medium">
+                                จัดส่งแล้ว {agg.delivered.toLocaleString('th-TH', { maximumFractionDigits: 0 })} /{' '}
+                                {agg.ordered.toLocaleString('th-TH', { maximumFractionDigits: 0 })} ({deliverPct}%) ·
+                                คงเหลือ {remaining.toLocaleString('th-TH', { maximumFractionDigits: 0 })}
+                              </p>
+                            )}
+                            {si.totalPickedUp > 0 && (
+                              <p className="text-xs text-amber-600 dark:text-amber-400 mt-0.5">
+                                รับที่ร้านแล้ว {si.totalPickedUp.toLocaleString('th-TH', { maximumFractionDigits: 0 })}{' '}
+                                {unitLabel}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                        {isSplit && si.breakdown.length > 1 && (
+                          <div className="ml-9 mt-1 flex flex-wrap gap-2">
+                            {si.breakdown.map((b, bi) => (
+                              <span
+                                key={bi}
+                                className="inline-flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-slate-800 px-2 py-0.5 rounded"
+                              >
+                                <Truck className="w-3 h-3" />
+                                {b.vehicle_plate}:{' '}
+                                {Math.floor(b.quantity || 0).toLocaleString('th-TH', { maximumFractionDigits: 0 })}
+                                {b.pickedUp != null && b.pickedUp > 0 && (
+                                  <span className="text-amber-600 dark:text-amber-400"> (รับที่ร้าน {b.pickedUp})</span>
+                                )}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
             </div>
           )}
         </div>
@@ -271,7 +508,21 @@ export function SalesTripsView() {
   const [expandedStores, setExpandedStores] = useState<Set<string>>(new Set());
   const [selectedStoreDetail, setSelectedStoreDetail] = useState<{ tripId: string; store: any } | null>(null);
   const [checkedItems, setCheckedItems] = useState<Set<string>>(new Set());
-  const [orderQuantitiesByProduct, setOrderQuantitiesByProduct] = useState<Map<string, { ordered: number; pickedUp: number }>>(new Map());
+  const [orderQuantitiesByProduct, setOrderQuantitiesByProduct] = useState<
+    Map<string, { ordered: number; pickedUp: number; delivered: number }>
+  >(new Map());
+  /** มุมมองรายร้าน: ยอดออเดอร์เต็มต่อ store_id (รวมทุกทริปในวันนี้) */
+  const [orderQtyByStoreId, setOrderQtyByStoreId] = useState<
+    Map<string, Map<string, { ordered: number; pickedUp: number; delivered: number }>>
+  >(new Map());
+  /** บรรทัด order_items ครบ — มุมมองรายร้าน (รวมรายการที่ยังไม่อยู่ในทริปวันนี้) */
+  const [orderInvoiceLinesByStoreId, setOrderInvoiceLinesByStoreId] = useState<
+    Map<string, OrderInvoiceDisplayLine[]>
+  >(new Map());
+  /** มุมมองทริป: key `${tripId}__${storeId}` */
+  const [orderQtyByTripStoreKey, setOrderQtyByTripStoreKey] = useState<
+    Map<string, Map<string, { ordered: number; pickedUp: number; delivered: number }>>
+  >(new Map());
   const [viewMode, setViewMode] = useState<ViewMode>('by_trip'); // default = ดูแบบทริป (จัดกลุ่มตามทริป)
   // สำหรับ modal แบบ merged store
   const [selectedMergedStore, setSelectedMergedStore] = useState<MergedStoreEntry | null>(null);
@@ -302,12 +553,18 @@ export function SalesTripsView() {
       .catch(() => setOrderQuantitiesByProduct(new Map()));
   }, [selectedStoreDetail]);
 
+  const singleTripInvoiceRows = useMemo(() => {
+    if (!selectedStoreDetail?.store?.items?.length) return [];
+    return buildSingleTripInvoiceRows(selectedStoreDetail.store.items);
+  }, [selectedStoreDetail]);
+
   // Auto-check all items when invoice_status is 'issued'
   useEffect(() => {
     if (selectedStoreDetail && selectedStoreDetail.store.invoice_status === 'issued') {
       // Auto-check all items when invoice is already issued
-      const allItemKeys = selectedStoreDetail.store.items.map((item: any) => {
-        return `${selectedStoreDetail.tripId}-${selectedStoreDetail.store.store_id}-${item.id}`;
+      const rows = buildSingleTripInvoiceRows(selectedStoreDetail.store.items || []);
+      const allItemKeys = rows.map((row) => {
+        return `${selectedStoreDetail.tripId}-${selectedStoreDetail.store.store_id}-${row.rowKey}`;
       });
       setCheckedItems(new Set(allItemKeys));
     } else if (selectedStoreDetail && selectedStoreDetail.store.invoice_status !== 'issued') {
@@ -323,12 +580,16 @@ export function SalesTripsView() {
     }
     const allIssued = selectedMergedStore.trips.every((t) => (t.invoice_status || 'pending') === 'issued');
     if (allIssued) {
-      const keys = selectedMergedStore.summaryItems.map(getMergedSummaryCheckKey);
+      const lines = orderInvoiceLinesByStoreId.get(selectedMergedStore.store_id);
+      const keys =
+        lines && lines.length > 0
+          ? lines.map((l) => l.rowKey)
+          : selectedMergedStore.summaryItems.map(getMergedSummaryCheckKey);
       setMergedCheckedItems(new Set(keys));
     } else {
       setMergedCheckedItems(new Set());
     }
-  }, [selectedMergedStore]);
+  }, [selectedMergedStore, orderInvoiceLinesByStoreId]);
 
   // Fetch trips with full details for invoicing
   // Sales view needs items data to display and manage invoices
@@ -549,6 +810,98 @@ export function SalesTripsView() {
     return Array.from(map.values());
   }, [myTrips]);
 
+  /** ร้านที่โผล่ในหลายทริปในวันเดียวกัน — ออกบิลควรใช้มุมมองรายร้านจะชัดเจนกว่า */
+  const splitAcrossTripsInfo = useMemo(() => {
+    const storeIds = new Set<string>();
+    for (const e of mergedStores) {
+      if (e.trips.length > 1) storeIds.add(e.store_id);
+    }
+    return { count: storeIds.size, storeIds };
+  }, [mergedStores]);
+
+  /** key `${tripId}__${storeId}` เมื่อทริปนี้แสดงไม่ครบยอดตามใบแจ้งหนี้รวมของร้าน (เทียบ order_items vs delivery_trip_items ในทริปนี้) */
+  const tripStoreInvoiceGapHints = useMemo(() => {
+    const keys = new Set<string>();
+    for (const trip of myTrips) {
+      for (const store of trip.stores || []) {
+        const lines = orderInvoiceLinesByStoreId.get(store.store_id);
+        if (!lines?.length) continue;
+        if (tripStopShowsPartialOrderVersusInvoice(lines, store.items)) {
+          keys.add(`${trip.id}__${store.store_id}`);
+        }
+      }
+    }
+    return keys;
+  }, [myTrips, orderInvoiceLinesByStoreId]);
+
+  useEffect(() => {
+    if (!mergedStores.length) {
+      setOrderQtyByStoreId(new Map());
+      setOrderInvoiceLinesByStoreId(new Map());
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const results = await Promise.all(
+          mergedStores.map(async (e) => {
+            const tripIds = e.trips.map((t) => t.trip_id);
+            const bundle = await ordersService.getInvoiceBundleForStoreAcrossTrips(tripIds, e.store_id);
+            return [e.store_id, bundle] as const;
+          }),
+        );
+        if (!cancelled) {
+          setOrderQtyByStoreId(new Map(results.map(([id, b]) => [id, b.qtyMap])));
+          setOrderInvoiceLinesByStoreId(new Map(results.map(([id, b]) => [id, b.lines])));
+        }
+      } catch {
+        if (!cancelled) {
+          setOrderQtyByStoreId(new Map());
+          setOrderInvoiceLinesByStoreId(new Map());
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [mergedStores]);
+
+  useEffect(() => {
+    if (!myTrips.length) {
+      setOrderQtyByTripStoreKey(new Map());
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const pairs: { key: string; tripId: string; storeId: string }[] = [];
+        for (const trip of myTrips) {
+          for (const store of trip.stores || []) {
+            pairs.push({
+              key: `${trip.id}__${store.store_id}`,
+              tripId: trip.id,
+              storeId: store.store_id,
+            });
+          }
+        }
+        const results = await Promise.all(
+          pairs.map(async ({ key, tripId, storeId }) => {
+            const m = await ordersService.getOrderQuantitiesByProductForStoreInTrip(tripId, storeId);
+            return [key, m] as const;
+          }),
+        );
+        if (!cancelled) setOrderQtyByTripStoreKey(new Map(results));
+      } catch {
+        if (!cancelled) setOrderQtyByTripStoreKey(new Map());
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [myTrips]);
+
+  const openByStoreInvoiceView = useCallback(() => setViewMode('by_store'), []);
+
   // Handlers for TripCard
   const handleToggleStoreExpand = useCallback((tripId: string, storeId: string) => {
     const key = `${tripId}-${storeId}`;
@@ -567,25 +920,8 @@ export function SalesTripsView() {
     setSelectedStoreDetail({ tripId, store });
   }, []);
 
-  /** มุมมองแบบรายร้าน: ทริปเดียวใช้ modal รายแถว (เหมือนมุมมองทริป); หลายคันใช้ modal สรุปยอดพร้อมเช็ค */
+  /** มุมมองแบบรายร้าน: เปิด modal สรุปตามร้านเสมอ (ครบบรรทัดออเดอร์จาก order_items — ไม่จำกัดแค่ของในทริป) */
   const handleOpenInvoiceChecklistFromMerged = useCallback((entry: MergedStoreEntry) => {
-    if (entry.trips.length === 1) {
-      const t = entry.trips[0];
-      setSelectedStoreDetail({
-        tripId: t.trip_id,
-        store: {
-          id: t.trip_store_id,
-          store_id: entry.store_id,
-          store: entry.store,
-          items: t.items,
-          invoice_status: t.invoice_status,
-          order_status: t.order_status,
-          sequence_order: t.sequence_order,
-          delivery_status: t.delivery_status,
-        },
-      });
-      return;
-    }
     setSelectedMergedStore(entry);
   }, []);
 
@@ -671,6 +1007,45 @@ export function SalesTripsView() {
               </button>
             </div>
           </div>
+
+          {viewMode === 'by_trip' &&
+            (splitAcrossTripsInfo.count > 0 || tripStoreInvoiceGapHints.size > 0) && (
+            <div
+              className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-xl border border-amber-200 dark:border-amber-800/80 bg-amber-50 dark:bg-amber-950/40 px-4 py-3 text-sm text-amber-900 dark:text-amber-100"
+              role="status"
+            >
+              <div className="flex items-start gap-3 min-w-0">
+                <Info className="w-5 h-5 flex-shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" aria-hidden />
+                <div className="min-w-0">
+                  <p className="font-semibold text-amber-950 dark:text-amber-50">
+                    {splitAcrossTripsInfo.count > 0 && tripStoreInvoiceGapHints.size > 0
+                      ? 'แนะนำ: สลับไปดูแบบรายร้าน (แบ่งหลายทริปหรือรายการในออเดอร์ไม่ครบในทริปเดียว)'
+                      : splitAcrossTripsInfo.count > 0
+                        ? 'แนะนำ: สลับไปดูแบบรายร้านเมื่อมีการแบ่งส่งหลายทริป'
+                        : 'แนะนำ: สลับไปดูแบบรายร้านเพื่อดูรายการตามใบแจ้งหนี้ครบ'}
+                  </p>
+                  <p className="mt-1 text-amber-900/90 dark:text-amber-200/90 leading-relaxed">
+                    {splitAcrossTripsInfo.count > 0 && (
+                      <>วันนี้มี {splitAcrossTripsInfo.count} ร้านที่สินค้าแบ่งไปกับมากกว่าหนึ่งทริป — </>
+                    )}
+                    {tripStoreInvoiceGapHints.size > 0 && (
+                      <>มุมมองทริปแต่ละคันจะแสดงเฉพาะของที่ผูกกับทริปนั้น — ถ้ายอดตามออเดอร์มีมากกว่าที่เห็นในทริปให้เปิดแบบรายร้าน — </>
+                    )}
+                    การมองทีละคันอาจทำให้เช็คยอดออกบิลสับสนได้ การดูแบบรายร้านจะรวมยอดต่อสินค้าและเช็คออกบิลครั้งเดียวต่อร้านตามที่ออกใบแจ้งหนี้จริง
+                  </p>
+                </div>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                className="flex-shrink-0 border-amber-300 dark:border-amber-700 text-amber-950 dark:text-amber-50 bg-white/80 dark:bg-charcoal-900 hover:bg-amber-100 dark:hover:bg-amber-900/30"
+                onClick={openByStoreInvoiceView}
+              >
+                <MapPin className="w-4 h-4 mr-1.5 inline" />
+                ไปดูแบบรายร้าน
+              </Button>
+            </div>
+          )}
 
           {/* Stats */}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
@@ -939,6 +1314,10 @@ export function SalesTripsView() {
                     onViewStoreDetail={handleViewStoreDetail}
                     onToggleInvoiceStatus={handleToggleInvoiceStatus}
                     hasPackingLayout={tripsWithLayout.has(trip.id)}
+                    storeIdsSplitAcrossTrips={splitAcrossTripsInfo.storeIds}
+                    tripStoreInvoiceGapHints={tripStoreInvoiceGapHints}
+                    onSuggestByStoreInvoiceView={openByStoreInvoiceView}
+                    orderQtyByTripStore={orderQtyByTripStoreKey}
                   />
                 </div>
               ))}
@@ -971,6 +1350,8 @@ export function SalesTripsView() {
                     onViewDetail={(entry) => setSelectedMergedStore(entry)}
                     onOpenInvoiceChecklist={handleOpenInvoiceChecklistFromMerged}
                     onToggleInvoiceStatus={handleToggleInvoiceStatus}
+                    orderQtyMap={orderQtyByStoreId.get(entry.store_id)}
+                    orderInvoiceLines={orderInvoiceLinesByStoreId.get(entry.store_id)}
                   />
                 ))
               )}
@@ -1035,12 +1416,12 @@ export function SalesTripsView() {
                   </div>
                 )}
 
-                {/* Items List with Checklist Helper */}
-                {selectedStoreDetail.store.items && selectedStoreDetail.store.items.length > 0 ? (
+                {/* Items List with Checklist Helper — รวมแถวต่อสินค้า (ใบแจ้งหนี้) แม้ในทริปเดียวจะแบ่งหลายบรรทัด */}
+                {singleTripInvoiceRows.length > 0 ? (
                   <div>
                     <div className="flex items-center justify-between mb-3">
                       <h3 className="font-semibold text-gray-900 dark:text-white">
-                        รายการสินค้า ({selectedStoreDetail.store.items.length} รายการ)
+                        รายการสินค้า ({singleTripInvoiceRows.length} รายการ)
                       </h3>
                       <div className="flex items-center gap-2 text-sm">
                         <span className="text-gray-600 dark:text-gray-400">💡</span>
@@ -1071,6 +1452,19 @@ export function SalesTripsView() {
                             ชิ้น
                           </span>
                           <span>
+                            จัดส่งแล้ว (สะสม){' '}
+                            {new Intl.NumberFormat('th-TH').format(
+                              (() => {
+                                let total = 0;
+                                for (const v of orderQuantitiesByProduct.values()) {
+                                  total += v.delivered;
+                                }
+                                return total;
+                              })()
+                            )}{' '}
+                            ชิ้น
+                          </span>
+                          <span>
                             รับที่ร้านแล้ว{' '}
                             {new Intl.NumberFormat('th-TH').format(
                               (() => {
@@ -1094,13 +1488,13 @@ export function SalesTripsView() {
                           📋 สรุปรายการสินค้า
                         </span>
                         <span className="text-blue-700 dark:text-blue-300">
-                          รวม {selectedStoreDetail.store.items.length} รายการ
+                          รวม {singleTripInvoiceRows.length} รายการ
                         </span>
                       </div>
                       {(() => {
-                        const totalItems = selectedStoreDetail.store.items.length;
-                        const checkedCount = selectedStoreDetail.store.items.filter((item: any) => {
-                          const itemKey = `${selectedStoreDetail.tripId}-${selectedStoreDetail.store.store_id}-${item.id}`;
+                        const totalItems = singleTripInvoiceRows.length;
+                        const checkedCount = singleTripInvoiceRows.filter((row) => {
+                          const itemKey = `${selectedStoreDetail.tripId}-${selectedStoreDetail.store.store_id}-${row.rowKey}`;
                           return checkedItems.has(itemKey);
                         }).length;
                         const progress = totalItems > 0 ? (checkedCount / totalItems) * 100 : 0;
@@ -1145,22 +1539,42 @@ export function SalesTripsView() {
                             <th className="text-left py-3 px-3 text-sm font-semibold text-gray-700 dark:text-gray-300">รหัสสินค้า</th>
                             <th className="text-left py-3 px-3 text-sm font-semibold text-gray-700 dark:text-gray-300">ชื่อสินค้า</th>
                             <th className="text-left py-3 px-3 text-sm font-semibold text-gray-700 dark:text-gray-300">หมวดหมู่</th>
+                            <th className="text-right py-3 px-3 text-sm font-semibold text-gray-700 dark:text-gray-300">
+                              ส่งในทริปนี้
+                            </th>
                             <th className="text-right py-3 px-3 text-sm font-semibold text-gray-700 dark:text-gray-300">จำนวนสั่ง</th>
+                            <th className="text-right py-3 px-3 text-sm font-semibold text-blue-600 dark:text-blue-400">
+                              จัดส่งแล้ว (สะสม)
+                            </th>
                             <th className="text-right py-3 px-3 text-sm font-semibold text-amber-600 dark:text-amber-400">รับที่ร้านแล้ว</th>
                             <th className="text-right py-3 px-3 text-sm font-semibold text-gray-700 dark:text-gray-300">หน่วย</th>
-                            {selectedStoreDetail.store.items[0]?.product?.base_price ? (
+                            {singleTripInvoiceRows.some((r) => r.product?.base_price) ? (
                               <th className="text-right py-3 px-3 text-sm font-semibold text-gray-700 dark:text-gray-300">ราคาต่อหน่วย</th>
                             ) : null}
                           </tr>
                         </thead>
                         <tbody>
-                          {selectedStoreDetail.store.items.map((item: any, index: number) => {
-                            const itemKey = `${selectedStoreDetail.tripId}-${selectedStoreDetail.store.store_id}-${item.id}`;
+                          {singleTripInvoiceRows.map((row, index) => {
+                            const itemKey = `${selectedStoreDetail.tripId}-${selectedStoreDetail.store.store_id}-${row.rowKey}`;
                             const isChecked = checkedItems.has(itemKey);
+                            const agg = aggregateOrderQtyForProduct(
+                              orderQuantitiesByProduct,
+                              row.product_id,
+                              row.is_bonus,
+                            );
+                            const unit = row.line_unit || row.product?.unit || 'ชิ้น';
+                            const ordered =
+                              orderQuantitiesByProduct.size > 0
+                                ? agg.ordered
+                                : Math.floor(row.tripQuantity) + Math.floor(row.tripPickedUp);
+                            const pickedUp =
+                              orderQuantitiesByProduct.size > 0 ? agg.pickedUp : Math.floor(row.tripPickedUp);
+                            const delivered =
+                              orderQuantitiesByProduct.size > 0 ? agg.delivered : null;
 
                             return (
                               <tr
-                                key={item.id}
+                                key={row.rowKey}
                                 className={`border-b border-gray-100 dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-800/50 transition-colors ${isChecked ? 'bg-green-50 dark:bg-green-900/10' : ''
                                   }`}
                               >
@@ -1197,9 +1611,9 @@ export function SalesTripsView() {
                                 <td className="py-3 px-3 text-sm">
                                   <div className="flex flex-col gap-1 items-start">
                                     <Badge variant="info" className="text-xs font-mono">
-                                      {item.product?.product_code || 'ไม่ระบุ'}
+                                      {row.product?.product_code || 'ไม่ระบุ'}
                                     </Badge>
-                                    {item.is_bonus && (
+                                    {row.is_bonus && (
                                       <Badge variant="success" className="text-xs">
                                         ของแถม
                                       </Badge>
@@ -1207,41 +1621,41 @@ export function SalesTripsView() {
                                   </div>
                                 </td>
                                 <td className="py-3 px-3 text-sm font-medium text-gray-900 dark:text-white">
-                                  {item.product?.product_name || 'ไม่ระบุชื่อ'}
+                                  {row.product?.product_name || 'ไม่ระบุชื่อ'}
                                 </td>
                                 <td className="py-3 px-3 text-sm text-gray-600 dark:text-gray-400">
-                                  {item.product?.category || '-'}
+                                  {row.product?.category || '-'}
+                                </td>
+                                <td className="py-3 px-3 text-sm text-right font-medium text-gray-800 dark:text-gray-200">
+                                  {Math.floor(row.tripQuantity).toLocaleString('th-TH', { maximumFractionDigits: 0 })}
                                 </td>
                                 <td className="py-3 px-3 text-sm text-right font-semibold text-gray-900 dark:text-white">
-                                  {(() => {
-                                    const key = `${item.product_id}_${item.is_bonus ? 'bonus' : 'normal'}`;
-                                    const ctx = orderQuantitiesByProduct.get(key);
-                                    const ordered = ctx?.ordered ?? (Math.floor(Number(item.quantity) || 0) + Math.floor(Number(item.quantity_picked_up_at_store) || 0));
-                                    return ordered.toLocaleString('th-TH', { maximumFractionDigits: 0 });
-                                  })()}
+                                  {ordered.toLocaleString('th-TH', { maximumFractionDigits: 0 })}
+                                </td>
+                                <td className="py-3 px-3 text-sm text-right font-medium text-blue-700 dark:text-blue-300">
+                                  {delivered != null
+                                    ? delivered.toLocaleString('th-TH', { maximumFractionDigits: 0 })
+                                    : '—'}
                                 </td>
                                 <td className="py-3 px-3 text-sm text-right">
-                                  {(() => {
-                                    const key = `${item.product_id}_${item.is_bonus ? 'bonus' : 'normal'}`;
-                                    const ctx = orderQuantitiesByProduct.get(key);
-                                    const pickedUp = ctx?.pickedUp ?? Math.floor(Number(item.quantity_picked_up_at_store) || 0);
-                                    const unit = item.unit || item.product?.unit || 'ชิ้น';
-                                    if (pickedUp > 0) {
-                                      return (
-                                        <span className="text-amber-600 dark:text-amber-400 font-medium" title="ลูกค้ามารับไปที่หน้าร้านแล้ว">
-                                          {pickedUp.toLocaleString('th-TH', { maximumFractionDigits: 0 })} {unit}
-                                        </span>
-                                      );
-                                    }
-                                    return <span className="text-gray-400 dark:text-gray-500">—</span>;
-                                  })()}
+                                  {pickedUp > 0 ? (
+                                    <span className="text-amber-600 dark:text-amber-400 font-medium" title="ลูกค้ามารับไปที่หน้าร้านแล้ว">
+                                      {pickedUp.toLocaleString('th-TH', { maximumFractionDigits: 0 })} {unit}
+                                    </span>
+                                  ) : (
+                                    <span className="text-gray-400 dark:text-gray-500">—</span>
+                                  )}
                                 </td>
                                 <td className="py-3 px-3 text-sm text-right text-gray-600 dark:text-gray-400">
-                                  {item.unit || item.product?.unit || 'ชิ้น'}
+                                  {unit}
                                 </td>
-                                {item.product?.base_price ? (
+                                {singleTripInvoiceRows.some((r) => r.product?.base_price) ? (
                                   <td className="py-3 px-3 text-sm text-right text-gray-600 dark:text-gray-400">
-                                    {new Intl.NumberFormat('th-TH', { style: 'currency', currency: 'THB' }).format(item.product.base_price)}
+                                    {row.product?.base_price != null
+                                      ? new Intl.NumberFormat('th-TH', { style: 'currency', currency: 'THB' }).format(
+                                        row.product.base_price,
+                                      )
+                                      : '—'}
                                   </td>
                                 ) : null}
                               </tr>
@@ -1254,16 +1668,16 @@ export function SalesTripsView() {
                     {/* Helper Text */}
                     <div className="mt-4 p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
                       <p className="text-xs text-yellow-800 dark:text-yellow-300">
-                        <strong>💡 คำแนะนำ:</strong> &quot;จำนวนสั่ง&quot; = ยอดที่ลูกค้าสั่งทั้งหมด (รวมทั้งที่จัดส่งและที่รับเอง) &quot;รับที่ร้านแล้ว&quot; = จำนวนที่ลูกค้ามารับไปที่หน้าร้าน — ใช้เป็นคู่มือคีย์บิลในระบบอื่น (จำนวนเต็มเท่านั้น) ตรวจสอบให้ครบทุกรายการก่อนกด &quot;ยืนยันการออกบิล&quot;
+                        <strong>💡 คำแนะนำ:</strong> แต่ละแถว = สินค้าหนึ่งรายการต่อใบแจ้งหนี้ (ถ้าแบ่งหลายบรรทัดในทริปจะถูกรวมให้แล้ว) &quot;ส่งในทริปนี้&quot; = จำนวนที่บรรทึกในทริปนี้เท่านั้น &quot;จำนวนสั่ง&quot; = ยอดที่ลูกค้าสั่งทั้งหมดในออเดอร์ &quot;รับที่ร้านแล้ว&quot; = จำนวนที่ลูกค้ามารับไปที่หน้าร้าน — ใช้เป็นคู่มือคีย์บิลในระบบอื่น (จำนวนเต็มเท่านั้น) ตรวจสอบให้ครบทุกรายการก่อนกด &quot;ยืนยันการออกบิล&quot;
                       </p>
                     </div>
 
                     {/* Confirm Button */}
                     <div className="mt-6 pt-4 border-t border-gray-200 dark:border-slate-700">
                       {(() => {
-                        const totalItems = selectedStoreDetail.store.items.length;
-                        const checkedCount = selectedStoreDetail.store.items.filter((item: any) => {
-                          const itemKey = `${selectedStoreDetail.tripId}-${selectedStoreDetail.store.store_id}-${item.id}`;
+                        const totalItems = singleTripInvoiceRows.length;
+                        const checkedCount = singleTripInvoiceRows.filter((row) => {
+                          const itemKey = `${selectedStoreDetail.tripId}-${selectedStoreDetail.store.store_id}-${row.rowKey}`;
                           return checkedItems.has(itemKey);
                         }).length;
                         const allChecked = checkedCount === totalItems && totalItems > 0;
@@ -1465,18 +1879,38 @@ export function SalesTripsView() {
                 )}
 
                 {/* Items Table — ยอดรวม + เช็ครายการ (มุมมองรายร้าน) */}
-                {selectedMergedStore.summaryItems.length > 0 ? (
+                {(() => {
+                  const ms = selectedMergedStore;
+                  const invLinesModal = orderInvoiceLinesByStoreId.get(ms.store_id) ?? [];
+                  const hasInvoiceRows =
+                    invLinesModal.length > 0 || ms.summaryItems.length > 0;
+                  return hasInvoiceRows;
+                })() ? (
                   <div>
                     <h3 className="font-semibold text-gray-900 dark:text-white mb-3">
-                      รายการสินค้า ({selectedMergedStore.summaryItems.length} รายการ)
+                      {(() => {
+                        const inv = orderInvoiceLinesByStoreId.get(selectedMergedStore.store_id) ?? [];
+                        const n =
+                          inv.length > 0 ? inv.length : selectedMergedStore.summaryItems.length;
+                        return (
+                          <>
+                            รายการสินค้า ({n} รายการ{inv.length > 0 ? ' ตามออเดอร์ทั้งหมด' : ''})
+                          </>
+                        );
+                      })()}
                     </h3>
                     {(() => {
                       const ms = selectedMergedStore;
                       const mergedStoreId = ms.store_id;
-                      const mergedTotal = ms.summaryItems.length;
-                      const mergedCheckedCount = ms.summaryItems.filter((si) =>
-                        mergedCheckedItems.has(getMergedSummaryCheckKey(si)),
-                      ).length;
+                      const invLinesModal = orderInvoiceLinesByStoreId.get(mergedStoreId) ?? [];
+                      const mergedTotal =
+                        invLinesModal.length > 0 ? invLinesModal.length : ms.summaryItems.length;
+                      const mergedCheckedCount =
+                        invLinesModal.length > 0
+                          ? invLinesModal.filter((l) => mergedCheckedItems.has(l.rowKey)).length
+                          : ms.summaryItems.filter((si) =>
+                              mergedCheckedItems.has(getMergedSummaryCheckKey(si)),
+                            ).length;
                       const allMergedChecked = mergedTotal > 0 && mergedCheckedCount === mergedTotal;
                       const allMergedTripsIssued = ms.trips.every(
                         (t) => (t.invoice_status || 'pending') === 'issued',
@@ -1486,9 +1920,36 @@ export function SalesTripsView() {
                       );
                       const mergedProgress =
                         mergedTotal > 0 ? (mergedCheckedCount / mergedTotal) * 100 : 0;
+                      const mergedOrderMap = orderQtyByStoreId.get(mergedStoreId);
 
                       return (
                         <>
+                          {mergedOrderMap && mergedOrderMap.size > 0 && (
+                            <div className="mb-4 p-3 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-lg">
+                              <div className="text-sm font-medium text-emerald-800 dark:text-emerald-200 mb-1">
+                                สรุปตามออเดอร์ — ใช้ออกใบแจ้งหนี้ / ความคืบหน้าจัดส่ง
+                              </div>
+                              <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-emerald-700 dark:text-emerald-300">
+                                <span>
+                                  สั่งทั้งหมด{' '}
+                                  {(() => {
+                                    let t = 0;
+                                    for (const v of mergedOrderMap.values()) t += v.ordered;
+                                    return new Intl.NumberFormat('th-TH').format(t);
+                                  })()}{' '}
+                                  (หน่วยตามบรรทัดออเดอร์)
+                                </span>
+                                <span>
+                                  จัดส่งแล้ว{' '}
+                                  {(() => {
+                                    let t = 0;
+                                    for (const v of mergedOrderMap.values()) t += v.delivered;
+                                    return new Intl.NumberFormat('th-TH').format(t);
+                                  })()}
+                                </span>
+                              </div>
+                            </div>
+                          )}
                           <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
                             <div className="flex items-center justify-between text-sm mb-2">
                               <span className="text-blue-800 dark:text-blue-200 font-medium">
@@ -1529,7 +1990,10 @@ export function SalesTripsView() {
                                     ชื่อสินค้า
                                   </th>
                                   <th className="text-right py-3 px-3 text-sm font-semibold text-gray-700 dark:text-gray-300">
-                                    จำนวนสั่ง
+                                    จำนวนสั่ง (ออเดอร์)
+                                  </th>
+                                  <th className="text-right py-3 px-3 text-sm font-semibold text-blue-600 dark:text-blue-400">
+                                    จัดส่งแล้ว (สะสม)
                                   </th>
                                   <th className="text-right py-3 px-3 text-sm font-semibold text-amber-600 dark:text-amber-400">
                                     รับที่ร้านแล้ว
@@ -1545,9 +2009,59 @@ export function SalesTripsView() {
                                 </tr>
                               </thead>
                               <tbody>
-                                {ms.summaryItems.map((si, index) => {
-                                  const rowKey = getMergedSummaryCheckKey(si);
+                                {(invLinesModal.length > 0 ? invLinesModal : ms.summaryItems).map((rowOrSi, index) => {
+                                  const invLine =
+                                    invLinesModal.length > 0
+                                      ? (rowOrSi as OrderInvoiceDisplayLine)
+                                      : null;
+                                  const si =
+                                    invLinesModal.length > 0
+                                      ? ms.summaryItems.find(
+                                          (s) =>
+                                            s.product_id === invLine!.product_id &&
+                                            s.is_bonus === invLine!.is_bonus,
+                                        )
+                                      : (rowOrSi as SummaryItem);
+                                  const rowKey =
+                                    invLine?.rowKey ?? getMergedSummaryCheckKey(si as SummaryItem);
                                   const isRowChecked = mergedCheckedItems.has(rowKey);
+                                  const rowAgg =
+                                    !invLine && mergedOrderMap?.size && si
+                                      ? aggregateOrderQtyForProduct(
+                                          mergedOrderMap,
+                                          (si as SummaryItem).product_id,
+                                          (si as SummaryItem).is_bonus,
+                                        )
+                                      : null;
+                                  const billQty = invLine
+                                    ? invLine.ordered
+                                    : rowAgg && rowAgg.ordered > 0
+                                      ? rowAgg.ordered
+                                      : (si as SummaryItem).totalQuantity;
+                                  const pickedDisplay = invLine
+                                    ? invLine.pickedUp
+                                    : rowAgg && rowAgg.pickedUp > 0
+                                      ? rowAgg.pickedUp
+                                      : (si as SummaryItem).totalPickedUp;
+                                  const deliveredDisp = invLine
+                                    ? invLine.delivered
+                                    : rowAgg != null
+                                      ? rowAgg.delivered
+                                      : null;
+                                  const unitCol = invLine
+                                    ? invLine.unit ||
+                                      invLine.product?.unit ||
+                                      si?.line_unit ||
+                                      si?.product?.unit ||
+                                      'ชิ้น'
+                                    : (si as SummaryItem).line_unit ||
+                                      (si as SummaryItem).product?.unit ||
+                                      'ชิ้น';
+                                  const productCodeDisp = invLine?.product?.product_code ?? si?.product?.product_code;
+                                  const productNameDisp =
+                                    invLine?.product?.product_name ?? si?.product?.product_name ?? 'ไม่ระบุชื่อ';
+                                  const bonusDisp = invLine ? invLine.is_bonus : (si as SummaryItem).is_bonus;
+                                  const breakdownSi = si as SummaryItem | undefined;
                                   return (
                                     <tr
                                       key={rowKey}
@@ -1588,41 +2102,60 @@ export function SalesTripsView() {
                                       </td>
                                       <td className="py-3 px-3 text-sm">
                                         <Badge variant="info" className="text-xs font-mono">
-                                          {si.product?.product_code || 'ไม่ระบุ'}
+                                          {productCodeDisp || 'ไม่ระบุ'}
                                         </Badge>
-                                        {si.is_bonus && (
+                                        {bonusDisp && (
                                           <Badge variant="success" className="text-xs ml-1">
                                             ของแถม
                                           </Badge>
                                         )}
                                       </td>
                                       <td className="py-3 px-3 text-sm font-medium text-gray-900 dark:text-white">
-                                        {si.product?.product_name || 'ไม่ระบุชื่อ'}
+                                        <div>{productNameDisp}</div>
+                                        {invLine && !breakdownSi && (
+                                          <p className="text-[11px] text-amber-700 dark:text-amber-300 mt-1">
+                                            {MSG_PRODUCT_NOT_ON_TRIP_TODAY}
+                                          </p>
+                                        )}
+                                        {invLine && breakdownSi && (
+                                          <p className="text-[11px] text-enterprise-600 dark:text-enterprise-400 mt-1">
+                                            {ms.trips.length > 1
+                                              ? MSG_PRODUCT_ON_TRIP_MODAL_MULTI_TRIP
+                                              : MSG_PRODUCT_ON_TRIP_COMPACT}
+                                          </p>
+                                        )}
                                       </td>
                                       <td className="py-3 px-3 text-sm text-right font-bold text-gray-900 dark:text-white">
-                                        {Math.floor(si.totalQuantity).toLocaleString('th-TH', {
+                                        {Math.floor(billQty).toLocaleString('th-TH', {
                                           maximumFractionDigits: 0,
                                         })}
                                       </td>
+                                      <td className="py-3 px-3 text-sm text-right font-medium text-blue-700 dark:text-blue-300">
+                                        {deliveredDisp != null
+                                          ? deliveredDisp.toLocaleString('th-TH', {
+                                              maximumFractionDigits: 0,
+                                            })
+                                          : '—'}
+                                      </td>
                                       <td className="py-3 px-3 text-sm text-right">
-                                        {si.totalPickedUp > 0 ? (
+                                        {pickedDisplay > 0 ? (
                                           <span className="text-amber-600 dark:text-amber-400 font-medium">
-                                            {si.totalPickedUp.toLocaleString('th-TH', {
+                                            {pickedDisplay.toLocaleString('th-TH', {
                                               maximumFractionDigits: 0,
                                             })}{' '}
-                                            {si.line_unit || si.product?.unit || 'ชิ้น'}
+                                            {unitCol}
                                           </span>
                                         ) : (
                                           <span className="text-gray-400 dark:text-gray-500">—</span>
                                         )}
                                       </td>
                                       <td className="py-3 px-3 text-sm text-right text-gray-600 dark:text-gray-400">
-                                        {si.line_unit || si.product?.unit || 'ชิ้น'}
+                                        {unitCol}
                                       </td>
                                       {ms.trips.length > 1 && (
                                         <td className="py-3 px-3 text-sm">
                                           <div className="flex flex-wrap gap-1.5">
-                                            {si.breakdown.map((b, bi) => (
+                                            {(breakdownSi?.breakdown ?? []).map((b, bi) => (
                                               <span
                                                 key={bi}
                                                 className="inline-flex items-center gap-1 text-xs bg-gray-100 dark:bg-slate-800 text-gray-600 dark:text-gray-400 px-2 py-0.5 rounded"

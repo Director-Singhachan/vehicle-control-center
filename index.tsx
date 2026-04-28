@@ -78,16 +78,18 @@ const CreateOrderView = lazy(() => import('./views/CreateOrderView').then(m => (
 const CustomerManagementView = lazy(() => import('./views/CustomerManagementView').then(m => ({ default: m.CustomerManagementView })));
 const PendingOrdersView = lazy(() => import('./views/PendingOrdersView').then(m => ({ default: m.PendingOrdersView })));
 const PendingSalesView = lazy(() => import('./views/PendingSalesView').then(m => ({ default: m.PendingSalesView })));
+const PartialDeliveryOrdersView = lazy(() => import('./views/PartialDeliveryOrdersView').then(m => ({ default: m.PartialDeliveryOrdersView })));
 
 const TrackOrdersView = lazy(() => import('./views/TrackOrdersView').then(m => ({ default: m.TrackOrdersView })));
 const SalesTripsView = lazy(() => import('./views/SalesTripsView').then(m => ({ default: m.SalesTripsView })));
 const CleanupTestOrdersView = lazy(() => import('./views/CleanupTestOrdersView').then(m => ({ default: m.CleanupTestOrdersView })));
 const PackingSimulationView = lazy(() => import('./views/PackingSimulationView').then(m => ({ default: m.PackingSimulationView })));
 const ExcelImportView = lazy(() => import('./views/ExcelImportView').then(m => ({ default: m.ExcelImportView })));
+const CustomerImportView = lazy(() => import('./views/CustomerImportView').then(m => ({ default: m.CustomerImportView })));
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { FeatureAccessProvider, useFeatureAccess } from './hooks/useFeatureAccess';
 import { firstAccessibleTabId, NAV_FALLBACK_TAB_ORDER, TAB_TO_PRIMARY_FEATURE } from './types/featureAccess';
-import { useAuth, usePendingTickets } from './hooks';
+import { useAuth, usePendingTickets, usePartialDeliveryQueueCount, usePendingOrdersQueueCount } from './hooks';
 import { usePendingBillingTrips } from './hooks/usePendingBillingTrips';
 import { ticketService, type TicketWithRelations } from './services/ticketService';
 import { prefetchService } from './services/prefetchService';
@@ -99,7 +101,7 @@ import { DebugDataProvider } from './context/DebugDataContext';
 import { DebugTools } from './components/debug/DebugTools';
 import { useDebugStore } from './stores/debugStore';
 
-const SidebarItem = ({ icon: Icon, label, active, onClick, onMouseEnter, isCollapsed, hasSubmenu, isOpen, isWarning }: any) => (
+const SidebarItem = ({ icon: Icon, label, active, onClick, onMouseEnter, isCollapsed, hasSubmenu, isOpen, isWarning, badgeCount }: any) => (
   <button
     onClick={onClick}
     onMouseEnter={onMouseEnter}
@@ -115,10 +117,25 @@ const SidebarItem = ({ icon: Icon, label, active, onClick, onMouseEnter, isColla
           <AlertTriangle size={10} className="text-amber-500 fill-amber-500/20" />
         </div>
       )}
+      {!isWarning && isCollapsed && typeof badgeCount === 'number' && badgeCount > 0 && (
+        <span
+          className="absolute -top-0.5 -right-0.5 min-w-[10px] h-[10px] rounded-full bg-orange-500 dark:bg-orange-500 border-2 border-white dark:border-charcoal-900"
+          title={`งานคิวออเดอร์ ${badgeCount} รายการ (รอจัดทริป + แบ่งส่งค้างจัด)`}
+          aria-hidden
+        />
+      )}
     </div>
     {!isCollapsed && (
       <span className={`flex-1 text-left ${isWarning ? 'text-amber-600 dark:text-amber-400 font-semibold' : ''}`}>
         {label}
+      </span>
+    )}
+    {!isCollapsed && typeof badgeCount === 'number' && badgeCount > 0 && (
+      <span
+        className="ml-1 flex-shrink-0 min-w-[1.25rem] h-5 px-1.5 inline-flex items-center justify-center rounded-full bg-orange-500 dark:bg-orange-500 text-white text-[10px] font-bold leading-none"
+        title={`งานคิวออเดอร์ ${badgeCount} รายการ (รอจัดทริป + แบ่งส่งค้างจัด)`}
+      >
+        {badgeCount > 99 ? '99+' : badgeCount}
       </span>
     )}
     {!isCollapsed && isWarning && (
@@ -130,7 +147,7 @@ const SidebarItem = ({ icon: Icon, label, active, onClick, onMouseEnter, isColla
   </button>
 );
 
-const SubSidebarItem = ({ label, active, onClick, isCollapsed, isFlyout, isWarning }: any) => (
+const SubSidebarItem = ({ label, active, onClick, isCollapsed, isFlyout, isWarning, badgeCount }: any) => (
   <button
     onClick={onClick}
     className={`w-full flex items-center ${isFlyout ? 'px-4' : 'pl-12 pr-4'} py-2 rounded-lg transition-colors duration-200 ${active
@@ -141,6 +158,14 @@ const SubSidebarItem = ({ label, active, onClick, isCollapsed, isFlyout, isWarni
     {!isCollapsed && (
       <span className={`text-sm whitespace-nowrap flex-1 text-left ${isWarning ? 'text-amber-600 dark:text-amber-400 font-semibold italic' : ''}`}>
         {label}
+      </span>
+    )}
+    {!isCollapsed && typeof badgeCount === 'number' && badgeCount > 0 && (
+      <span
+        className="ml-2 flex-shrink-0 min-w-[1.25rem] h-5 px-1.5 inline-flex items-center justify-center rounded-full bg-orange-500 dark:bg-orange-500 text-white text-[10px] font-bold leading-none"
+        title={`${badgeCount} รายการ`}
+      >
+        {badgeCount > 99 ? '99+' : badgeCount}
       </span>
     )}
     {!isCollapsed && isWarning && (
@@ -260,6 +285,13 @@ const AppContent = () => {
   // Profile will load in background and update when ready
   const { count: pendingTicketsCount } = usePendingTickets();
   const { count: pendingBillingTripsCount, trips: pendingBillingTrips } = usePendingBillingTrips();
+  const canSeePartialDeliveryQueue = !isDriver && can('tab.pending_orders', 'view');
+  const { count: partialDeliveryQueueCount, refetch: refetchPartialDeliveryQueueCount } =
+    usePartialDeliveryQueueCount(canSeePartialDeliveryQueue);
+  const { count: pendingOrdersQueueCount, refetch: refetchPendingOrdersQueueCount } =
+    usePendingOrdersQueueCount(canSeePartialDeliveryQueue);
+
+  const logisticsOrdersAttentionCount = partialDeliveryQueueCount + pendingOrdersQueueCount;
 
   // Combine counts for notification badge
   const pendingCount = isSales ? pendingBillingTripsCount : pendingTicketsCount;
@@ -290,6 +322,18 @@ const AppContent = () => {
 
   // Track previous activeTab to detect tab changes
   const prevActiveTabRef = React.useRef(activeTab);
+
+  // รีเฟรชจำนวนคิวเมื่อเปิดหน้า (ให้ badge ตรงกับรายการหลังจัดทริป)
+  useEffect(() => {
+    if (!canSeePartialDeliveryQueue) return;
+    if (activeTab === 'partial-delivery') void refetchPartialDeliveryQueueCount();
+    if (activeTab === 'pending-orders') void refetchPendingOrdersQueueCount();
+  }, [
+    activeTab,
+    canSeePartialDeliveryQueue,
+    refetchPartialDeliveryQueueCount,
+    refetchPendingOrdersQueueCount,
+  ]);
 
   // Reset ticketView to 'list' when switching to maintenance tab
   // This ensures we always start with the list view when opening maintenance tab
@@ -1665,8 +1709,10 @@ const AppContent = () => {
                     activeTab === 'daily-summary' ||
                     activeTab === 'delivery-trips' ||
                     activeTab === 'packing-simulation' ||
-                    activeTab === 'pending-orders'
+                    activeTab === 'pending-orders' ||
+                    activeTab === 'partial-delivery'
                   }
+                  badgeCount={canSeePartialDeliveryQueue ? logisticsOrdersAttentionCount : 0}
                   onClick={() => {
                     if (isMobile) {
                       setMobileLogisticsExpanded(prev => !prev);
@@ -1806,6 +1852,19 @@ const AppContent = () => {
                       isCollapsed={false}
                       isFlyout={false}
                       isWarning={featureOverrides['tab.pending_orders'] === 'off'}
+                      badgeCount={
+                        can('tab.pending_orders', 'view') ? pendingOrdersQueueCount : 0
+                      }
+                    />
+                  )}
+                  {!isDriver && can('tab.pending_orders', 'view') && (
+                    <SubSidebarItem
+                      label="ออเดอร์แบ่งส่ง"
+                      active={activeTab === 'partial-delivery'}
+                      onClick={() => navigateAndCloseMobile('partial-delivery')}
+                      isCollapsed={false}
+                      isFlyout={false}
+                      badgeCount={partialDeliveryQueueCount}
                     />
                   )}
                 </div>
@@ -1850,6 +1909,21 @@ const AppContent = () => {
                             }}
                             isCollapsed={false}
                             isFlyout={true}
+                            badgeCount={pendingOrdersQueueCount}
+                          />
+                        )}
+
+                        {!isDriver && can('tab.pending_orders', 'view') && (
+                          <SubSidebarItem
+                            label="ออเดอร์แบ่งส่ง"
+                            active={activeTab === 'partial-delivery'}
+                            onClick={() => {
+                              setActiveTab('partial-delivery');
+                              setIsLogisticsHovered(false);
+                            }}
+                            isCollapsed={false}
+                            isFlyout={true}
+                            badgeCount={partialDeliveryQueueCount}
                           />
                         )}
 
@@ -2235,6 +2309,17 @@ const AppContent = () => {
                         active={activeTab === 'excel-import'}
                         onClick={() => {
                           setActiveTab('excel-import');
+                          setIsImportHovered(false);
+                          setHoveredImportDept(null);
+                        }}
+                        isCollapsed={false}
+                        isFlyout={true}
+                      />
+                      <SubSidebarItem
+                        label="ข้อมูลลูกค้า"
+                        active={activeTab === 'customer-import'}
+                        onClick={() => {
+                          setActiveTab('customer-import');
                           setIsImportHovered(false);
                           setHoveredImportDept(null);
                         }}
@@ -3233,6 +3318,8 @@ const AppContent = () => {
                   <ProductTierPricingView />
                 ) : activeTab === 'excel-import' ? (
                   <ExcelImportView />
+                ) : activeTab === 'customer-import' ? (
+                  <CustomerImportView />
                 ) : activeTab === 'customers' ? (
                   <CustomerManagementView />
                 ) : activeTab === 'create-order' ? (
@@ -3248,6 +3335,8 @@ const AppContent = () => {
                   <ConfirmOrderView />
                 ) : activeTab === 'pending-orders' ? (
                   <PendingOrdersView />
+                ) : activeTab === 'partial-delivery' ? (
+                  <PartialDeliveryOrdersView />
                 ) : activeTab === 'packing-simulation' ? (
                   <PackingSimulationView />
                 ) : activeTab === 'sales-trips' ? (

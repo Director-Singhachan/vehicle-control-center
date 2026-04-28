@@ -14,6 +14,70 @@ export type Database = {
   }
   public: {
     Tables: {
+      order_delivery_trip_allocations: {
+        Row: {
+          id: string
+          order_id: string
+          delivery_trip_id: string
+          order_item_id: string
+          allocated_quantity: number
+          delivered_quantity: number
+          status: 'planned' | 'in_delivery' | 'delivered' | 'cancelled'
+          sequence_no: number
+          notes: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          order_id: string
+          delivery_trip_id: string
+          order_item_id: string
+          allocated_quantity?: number
+          delivered_quantity?: number
+          status?: 'planned' | 'in_delivery' | 'delivered' | 'cancelled'
+          sequence_no?: number
+          notes?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          order_id?: string
+          delivery_trip_id?: string
+          order_item_id?: string
+          allocated_quantity?: number
+          delivered_quantity?: number
+          status?: 'planned' | 'in_delivery' | 'delivered' | 'cancelled'
+          sequence_no?: number
+          notes?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "odta_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "odta_delivery_trip_id_fkey"
+            columns: ["delivery_trip_id"]
+            isOneToOne: false
+            referencedRelation: "delivery_trips"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "odta_order_item_id_fkey"
+            columns: ["order_item_id"]
+            isOneToOne: false
+            referencedRelation: "order_items"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       ai_trip_recommendations: {
         Row: {
           accepted_at: string | null
@@ -1151,6 +1215,7 @@ export type Database = {
           edit_reason: string | null
           had_packing_issues: boolean | null
           has_item_changes: boolean
+          has_sales_data_issue: boolean
           id: string
           last_item_change_at: string | null
           notes: string | null
@@ -1159,6 +1224,7 @@ export type Database = {
           packing_efficiency_score: number | null
           packing_issues_notes: string | null
           planned_date: string
+          service_type: string
           sequence_order: number
           space_utilization_percent: number | null
           status: string
@@ -1182,6 +1248,7 @@ export type Database = {
           edit_reason?: string | null
           had_packing_issues?: boolean | null
           has_item_changes?: boolean
+          has_sales_data_issue?: boolean
           id?: string
           last_item_change_at?: string | null
           notes?: string | null
@@ -1190,6 +1257,7 @@ export type Database = {
           packing_efficiency_score?: number | null
           packing_issues_notes?: string | null
           planned_date: string
+          service_type?: string
           sequence_order?: number
           space_utilization_percent?: number | null
           status?: string
@@ -1213,6 +1281,7 @@ export type Database = {
           edit_reason?: string | null
           had_packing_issues?: boolean | null
           has_item_changes?: boolean
+          has_sales_data_issue?: boolean
           id?: string
           last_item_change_at?: string | null
           notes?: string | null
@@ -1221,6 +1290,7 @@ export type Database = {
           packing_efficiency_score?: number | null
           packing_issues_notes?: string | null
           planned_date?: string
+          service_type?: string
           sequence_order?: number
           space_utilization_percent?: number | null
           status?: string
@@ -2010,6 +2080,7 @@ export type Database = {
           product_id: string
           quantity: number
           quantity_delivered: number
+          quantity_fulfilled_prior_bill: number
           quantity_picked_up_at_store: number
           unit_price: number
           updated_at: string
@@ -2027,6 +2098,7 @@ export type Database = {
           product_id: string
           quantity: number
           quantity_delivered?: number
+          quantity_fulfilled_prior_bill?: number
           quantity_picked_up_at_store?: number
           unit_price: number
           updated_at?: string
@@ -2044,6 +2116,7 @@ export type Database = {
           product_id?: string
           quantity?: number
           quantity_delivered?: number
+          quantity_fulfilled_prior_bill?: number
           quantity_picked_up_at_store?: number
           unit_price?: number
           updated_at?: string
@@ -2157,12 +2230,15 @@ export type Database = {
           delivery_time_slot: string | null
           delivery_trip_id: string | null
           discount_amount: number | null
+          exclude_from_vehicle_revenue_rollup: boolean
           id: string
           internal_notes: string | null
           notes: string | null
           order_date: string
           order_number: string | null
           payment_status: string | null
+          related_prior_order_id: string | null
+          replaces_sml_doc_no: string | null
           status: string
           store_id: string
           subtotal: number | null
@@ -2183,12 +2259,15 @@ export type Database = {
           delivery_time_slot?: string | null
           delivery_trip_id?: string | null
           discount_amount?: number | null
+          exclude_from_vehicle_revenue_rollup?: boolean
           id?: string
           internal_notes?: string | null
           notes?: string | null
           order_date?: string
           order_number?: string | null
           payment_status?: string | null
+          related_prior_order_id?: string | null
+          replaces_sml_doc_no?: string | null
           status?: string
           store_id: string
           subtotal?: number | null
@@ -2209,12 +2288,15 @@ export type Database = {
           delivery_time_slot?: string | null
           delivery_trip_id?: string | null
           discount_amount?: number | null
+          exclude_from_vehicle_revenue_rollup?: boolean
           id?: string
           internal_notes?: string | null
           notes?: string | null
           order_date?: string
           order_number?: string | null
           payment_status?: string | null
+          related_prior_order_id?: string | null
+          replaces_sml_doc_no?: string | null
           status?: string
           store_id?: string
           subtotal?: number | null
@@ -2237,6 +2319,13 @@ export type Database = {
             columns: ["created_by"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orders_related_prior_order_id_fkey"
+            columns: ["related_prior_order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
             referencedColumns: ["id"]
           },
           {
@@ -5301,6 +5390,36 @@ export type Database = {
           },
         ]
       }
+      order_item_remaining_quantities: {
+        Row: {
+          order_item_id: string
+          order_id: string
+          product_id: string
+          total_quantity: number
+          quantity_picked_up_at_store: number
+          quantity_delivered: number
+          fulfillment_method: string
+          allocated_quantity: number
+          fulfilled_via_allocations: number
+          remaining_unallocated: number
+          has_allocations: boolean
+        }
+        Relationships: []
+      }
+      order_remaining_summary: {
+        Row: {
+          order_id: string
+          store_id: string | null
+          branch: string | null
+          order_status: string | null
+          trip_count: number
+          total_remaining: number
+          total_allocated: number
+          total_delivery_qty: number
+          has_any_allocation: boolean
+        }
+        Relationships: []
+      }
       orders_with_details: {
         Row: {
           branch: string | null
@@ -5316,12 +5435,16 @@ export type Database = {
           delivery_date: string | null
           delivery_trip_id: string | null
           discount_amount: number | null
+          exclude_from_vehicle_revenue_rollup: boolean | null
           id: string | null
           internal_notes: string | null
           items_count: number | null
           notes: string | null
           order_date: string | null
           order_number: string | null
+          related_prior_order_id: string | null
+          related_prior_order_number: string | null
+          replaces_sml_doc_no: string | null
           status: string | null
           store_address: string | null
           store_id: string | null

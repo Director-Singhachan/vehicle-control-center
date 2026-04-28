@@ -49,6 +49,54 @@ function mapOrdersError(error: any, action: 'create' | 'update' | 'assign' | 'un
   return error;
 }
 
+const roundMoney = (n: number) => Math.round(n * 100) / 100;
+
+/** รายการสินค้าตอนสร้าง/อัปเดตออเดอร์ — รองรับยอดบรรทัดจาก SML */
+type CreateOrderItemInput = {
+  product_id: string;
+  quantity: number;
+  unit_price: number;
+  unit?: string;
+  discount_percent?: number;
+  is_bonus?: boolean;
+  fulfillment_method?: 'delivery' | 'pickup';
+  /** ยอดรวมบรรทัดจาก SML (คอลัมน์ กลุ่มผู้อนุมัติ) — ยึดเมื่อชัดเจนว่ามาจากเอกสาร */
+  sml_line_total?: number | null;
+};
+
+/**
+ * คำนวณ line_total / discount_amount ให้สอดคล้องกับสเปก SML:
+ * ถ้ามี sml_line_total และไม่ใช่กรณี "ยอด SML เป็น 0 แต่มีมูลค่าจากราคา×จำนวน" (น่าจะเป็นคอลัมน์ว่าง)
+ * จะใช้ยอดจาก SML เป็นหลัก
+ */
+function computeLineAndDiscount(item: CreateOrderItemInput): { lineTotal: number; discountAmount: number } {
+  const actualUnitPrice = item.is_bonus ? 0 : item.unit_price;
+  const qty = item.quantity;
+  const gross = actualUnitPrice * qty;
+  const discountFromPercent = (gross * (item.discount_percent || 0)) / 100;
+  let lineTotal = gross - discountFromPercent;
+  let discountAmount = discountFromPercent;
+
+  const smlRaw = item.sml_line_total;
+  const hasSml = smlRaw != null && Number.isFinite(smlRaw) && smlRaw >= 0;
+  const useSml =
+    hasSml &&
+    (smlRaw! > 0.005 ||
+      item.is_bonus ||
+      actualUnitPrice === 0 ||
+      gross <= 0.005);
+
+  if (useSml) {
+    lineTotal = roundMoney(smlRaw as number);
+    discountAmount = roundMoney(Math.max(0, gross - lineTotal));
+  } else {
+    lineTotal = roundMoney(lineTotal);
+    discountAmount = roundMoney(discountAmount);
+  }
+
+  return { lineTotal, discountAmount };
+}
+
 // Temporary types until database.ts is regenerated
 type Order = {
   id: string;
@@ -95,6 +143,11 @@ type OrderInsert = {
   warehouse_id?: string | null;
   payment_status?: string | null;
   delivery_time_slot?: string | null;
+  internal_notes?: string | null;
+  sml_doc_no?: string | null;
+  related_prior_order_id?: string | null;
+  replaces_sml_doc_no?: string | null;
+  exclude_from_vehicle_revenue_rollup?: boolean;
 };
 
 type OrderUpdate = Partial<OrderInsert>;
@@ -106,8 +159,9 @@ type OrderItem = {
   quantity: number;
   quantity_picked_up_at_store: number; // ลูกค้ารับที่หน้าร้านแล้ว (sales บันทึก)
   quantity_delivered: number;           // ส่งแล้ว (รวมทุก completed trips — auto)
+  quantity_fulfilled_prior_bill?: number; // เคสบิลแก้: จำนวนที่ถือว่าส่งครบจากทริป/บิลก่อน (ลดค้างส่ง)
   // computed (from view or service):
-  quantity_remaining?: number;          // = quantity - picked_up - delivered
+  quantity_remaining?: number;          // = quantity - picked_up - delivered - prior_bill
   unit_price: number | null;
   unit: string | null;
   discount_percent: number | null;
@@ -165,6 +219,23 @@ export interface PickupPendingItem {
 // ========================================
 // Orders Service
 // ========================================
+
+/** บรรทัดสินค้าตามออเดอร์จริง — ใช้หน้าออกบิลแบบรายร้าน */
+export interface OrderInvoiceDisplayLine {
+  rowKey: string;
+  product_id: string;
+  is_bonus: boolean;
+  unit: string;
+  ordered: number;
+  pickedUp: number;
+  delivered: number;
+  product: {
+    product_code?: string;
+    product_name?: string;
+    unit?: string;
+    category?: string | null;
+  } | null;
+}
 
 export const ordersService = {
   /**
@@ -257,7 +328,9 @@ export const ordersService = {
 
     const { data: items, error: itemsError } = await supabase
       .from('order_items')
-      .select('order_id, product_id, quantity, quantity_picked_up_at_store, quantity_delivered, fulfillment_method, unit, is_bonus')
+      .select(
+        'order_id, product_id, quantity, quantity_picked_up_at_store, quantity_delivered, quantity_fulfilled_prior_bill, fulfillment_method, unit, is_bonus'
+      )
       .in('order_id', orderIds);
 
     if (itemsError) {
@@ -274,7 +347,8 @@ export const ordersService = {
 
       const pickedUp = Number(row.quantity_picked_up_at_store ?? 0);
       const delivered = Number(row.quantity_delivered ?? 0);
-      const rem = Math.max(0, Number(row.quantity) - pickedUp - delivered);
+      const priorBill = Number((row as { quantity_fulfilled_prior_bill?: number }).quantity_fulfilled_prior_bill ?? 0);
+      const rem = Math.max(0, Number(row.quantity) - pickedUp - delivered - priorBill);
       orderIdToRemaining.set(row.order_id, (orderIdToRemaining.get(row.order_id) ?? 0) + rem);
     }
 
@@ -284,7 +358,8 @@ export const ordersService = {
       if (method === 'pickup') continue;
       const pickedUp = Number(row.quantity_picked_up_at_store ?? 0);
       const delivered = Number(row.quantity_delivered ?? 0);
-      const rem = Math.max(0, Number(row.quantity) - pickedUp - delivered);
+      const priorBill = Number((row as { quantity_fulfilled_prior_bill?: number }).quantity_fulfilled_prior_bill ?? 0);
+      const rem = Math.max(0, Number(row.quantity) - pickedUp - delivered - priorBill);
       if (rem <= 0) continue;
       const arr = orderIdToItems.get(row.order_id) ?? [];
       arr.push({
@@ -306,6 +381,40 @@ export const ordersService = {
         return true;
       })
       .map((o: any) => ({ ...o, items: orderIdToItems.get(o.id) ?? [] }));
+  },
+
+  /** จำนวนออเดอร์รอจัดทริป — logic เดียวกับ getPendingOrders (ใช้ badge เมนู / โหลดแบบเบาเมื่อเรียกแยกจากรายการเต็ม) */
+  async getPendingOrdersCount(filters?: { branch?: string; branchesIn?: string[] }): Promise<number> {
+    try {
+      const orders = await this.getPendingOrders(filters);
+      return orders.length;
+    } catch {
+      return 0;
+    }
+  },
+
+  /**
+   * ดึงออเดอร์ที่ส่งไม่ครบ (มี allocation แล้วแต่ยังมีสินค้าเหลือ) สำหรับ Partial Delivery Queue
+   * ดึงแบบเบา ๆ เพื่อแสดงจำนวน badge เท่านั้น — ข้อมูลละเอียดอยู่ใน allocationService
+   */
+  async getPartiallyDeliveredOrderCount(filters?: { branch?: string; branchesIn?: string[] }): Promise<number> {
+    if (filters?.branchesIn !== undefined && filters.branchesIn.length === 0) return 0;
+
+    let query = supabase
+      .from('order_remaining_summary')
+      .select('order_id', { count: 'exact', head: true })
+      .eq('has_any_allocation', true)
+      .gt('total_remaining', 0);
+
+    if (filters?.branchesIn !== undefined) {
+      query = query.in('branch', filters.branchesIn);
+    } else if (filters?.branch && filters.branch !== 'ALL') {
+      query = query.eq('branch', filters.branch);
+    }
+
+    const { count, error } = await query;
+    if (error) return 0;
+    return count ?? 0;
   },
 
   /**
@@ -650,45 +759,223 @@ export const ordersService = {
   },
 
   /**
-   * ดึงยอดรวมต่อสินค้า (จาก order_items) สำหรับร้านนี้ในทริปนี้
-   * ใช้สำหรับหน้าออกบิล — แสดง "สั่งทั้งหมด" และ "รับที่ร้านแล้ว" ที่ถูกต้อง (รวม delivery + pickup)
+   * บรรทัดแสดงใบแจ้งหนี้ต่อร้าน — ครบทุกรายการที่ลูกค้าสั่ง (รวมที่ยังไม่ถูกจัดลงทริปในวันนี้)
    */
-  async getOrderQuantitiesByProductForStoreInTrip(
-    tripId: string,
-    storeId: string
-  ): Promise<Map<string, { ordered: number; pickedUp: number }>> {
-    const { data: orders, error: ordersError } = await supabase
-      .from('orders')
-      .select('id')
-      .eq('delivery_trip_id', tripId)
-      .eq('store_id', storeId);
+  async getInvoiceBundleForStoreAcrossTrips(
+    tripIds: string[],
+    storeId: string,
+  ): Promise<{
+    qtyMap: Map<string, { ordered: number; pickedUp: number; delivered: number }>;
+    lines: OrderInvoiceDisplayLine[];
+  }> {
+    const orderIds = await this.resolveOrderIdsForTripsAndStore(tripIds, storeId);
+    if (!orderIds.length) {
+      return { qtyMap: new Map(), lines: [] };
+    }
 
-    if (ordersError) throw ordersError;
-    if (!orders?.length) return new Map();
+    const { data: raw, error } = await supabase
+      .from('order_items')
+      .select(
+        `
+        product_id,
+        quantity,
+        quantity_picked_up_at_store,
+        quantity_delivered,
+        is_bonus,
+        unit,
+        products (
+          product_code,
+          product_name,
+          unit,
+          category
+        )
+      `,
+      )
+      .in('order_id', orderIds);
 
-    const orderIds = orders.map((o: any) => o.id);
+    if (error) throw error;
+
+    const qtyMap = new Map<string, { ordered: number; pickedUp: number; delivered: number }>();
+    const lineAgg = new Map<
+      string,
+      {
+        rowKey: string;
+        product_id: string;
+        is_bonus: boolean;
+        unit: string;
+        ordered: number;
+        pickedUp: number;
+        delivered: number;
+        product: {
+          product_code?: string;
+          product_name?: string;
+          unit?: string;
+          category?: string | null;
+        } | null;
+      }
+    >();
+
+    for (const row of raw ?? []) {
+      const r = row as {
+        product_id: string;
+        quantity?: number | null;
+        quantity_picked_up_at_store?: number | null;
+        quantity_delivered?: number | null;
+        is_bonus?: boolean | null;
+        unit?: string | null;
+        products?: {
+          product_code?: string;
+          product_name?: string;
+          unit?: string;
+          category?: string | null;
+        } | null;
+      };
+      const unitNorm = r.unit != null && String(r.unit).trim() !== '' ? String(r.unit).trim() : '';
+      const mapKey = `${r.product_id}_${r.is_bonus ? 'bonus' : 'normal'}_${unitNorm}`;
+      const ordered = Number(r.quantity ?? 0);
+      const pickedUp = Number(r.quantity_picked_up_at_store ?? 0);
+      const delivered = Number(r.quantity_delivered ?? 0);
+
+      const prevM = qtyMap.get(mapKey);
+      if (prevM) {
+        prevM.ordered += ordered;
+        prevM.pickedUp += pickedUp;
+        prevM.delivered += delivered;
+      } else {
+        qtyMap.set(mapKey, { ordered, pickedUp, delivered });
+      }
+
+      const pr = r.products && !Array.isArray(r.products) ? r.products : null;
+      const productFlat = pr
+        ? {
+            product_code: pr.product_code,
+            product_name: pr.product_name,
+            unit: pr.unit,
+            category: pr.category ?? null,
+          }
+        : null;
+
+      const prevL = lineAgg.get(mapKey);
+      if (prevL) {
+        prevL.ordered += ordered;
+        prevL.pickedUp += pickedUp;
+        prevL.delivered += delivered;
+      } else {
+        lineAgg.set(mapKey, {
+          rowKey: mapKey,
+          product_id: r.product_id,
+          is_bonus: !!r.is_bonus,
+          unit: unitNorm,
+          ordered,
+          pickedUp,
+          delivered,
+          product: productFlat,
+        });
+      }
+    }
+
+    const lines = Array.from(lineAgg.values()).sort((a, b) => {
+      const na = (a.product?.product_name || '').localeCompare(b.product?.product_name || '', 'th');
+      if (na !== 0) return na;
+      return a.rowKey.localeCompare(b.rowKey);
+    });
+
+    return { qtyMap, lines };
+  },
+
+  /**
+   * ยอดต่อบรรทัด order_items สำหรับหน้าออกบิล — รวมยอดสั่ง / รับที่ร้าน / จัดส่งแล้ว (quantity_delivered)
+   */
+  async buildOrderQtyMapFromOrderIds(
+    orderIds: string[],
+  ): Promise<Map<string, { ordered: number; pickedUp: number; delivered: number }>> {
+    if (!orderIds.length) return new Map();
     const { data: items, error: itemsError } = await supabase
       .from('order_items')
-      .select('product_id, quantity, quantity_picked_up_at_store, is_bonus, unit')
+      .select('product_id, quantity, quantity_picked_up_at_store, quantity_delivered, is_bonus, unit')
       .in('order_id', orderIds);
 
     if (itemsError) throw itemsError;
     if (!items?.length) return new Map();
 
-    const map = new Map<string, { ordered: number; pickedUp: number }>();
+    const map = new Map<string, { ordered: number; pickedUp: number; delivered: number }>();
     for (const row of items) {
       const key = `${row.product_id}_${row.is_bonus ? 'bonus' : 'normal'}_${row.unit || ''}`;
       const ordered = Number(row.quantity ?? 0);
       const pickedUp = Number(row.quantity_picked_up_at_store ?? 0);
+      const delivered = Number(row.quantity_delivered ?? 0);
       const existing = map.get(key);
       if (existing) {
         existing.ordered += ordered;
         existing.pickedUp += pickedUp;
+        existing.delivered += delivered;
       } else {
-        map.set(key, { ordered, pickedUp });
+        map.set(key, { ordered, pickedUp, delivered });
       }
     }
     return map;
+  },
+
+  /**
+   * หา order_id ที่เกี่ยวกับจุดส่ง (ร้าน + ทริป)
+   * - orders.delivery_trip_id (ทริปหลัก / backward compatible)
+   * - order_delivery_trip_allocations (แบ่งส่งหลายทริป — ทริปที่ 2+ ไม่มี delivery_trip_id บน orders)
+   */
+  async resolveOrderIdsForTripsAndStore(tripIds: string[], storeId: string): Promise<string[]> {
+    if (!tripIds.length) return [];
+    const orderIdSet = new Set<string>();
+
+    const { data: direct, error: e1 } = await supabase
+      .from('orders')
+      .select('id')
+      .eq('store_id', storeId)
+      .in('delivery_trip_id', tripIds);
+
+    if (e1) throw e1;
+    (direct ?? []).forEach((o: { id: string }) => orderIdSet.add(o.id));
+
+    const { data: allocRows, error: e2 } = await supabase
+      .from('order_delivery_trip_allocations')
+      .select('order_id')
+      .in('delivery_trip_id', tripIds);
+
+    if (e2) throw e2;
+    const fromAlloc = [...new Set((allocRows ?? []).map((r: { order_id: string }) => r.order_id))];
+    if (fromAlloc.length > 0) {
+      const { data: ordersMatch, error: e3 } = await supabase
+        .from('orders')
+        .select('id')
+        .eq('store_id', storeId)
+        .in('id', fromAlloc);
+
+      if (e3) throw e3;
+      (ordersMatch ?? []).forEach((o: { id: string }) => orderIdSet.add(o.id));
+    }
+
+    return Array.from(orderIdSet);
+  },
+
+  /**
+   * ดึงยอดรวมต่อสินค้า (จาก order_items) สำหรับร้านนี้ในทริปนี้
+   * ใช้สำหรับหน้าออกบิล — แสดง "สั่งทั้งหมด" และ "รับที่ร้านแล้ว" ที่ถูกต้อง (รวม delivery + pickup)
+   */
+  async getOrderQuantitiesByProductForStoreInTrip(
+    tripId: string,
+    storeId: string,
+  ): Promise<Map<string, { ordered: number; pickedUp: number; delivered: number }>> {
+    const { qtyMap } = await this.getInvoiceBundleForStoreAcrossTrips([tripId], storeId);
+    return qtyMap;
+  },
+
+  /**
+   * ยอดออเดอร์เต็มต่อร้านเมื่อสินค้าแบ่งหลายทริปในวันเดียวกัน — รวม order ที่ผูกกับทริปใดทริปหนึ่งในรายการ
+   */
+  async getOrderQuantitiesByProductForStoreAcrossTrips(
+    tripIds: string[],
+    storeId: string,
+  ): Promise<Map<string, { ordered: number; pickedUp: number; delivered: number }>> {
+    const { qtyMap } = await this.getInvoiceBundleForStoreAcrossTrips(tripIds, storeId);
+    return qtyMap;
   },
 
   /**
@@ -813,19 +1100,43 @@ export const ordersService = {
   },
 
   /**
+   * ค้นหาออเดอร์เดิมจากเลขที่ออเดอร์หรือ UUID (ใช้ตอนเชื่อมเคสแก้บิล / บิล SML ใหม่)
+   */
+  async resolvePriorOrderLookup(lookup: string): Promise<{ id: string; order_number: string | null } | null> {
+    const q = lookup.trim();
+    if (!q) return null;
+
+    const uuidRe =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    if (uuidRe.test(q)) {
+      const { data, error } = await supabase.from('orders').select('id, order_number').eq('id', q).maybeSingle();
+      if (error || !data) return null;
+      return data;
+    }
+
+    const { data: exact } = await supabase
+      .from('orders')
+      .select('id, order_number')
+      .eq('order_number', q)
+      .maybeSingle();
+    if (exact) return exact;
+
+    const { data: fuzzy } = await supabase
+      .from('orders')
+      .select('id, order_number')
+      .ilike('order_number', `%${q}%`)
+      .limit(2);
+
+    if (fuzzy && fuzzy.length === 1) return fuzzy[0];
+    return null;
+  },
+
+  /**
    * สร้างออเดอร์ใหม่พร้อมรายการสินค้า
    */
   async createWithItems(
     orderData: Omit<OrderInsert, 'id' | 'created_at' | 'updated_at'> & { warehouse_id?: string },
-    items: Array<{
-      product_id: string;
-      quantity: number;
-      unit_price: number;
-      unit?: string;
-      discount_percent?: number;
-      is_bonus?: boolean;
-      fulfillment_method?: 'delivery' | 'pickup';
-    }>,
+    items: CreateOrderItemInput[],
     payment_status?: string | null,
     delivery_time_slot?: string | null
   ) {
@@ -855,10 +1166,8 @@ export const ordersService = {
 
     // สร้างรายการสินค้า
     const orderItems = items.map((item) => {
-      // ของแถมราคาเป็น 0 เสมอ
       const actualUnitPrice = item.is_bonus ? 0 : item.unit_price;
-      const discountAmount = (actualUnitPrice * item.quantity * (item.discount_percent || 0)) / 100;
-      const lineTotal = (actualUnitPrice * item.quantity) - discountAmount;
+      const { lineTotal, discountAmount } = computeLineAndDiscount(item);
 
       const orderItem: any = {
         order_id: order.id,
@@ -907,15 +1216,7 @@ export const ordersService = {
    */
   async upsertSmlOrder(
     orderData: Omit<OrderInsert, 'id' | 'created_at' | 'updated_at'> & { warehouse_id?: string; sml_doc_no?: string },
-    items: Array<{
-      product_id: string;
-      quantity: number;
-      unit_price: number;
-      unit?: string;
-      discount_percent?: number;
-      is_bonus?: boolean;
-      fulfillment_method?: 'delivery' | 'pickup';
-    }>,
+    items: CreateOrderItemInput[],
     payment_status?: string | null,
     delivery_time_slot?: string | null
   ) {
@@ -932,7 +1233,8 @@ export const ordersService = {
       .maybeSingle();
 
     if (existingOrder) {
-      // 1. UPDATE ข้อมูลออเดอร์เดิม + เคลียร์ trip/order_number/สถานะให้กลับมารอคอนเฟิร์ม
+      // 1. UPDATE ข้อมูลออเดอร์เดิม — ไม่แตะ related_prior_order_id / replaces_sml_doc_no / internal_notes
+      //    (การผูกเคสแก้บิลใช้เฉพาะตอนสร้างออเดอร์ใหม่จากเลขเอกสาร SML ใหม่)
       const updatePayload: Record<string, unknown> = {
         store_id: orderData.store_id,
         order_date: orderData.order_date,
@@ -988,12 +1290,21 @@ export const ordersService = {
       }
 
       // เตรียมรายการใหม่ และหาว่าอะไรที่ต้องเปลี่ยน
-      const newAggregated = new Map<string, typeof items[0]>();
+      const newAggregated = new Map<string, CreateOrderItemInput>();
       for (const item of items) {
           const key = `${item.product_id}_${item.is_bonus ? 'bonus' : 'normal'}_${item.unit || ''}`;
           const existing = newAggregated.get(key);
           if (existing) {
               existing.quantity += item.quantity;
+              const b = item.sml_line_total;
+              const a = existing.sml_line_total;
+              const hasA = a != null && Number.isFinite(a);
+              const hasB = b != null && Number.isFinite(b);
+              if (hasA && hasB) {
+                existing.sml_line_total = (a as number) + (b as number);
+              } else {
+                delete existing.sml_line_total;
+              }
           } else {
               newAggregated.set(key, { ...item });
           }
@@ -1004,20 +1315,23 @@ export const ordersService = {
           const dbAgg = aggregatedDb.get(key);
           const actualUnitPrice = newItem.is_bonus ? 0 : newItem.unit_price;
 
-          // ถ้าไม่มีใน DB หรือ ยอดรวม/ราคา/หน่วย เปลี่ยน -> ลบของเดิมเฉพาะสินค้านี้ แล้วเพิ่มใหม่
-          if (!dbAgg || 
-              Math.abs(dbAgg.quantity - newItem.quantity) > 0.001 || 
-              Math.abs(dbAgg.unit_price - actualUnitPrice) > 0.001) {
-              
+          const dbLineTotal = dbAgg
+            ? dbAgg.items.reduce((s, i) => s + Number(i.line_total ?? 0), 0)
+            : 0;
+          const { lineTotal: expectedLine, discountAmount } = computeLineAndDiscount(newItem);
+
+          // ถ้าไม่มีใน DB หรือ ยอดรวม/ราคา/ยอดบรรทัด เปลี่ยน -> ลบของเดิมเฉพาะสินค้านี้ แล้วเพิ่มใหม่
+          if (
+            !dbAgg ||
+            Math.abs(dbAgg.quantity - newItem.quantity) > 0.001 ||
+            Math.abs(dbAgg.unit_price - actualUnitPrice) > 0.001 ||
+            Math.abs(roundMoney(dbLineTotal) - expectedLine) > 0.01
+          ) {
               if (dbAgg) {
                   // ลบเฉพาะรายการที่เป็นสินค้านี้
                   const itemIdsToDelete = dbAgg.items.map(i => i.id);
                   await supabase.from('order_items').delete().in('id', itemIdsToDelete);
               }
-
-              // เพิ่มรายการใหม่
-              const discountAmount = (actualUnitPrice * newItem.quantity * (newItem.discount_percent || 0)) / 100;
-              const lineTotal = (actualUnitPrice * newItem.quantity) - discountAmount;
 
               await supabase.from('order_items').insert({
                   order_id: existingOrder.id,
@@ -1027,7 +1341,7 @@ export const ordersService = {
                   unit: newItem.unit || null,
                   discount_percent: newItem.discount_percent || 0,
                   discount_amount: discountAmount,
-                  line_total: lineTotal,
+                  line_total: expectedLine,
                   fulfillment_method: newItem.fulfillment_method || 'delivery',
                   is_bonus: newItem.is_bonus || false,
               });
@@ -1399,11 +1713,13 @@ export const orderItemsService = {
       ...item,
       quantity_picked_up_at_store: Number(item.quantity_picked_up_at_store ?? 0),
       quantity_delivered: Number(item.quantity_delivered ?? 0),
+      quantity_fulfilled_prior_bill: Number(item.quantity_fulfilled_prior_bill ?? 0),
       quantity_remaining: Math.max(
         0,
         Number(item.quantity)
         - Number(item.quantity_picked_up_at_store ?? 0)
         - Number(item.quantity_delivered ?? 0)
+        - Number(item.quantity_fulfilled_prior_bill ?? 0)
       ),
     }));
   },
