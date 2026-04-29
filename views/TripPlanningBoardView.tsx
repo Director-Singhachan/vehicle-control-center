@@ -18,6 +18,7 @@ import {
   AlertTriangle,
   Info,
   Building2,
+  User,
 } from 'lucide-react';
 
 import { Button } from '../components/ui/Button';
@@ -27,7 +28,7 @@ import { PageLayout } from '../components/layout/PageLayout';
 import { ToastContainer } from '../components/ui/Toast';
 import { Card } from '../components/ui/Card';
 
-import type { PlanningLane, PlanningSlot, PlanningStore } from '../hooks/useTripPlanningBoard';
+import type { PlanningLane, PlanningSlot, PlanningStore, PlanningTripServiceType } from '../hooks/useTripPlanningBoard';
 import { useTripPlanningBoard } from '../hooks/useTripPlanningBoard';
 import { districtAreaColorClass } from '../utils/tripPlanningRouteColors';
 import { BRANCH_ALL_VALUE, getBranchLabel } from '../utils/branchLabels';
@@ -41,6 +42,7 @@ export const TripPlanningBoardView: React.FC = () => {
     saving,
     backlog,
     vehicles,
+    drivers,
     lanes,
     fetchData,
     activeId,
@@ -64,6 +66,9 @@ export const TripPlanningBoardView: React.FC = () => {
     updateLaneVehicle,
     addSlotToLane,
     addLane,
+    updateSlotDriver,
+    updateSlotServiceType,
+    toggleSlotStoresCollapsed,
     handleConfirmPlanning,
     toasts,
     dismissToast,
@@ -204,7 +209,11 @@ export const TripPlanningBoardView: React.FC = () => {
                   key={lane.id}
                   lane={lane}
                   availableVehicles={vehicles}
+                  drivers={drivers}
                   onVehicleChange={(vid) => updateLaneVehicle(lane.id, vid)}
+                  onSlotDriverChange={(slotId, driverId) => updateSlotDriver(lane.id, slotId, driverId)}
+                  onSlotServiceTypeChange={(slotId, st) => updateSlotServiceType(lane.id, slotId, st)}
+                  onToggleSlotStoresCollapsed={toggleSlotStoresCollapsed}
                   onAddSlot={() => addSlotToLane(lane.id)}
                   selectedCount={selectedStoreIds.size}
                   onMoveSelectedHere={(slotId) => moveSelectedToSlot(slotId)}
@@ -270,7 +279,7 @@ function BacklogColumn({
     <div className="w-full lg:w-80 flex flex-col bg-white dark:bg-charcoal-900 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden shadow-sm shrink-0 max-h-[min(70vh,960px)]">
       <div className="p-3 border-b border-slate-100 dark:border-slate-800">
         <h2 className="font-black text-slate-900 dark:text-white flex items-center gap-2 text-xs uppercase tracking-wider">
-          <Package size={16} className="text-enterprise-600" />
+          <Package size={16} className="text-enterprise-600 dark:text-enterprise-400" aria-hidden />
           คิวรอจัด ({backlog.length})
         </h2>
         <div className="mt-2">
@@ -351,7 +360,7 @@ function StorePostIt({
       style={style}
       className={`rounded-2xl border shadow-sm transition-all group relative overflow-hidden ${colorClass} ${
         isOverlay ? 'shadow-2xl rotate-1 scale-110 z-50' : ''
-      } ${selected ? 'ring-2 ring-enterprise-500 ring-offset-2 ring-offset-white dark:ring-offset-gray-950' : ''}`}
+      } ${selected ? 'ring-2 ring-enterprise-500 ring-offset-2 ring-offset-white dark:ring-charcoal-950' : ''}`}
     >
       <div className="flex items-start gap-2 p-3">
         {onToggleSelect && (
@@ -360,31 +369,31 @@ function StorePostIt({
             checked={!!selected}
             onChange={onToggleSelect}
             onPointerDown={(e) => e.stopPropagation()}
-            className="mt-1 w-4 h-4 rounded border-slate-400 text-enterprise-600 focus:ring-enterprise-500 shrink-0"
+            className="mt-1 w-4 h-4 rounded border-current/30 bg-white/90 text-enterprise-600 focus:ring-enterprise-500 dark:bg-charcoal-900/80 dark:focus:ring-enterprise-400 shrink-0"
             aria-label={`เลือก ${store.customer_name}`}
           />
         )}
-        <div className="flex-1 min-w-0" {...attributes} {...listeners}>
+        <div className="flex-1 min-w-0 text-inherit" {...attributes} {...listeners}>
           <div className="flex justify-between items-start mb-1.5">
-            <span className="text-[10px] font-black uppercase tracking-wider opacity-70 truncate">
+            <span className="text-[10px] font-black uppercase tracking-wider opacity-75 truncate">
               {store.districtKey || 'ไม่ระบุอำเภอ'}
             </span>
-            <span className="bg-white/60 dark:bg-black/25 px-1.5 py-0.5 rounded text-[9px] font-black shrink-0">
+            <span className="bg-black/[0.06] dark:bg-white/[0.12] px-1.5 py-0.5 rounded text-[9px] font-black shrink-0">
               {store.orders.length} บิล
             </span>
           </div>
-          <div className="font-bold text-sm leading-snug mb-1 line-clamp-2 text-slate-900 dark:text-white">
+          <div className="font-bold text-sm leading-snug mb-1 line-clamp-2">
             {store.customer_code} — {store.customer_name}
           </div>
-          <div className="text-[10px] opacity-80 line-clamp-2 mb-2 text-slate-800 dark:text-slate-200">
+          <div className="text-[10px] opacity-80 line-clamp-2 mb-2">
             {store.address || 'ไม่มีที่อยู่'}
           </div>
-          <div className="flex items-center justify-between pt-2 border-t border-black/10 dark:border-white/10">
-            <div className="text-[10px] font-black flex items-center gap-1 bg-black/5 dark:bg-white/5 px-1.5 py-0.5 rounded">
-              <Package size={10} className="text-enterprise-500" />
+          <div className="flex items-center justify-between pt-2 border-t border-current/15">
+            <div className="text-[10px] font-black flex items-center gap-1 bg-black/[0.05] dark:bg-white/[0.08] px-1.5 py-0.5 rounded tabular-nums">
+              <Package size={10} className="text-enterprise-600 dark:text-enterprise-300 shrink-0 opacity-90" aria-hidden />
               {store.total_pallets.toFixed(1)} PL
             </div>
-            <ChevronRight size={14} className="opacity-50 text-slate-600 dark:text-slate-400" />
+            <ChevronRight size={14} className="shrink-0 opacity-45 text-current" aria-hidden />
           </div>
         </div>
       </div>
@@ -395,14 +404,22 @@ function StorePostIt({
 function VehicleLane({
   lane,
   availableVehicles,
+  drivers,
   onVehicleChange,
+  onSlotDriverChange,
+  onSlotServiceTypeChange,
+  onToggleSlotStoresCollapsed,
   onAddSlot,
   selectedCount,
   onMoveSelectedHere,
 }: {
   lane: PlanningLane;
   availableVehicles: any[];
+  drivers: Array<{ id: string; full_name: string; branch?: string | null }>;
   onVehicleChange: (vid: string | null) => void;
+  onSlotDriverChange: (slotId: string, driverId: string | null) => void;
+  onSlotServiceTypeChange: (slotId: string, st: PlanningTripServiceType) => void;
+  onToggleSlotStoresCollapsed: (slotId: string) => void;
   onAddSlot: () => void;
   selectedCount: number;
   onMoveSelectedHere: (slotId: string) => void;
@@ -454,8 +471,12 @@ function VehicleLane({
             slot={slot}
             index={idx}
             vehicle={vehicle}
+            drivers={drivers}
             showMoveSelected={selectedCount > 0}
             onMoveSelectedHere={() => onMoveSelectedHere(slot.id)}
+            onDriverChange={(driverId) => onSlotDriverChange(slot.id, driverId)}
+            onServiceTypeChange={(st) => onSlotServiceTypeChange(slot.id, st)}
+            onToggleStoresCollapsed={() => onToggleSlotStoresCollapsed(slot.id)}
           />
         ))}
         <button
@@ -475,14 +496,22 @@ function TripSlot({
   slot,
   index,
   vehicle,
+  drivers,
   showMoveSelected,
   onMoveSelectedHere,
+  onDriverChange,
+  onServiceTypeChange,
+  onToggleStoresCollapsed,
 }: {
   slot: PlanningSlot;
   index: number;
   vehicle: any;
+  drivers: Array<{ id: string; full_name: string; branch?: string | null }>;
   showMoveSelected: boolean;
   onMoveSelectedHere: () => void;
+  onDriverChange: (driverId: string | null) => void;
+  onServiceTypeChange: (st: PlanningTripServiceType) => void;
+  onToggleStoresCollapsed: () => void;
 }) {
   const { setNodeRef } = useDroppable({ id: slot.id });
 
@@ -495,6 +524,8 @@ function TripSlot({
   const isOver = totalPallets > maxPallets;
   const isHigh = totalPallets >= maxPallets * 0.8 && !isOver;
   const isLow = totalPallets > 0 && totalPallets < Math.max(1, maxPallets * 0.35);
+  const storesCollapsed = !!(slot.stores_collapsed && slot.stores.length > 0);
+  const svc = slot.service_type ?? 'carry_in';
 
   return (
     <div
@@ -509,8 +540,10 @@ function TripSlot({
       }`}
     >
       <div className="px-3 py-2 border-b flex items-center justify-between gap-2 flex-wrap bg-slate-50/80 dark:bg-slate-800/40">
-        <span className="text-[10px] font-black uppercase text-slate-500 dark:text-slate-400 tracking-widest">เที่ยว {index + 1}</span>
-        <div className="flex items-center gap-1.5">
+        <span className="text-[10px] font-black uppercase text-slate-500 dark:text-slate-400 tracking-widest">
+          เที่ยว {index + 1}
+        </span>
+        <div className="flex items-center gap-1.5 flex-wrap justify-end">
           {isOver && <AlertTriangle size={12} className="text-red-500" aria-hidden />}
           {isLow && !isOver && <Info size={12} className="text-amber-600 dark:text-amber-500" aria-hidden />}
           <span
@@ -518,6 +551,49 @@ function TripSlot({
           >
             {totalPallets.toFixed(1)} / {maxPallets} PL
           </span>
+          {slot.stores.length > 0 && (
+            <button
+              type="button"
+              onClick={onToggleStoresCollapsed}
+              className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-enterprise-100 text-enterprise-800 hover:bg-enterprise-200 dark:bg-enterprise-900/50 dark:text-enterprise-200 dark:hover:bg-enterprise-900/80"
+            >
+              {storesCollapsed ? `แสดง ${slot.stores.length} ร้าน` : 'ซ่อนร้าน'}
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div className="px-2 pt-2 space-y-1.5 border-b border-slate-100 dark:border-slate-800/80 pb-2">
+        <label className="flex items-center gap-2 text-[10px]">
+          <User size={14} className="text-slate-400 shrink-0" aria-hidden />
+          <select
+            value={slot.driver_id ?? ''}
+            onChange={(e) => onDriverChange(e.target.value || null)}
+            className="flex-1 min-w-0 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-charcoal-800 px-2 py-1.5 text-[11px] font-semibold text-slate-900 dark:text-slate-100"
+          >
+            <option value="">คนขับ — ใช้ผู้ใช้ปัจจุบัน (ถ้าไม่ระบุ)</option>
+            {drivers.map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.full_name || d.id}
+              </option>
+            ))}
+          </select>
+        </label>
+        <div>
+          <label className="sr-only" htmlFor={`svc-${slot.id}`}>
+            ประเภทงาน
+          </label>
+          <select
+            id={`svc-${slot.id}`}
+            value={svc}
+            onChange={(e) => onServiceTypeChange(e.target.value as PlanningTripServiceType)}
+            className="w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-charcoal-800 px-2 py-1.5 text-[11px] font-semibold text-slate-900 dark:text-slate-100"
+          >
+            <option value="carry_in">ลงมือ</option>
+            <option value="lift_off">ตักลง</option>
+            <option value="standard">ทั่วไป (ค่ามาตรฐาน)</option>
+          </select>
+          <p className="mt-1 text-[9px] text-slate-500 dark:text-slate-400 px-0.5">ประเภทงานมีผลต่อเรทคอมมิชชัน</p>
         </div>
       </div>
 
@@ -533,20 +609,32 @@ function TripSlot({
         </div>
       )}
 
-      <div className="p-2 space-y-2 min-h-[100px]">
-        <SortableContext items={slot.stores.map((s) => s.id)} strategy={verticalListSortingStrategy}>
-          {slot.stores.map((store) => (
-            <StorePostIt
-              key={store.id}
-              store={store}
-              colorClass={districtAreaColorClass(store.areaKey, store.districtKey)}
-            />
-          ))}
-        </SortableContext>
-        {slot.stores.length === 0 && (
-          <div className="py-8 text-center text-[10px] text-slate-500 dark:text-slate-400 font-bold uppercase tracking-widest">
-            วางการ์ดที่นี่
-          </div>
+      <div className={`p-2 space-y-2 ${storesCollapsed ? 'min-h-[48px]' : 'min-h-[100px]'}`}>
+        {!storesCollapsed ? (
+          <>
+            <SortableContext items={slot.stores.map((s) => s.id)} strategy={verticalListSortingStrategy}>
+              {slot.stores.map((store) => (
+                <StorePostIt
+                  key={store.id}
+                  store={store}
+                  colorClass={districtAreaColorClass(store.areaKey, store.districtKey)}
+                />
+              ))}
+            </SortableContext>
+            {slot.stores.length === 0 && (
+              <div className="py-8 text-center text-[10px] text-slate-500 dark:text-slate-400 font-bold uppercase tracking-widest">
+                วางการ์ดที่นี่
+              </div>
+            )}
+          </>
+        ) : (
+          <button
+            type="button"
+            onClick={onToggleStoresCollapsed}
+            className="w-full text-left text-[11px] font-semibold text-slate-600 dark:text-slate-300 py-2 px-1 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800/80"
+          >
+            ซ่อนอยู่: {slot.stores.length} ร้าน · {totalPallets.toFixed(1)} PL — กดเพื่อแสดง
+          </button>
         )}
       </div>
 
