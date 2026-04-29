@@ -17,7 +17,8 @@ export const Button: React.FC<ButtonProps> = ({
   disabled,
   ...props
 }) => {
-  const baseStyles = componentStyles.button.base;
+  /** ค่าเริ่มต้นให้รองรับไอคอน + ข้อความในแถวเดียว และโหมดมือถือเมนูสัมผัสได้สูงชัดขึ้น */
+  const baseStyles = `${componentStyles.button.base} inline-flex items-center justify-center gap-2`;
   
   const variantStyles = {
     primary: 'bg-enterprise-600 hover:bg-enterprise-700 text-white disabled:opacity-50 disabled:cursor-not-allowed',

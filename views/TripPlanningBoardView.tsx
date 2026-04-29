@@ -17,6 +17,7 @@ import {
   CheckCircle2,
   AlertTriangle,
   Info,
+  Building2,
 } from 'lucide-react';
 
 import { Button } from '../components/ui/Button';
@@ -29,6 +30,7 @@ import { Card } from '../components/ui/Card';
 import type { PlanningLane, PlanningSlot, PlanningStore } from '../hooks/useTripPlanningBoard';
 import { useTripPlanningBoard } from '../hooks/useTripPlanningBoard';
 import { districtAreaColorClass } from '../utils/tripPlanningRouteColors';
+import { BRANCH_ALL_VALUE, getBranchLabel } from '../utils/branchLabels';
 
 export const TripPlanningBoardView: React.FC = () => {
   const {
@@ -45,6 +47,10 @@ export const TripPlanningBoardView: React.FC = () => {
     activeStore,
     searchQuery,
     setSearchQuery,
+    branchFilter,
+    setBranchFilter,
+    boardBranchOptions,
+    boardBranchSelectDisabled,
     filteredBacklog,
     selectedStoreIds,
     toggleSelectStore,
@@ -87,23 +93,12 @@ export const TripPlanningBoardView: React.FC = () => {
     );
   }
 
-  if (loading) {
-    return (
-      <PageLayout title="บอร์ดจัดคิว" subtitle="กำลังโหลดคิวและคำนวณพาเลท...">
-        <div className="flex flex-col items-center justify-center py-24 gap-4">
-          <RefreshCw className="animate-spin text-enterprise-600" size={32} />
-          <p className="text-slate-500 text-sm">กรุณารอสักครู่</p>
-        </div>
-      </PageLayout>
-    );
-  }
-
   return (
     <>
       <ToastContainer toasts={toasts} onDismiss={dismissToast} />
-      <div className="h-full flex flex-col gap-0 bg-slate-100 dark:bg-charcoal-950 overflow-hidden min-h-[70vh]">
-        <div className="flex items-center justify-between px-4 md:px-6 py-4 bg-white dark:bg-charcoal-900 border-b border-slate-200 dark:border-slate-800 shrink-0 flex-wrap gap-3">
-          <div className="flex items-center gap-3 min-w-0">
+      <div className="h-full flex flex-col gap-0 bg-slate-100 dark:bg-charcoal-950 overflow-x-hidden overflow-y-auto min-h-[70vh]">
+        <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-3 px-4 md:px-6 py-4 bg-white dark:bg-charcoal-900 border-b border-slate-200 dark:border-slate-800 shrink-0">
+          <div className="flex items-center gap-3 min-w-0 flex-1">
             <div className="p-2 bg-enterprise-100 dark:bg-enterprise-900/30 rounded-xl shrink-0">
               <Truck className="text-enterprise-600 dark:text-enterprise-400" size={24} />
             </div>
@@ -115,33 +110,77 @@ export const TripPlanningBoardView: React.FC = () => {
                 <span className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 uppercase tracking-wider">
                   Draft
                 </span>
-                <p className="text-xs text-slate-500 truncate max-w-[min(100%,28rem)]">
+                <p className="text-xs text-slate-500 dark:text-slate-400 truncate max-w-[min(100%,28rem)]">
                   ลากร้านจากซ้ายไปรถ — กดยืนยันถึงบันทึกทริป
                 </p>
               </div>
+              {orderScope.unrestricted && (
+                <p className="text-[10px] text-enterprise-700/90 dark:text-enterprise-400/90 font-semibold mt-1.5 leading-snug max-w-[min(100%,34rem)]">
+                  {branchFilter === BRANCH_ALL_VALUE
+                    ? 'คุณมองเห็นคิวได้ครบทุกสาขา — เลือกจากเมนู 「กรองสาขา」 เพื่อย่อเฉพาะสำนักงาน / สอยดาว / Asia'
+                    : `กำลังแสดงเฉพาะ ${getBranchLabel(branchFilter)} — เลือก 「ทุกสาขา」 เพื่อกลับไปโหลดคิวทุกสาขา`}
+                </p>
+              )}
             </div>
           </div>
-          <div className="flex items-center gap-2 shrink-0">
-            <Button
-              variant="outline"
-              onClick={() => void fetchData()}
-              className="gap-2 h-10 px-4 font-bold border-slate-200 dark:border-slate-700"
-            >
-              <RefreshCw size={18} />
-              รีเฟรช
-            </Button>
-            <Button
-              onClick={() => void handleConfirmPlanning()}
-              isLoading={saving}
-              className="gap-2 h-10 px-5 bg-enterprise-600 hover:bg-enterprise-700 text-white font-bold"
-            >
-              <CheckCircle2 size={18} />
-              ยืนยันจัดทริป
-            </Button>
+          <div className="flex flex-col sm:flex-row sm:items-stretch lg:items-center gap-4 w-full lg:w-auto lg:justify-end min-w-0 rounded-2xl border border-slate-200/80 dark:border-slate-700 bg-slate-50/95 dark:bg-charcoal-800/95 p-3 sm:p-3.5 lg:border-0 lg:bg-transparent lg:p-0 shadow-sm lg:shadow-none">
+            <label className="flex items-center gap-2 sm:gap-3 text-[11px] font-black text-slate-700 dark:text-slate-100 min-w-0 w-full lg:max-w-md">
+              <Building2 size={18} className="text-enterprise-600 dark:text-enterprise-400 shrink-0" aria-hidden />
+              <span className="whitespace-nowrap shrink-0 text-slate-600 dark:text-slate-300">กรองสาขา</span>
+              <select
+                value={branchFilter}
+                disabled={boardBranchSelectDisabled}
+                onChange={(e) => setBranchFilter(e.target.value)}
+                className="h-11 min-h-[44px] min-w-0 flex-1 rounded-xl border-2 border-enterprise-500/85 dark:border-enterprise-400 bg-white dark:bg-charcoal-800/95 dark:[color-scheme:dark] px-3 text-xs font-bold text-slate-900 dark:text-slate-100 disabled:opacity-50 touch-manipulation outline-none focus:ring-2 focus:ring-enterprise-500 dark:focus:ring-enterprise-400"
+                title={
+                  orderScope.unrestricted
+                    ? 'มองทุกสาขาเป็นค่าเริ่มต้น เลือกรหัสสาขาเพื่อโหลดเฉพาะคิวนั้น'
+                    : 'แสดงเฉพาะสาขาที่คุณได้รับอนุญาต'
+                }
+                aria-label="กรองตามสาขา"
+              >
+                {boardBranchOptions.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="flex flex-row flex-wrap gap-3 sm:flex-nowrap items-stretch sm:items-center justify-between sm:justify-end w-full sm:w-auto shrink-0">
+              <Button
+                variant="outline"
+                type="button"
+                onClick={() => void fetchData()}
+                disabled={loading}
+                className="h-11 min-h-[44px] flex-1 sm:flex-none sm:min-w-[8.25rem] rounded-xl px-4 font-semibold border-2 border-slate-300 bg-white text-slate-900 hover:bg-slate-50 hover:border-slate-400 dark:border-slate-600 dark:bg-charcoal-800 dark:text-slate-100 dark:hover:bg-charcoal-700 dark:hover:border-slate-500"
+              >
+                <RefreshCw size={18} className="shrink-0 opacity-95" aria-hidden />
+                <span className="whitespace-nowrap">รีเฟรช</span>
+              </Button>
+              <Button
+                variant="primary"
+                type="button"
+                onClick={() => void handleConfirmPlanning()}
+                isLoading={saving}
+                disabled={loading}
+                className="h-11 min-h-[44px] flex-1 sm:flex-none sm:min-w-[10.5rem] rounded-xl px-5 font-semibold shadow-md shadow-enterprise-900/25 dark:shadow-black/50"
+              >
+                <CheckCircle2 size={18} className="shrink-0" aria-hidden />
+                <span className="whitespace-nowrap text-left">ยืนยันจัดทริป</span>
+              </Button>
+            </div>
           </div>
         </div>
 
-        <DndContext
+        {loading ? (
+          <div className="flex-1 flex flex-col items-center justify-center gap-3 min-h-[min(420px,60vh)] px-6">
+            <LoadingSpinner />
+            <p className="text-sm font-semibold text-slate-600 dark:text-slate-300 text-center">
+              กำลังโหลดคิวและคำนวณพาเลท…
+            </p>
+          </div>
+        ) : (
+          <DndContext
           sensors={sensors}
           collisionDetection={closestCorners}
           onDragStart={handleDragStart}
@@ -174,13 +213,13 @@ export const TripPlanningBoardView: React.FC = () => {
 
               <button
                 type="button"
-                className="w-72 shrink-0 h-[200px] border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-3xl flex flex-col items-center justify-center text-slate-400 hover:text-enterprise-600 hover:border-enterprise-300 transition-all gap-3 group"
+                className="w-72 shrink-0 h-[200px] border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-3xl flex flex-col items-center justify-center text-slate-500 hover:text-enterprise-600 dark:text-slate-400 dark:hover:text-enterprise-400 dark:hover:border-enterprise-600 hover:border-enterprise-400 transition-colors gap-3 group bg-slate-50/50 dark:bg-charcoal-800/40"
                 onClick={addLane}
               >
                 <div className="p-3 bg-slate-100 dark:bg-slate-800 rounded-2xl group-hover:bg-enterprise-50 dark:group-hover:bg-enterprise-900/30">
                   <Plus size={28} />
                 </div>
-                <span className="font-black text-xs uppercase tracking-widest">เพิ่มคอลัมน์รถ</span>
+                <span className="font-black text-xs uppercase tracking-widest text-slate-600 dark:text-slate-300">เพิ่มคอลัมน์รถ</span>
               </button>
             </div>
           </div>
@@ -197,8 +236,9 @@ export const TripPlanningBoardView: React.FC = () => {
             ) : null}
           </DragOverlay>
         </DndContext>
+        )}
 
-        <p className="px-4 pb-3 text-[11px] text-slate-500 flex items-start gap-1.5 shrink-0">
+        <p className="px-4 pb-3 text-[11px] text-slate-500 dark:text-slate-400 flex items-start gap-1.5 shrink-0">
           <Info className="w-3.5 h-3.5 mt-0.5 shrink-0 opacity-70" aria-hidden />
           รีเฟรชจะรีเซ็ตการจัดบนรถ — ยืนยันก่อนจึงสร้างทริปและผูกออเดอร์ในระบบ
         </p>
@@ -275,7 +315,7 @@ function BacklogColumn({
           ))}
         </SortableContext>
         {filteredBacklog.length === 0 && (
-          <div className="py-16 text-center text-slate-400 text-sm">ไม่มีรายการในคิว</div>
+          <div className="py-16 text-center text-slate-400 dark:text-slate-500 text-sm">ไม่มีรายการในคิว</div>
         )}
       </div>
     </div>
@@ -336,13 +376,15 @@ function StorePostIt({
           <div className="font-bold text-sm leading-snug mb-1 line-clamp-2 text-slate-900 dark:text-white">
             {store.customer_code} — {store.customer_name}
           </div>
-          <div className="text-[10px] opacity-80 line-clamp-2 mb-2">{store.address || 'ไม่มีที่อยู่'}</div>
+          <div className="text-[10px] opacity-80 line-clamp-2 mb-2 text-slate-800 dark:text-slate-200">
+            {store.address || 'ไม่มีที่อยู่'}
+          </div>
           <div className="flex items-center justify-between pt-2 border-t border-black/10 dark:border-white/10">
             <div className="text-[10px] font-black flex items-center gap-1 bg-black/5 dark:bg-white/5 px-1.5 py-0.5 rounded">
               <Package size={10} className="text-enterprise-500" />
               {store.total_pallets.toFixed(1)} PL
             </div>
-            <ChevronRight size={14} className="opacity-50" />
+            <ChevronRight size={14} className="opacity-50 text-slate-600 dark:text-slate-400" />
           </div>
         </div>
       </div>
@@ -394,7 +436,7 @@ function VehicleLane({
           </select>
         </div>
         {vehicle ? (
-          <div className="flex justify-between text-[10px] font-bold text-slate-500">
+          <div className="flex justify-between text-[10px] font-bold text-slate-500 dark:text-slate-400">
             <span>สูงสุด</span>
             <span className="text-enterprise-600 dark:text-enterprise-400">
               {vehicle.loading_constraints?.max_pallets ?? 8} PL
@@ -467,10 +509,10 @@ function TripSlot({
       }`}
     >
       <div className="px-3 py-2 border-b flex items-center justify-between gap-2 flex-wrap bg-slate-50/80 dark:bg-slate-800/40">
-        <span className="text-[10px] font-black uppercase text-slate-500 tracking-widest">เที่ยว {index + 1}</span>
+        <span className="text-[10px] font-black uppercase text-slate-500 dark:text-slate-400 tracking-widest">เที่ยว {index + 1}</span>
         <div className="flex items-center gap-1.5">
           {isOver && <AlertTriangle size={12} className="text-red-500" aria-hidden />}
-          {isLow && !isOver && <Info size={12} className="text-amber-600" aria-hidden />}
+          {isLow && !isOver && <Info size={12} className="text-amber-600 dark:text-amber-500" aria-hidden />}
           <span
             className={`text-[11px] font-black tabular-nums ${isOver ? 'text-red-600' : isHigh ? 'text-emerald-700' : 'text-slate-600'}`}
           >
@@ -484,7 +526,7 @@ function TripSlot({
           <button
             type="button"
             onClick={onMoveSelectedHere}
-            className="w-full text-[10px] font-bold py-1.5 rounded-lg bg-enterprise-600 text-white hover:bg-enterprise-700"
+            className="w-full text-[10px] font-bold py-2 rounded-lg bg-enterprise-600 text-white hover:bg-enterprise-700 shadow-sm dark:shadow-black/30 transition-colors"
           >
             ย้ายรายการที่เลือกจากคิวมาเที่ยวนี้
           </button>
@@ -502,7 +544,7 @@ function TripSlot({
           ))}
         </SortableContext>
         {slot.stores.length === 0 && (
-          <div className="py-8 text-center text-[10px] text-slate-400 font-bold uppercase tracking-widest">
+          <div className="py-8 text-center text-[10px] text-slate-500 dark:text-slate-400 font-bold uppercase tracking-widest">
             วางการ์ดที่นี่
           </div>
         )}

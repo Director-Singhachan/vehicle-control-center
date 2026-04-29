@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { DragEndEvent, DragOverEvent, DragStartEvent } from '@dnd-kit/core';
 import { arrayMove } from '@dnd-kit/sortable';
 import {
@@ -21,6 +21,13 @@ import { vehicleService } from '../services/vehicleService';
 import { tripMetricsService } from '../services/tripMetricsService';
 import { supabase } from '../lib/supabase';
 import { getAreaGroupKey, getDistrictKey } from '../utils/parseThaiAddress';
+import { orderQueryFiltersForUiBranch, normalizeProfileBranch } from '../utils/orderUserScope';
+import {
+  BRANCH_ALL_VALUE,
+  BRANCH_ALL_LABEL,
+  BRANCH_FILTER_OPTIONS,
+  getBranchLabel,
+} from '../utils/branchLabels';
 import { mergeOrderItemsAcrossOrders } from '../utils/tripPlanningMerge';
 
 /** เริ่มจากคอลัมน์รถว่าง — ให้เห็นภาพรถหลายคันได้ทันที (จากแผนจัดคิว) */
@@ -178,6 +185,28 @@ async function mapPendingOrdersToStores(ordersWithItems: any[]): Promise<Plannin
   return storesArr;
 }
 
+/** ห้ามโหลดออเดอร์เมื่อ filters เป็น branchesIn ว่าง (กำลังโหลด scope / ไม่มีสาขาอนุญาต) */
+function ordersFiltersBlockFetch(filters: { branch?: string; branchesIn?: string[] } | undefined): boolean {
+  return filters?.branchesIn !== undefined && filters.branchesIn.length === 0;
+}
+
+function filterVehiclesForBoard(
+  vehicles: any[],
+  scope: { loading: boolean; unrestricted: boolean; allowedBranches: string[] },
+  uiBranch: string,
+): any[] {
+  if (scope.loading) return vehicles;
+  let list = vehicles;
+  if (!scope.unrestricted && scope.allowedBranches?.length) {
+    const allowed = new Set(scope.allowedBranches);
+    list = list.filter((v: any) => !v.branch || allowed.has(String(v.branch)));
+  }
+  if (uiBranch && uiBranch !== BRANCH_ALL_VALUE) {
+    list = list.filter((v: any) => !v.branch || String(v.branch) === uiBranch);
+  }
+  return list;
+}
+
 export function useTripPlanningBoard() {
   const { profile } = useAuth();
   const toastApi = useToast();
@@ -187,16 +216,10 @@ export function useTripPlanningBoard() {
 
   const canUseBoard = can('tab.trip_planning_board', 'view');
 
-  const pendingFilters = useMemo(() => {
-    if (featureLoading || !canUseBoard || orderScope.loading) {
-      return { branchesIn: [] as string[] };
-    }
-    if (orderScope.unrestricted) {
-      return undefined;
-    }
-    return { branchesIn: orderScope.allowedBranches };
-  }, [featureLoading, canUseBoard, orderScope.loading, orderScope.unrestricted, orderScope.allowedBranches]);
-
+  const [branchFilter, setBranchFilter] = useState<string>(BRANCH_ALL_VALUE);
+  /** กำหนดสาขาเริ่มต้นจากโปรไฟล์/สโคปก่อน fetch ครั้งแรก — กัน admin ที่โปรไฟล์สาขา SD แต่โหลดคิวรวมทุกสาขา */
+  const [branchScopeReady, setBranchScopeReady] = useState(false);
+  const branchBootstrapOnceRef = useRef(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [backlog, setBacklog] = useState<PlanningStore[]>([]);
@@ -206,6 +229,66 @@ export function useTripPlanningBoard() {
   const [activeStore, setActiveStore] = useState<PlanningStore | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedStoreIds, setSelectedStoreIds] = useState<Set<string>>(() => new Set());
+
+  const ordersFetchFilters = useMemo(() => {
+    if (featureLoading || !canUseBoard || orderScope.loading || !branchScopeReady) {
+      return { branchesIn: [] as string[] };
+    }
+    return orderQueryFiltersForUiBranch(orderScope, branchFilter, BRANCH_ALL_VALUE);
+  }, [featureLoading, canUseBoard, orderScope, branchFilter, branchScopeReady]);
+
+  const boardBranchOptions = useMemo(() => {
+    if (orderScope.loading) {
+      return [{ value: BRANCH_ALL_VALUE, label: BRANCH_ALL_LABEL }];
+    }
+    if (orderScope.unrestricted) {
+      return BRANCH_FILTER_OPTIONS;
+    }
+    const allowed = orderScope.allowedBranches;
+    if (allowed.length === 0) {
+      return [{ value: BRANCH_ALL_VALUE, label: BRANCH_ALL_LABEL }];
+    }
+    const opts = allowed.map((b) => ({ value: b, label: getBranchLabel(b) }));
+    if (allowed.length === 1) return opts;
+    return [{ value: BRANCH_ALL_VALUE, label: 'ทุกสาขา (ที่อนุญาต)' }, ...opts];
+  }, [orderScope]);
+
+  const boardBranchSelectDisabled = orderScope.loading || (!orderScope.unrestricted && orderScope.allowedBranches.length <= 1);
+
+  useLayoutEffect(() => {
+    if (branchBootstrapOnceRef.current) return;
+    if (featureLoading || !canUseBoard || orderScope.loading) return;
+
+    if (!orderScope.unrestricted) {
+      const allowed = orderScope.allowedBranches;
+      if (allowed.length === 1) {
+        setBranchFilter(allowed[0]!);
+      }
+      branchBootstrapOnceRef.current = true;
+      setBranchScopeReady(true);
+      return;
+    }
+
+    if (!profile) return;
+    setBranchFilter(normalizeProfileBranch(profile.branch));
+    branchBootstrapOnceRef.current = true;
+    setBranchScopeReady(true);
+  }, [
+    featureLoading,
+    canUseBoard,
+    orderScope.loading,
+    orderScope.unrestricted,
+    orderScope.allowedBranches,
+    profile,
+  ]);
+
+  useEffect(() => {
+    if (!orderScope || orderScope.loading || orderScope.unrestricted) return;
+    const allowed = orderScope.allowedBranches;
+    if (allowed.length > 1 && branchFilter !== BRANCH_ALL_VALUE && !allowed.includes(branchFilter)) {
+      setBranchFilter(BRANCH_ALL_VALUE);
+    }
+  }, [orderScope, branchFilter]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -225,18 +308,14 @@ export function useTripPlanningBoard() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
+      const block = ordersFiltersBlockFetch(ordersFetchFilters);
+
       const [pendingOrders, vehListRaw] = await Promise.all([
-        pendingFilters?.branchesIn?.length === 0
-          ? Promise.resolve([] as any[])
-          : ordersService.getPendingOrders(pendingFilters),
+        block ? Promise.resolve([] as any[]) : ordersService.getPendingOrders(ordersFetchFilters),
         vehicleService.getAll(),
       ]);
 
-      let vehList = vehListRaw;
-      if (!orderScope.loading && orderScope.unrestricted !== true && orderScope.allowedBranches?.length) {
-        const allowed = new Set(orderScope.allowedBranches);
-        vehList = vehList.filter((v: any) => !v.branch || allowed.has(String(v.branch)));
-      }
+      let vehList = filterVehiclesForBoard(vehListRaw, orderScope, branchFilter);
 
       const finalBacklog = await mapPendingOrdersToStores(pendingOrders);
 
@@ -250,14 +329,15 @@ export function useTripPlanningBoard() {
     } finally {
       setLoading(false);
     }
-  }, [pendingFilters, orderScope.loading, orderScope.unrestricted, orderScope.allowedBranches]);
+  }, [ordersFetchFilters, orderScope, branchFilter]);
 
   useEffect(() => {
-    if (!featureLoading && canUseBoard && !orderScope.loading && pendingFilters?.branchesIn?.length !== 0) {
+    if (!branchScopeReady) return;
+    if (!featureLoading && canUseBoard && !orderScope.loading && !ordersFiltersBlockFetch(ordersFetchFilters)) {
       void fetchData();
     }
     if (
-      pendingFilters?.branchesIn?.length === 0 &&
+      ordersFiltersBlockFetch(ordersFetchFilters) &&
       !orderScope.loading &&
       !featureLoading &&
       canUseBoard
@@ -266,7 +346,7 @@ export function useTripPlanningBoard() {
       setBacklog([]);
       setVehicles([]);
     }
-  }, [featureLoading, canUseBoard, orderScope.loading, pendingFilters, fetchData]);
+  }, [featureLoading, canUseBoard, orderScope.loading, ordersFetchFilters, fetchData, branchScopeReady]);
 
   const filteredBacklog = useMemo(() => {
     if (!searchQuery.trim()) return backlog;
@@ -589,10 +669,13 @@ export function useTripPlanningBoard() {
     orderScope,
     featureLoading,
     canUseBoard,
-    pendingFilters,
     loading,
     saving,
     setSaving,
+    branchFilter,
+    setBranchFilter,
+    boardBranchOptions,
+    boardBranchSelectDisabled,
     backlog,
     vehicles,
     lanes,
