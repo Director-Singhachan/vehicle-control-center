@@ -1,6 +1,7 @@
 // Vehicle Form View - Add/Edit vehicle form
 import React, { useState, useEffect } from 'react';
 import { useVehicle } from '../hooks';
+import { useFeatureAccess } from '../hooks/useFeatureAccess';
 import { vehicleService } from '../services';
 import { storageService } from '../services/storageService';
 import {
@@ -31,6 +32,8 @@ export const VehicleFormView: React.FC<VehicleFormViewProps> = ({
 }) => {
   const isEdit = !!vehicleId;
   const { vehicle, loading: loadingVehicle } = useVehicle(vehicleId || null);
+  const { can } = useFeatureAccess();
+  const canEditVehicleFields = can('tab.vehicles', 'edit');
 
   const normalizeOwnerGroup = (
     value: unknown
@@ -288,12 +291,12 @@ export const VehicleFormView: React.FC<VehicleFormViewProps> = ({
                 onChange={(e) => handleChange('plate', e.target.value)}
                 placeholder="กก-1234"
                 required
-                disabled={saving || (isEdit && !!vehicle)}
+                disabled={saving || (isEdit && !!vehicle && !canEditVehicleFields)}
                 error={error && !formData.plate ? 'กรุณากรอกป้ายทะเบียน' : undefined}
               />
-              {isEdit && vehicle && (
+              {isEdit && vehicle && !canEditVehicleFields && (
                 <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                  ป้ายทะเบียนไม่สามารถแก้ไขได้
+                  ไม่มีสิทธิ์แก้ไขป้ายทะเบียน (ต้องมีสิทธิ์ «แก้ไข» ในเมนูยานพาหนะ)
                 </p>
               )}
             </div>

@@ -71,6 +71,9 @@ export const FEATURE_MATRIX_SURVIVAL_KEYS: readonly FeatureKey[] = [
   'report.pnl_fleet',
   /** แท็บรายงานผู้บริหาร — fallback built-in เมื่อ seed matrix ยังไม่มีคอลัมน์นี้ */
   'report.pnl_executive',
+  /** คลัง/จัดส่ง: ถ้า matrix ใน DB มีบางแถวแต่ลืม key นี้ strict จะได้ none หมด — fallback built-in แทน */
+  'tab.delivery_trips',
+  'tab.vehicles',
 ];
 
 export interface ResolveAccessLevelOptions {
@@ -302,6 +305,7 @@ const BUILT_IN: Partial<Record<AppRole, Partial<Record<FeatureKey, AccessLevel>>
     'tab.warehouses': 'manage',
     'tab.inventory_receipts': 'manage',
     'tab.purchase_receipts': 'manage',
+    'tab.vehicles': 'edit',
     'tab.delivery_trips': 'manage',
     'tab.packing_simulation': 'manage',
     'tab.triplogs': 'view',

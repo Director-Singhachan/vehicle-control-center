@@ -334,16 +334,41 @@ export function useDeliveryTripForm({ tripId, onSave, onCancel }: UseDeliveryTri
   const createSearchableText = (...texts: (string | null | undefined)[]) =>
     texts.filter(Boolean).map(t => normalizeText(t!)).join(' ');
 
+  /** สตริงเดียวกับตอน hydrate / เลือกรถ — ใช้เทียบว่า user ยังไม่พิมพ์ค้นหา (แค่ข้อความเต็มของรถเดิม) */
+  const currentVehicleLabel = useMemo(() => {
+    if (!formData.vehicle_id) return '';
+    const v = vehicles.find((x) => x.id === formData.vehicle_id);
+    if (!v) return '';
+    return `${v.plate || ''}${v.make && v.model ? ` (${v.make} ${v.model})` : ''}`.trim();
+  }, [vehicles, formData.vehicle_id]);
+
+  /**
+   * ตอนแก้ไขทริป ช่อง "รถ" เติมข้อความเต็มของรถปัจจุบัน — ถ้าใช้ตัวนี้กรองตรง ๆ
+   * รถอื่นจะไม่ match สตริงนั้น จึงเหลือ 0–1 คันในรายการ (ดูเหมือนเปลี่ยนรถไม่ได้)
+   * ถ้าข้อความในช่องยังเท่ากับป้ายรถที่เลือกอยู่ ให้ถือว่า "ยังไม่ค้นหา" แล้วแสดงรายการรถทั้งหมด
+   */
+  const effectiveVehicleSearch = useMemo(() => {
+    if (!vehicleSearch.trim()) return '';
+    if (
+      formData.vehicle_id &&
+      currentVehicleLabel &&
+      normalizeText(vehicleSearch) === normalizeText(currentVehicleLabel)
+    ) {
+      return '';
+    }
+    return vehicleSearch;
+  }, [vehicleSearch, formData.vehicle_id, currentVehicleLabel]);
+
   const filteredVehicles = useMemo(() => {
-    if (!vehicleSearch) return vehicles;
-    const searchLower = normalizeText(vehicleSearch);
+    if (!effectiveVehicleSearch) return vehicles;
+    const searchLower = normalizeText(effectiveVehicleSearch);
     return vehicles.filter(v =>
       normalizeText(v.plate || '').includes(searchLower) ||
       normalizeText(v.make || '').includes(searchLower) ||
       normalizeText(v.model || '').includes(searchLower) ||
       createSearchableText(v.plate, v.make, v.model).includes(searchLower)
     );
-  }, [vehicles, vehicleSearch]);
+  }, [vehicles, effectiveVehicleSearch]);
 
   const filteredStores = useMemo(() => {
     if (!storeSearchDebounced?.trim()) return [];
@@ -410,25 +435,41 @@ export function useDeliveryTripForm({ tripId, onSave, onCancel }: UseDeliveryTri
   useEffect(() => {
     serviceStaffService.getAllActiveWithBranch().then(staff => setAvailableStaff(staff.map(s => ({ id: s.id, name: s.name, employee_code: s.employee_code, branch: s.branch, staffRole: s.staffRole })))).catch(() => {});
   }, []);
+  // แสดง「เลขไมล์ล่าสุด」ใต้ช่อง ตามรถที่เลือก (โหลด/เปลี่ยนรถ)
   useEffect(() => {
-    if (!formData.vehicle_id) { setLatestOdometer(null); return; }
-    tripLogService.getLastOdometer(formData.vehicle_id)
-      .then(last => {
-        setLatestOdometer(last);
-        if (!formData.odometer_start && last) setFormData(prev => ({ ...prev, odometer_start: last.toString() }));
-      })
+    if (!formData.vehicle_id) {
+      setLatestOdometer(null);
+      return;
+    }
+    tripLogService
+      .getLastOdometer(formData.vehicle_id)
+      .then((last) => setLatestOdometer(last))
       .catch(() => setLatestOdometer(null));
   }, [formData.vehicle_id]);
 
+  /** เมื่อผู้ใช้เลือกรถจากรายการ: เติม「ไมล์เริ่มต้น」เป็นเลขไมล์ล่าสุดของคันที่เลือก (รวมตอนแก้ทริปสลับรถ) */
   const handleSelectVehicle = useCallback((vehicleId: string, e?: React.MouseEvent) => {
     if (e) { e.preventDefault(); e.stopPropagation(); }
-    const vehicle = vehicles.find(v => v.id === vehicleId);
+    const vehicle = vehicles.find((v) => v.id === vehicleId);
     if (!vehicle) return;
     setShowVehicleDropdown(false);
     setVehicleDropdownPosition(null);
     setTimeout(() => {
-      setFormData(prev => ({ ...prev, vehicle_id: vehicleId }));
-      setVehicleSearch(`${vehicle.plate}${vehicle.make && vehicle.model ? ` (${vehicle.make} ${vehicle.model})` : ''}`);
+      setFormData((prev) => ({ ...prev, vehicle_id: vehicleId }));
+      setVehicleSearch(
+        `${vehicle.plate}${vehicle.make && vehicle.model ? ` (${vehicle.make} ${vehicle.model})` : ''}`,
+      );
+      void tripLogService
+        .getLastOdometer(vehicleId)
+        .then((last) => {
+          setFormData((prev) => ({
+            ...prev,
+            odometer_start: last != null ? String(last) : '',
+          }));
+        })
+        .catch(() => {
+          setFormData((prev) => ({ ...prev, odometer_start: '' }));
+        });
     }, 0);
   }, [vehicles]);
 
