@@ -42,6 +42,11 @@ export function resolveOrderBranchScope(
     return { loading: true, unrestricted: false, allowedBranches: [] };
   }
 
+  // ผู้พัฒนา และผู้บริหารระดับสูง (Legacy) ให้สิทธิ์สูงสุดเสมอ
+  if (legacyUnrestricted(profile)) {
+    return { loading: false, unrestricted: true, allowedBranches: [] };
+  }
+
   if (dbVisibility === 'all_branches') {
     return { loading: false, unrestricted: true, allowedBranches: [] };
   }
@@ -49,10 +54,6 @@ export function resolveOrderBranchScope(
   if (dbVisibility === 'own_branch_only') {
     const b = normalizeProfileBranch(profile?.branch);
     return { loading: false, unrestricted: false, allowedBranches: [b] };
-  }
-
-  if (legacyUnrestricted(profile)) {
-    return { loading: false, unrestricted: true, allowedBranches: [] };
   }
 
   const b = profile?.branch?.trim();
