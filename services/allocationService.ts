@@ -210,6 +210,22 @@ export const allocationService = {
   },
 
   /**
+   * Cancel allocations for specific orders on one trip (รวมแถว delivered).
+   * ใช้เมื่อถอดร้าน/ออเดอร์ออกจากทริป เพื่อคืน remaining ใน view และให้จัดทริปใหม่ได้
+   */
+  async cancelAllocationsForOrdersOnTrip(tripId: string, orderIds: string[]): Promise<void> {
+    if (orderIds.length === 0) return;
+    const { error } = await supabase
+      .from('order_delivery_trip_allocations')
+      .update({ status: 'cancelled' })
+      .eq('delivery_trip_id', tripId)
+      .in('order_id', orderIds)
+      .neq('status', 'cancelled');
+
+    if (error) throw new Error(`allocationService.cancelAllocationsForOrdersOnTrip: ${error.message}`);
+  },
+
+  /**
    * Delete all allocations for a trip (hard delete, for non-started trips only).
    */
   async deleteTripAllocations(tripId: string): Promise<void> {

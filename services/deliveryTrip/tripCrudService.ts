@@ -1216,6 +1216,30 @@ export const tripCrudService = {
               console.error('[tripCrudService] Error resetting orders for removed stores:', resetOrdersError);
               throw resetOrdersError;
             }
+
+            try {
+              await allocationService.cancelAllocationsForOrdersOnTrip(id, orderIdsToReset);
+            } catch (allocErr) {
+              console.error('[tripCrudService] Error cancelling allocations for removed-store orders:', allocErr);
+              throw allocErr;
+            }
+
+            if (effectiveTripStatus === 'completed') {
+              const { error: rpcError } = await supabase.rpc(
+                'recalculate_quantity_delivered_after_order_unassign',
+                {
+                  p_order_ids: orderIdsToReset,
+                  p_excluded_trip_id: id,
+                }
+              );
+              if (rpcError) {
+                console.error('[tripCrudService] recalculate_quantity_delivered_after_order_unassign (removed stores):', rpcError);
+                throw new Error(
+                  rpcError.message ||
+                    'ไม่สามารถรีแคล์ยอดจัดส่งหลังถอดออเดอร์จากทริปได้ (ตรวจสอบว่า migration RPC ถูก apply แล้ว)'
+                );
+              }
+            }
           }
         }
 
