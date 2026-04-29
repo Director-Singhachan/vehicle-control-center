@@ -34,6 +34,15 @@ import { mergeOrderItemsAcrossOrders } from '../utils/tripPlanningMerge';
 /** เริ่มจากคอลัมน์รถว่าง — ให้เห็นภาพรถหลายคันได้ทันที (จากแผนจัดคิว) */
 export const INITIAL_TRIP_PLANNING_LANE_COUNT = 7;
 
+/** บรรทัดสินค้าหลังรวมบิลต่อร้าน — ใช้แสดงสรุปในเที่ยว */
+export interface PlanningLineItem {
+  product_id: string;
+  product_name: string;
+  quantity: number;
+  unit: string | null;
+  is_bonus: boolean;
+}
+
 export interface PlanningStore {
   id: string;
   store_id: string;
@@ -41,6 +50,8 @@ export interface PlanningStore {
   customer_name: string;
   address: string | null;
   orders: any[];
+  /** รวมยอดคงค้างส่งต่อบิลของร้านนี้ (มีชื่อสินค้าจาก products) */
+  line_items: PlanningLineItem[];
   total_pallets: number;
   total_weight_kg: number;
   areaKey: string;
@@ -147,6 +158,22 @@ async function computePalletsForStore(
   };
 }
 
+function buildPlanningLineItems(
+  orders: any[],
+  productMap: Map<string, { product_name?: string | null; weight_kg?: number | null }>,
+): PlanningLineItem[] {
+  const merged = mergeOrderItemsAcrossOrders(orders);
+  return merged
+    .map((m) => ({
+      product_id: m.product_id,
+      product_name: String(productMap.get(m.product_id)?.product_name ?? 'สินค้า').trim(),
+      quantity: m.quantity,
+      unit: m.unit != null && String(m.unit).trim() !== '' ? String(m.unit).trim() : null,
+      is_bonus: m.is_bonus,
+    }))
+    .sort((a, b) => a.product_name.localeCompare(b.product_name, 'th'));
+}
+
 async function mapPendingOrdersToStores(ordersWithItems: any[]): Promise<PlanningStore[]> {
   const storeMap = new Map<string, PlanningStore>();
 
@@ -166,6 +193,7 @@ async function mapPendingOrdersToStores(ordersWithItems: any[]): Promise<Plannin
         customer_name: order.customer_name || order.store?.customer_name || '-',
         address: addr,
         orders: [],
+        line_items: [],
         total_pallets: 0,
         total_weight_kg: 0,
         areaKey,
@@ -188,6 +216,7 @@ async function mapPendingOrdersToStores(ordersWithItems: any[]): Promise<Plannin
 
   await Promise.all(
     storesArr.map(async (store) => {
+      store.line_items = buildPlanningLineItems(store.orders, productWeightMap);
       const { totalPallets, totalWeightKg } = await computePalletsForStore(store.orders, productWeightMap);
       store.total_pallets = totalPallets;
       store.total_weight_kg = totalWeightKg;

@@ -33,3 +33,42 @@ export function mergeOrderItemsAcrossOrders(
   }
   return Array.from(map.values());
 }
+
+/** รวมยอดสินค้าตาม SKU ระหว่างหลายร้านในเที่ยวเดียว (บอร์ดจัดคิว) */
+export interface TripAggregatedProductLine {
+  product_id: string;
+  product_name: string;
+  quantity: number;
+  unit: string | null;
+}
+
+export function aggregateTripProductLines(
+  storeLineGroups: readonly {
+    line_items?: ReadonlyArray<{
+      product_id: string;
+      product_name: string;
+      quantity: number;
+      unit?: string | null;
+    }>;
+  }[],
+): TripAggregatedProductLine[] {
+  const map = new Map<string, TripAggregatedProductLine>();
+  for (const g of storeLineGroups) {
+    for (const line of g.line_items ?? []) {
+      const prev = map.get(line.product_id);
+      const unit = line.unit != null && String(line.unit).trim() !== '' ? String(line.unit).trim() : null;
+      if (!prev) {
+        map.set(line.product_id, {
+          product_id: line.product_id,
+          product_name: line.product_name,
+          quantity: line.quantity,
+          unit,
+        });
+      } else {
+        prev.quantity += line.quantity;
+        if (!prev.unit && unit) prev.unit = unit;
+      }
+    }
+  }
+  return Array.from(map.values()).sort((a, b) => a.product_name.localeCompare(b.product_name, 'th'));
+}

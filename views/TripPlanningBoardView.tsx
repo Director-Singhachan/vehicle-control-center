@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   DndContext,
   DragOverlay,
@@ -19,6 +19,8 @@ import {
   Info,
   Building2,
   User,
+  ClipboardList,
+  X,
 } from 'lucide-react';
 
 import { Button } from '../components/ui/Button';
@@ -27,9 +29,22 @@ import { LoadingSpinner } from '../components/ui/LoadingSpinner';
 import { PageLayout } from '../components/layout/PageLayout';
 import { ToastContainer } from '../components/ui/Toast';
 import { Card } from '../components/ui/Card';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '../components/ui/Dialog';
 
-import type { PlanningLane, PlanningSlot, PlanningStore, PlanningTripServiceType } from '../hooks/useTripPlanningBoard';
+import type {
+  PlanningLane,
+  PlanningSlot,
+  PlanningStore,
+  PlanningTripServiceType,
+} from '../hooks/useTripPlanningBoard';
 import { useTripPlanningBoard } from '../hooks/useTripPlanningBoard';
+import { aggregateTripProductLines } from '../utils/tripPlanningMerge';
 import { districtAreaColorClass } from '../utils/tripPlanningRouteColors';
 import { BRANCH_ALL_VALUE, getBranchLabel } from '../utils/branchLabels';
 
@@ -331,6 +346,149 @@ function BacklogColumn({
   );
 }
 
+function formatOrderNumbersLabel(store: PlanningStore): string {
+  const nums = [...new Set((store.orders ?? []).map((o: { order_number?: string }) => o.order_number).filter(Boolean))];
+  return nums.length ? nums.join(', ') : '—';
+}
+
+function TripSlotProductsDialog({
+  open,
+  onOpenChange,
+  tripIndexDisplay,
+  stores,
+  totalPallets,
+  maxPallets,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  tripIndexDisplay: number;
+  stores: PlanningStore[];
+  totalPallets: number;
+  maxPallets: number;
+}) {
+  const tripLines = useMemo(() => aggregateTripProductLines(stores), [stores]);
+  const totalUnits = useMemo(() => tripLines.reduce((s, l) => s + l.quantity, 0), [tripLines]);
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent
+        className="max-h-[min(90vh,720px)] w-full max-w-2xl flex flex-col p-0 gap-0 overflow-hidden"
+        onInteractOutside={() => onOpenChange(false)}
+        onEscapeKeyDown={() => onOpenChange(false)}
+      >
+        <DialogHeader className="shrink-0 pr-12">
+          <button
+            type="button"
+            className="absolute right-4 top-4 rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-800 dark:hover:bg-slate-800 dark:hover:text-white"
+            onClick={() => onOpenChange(false)}
+            aria-label="ปิด"
+          >
+            <X size={18} />
+          </button>
+          <DialogTitle className="flex items-center gap-2 pr-6">
+            <ClipboardList size={22} className="text-enterprise-600 dark:text-enterprise-400 shrink-0" aria-hidden />
+            เที่ยวที่ {tripIndexDisplay} — สินค้าในเที่ยว
+          </DialogTitle>
+          <DialogDescription>
+            {stores.length} ร้าน · พาเลทรวม {totalPallets.toFixed(1)} / {maxPallets} PL
+            {tripLines.length > 0 && (
+              <span className="block mt-1 text-slate-700 dark:text-slate-300">
+                สรุป {tripLines.length} รายการสินค้า · จำนวนรวม {totalUnits % 1 === 0 ? String(totalUnits) : totalUnits.toFixed(2)} หน่วย
+              </span>
+            )}
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="flex-1 min-h-0 overflow-y-auto px-6 pb-4 space-y-6">
+          {tripLines.length === 0 && (
+            <p className="text-sm text-slate-500 dark:text-slate-400">ไม่มีรายการสินค้า (คงค้างส่งแล้ว)</p>
+          )}
+
+          {tripLines.length > 0 && (
+            <section aria-labelledby={`trip-sum-${tripIndexDisplay}`}>
+              <h3
+                id={`trip-sum-${tripIndexDisplay}`}
+                className="text-xs font-black uppercase tracking-wider text-enterprise-700 dark:text-enterprise-300 mb-2"
+              >
+                สรุปทั้งเที่ยว (รวมทุกร้าน)
+              </h3>
+              <ul className="rounded-xl border border-slate-200 dark:border-slate-700 divide-y divide-slate-100 dark:divide-slate-700/80 bg-slate-50/50 dark:bg-charcoal-950/40">
+                {tripLines.map((line) => (
+                  <li key={line.product_id} className="flex items-start justify-between gap-3 px-3 py-2 text-sm">
+                    <span className="text-slate-900 dark:text-slate-100 font-medium leading-snug min-w-0 flex-1">{line.product_name}</span>
+                    <span className="tabular-nums font-bold text-slate-800 dark:text-white shrink-0">
+                      {line.quantity % 1 === 0 ? line.quantity : line.quantity.toFixed(2)}
+                      {line.unit ? ` ${line.unit}` : ''}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+
+          <section aria-labelledby={`trip-by-store-${tripIndexDisplay}`}>
+            <h3
+              id={`trip-by-store-${tripIndexDisplay}`}
+              className="text-xs font-black uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-2"
+            >
+              แยกตามร้าน
+            </h3>
+            <div className="space-y-3">
+              {stores.map((store) => {
+                const items = store.line_items ?? [];
+                const storeUnits = items.reduce((s, l) => s + l.quantity, 0);
+                return (
+                  <div
+                    key={store.id}
+                    className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-charcoal-900/80 overflow-hidden"
+                  >
+                    <div className="px-3 py-2 border-b border-slate-100 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-800/50">
+                      <div className="font-bold text-sm text-slate-900 dark:text-white">
+                        {store.customer_code} — {store.customer_name}
+                      </div>
+                      <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                        บิล: {formatOrderNumbersLabel(store)} · {items.length} รายการสินค้า · รวม {storeUnits % 1 === 0 ? storeUnits : storeUnits.toFixed(2)} หน่วย
+                      </div>
+                    </div>
+                    {items.length === 0 ? (
+                      <p className="px-3 py-2 text-xs text-slate-500">ไม่มีรายการคงค้าง</p>
+                    ) : (
+                      <ul className="divide-y divide-slate-100 dark:divide-slate-800">
+                        {items.map((line) => (
+                          <li key={`${store.id}-${line.product_id}-${line.unit ?? ''}-${line.is_bonus}`} className="flex gap-3 px-3 py-1.5 text-xs">
+                            <span className="text-slate-800 dark:text-slate-100 flex-1 min-w-0">{line.product_name}</span>
+                            <span className="tabular-nums font-semibold text-slate-700 dark:text-slate-300 shrink-0 whitespace-nowrap">
+                              {line.quantity % 1 === 0 ? line.quantity : line.quantity.toFixed(2)}
+                              {line.unit ? ` ${line.unit}` : ''}
+                              {line.is_bonus ? (
+                                <span className="ml-1 text-[10px] text-rose-600 dark:text-rose-400">bonus</span>
+                              ) : null}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        </div>
+
+        <div className="shrink-0 border-t border-slate-200 dark:border-slate-700 px-6 py-3 bg-slate-50/90 dark:bg-charcoal-950/60">
+          <button
+            type="button"
+            className="w-full rounded-lg py-2.5 text-sm font-semibold bg-enterprise-600 text-white hover:bg-enterprise-700"
+            onClick={() => onOpenChange(false)}
+          >
+            ปิด
+          </button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function StorePostIt({
   store,
   colorClass,
@@ -347,6 +505,9 @@ function StorePostIt({
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: store.id,
   });
+
+  const lineItems = store.line_items ?? [];
+  const lineQtySum = lineItems.reduce((s, l) => s + l.quantity, 0);
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -388,6 +549,12 @@ function StorePostIt({
           <div className="text-[10px] opacity-80 line-clamp-2 mb-2">
             {store.address || 'ไม่มีที่อยู่'}
           </div>
+          {(lineItems.length) > 0 && (
+            <div className="text-[10px] font-semibold opacity-75 mb-1.5">
+              {lineItems.length} รายการสินค้า · รวม{' '}
+              {lineQtySum % 1 === 0 ? lineQtySum : lineQtySum.toFixed(2)} หน่วย
+            </div>
+          )}
           <div className="flex items-center justify-between pt-2 border-t border-current/15">
             <div className="text-[10px] font-black flex items-center gap-1 bg-black/[0.05] dark:bg-white/[0.08] px-1.5 py-0.5 rounded tabular-nums">
               <Package size={10} className="text-enterprise-600 dark:text-enterprise-300 shrink-0 opacity-90" aria-hidden />
@@ -513,6 +680,7 @@ function TripSlot({
   onServiceTypeChange: (st: PlanningTripServiceType) => void;
   onToggleStoresCollapsed: () => void;
 }) {
+  const [productsOpen, setProductsOpen] = useState(false);
   const { setNodeRef } = useDroppable({ id: slot.id });
 
   const totalPallets = useMemo(
@@ -597,6 +765,19 @@ function TripSlot({
         </div>
       </div>
 
+      {slot.stores.length > 0 && (
+        <div className="px-2">
+          <button
+            type="button"
+            onClick={() => setProductsOpen(true)}
+            className="w-full flex items-center justify-center gap-2 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-charcoal-800/90 text-[11px] font-bold text-enterprise-700 dark:text-enterprise-300 hover:bg-enterprise-50 dark:hover:bg-enterprise-950/40"
+          >
+            <ClipboardList size={15} className="shrink-0 opacity-90" aria-hidden />
+            ดูสินค้า / สรุปเที่ยว
+          </button>
+        </div>
+      )}
+
       {showMoveSelected && (
         <div className="px-2 pt-2">
           <button
@@ -648,6 +829,15 @@ function TripSlot({
           />
         </div>
       </div>
+
+      <TripSlotProductsDialog
+        open={productsOpen}
+        onOpenChange={setProductsOpen}
+        tripIndexDisplay={index + 1}
+        stores={slot.stores}
+        totalPallets={totalPallets}
+        maxPallets={maxPallets}
+      />
     </div>
   );
 }
