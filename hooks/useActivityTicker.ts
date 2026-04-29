@@ -12,7 +12,7 @@ export interface ActivityTickerItem {
 
 interface UseActivityTickerOptions {
     branch?: string | null;
-    isHighLevel?: boolean; // admin/manager/inspector/executive
+    isHighLevel?: boolean; // admin/manager/inspector/executive/dev
 }
 
 export function useActivityTicker({ branch, isHighLevel }: UseActivityTickerOptions) {

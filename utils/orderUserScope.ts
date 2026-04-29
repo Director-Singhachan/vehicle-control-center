@@ -25,7 +25,8 @@ function legacyUnrestricted(profile: Profile | null): boolean {
     r === 'admin' ||
     r === 'manager' ||
     r === 'inspector' ||
-    r === 'executive';
+    r === 'executive' ||
+    r === 'dev';
   return high || profile.branch === 'HQ';
 }
 

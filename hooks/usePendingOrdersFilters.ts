@@ -19,7 +19,7 @@ export function usePendingOrdersFilters({ orders, profile, scope }: UsePendingOr
             if (scope.allowedBranches.length > 1) return 'ALL';
             return 'ALL';
         }
-        const isHighLevel = profile?.role === 'admin' || profile?.role === 'manager' || profile?.role === 'inspector' || profile?.role === 'executive';
+        const isHighLevel = profile?.role === 'admin' || profile?.role === 'manager' || profile?.role === 'inspector' || profile?.role === 'executive' || profile?.role === 'dev';
         if (isHighLevel || profile?.branch === 'HQ') {
             return 'ALL';
         }

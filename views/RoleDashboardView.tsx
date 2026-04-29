@@ -26,7 +26,7 @@ export const RoleDashboardView: React.FC<RoleDashboardViewProps> = ({
   onNavigateToTickets,
   onNavigateToTicketDetail,
 }) => {
-  const { profile, isInspector, isManager, isExecutive, isAdmin } = useAuth();
+  const { profile, isInspector, isManager, isExecutive, isAdmin, isDev } = useAuth();
   
   // Get tickets based on role
   const pendingStatus = isInspector ? ['pending'] : 
@@ -44,7 +44,7 @@ export const RoleDashboardView: React.FC<RoleDashboardViewProps> = ({
   });
 
   const { tickets: allTickets, loading: loadingAll } = useTickets({ 
-    autoFetch: isAdmin || isManager 
+    autoFetch: isAdmin || isManager || isDev
   });
 
   // Calculate stats
@@ -57,6 +57,7 @@ export const RoleDashboardView: React.FC<RoleDashboardViewProps> = ({
   const myCompletedCount = myTickets.filter(t => t.status === 'completed').length;
 
   const getRoleTitle = () => {
+    if (isDev) return 'แดชบอร์ดผู้พัฒนา (Dev)';
     if (isAdmin) return 'แดชบอร์ดผู้ดูแลระบบ';
     if (isInspector) return 'แดชบอร์ดผู้ตรวจสอบ';
     if (isManager) return 'แดชบอร์ดผู้จัดการ';

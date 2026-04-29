@@ -31,6 +31,7 @@ import {
   Upload,
   UserCog,
   AlertTriangle,
+  ShieldAlert,
 } from 'lucide-react';
 // Lazy load views เพื่อลด initial bundle และให้หน้าแรกโหลดเร็วขึ้น
 const DashboardView = lazy(() => import('./views/DashboardView').then(m => ({ default: m.DashboardView })));
@@ -174,7 +175,7 @@ const SubSidebarItem = ({ label, active, onClick, isCollapsed, isFlyout, isWarni
   </button>
 );
 
-const MaintenanceView = ({ isDev, onReset, featureName, onContact }: { isDev?: boolean, onReset?: () => void, featureName?: string, onContact?: () => void }) => (
+const MaintenanceView = ({ isDev, onReset, featureName, onContact, onBypass }: { isDev?: boolean, onReset?: () => void, featureName?: string, onContact?: () => void, onBypass?: () => void }) => (
   <div className="flex flex-col items-center justify-center min-h-[60vh] p-8 text-center bg-white dark:bg-charcoal-900 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-xl max-w-2xl mx-auto my-12 animate-in zoom-in-95 duration-300">
     <div className="relative mb-8">
       <div className="absolute inset-0 bg-amber-500 blur-3xl opacity-20 animate-pulse"></div>
@@ -197,17 +198,28 @@ const MaintenanceView = ({ isDev, onReset, featureName, onContact }: { isDev?: b
     </p>
 
     {(isDev || featureName) && (
-      <button
-        onClick={onReset || onContact}
-        className="px-8 py-3 bg-enterprise-600 hover:bg-enterprise-700 text-white rounded-2xl font-bold shadow-lg shadow-enterprise-600/30 transition-all active:scale-95 flex items-center space-x-2"
-      >
-        <Settings size={18} />
-        <span>จัดการ Feature Flags</span>
-      </button>
+      <div className="flex flex-col gap-3 w-full max-w-xs mx-auto">
+        <button
+          onClick={onReset || onContact}
+          className="px-8 py-3 bg-enterprise-600 hover:bg-enterprise-700 text-white rounded-2xl font-bold shadow-lg shadow-enterprise-600/30 transition-all active:scale-95 flex items-center justify-center space-x-2"
+        >
+          <Settings size={18} />
+          <span>จัดการ Feature Flags</span>
+        </button>
+        {isDev && onBypass && (
+          <button
+            onClick={onBypass}
+            className="px-8 py-3 bg-slate-800 hover:bg-slate-700 text-amber-500 rounded-2xl font-bold shadow-lg transition-all active:scale-95 flex items-center justify-center space-x-2 border border-amber-500/30"
+          >
+            <ShieldAlert size={18} />
+            <span>Bypass Block (Dev Mode)</span>
+          </button>
+        )}
+      </div>
     )}
 
     {!(isDev || featureName) && (
-      <div className="flex items-center space-x-2 text-slate-400">
+      <div className="flex items-center space-x-2 text-slate-400 mt-4">
         <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
         <span className="text-sm font-medium">ทีมวิศวกรกำลังดำเนินการพัฒนาระบบ</span>
       </div>
@@ -226,9 +238,10 @@ const MenuSectionHeader = ({ label }: { label: string }) => (
 
 // Main App Content (wrapped in ProtectedRoute)
 const AppContent = () => {
-  const { user, profile, signOut, isAdmin, isManager, isInspector, isExecutive, isDriver, isSales, isHR, isWarehouse, isDev, loading: authLoading, refreshProfile } = useAuth();
+  const { user, profile, signOut, isAdmin, isManager, isInspector, isExecutive, isDriver, isSales, isHR, isWarehouse, isDev, isRealDev, overriddenRole, loading: authLoading, refreshProfile } = useAuth();
   const { can, canAccessTab, loading: featureAccessLoading } = useFeatureAccess();
   const { featureOverrides, setPanelTab } = useDebugStore();
+  const [devBypassedFeatures, setDevBypassedFeatures] = useState<string[]>([]);
   const showHrMenu =
     can('tab.admin_staff', 'view') ||
     can('tab.service_staff', 'view') ||
@@ -940,7 +953,7 @@ const AppContent = () => {
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
   // Activity ticker for the top bar
-  const isHighLevel = isAdmin || isManager || isInspector || isExecutive;
+  const isHighLevel = isAdmin || isManager || isInspector || isExecutive || isDev;
   const { items: tickerItems, loading: tickerLoading } = useActivityTicker({
     branch: profile?.branch,
     isHighLevel,
@@ -2701,9 +2714,15 @@ const AppContent = () => {
                     return 'ผู้ใช้';
                   })()}
                   {/* Debug Role */}
-                  <span className="block text-[10px] text-slate-300 opacity-50">
-                    ({profile?.role || 'no-role'})
-                  </span>
+                  {isRealDev && overriddenRole ? (
+                    <span className="block text-[10px] text-amber-500 font-bold mt-0.5">
+                      Dev Mode: จำลองสิทธิ์ ({profile?.role})
+                    </span>
+                  ) : (
+                    <span className="block text-[10px] text-slate-300 opacity-50">
+                      ({profile?.role || 'no-role'})
+                    </span>
+                  )}
                 </p>
               </div>
               <Avatar
@@ -2725,13 +2744,15 @@ const AppContent = () => {
           }>
             {(() => {
               const featureKey = TAB_TO_PRIMARY_FEATURE[activeTab];
-              if (featureKey && featureOverrides[featureKey] === 'off') {
+              if (featureKey && featureOverrides[featureKey] === 'off' && !devBypassedFeatures.includes(featureKey)) {
                 return (
                   <MaintenanceView
+                    isDev={isDev}
                     featureName={activeTab}
                     onContact={() => {
                       // Optional: handle contact or refresh
                     }}
+                    onBypass={() => setDevBypassedFeatures(prev => [...prev, featureKey])}
                   />
                 );
               }

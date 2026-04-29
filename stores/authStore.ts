@@ -103,20 +103,22 @@ export const useAuthStore = create<AuthState>()(
         const currentOverriddenRole = get().overriddenRole;
         const activeRole = currentOverriddenRole || profile?.role;
 
+        const isDevActive = activeRole === 'dev';
+
         set({
           profile,
-          isDev: activeRole === 'dev',
+          isDev: isDevActive,
           isRealDev: profile?.role === 'dev',
-          isAdmin: activeRole === 'admin',
-          isManager: activeRole === 'manager',
-          isInspector: activeRole === 'inspector',
-          isExecutive: activeRole === 'executive',
+          isAdmin: activeRole === 'admin' || isDevActive,
+          isManager: activeRole === 'manager' || isDevActive,
+          isInspector: activeRole === 'inspector' || isDevActive,
+          isExecutive: activeRole === 'executive' || isDevActive,
           isDriver: activeRole === 'driver',
-          isSales: activeRole === 'sales',
+          isSales: activeRole === 'sales' || isDevActive,
           isServiceStaff: activeRole === 'service_staff',
-          isHR: activeRole === 'hr',
-          isAccounting: activeRole === 'accounting',
-          isWarehouse: activeRole === 'warehouse',
+          isHR: activeRole === 'hr' || isDevActive,
+          isAccounting: activeRole === 'accounting' || isDevActive,
+          isWarehouse: activeRole === 'warehouse' || isDevActive,
           isReadOnly: activeRole === 'user',
         });
       },
@@ -124,19 +126,21 @@ export const useAuthStore = create<AuthState>()(
         const profile = get().profile;
         const activeRole = role || profile?.role;
         
+        const isDevActive = activeRole === 'dev';
+        
         set({
           overriddenRole: role,
-          isDev: activeRole === 'dev',
-          isAdmin: activeRole === 'admin',
-          isManager: activeRole === 'manager',
-          isInspector: activeRole === 'inspector',
-          isExecutive: activeRole === 'executive',
+          isDev: isDevActive,
+          isAdmin: activeRole === 'admin' || isDevActive,
+          isManager: activeRole === 'manager' || isDevActive,
+          isInspector: activeRole === 'inspector' || isDevActive,
+          isExecutive: activeRole === 'executive' || isDevActive,
           isDriver: activeRole === 'driver',
-          isSales: activeRole === 'sales',
+          isSales: activeRole === 'sales' || isDevActive,
           isServiceStaff: activeRole === 'service_staff',
-          isHR: activeRole === 'hr',
-          isAccounting: activeRole === 'accounting',
-          isWarehouse: activeRole === 'warehouse',
+          isHR: activeRole === 'hr' || isDevActive,
+          isAccounting: activeRole === 'accounting' || isDevActive,
+          isWarehouse: activeRole === 'warehouse' || isDevActive,
           isReadOnly: activeRole === 'user',
         });
       },
@@ -153,21 +157,22 @@ export const useAuthStore = create<AuthState>()(
           // Re-compute flags to ensure they match profile
           const profile = state.profile;
           const activeRole = state.overriddenRole || profile.role;
+          const isDevActive = activeRole === 'dev';
           set({
             initialized: true,
             loading: false,
-            isDev: activeRole === 'dev',
+            isDev: isDevActive,
             isRealDev: profile.role === 'dev',
-            isAdmin: activeRole === 'admin',
-            isManager: activeRole === 'manager',
-            isInspector: activeRole === 'inspector',
-            isExecutive: activeRole === 'executive',
+            isAdmin: activeRole === 'admin' || isDevActive,
+            isManager: activeRole === 'manager' || isDevActive,
+            isInspector: activeRole === 'inspector' || isDevActive,
+            isExecutive: activeRole === 'executive' || isDevActive,
             isDriver: activeRole === 'driver',
-            isSales: activeRole === 'sales',
+            isSales: activeRole === 'sales' || isDevActive,
             isServiceStaff: activeRole === 'service_staff',
-            isHR: activeRole === 'hr',
-            isAccounting: activeRole === 'accounting',
-            isWarehouse: activeRole === 'warehouse',
+            isHR: activeRole === 'hr' || isDevActive,
+            isAccounting: activeRole === 'accounting' || isDevActive,
+            isWarehouse: activeRole === 'warehouse' || isDevActive,
             isReadOnly: activeRole === 'user',
           });
           console.log('[Auth] Using cached data, verifying session in background...');
