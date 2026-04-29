@@ -33,6 +33,7 @@ export const FEATURE_LABELS: Partial<Record<FeatureKey, string>> = {
   'tab.approvals': 'ภาพรวมการอนุมัติ',
   'tab.daily_summary': 'สรุปการใช้รถรายวัน',
   'tab.delivery_trips': 'ทริปส่งสินค้า',
+  'tab.trip_planning_board': 'บอร์ดจัดคิวจัดทริปแบบร่าง (ลากจากคิวไปคันรถแล้วยืนยันค่อยสร้างทริป)',
   'tab.packing_simulation': 'จำลองจัดเรียง',
   'tab.pending_orders':
     'ออเดอร์รอจัดส่ง + ออเดอร์แบ่งส่ง (คิวจัดทริปต่อเมื่อมีของเหลือหลังแบ่งส่ง)',
@@ -167,6 +168,7 @@ export const FEATURE_GROUPS: FeatureGroup[] = [
       'tab.approvals',
       'tab.daily_summary',
       'tab.delivery_trips',
+      'tab.trip_planning_board',
       'tab.packing_simulation',
       'tab.pending_orders',
     ],

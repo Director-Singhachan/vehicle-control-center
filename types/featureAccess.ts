@@ -41,6 +41,7 @@ export const FEATURE_KEYS = [
   'tab.approvals',
   'tab.daily_summary',
   'tab.delivery_trips',
+  'tab.trip_planning_board',
   'tab.packing_simulation',
   'tab.pending_orders',
   'tab.pending_sales',
@@ -73,6 +74,7 @@ export const FEATURE_MATRIX_SURVIVAL_KEYS: readonly FeatureKey[] = [
   'report.pnl_executive',
   /** คลัง/จัดส่ง: ถ้า matrix ใน DB มีบางแถวแต่ลืม key นี้ strict จะได้ none หมด — fallback built-in แทน */
   'tab.delivery_trips',
+  'tab.trip_planning_board',
   'tab.vehicles',
 ];
 
@@ -106,6 +108,7 @@ export const TAB_TO_PRIMARY_FEATURE: Record<string, FeatureKey> = {
   approvals: 'tab.approvals',
   'daily-summary': 'tab.daily_summary',
   'delivery-trips': 'tab.delivery_trips',
+  'trip-planning-board': 'tab.trip_planning_board',
   'packing-simulation': 'tab.packing_simulation',
   'pending-orders': 'tab.pending_orders',
   'pending-sales': 'tab.pending_sales',
@@ -130,6 +133,7 @@ const NAV_FALLBACK_PRIORITY: string[] = [
   'track-orders',
   'sales-trips',
   'triplogs',
+  'trip-planning-board',
   'packing-simulation',
   'fuellogs',
   'maintenance',
@@ -249,6 +253,7 @@ const BUILT_IN: Partial<Record<AppRole, Partial<Record<FeatureKey, AccessLevel>>
     'tab.delivery_trips': 'manage',
     'tab.packing_simulation': 'manage',
     'tab.pending_orders': 'view',
+    'tab.trip_planning_board': 'view',
     'tab.reports': 'view',
     'report.pnl_trip': 'none',
     'report.pnl_vehicle': 'none',
@@ -307,6 +312,7 @@ const BUILT_IN: Partial<Record<AppRole, Partial<Record<FeatureKey, AccessLevel>>
     'tab.purchase_receipts': 'manage',
     'tab.vehicles': 'edit',
     'tab.delivery_trips': 'manage',
+    'tab.trip_planning_board': 'manage',
     'tab.packing_simulation': 'manage',
     'tab.triplogs': 'view',
     'tab.reports': 'view',

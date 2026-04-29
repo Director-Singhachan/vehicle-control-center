@@ -4,6 +4,14 @@ import type { Database } from '../types/database';
 
 type ProductRow = Database['public']['Tables']['products']['Row'];
 
+/** ลดซ้ำ: _computePackingPlanCore เคยดึง 500 แถวทุกครั้งที่เรียก (เช่น โหลดบอร์ดจัดคิวทีละร้านสิบครั้ง → ซ้ำ query เดียวกัน) */
+let _tripPackingLayoutItemsCache: { rows: Record<string, unknown>[]; fetchedAt: number } | null = null;
+const TRIP_PACKING_LAYOUT_CACHE_MS = 90_000;
+
+/** ซ้ำ getPackingStandards ตาม product เดียวกัน — cache ที่ระดับ product_id */
+type PackingStdRow = { units_per_layer: number; layers: number; total_units: number; config_name: string | null };
+const _packingStandardsByProductId = new Map<string, PackingStdRow>();
+
 export interface TripMetrics {
   actual_pallets_used?: number | null;
   actual_weight_kg?: number | null;
@@ -739,31 +747,41 @@ export const tripMetricsService = {
   getPackingStandards: async (productIds: string[]): Promise<Map<string, { units_per_layer: number; layers: number; total_units: number; config_name: string | null }>> => {
     const map = new Map<string, { units_per_layer: number; layers: number; total_units: number; config_name: string | null }>();
     if (!productIds || productIds.length === 0) return map;
+    const unique = [...new Set(productIds.filter(Boolean))];
+    const CHUNK = 250;
     try {
-      const { data: rows, error } = await supabase
-        .from('product_pallet_configs')
-        .select('id, product_id, config_name, layers, units_per_layer, total_units')
-        .in('product_id', productIds)
-        .eq('is_active', true)
-        .order('is_default', { ascending: false })
-        .order('created_at', { ascending: true });
+      const missing = unique.filter((id) => !_packingStandardsByProductId.has(id));
+      for (let i = 0; i < missing.length; i += CHUNK) {
+        const chunk = missing.slice(i, i + CHUNK);
+        const { data: rows, error } = await supabase
+          .from('product_pallet_configs')
+          .select('id, product_id, config_name, layers, units_per_layer, total_units')
+          .in('product_id', chunk)
+          .eq('is_active', true)
+          .order('is_default', { ascending: false })
+          .order('created_at', { ascending: true });
 
-      if (error) {
-        console.warn('[tripMetricsService] getPackingStandards error:', error);
-        return map;
+        if (error) {
+          console.warn('[tripMetricsService] getPackingStandards error:', error);
+          continue;
+        }
+        for (const row of rows ?? []) {
+          const pid = (row as any).product_id;
+          if (!pid || _packingStandardsByProductId.has(pid)) continue;
+          const layers = Number((row as any).layers) || 1;
+          const upl = Number((row as any).units_per_layer) || 0;
+          const total = Number((row as any).total_units) ?? layers * upl;
+          _packingStandardsByProductId.set(pid, {
+            units_per_layer: upl,
+            layers,
+            total_units: total > 0 ? total : layers * upl,
+            config_name: (row as any).config_name ?? null,
+          });
+        }
       }
-      for (const row of rows ?? []) {
-        const pid = (row as any).product_id;
-        if (!pid || map.has(pid)) continue;
-        const layers = Number((row as any).layers) || 1;
-        const upl = Number((row as any).units_per_layer) || 0;
-        const total = Number((row as any).total_units) ?? layers * upl;
-        map.set(pid, {
-          units_per_layer: upl,
-          layers,
-          total_units: total > 0 ? total : layers * upl,
-          config_name: (row as any).config_name ?? null,
-        });
+      for (const id of unique) {
+        const c = _packingStandardsByProductId.get(id);
+        if (c) map.set(id, c);
       }
     } catch (err) {
       console.warn('[tripMetricsService] getPackingStandards unexpected error:', err);
@@ -891,11 +909,24 @@ export const tripMetricsService = {
     }
 
     try {
-      const { data: layoutItems, error } = await supabase
-        .from('trip_packing_layout_items')
-        .select(`quantity, layer_index, delivery_trip_item_id, delivery_trip_items!inner (product_id)`)
-        .limit(500);
-      if (!error && layoutItems && layoutItems.length > 0) {
+      const now = Date.now();
+      let layoutItems: Record<string, unknown>[] | undefined;
+      if (_tripPackingLayoutItemsCache && now - _tripPackingLayoutItemsCache.fetchedAt < TRIP_PACKING_LAYOUT_CACHE_MS) {
+        layoutItems = _tripPackingLayoutItemsCache.rows;
+      } else {
+        const { data, error } = await supabase
+          .from('trip_packing_layout_items')
+          .select(`quantity, layer_index, delivery_trip_item_id, delivery_trip_items!inner (product_id)`)
+          .limit(500);
+        if (!error && data != null && data.length > 0) {
+          layoutItems = data as Record<string, unknown>[];
+          _tripPackingLayoutItemsCache = { rows: layoutItems, fetchedAt: now };
+        } else if (error) {
+          console.warn('[tripMetricsService] _computePackingPlanCore: layout query error', error);
+          layoutItems = [];
+        }
+      }
+      if (layoutItems && layoutItems.length > 0) {
         const relevant = layoutItems.filter((item: any) => {
           const pid = item.delivery_trip_items?.product_id;
           return productIds.includes(pid) && item.layer_index !== null;

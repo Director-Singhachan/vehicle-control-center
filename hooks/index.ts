@@ -24,5 +24,6 @@ export * from './useCreateTripWizard';
 export * from './usePermissions';
 export * from './useFeatureAccess';
 export * from './useOrderBranchScope';
+export * from './useTripPlanningBoard';
 export * from './useDebugData';
 

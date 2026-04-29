@@ -86,6 +86,7 @@ const CleanupTestOrdersView = lazy(() => import('./views/CleanupTestOrdersView')
 const PackingSimulationView = lazy(() => import('./views/PackingSimulationView').then(m => ({ default: m.PackingSimulationView })));
 const ExcelImportView = lazy(() => import('./views/ExcelImportView').then(m => ({ default: m.ExcelImportView })));
 const CustomerImportView = lazy(() => import('./views/CustomerImportView').then(m => ({ default: m.CustomerImportView })));
+const TripPlanningBoardView = lazy(() => import('./views/TripPlanningBoardView').then(m => ({ default: m.TripPlanningBoardView })));
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { FeatureAccessProvider, useFeatureAccess } from './hooks/useFeatureAccess';
 import { firstAccessibleTabId, NAV_FALLBACK_TAB_ORDER, TAB_TO_PRIMARY_FEATURE } from './types/featureAccess';
@@ -1857,6 +1858,16 @@ const AppContent = () => {
                       }
                     />
                   )}
+                  {!isDriver && (can('tab.trip_planning_board', 'view') || featureOverrides['tab.trip_planning_board'] === 'off') && (
+                    <SubSidebarItem
+                      label="บอร์ดจัดคิว (Draft)"
+                      active={activeTab === 'trip-planning-board'}
+                      onClick={() => navigateAndCloseMobile('trip-planning-board')}
+                      isCollapsed={false}
+                      isFlyout={false}
+                      isWarning={featureOverrides['tab.trip_planning_board'] === 'off'}
+                    />
+                  )}
                   {!isDriver && can('tab.pending_orders', 'view') && (
                     <SubSidebarItem
                       label="ออเดอร์แบ่งส่ง"
@@ -1910,6 +1921,19 @@ const AppContent = () => {
                             isCollapsed={false}
                             isFlyout={true}
                             badgeCount={pendingOrdersQueueCount}
+                          />
+                        )}
+
+                        {!isDriver && can('tab.trip_planning_board', 'view') && (
+                          <SubSidebarItem
+                            label="บอร์ดจัดคิว (Draft)"
+                            active={activeTab === 'trip-planning-board'}
+                            onClick={() => {
+                              setActiveTab('trip-planning-board');
+                              setIsLogisticsHovered(false);
+                            }}
+                            isCollapsed={false}
+                            isFlyout={true}
                           />
                         )}
 
@@ -3335,6 +3359,8 @@ const AppContent = () => {
                   <ConfirmOrderView />
                 ) : activeTab === 'pending-orders' ? (
                   <PendingOrdersView />
+                ) : activeTab === 'trip-planning-board' ? (
+                  <TripPlanningBoardView />
                 ) : activeTab === 'partial-delivery' ? (
                   <PartialDeliveryOrdersView />
                 ) : activeTab === 'packing-simulation' ? (
