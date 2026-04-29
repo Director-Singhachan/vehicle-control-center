@@ -438,7 +438,8 @@ export const TripLogFormView: React.FC<TripLogFormViewProps> = ({
     }
   }, [selectedVehicleId, mode]);
 
-  // Auto-fill last odometer when vehicle is selected (checkout mode only)
+  // ขาออก: เติมเลขไมล์จาก "ไมล์ล่าสุดของรถ" (tripLogService.getLastOdometer — เน้น odometer_end ตอน check-in ล่าสุด ฯลฯ)
+  // ไม่อ่าน odometer จากทริปจัดส่ง (delivery_trips) — ต่างจากปลายทางที่อิง activeDeliveryTrip
   // Only auto-fill if odometer field is empty
   useEffect(() => {
     if (mode === 'checkout' && selectedVehicleId && !formData.odometer.trim()) {
@@ -590,6 +591,22 @@ export const TripLogFormView: React.FC<TripLogFormViewProps> = ({
           );
           setSaving(false);
           return;
+        }
+
+        // บล็อก submit แม้เคยแค่แสดง warning จาก useEffect (odometerValidation ไม่ได้บังคับ submit เดิม)
+        if (!isManualDistanceMode) {
+          const odometerValue = parseInt(formData.odometer, 10);
+          if (!Number.isNaN(odometerValue) && odometerValue > 0) {
+            const odometerCheck = await tripLogService.validateOdometer(
+              selectedVehicleId,
+              odometerValue
+            );
+            if (!odometerCheck.valid) {
+              setError(odometerCheck.warning || 'เลขไมล์น้อยกว่าเลขล่าสุด ไม่สามารถบันทึกขาออก');
+              setSaving(false);
+              return;
+            }
+          }
         }
 
         // Check if vehicle already has active trip

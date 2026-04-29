@@ -561,7 +561,7 @@ export const DeliveryTripListView: React.FC<DeliveryTripListViewProps> = ({
                         ยกเลิก
                       </Button>
                     )}
-                    {canDeleteTrips && trip.status !== 'completed' && (
+                    {canDeleteTrips && (
                       <Button
                         variant="outline"
                         size="sm"
