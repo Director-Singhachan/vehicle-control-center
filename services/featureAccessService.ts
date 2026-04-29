@@ -89,4 +89,5 @@ export const APP_ROLES: AppRole[] = [
   'hr',
   'accounting',
   'warehouse',
+  'dev',
 ];

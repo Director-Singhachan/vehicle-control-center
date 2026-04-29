@@ -17,8 +17,8 @@ import { BRANCH_FILTER_OPTIONS, BRANCH_OPTIONS, getBranchLabel } from '../utils/
 
 export function CustomerManagementView() {
   const { can, loading: featureAccessLoading } = useFeatureAccess();
-  const { isAdmin, isManager, isExecutive, isInspector, profile } = useAuth();
-  const isHighLevel = isAdmin || isManager || isExecutive || isInspector;
+  const { isAdmin, isManager, isExecutive, isInspector, isDev, profile } = useAuth();
+  const isHighLevel = isAdmin || isManager || isExecutive || isInspector || isDev;
   const userBranch = normalizeProfileBranch(profile?.branch);
   const orderScope = useOrderBranchScope();
   /** สอดคล้องกับตั้งค่า "ขอบเขตออเดอร์ตามบทบาท+สาขา" — เห็นทุกสาขาเมื่อ unrestricted (รวมผู้บริหาร / HQ แบบเดิม) */
