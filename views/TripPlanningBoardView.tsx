@@ -22,6 +22,7 @@ import {
   X,
   MapPin,
   Eye,
+  Undo2,
 } from 'lucide-react';
 
 import { Button } from '../components/ui/Button';
@@ -88,6 +89,7 @@ export const TripPlanningBoardView: React.FC = () => {
     toggleSelectStore,
     clearSelection,
     moveSelectedToSlot,
+    returnTripCardToBacklog,
     sensors,
     dropAnimationConfig,
     handleDragStart,
@@ -326,6 +328,7 @@ export const TripPlanningBoardView: React.FC = () => {
                   onAddSlot={() => addSlotToLane(lane.id)}
                   selectedCount={selectedStoreIds.size}
                   onMoveSelectedHere={(slotId) => moveSelectedToSlot(slotId)}
+                  onReturnTripCard={returnTripCardToBacklog}
                   onViewOrder={openOrderPreview}
                 />
               ))}
@@ -717,6 +720,7 @@ function StorePostIt({
   selected,
   onToggleSelect,
   onViewOrder,
+  onReturnToQueue,
 }: {
   store: PlanningStore;
   colorClass: string;
@@ -724,6 +728,8 @@ function StorePostIt({
   selected?: boolean;
   onToggleSelect?: () => void;
   onViewOrder?: (order: any) => void;
+  /** ถ้ามี = แสดงปุ่มเอากลับคิว (เฉพาะการ์ดในเที่ยว) */
+  onReturnToQueue?: () => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: store.id,
@@ -746,6 +752,21 @@ function StorePostIt({
         isOverlay ? 'shadow-2xl rotate-1 scale-110 z-50' : ''
       } ${selected ? 'ring-2 ring-enterprise-500 ring-offset-2 ring-offset-white dark:ring-charcoal-950' : ''}`}
     >
+      {onReturnToQueue && !isOverlay && (
+        <button
+          type="button"
+          className="absolute top-2 right-2 z-10 flex items-center justify-center p-1.5 rounded-lg bg-white/95 dark:bg-charcoal-900/95 border border-slate-200/90 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-200 dark:hover:bg-rose-950/60 dark:hover:text-rose-200 dark:hover:border-rose-800 shadow-sm"
+          title="เอากลับไปคิวซ้าย"
+          aria-label={`เอา ${store.customer_name} กลับไปคิว`}
+          onClick={(e) => {
+            e.stopPropagation();
+            onReturnToQueue();
+          }}
+          onPointerDown={(e) => e.stopPropagation()}
+        >
+          <Undo2 size={14} strokeWidth={2.25} aria-hidden />
+        </button>
+      )}
       <div className="flex items-start gap-2 p-3">
         {onToggleSelect && (
           <input
@@ -757,7 +778,11 @@ function StorePostIt({
             aria-label={`เลือก ${store.customer_name}`}
           />
         )}
-        <div className="flex-1 min-w-0 text-inherit" {...attributes} {...listeners}>
+        <div
+          className={`flex-1 min-w-0 text-inherit ${onReturnToQueue && !isOverlay ? 'pr-8' : ''}`}
+          {...attributes}
+          {...listeners}
+        >
           <div className="flex justify-between items-start mb-1.5 gap-2">
             <span className="text-[10px] font-black uppercase tracking-wider opacity-75 min-w-0">
               <span className="block truncate">{store.districtKey || 'ไม่ระบุอำเภอ'}</span>
@@ -827,6 +852,7 @@ function VehicleLane({
   onAddSlot,
   selectedCount,
   onMoveSelectedHere,
+  onReturnTripCard,
   onViewOrder,
 }: {
   lane: PlanningLane;
@@ -840,6 +866,7 @@ function VehicleLane({
   onAddSlot: () => void;
   selectedCount: number;
   onMoveSelectedHere: (slotId: string) => void;
+  onReturnTripCard: (laneId: string, slotId: string, cardId: string) => void;
   onViewOrder: (order: any) => void;
 }) {
   const vehicle = availableVehicles.find((v) => v.id === lane.vehicle_id);
@@ -897,6 +924,7 @@ function VehicleLane({
             onServiceTypeChange={(st) => onSlotServiceTypeChange(slot.id, st)}
             onToggleStoresCollapsed={() => onToggleSlotStoresCollapsed(slot.id)}
             onViewOrder={onViewOrder}
+            onReturnTripCard={(cardId) => onReturnTripCard(lane.id, slot.id, cardId)}
           />
         ))}
         <button
@@ -924,6 +952,7 @@ function TripSlot({
   onServiceTypeChange,
   onToggleStoresCollapsed,
   onViewOrder,
+  onReturnTripCard,
 }: {
   slot: PlanningSlot;
   index: number;
@@ -936,6 +965,7 @@ function TripSlot({
   onServiceTypeChange: (st: PlanningTripServiceType) => void;
   onToggleStoresCollapsed: () => void;
   onViewOrder: (order: any) => void;
+  onReturnTripCard: (cardId: string) => void;
 }) {
   const [productsOpen, setProductsOpen] = useState(false);
   const { setNodeRef } = useDroppable({ id: slot.id });
@@ -1116,6 +1146,7 @@ function TripSlot({
                   store={store}
                   colorClass={districtAreaColorClass(store.areaKey, store.districtKey)}
                   onViewOrder={onViewOrder}
+                  onReturnToQueue={() => onReturnTripCard(store.id)}
                 />
               ))}
             </SortableContext>

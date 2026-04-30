@@ -848,6 +848,29 @@ export function useTripPlanningBoard() {
     [backlog, selectedStoreIds],
   );
 
+  /** เอาการ์ดบิลออกจากเที่ยวกลับไปคิวซ้าย (ไม่ต้องลาก) */
+  const returnTripCardToBacklog = useCallback((laneId: string, slotId: string, cardId: string) => {
+    let removed: PlanningStore | null = null;
+    setLanes((prev) =>
+      prev.map((lane) => {
+        if (lane.id !== laneId) return lane;
+        return {
+          ...lane,
+          slots: lane.slots.map((slot) => {
+            if (slot.id !== slotId) return slot;
+            const hit = slot.stores.find((s) => s.id === cardId);
+            if (!hit) return slot;
+            removed = hit;
+            return { ...slot, stores: slot.stores.filter((s) => s.id !== cardId) };
+          }),
+        };
+      }),
+    );
+    if (removed) {
+      setBacklog((prev) => (prev.some((s) => s.id === removed!.id) ? prev : [...prev, removed!]));
+    }
+  }, []);
+
   const updateLaneVehicle = useCallback((laneId: string, vehicleId: string | null) => {
     setLanes((prev) =>
       prev.map((lane) => {
@@ -1070,6 +1093,7 @@ export function useTripPlanningBoard() {
     toggleSelectStore,
     clearSelection,
     moveSelectedToSlot,
+    returnTripCardToBacklog,
     toasts: toastApi.toasts,
     dismissToast: toastApi.dismissToast,
     sensors,
