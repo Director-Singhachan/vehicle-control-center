@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useAuth } from '../../hooks/useAuth';
 import { useDebugStore, OverrideState } from '../../stores/debugStore';
+import { devStorage } from '../../utils/devStorage';
 import { useDebugDataContext } from '../../context/DebugDataContext';
 import { AppRole } from '../../types/database';
 import { TAB_TO_PRIMARY_FEATURE, FEATURE_KEYS } from '../../types/featureAccess';
@@ -218,6 +219,44 @@ export const DebugTools: React.FC<{ onTabChange?: (tab: string) => void }> = ({ 
   const renderSystemTab = () => (
     <div className="space-y-2 p-1">
       <div className="px-1 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-widest">การจัดการระบบ</div>
+      
+      {/* Simulated Storage Toggle */}
+      <div className="p-3 rounded-xl bg-enterprise-50 dark:bg-enterprise-900/20 border border-enterprise-100 dark:border-enterprise-800/50 mb-2">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-2">
+            <Database size={16} className="text-enterprise-600" />
+            <span className="text-xs font-bold">จำลองการบันทึกข้อมูล (Dev Mode)</span>
+          </div>
+          <button 
+            onClick={() => {
+              const newState = !useDebugStore.getState().simulateAllStorage;
+              useDebugStore.getState().setSimulateAllStorage(newState);
+            }}
+            className={`w-10 h-5 rounded-full transition-colors relative ${useDebugStore.getState().simulateAllStorage ? 'bg-enterprise-600' : 'bg-slate-300 dark:bg-slate-700'}`}
+          >
+            <div className={`absolute top-1 w-3 h-3 rounded-full bg-white transition-all ${useDebugStore.getState().simulateAllStorage ? 'left-6' : 'left-1'}`} />
+          </button>
+        </div>
+        <p className="text-[10px] text-slate-500 mt-2 leading-tight">
+          เมื่อเปิดใช้งาน ข้อมูลที่บันทึกใหม่จะเก็บในเครื่อง (Local Cache) เท่านั้น ไม่บันทึกลง Database หลัก
+        </p>
+      </div>
+
+      <button 
+        onClick={() => {
+          if (confirm('คุณต้องการล้างข้อมูลจำลองทั้งหมดใช่หรือไม่?')) {
+            devStorage.clearAll();
+            window.location.reload();
+          }
+        }}
+        className="w-full flex items-center p-3 rounded-xl bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 border border-amber-100 dark:border-amber-900/50 hover:bg-amber-100 dark:hover:bg-amber-900/30 transition-all font-bold text-xs mb-2"
+      >
+        <div className="flex items-center space-x-2">
+          <Trash2 size={16} />
+          <span>ล้างข้อมูลจำลอง (Dev Cache)</span>
+        </div>
+      </button>
+
       <button 
         onClick={handleClearCache}
         className="w-full flex items-center p-3 rounded-xl bg-rose-50 dark:bg-rose-900/20 text-rose-700 dark:text-rose-400 border border-rose-100 dark:border-rose-900/50 hover:bg-rose-100 dark:hover:bg-rose-900/30 transition-all font-bold text-xs"

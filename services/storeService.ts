@@ -1,7 +1,8 @@
-// Store Service - CRUD operations for stores/customers
 import { supabase } from '../lib/supabase';
 import type { Database } from '../types/database';
 import { searchWithMultipleFields } from '../utils/searchUtils';
+import { useDebugStore } from '../stores/debugStore';
+import { devStorage } from '../utils/devStorage';
 
 export type Store = Database['public']['Tables']['stores']['Row'];
 type StoreInsert = Database['public']['Tables']['stores']['Insert'];
@@ -83,9 +84,11 @@ export const storeService = {
       throw error;
     }
 
+    const mergedData = devStorage.mergeWithSimulated<Store>('stores', data || []);
+
     return {
-      data: data || [],
-      totalCount: count || 0,
+      data: mergedData,
+      totalCount: (count || 0) + (mergedData.length - (data?.length || 0)),
     };
   },
 
@@ -95,17 +98,17 @@ export const storeService = {
       .from('stores')
       .select('*')
       .eq('id', id)
-      .single();
+      .maybeSingle();
 
     if (error) {
-      if (error.code === 'PGRST116') {
-        return null; // Not found
-      }
       console.error('[storeService] Error fetching store:', error);
       throw error;
     }
 
-    return data;
+    if (data) return data;
+
+    const simStores = devStorage.getItems<Store>('stores');
+    return simStores.find(s => s.id === id) || null;
   },
 
   // Get store by customer code
@@ -129,6 +132,9 @@ export const storeService = {
 
   // Create store
   create: async (data: Omit<StoreInsert, 'id' | 'created_at' | 'updated_at'>): Promise<Store> => {
+    if (useDebugStore.getState().simulateAllStorage) {
+      return devStorage.saveItem('stores', data as any);
+    }
     const { data: { user } } = await supabase.auth.getUser();
 
     if (!user) {
@@ -157,6 +163,10 @@ export const storeService = {
 
   // Update store
   update: async (id: string, data: Omit<StoreUpdate, 'id' | 'created_at' | 'updated_at'>): Promise<Store> => {
+    const simStores = devStorage.getItems<Store>('stores');
+    if (simStores.some(s => s.id === id)) {
+      return devStorage.saveItem('stores', { ...data, id } as any);
+    }
     const { data: { user } } = await supabase.auth.getUser();
 
     if (!user) {
@@ -185,6 +195,11 @@ export const storeService = {
 
   // Delete store
   delete: async (id: string): Promise<void> => {
+    const simStores = devStorage.getItems<Store>('stores');
+    if (simStores.some(s => s.id === id)) {
+      devStorage.deleteItem('stores', id);
+      return;
+    }
     const { data: { user } } = await supabase.auth.getUser();
 
     if (!user) {

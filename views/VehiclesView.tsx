@@ -104,6 +104,11 @@ const VehicleCard = React.memo<VehicleCardProps>(({
             <div>
               <h3 className="font-semibold text-lg text-slate-900 dark:text-white">
                 {vehicle.plate}
+                {!!(vehicle as any).is_dev_mode && (
+                  <span className="ml-2 px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/40 text-amber-600 dark:text-amber-400 text-[10px] font-bold border border-amber-200 dark:border-amber-800">
+                    DEV
+                  </span>
+                )}
               </h3>
               <p className="text-sm text-slate-500 dark:text-slate-400">
                 {vehicle.make} {vehicle.model}

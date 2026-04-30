@@ -93,7 +93,10 @@ export const TrackOrdersTable: React.FC<TrackOrdersTableProps> = ({
                   className={`group hover:bg-slate-50/80 dark:hover:bg-charcoal-800/50 transition-colors ${isPartial ? 'bg-orange-50/20 dark:bg-orange-900/10' : ''}`}
                 >
                   <td className="py-3 px-5 whitespace-nowrap">
-                    <div className="font-mono text-sm font-medium text-enterprise-600 dark:text-enterprise-400 group-hover:text-enterprise-700 dark:group-hover:text-enterprise-300 transition-colors">
+                    <div className="font-mono text-sm font-medium text-enterprise-600 dark:text-enterprise-400 group-hover:text-enterprise-700 dark:group-hover:text-enterprise-300 transition-colors flex items-center gap-1.5">
+                      {order.is_dev_mode && (
+                        <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-500 text-white animate-pulse">DEV</span>
+                      )}
                       {order.order_number || <span className="text-amber-500 font-normal">รอจัดทริป</span>}
                     </div>
                     {isPartial && (

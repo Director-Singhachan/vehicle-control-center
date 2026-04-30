@@ -1,7 +1,8 @@
-// Fuel Service - CRUD operations for fuel_records
 import { supabase } from '../lib/supabase';
 import type { Database } from '../types/database';
 import { notificationService } from './notificationService';
+import { useDebugStore } from '../stores/debugStore';
+import { devStorage } from '../utils/devStorage';
 
 type FuelRecord = Database['public']['Tables']['fuel_records']['Row'];
 type FuelRecordInsert = Database['public']['Tables']['fuel_records']['Insert'];
@@ -42,10 +43,13 @@ export const fuelService = {
         vehicle:vehicles!vehicle_id(plate, make, model, branch, image_url)
       `)
       .eq('id', id)
-      .single();
+      .maybeSingle();
 
     if (error) throw error;
-    return data;
+    if (data) return data;
+
+    const simRecords = devStorage.getItems<any>('fuel_records');
+    return simRecords.find(r => r.id === id) || null;
   },
 
   // Get fuel efficiency summary (using view)
@@ -81,6 +85,9 @@ export const fuelService = {
 
   // Create fuel record
   create: async (record: FuelRecordInsert): Promise<FuelRecord> => {
+    if (useDebugStore.getState().simulateAllStorage) {
+      return devStorage.saveItem('fuel_records', record as any);
+    }
     const { data, error } = await supabase
       .from('fuel_records')
       .insert(record)
@@ -166,6 +173,10 @@ export const fuelService = {
 
   // Update fuel record (with admin-only odometer editing)
   update: async (id: string, updates: FuelRecordUpdate): Promise<FuelRecord> => {
+    const simRecords = devStorage.getItems<FuelRecord>('fuel_records');
+    if (simRecords.some(r => r.id === id)) {
+      return devStorage.saveItem('fuel_records', { ...updates, id } as any);
+    }
     // Get current user
     const { data: { user } } = await supabase.auth.getUser();
 
@@ -209,6 +220,11 @@ export const fuelService = {
 
   // Delete fuel record
   delete: async (id: string): Promise<void> => {
+    const simRecords = devStorage.getItems<FuelRecord>('fuel_records');
+    if (simRecords.some(r => r.id === id)) {
+      devStorage.deleteItem('fuel_records', id);
+      return;
+    }
     const { error } = await supabase
       .from('fuel_records')
       .delete()

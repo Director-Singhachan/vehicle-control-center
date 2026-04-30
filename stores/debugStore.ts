@@ -14,11 +14,13 @@ interface DebugState {
   featureOverrides: Record<string, OverrideState>;
   panelTab: 'role' | 'inspector' | 'jump' | 'flags' | 'system';
   showBanner: boolean;
+  simulateAllStorage: boolean;
   
   // Actions
   setFeatureOverride: (key: string, state: OverrideState) => void;
   setPanelTab: (tab: DebugState['panelTab']) => void;
   setShowBanner: (show: boolean) => void;
+  setSimulateAllStorage: (enabled: boolean) => void;
   resetOverrides: () => void;
 }
 
@@ -28,6 +30,7 @@ export const useDebugStore = create<DebugState>()(
       featureOverrides: {},
       panelTab: 'role',
       showBanner: true,
+      simulateAllStorage: false,
 
       setFeatureOverride: (key, state) => set((s) => ({
         featureOverrides: {
@@ -38,11 +41,12 @@ export const useDebugStore = create<DebugState>()(
 
       setPanelTab: (panelTab) => set({ panelTab }),
       setShowBanner: (showBanner) => set({ showBanner }),
+      setSimulateAllStorage: (simulateAllStorage) => set({ simulateAllStorage }),
       
-      resetOverrides: () => set({ featureOverrides: {} }),
+      resetOverrides: () => set({ featureOverrides: {}, simulateAllStorage: false }),
     }),
     {
-      name: 'debug-storage-v2', // Increment version to clear old flags
+      name: 'debug-storage-v4', // Increment version
     }
   )
 );

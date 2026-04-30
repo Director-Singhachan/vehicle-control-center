@@ -1,4 +1,6 @@
 import { supabase } from '../lib/supabase';
+import { useDebugStore } from '../stores/debugStore';
+import { devStorage } from '../utils/devStorage';
 
 // Helper: แปลง Supabase/Postgres error เกี่ยวกับ RLS ให้เป็นข้อความที่อ่านง่าย
 function mapOrdersError(error: any, action: 'create' | 'update' | 'assign' | 'unassign' | 'delete') {
@@ -276,7 +278,31 @@ export const ordersService = {
 
     const { data, error } = await query;
     if (error) throw error;
-    return data;
+    
+    // Merge with dev simulated orders if any
+    const devOrders = devStorage.getItems<any>('orders');
+    let mergedData = [...(data || [])];
+    
+    if (devOrders.length > 0) {
+      // Basic filtering for dev orders
+      let filteredDev = devOrders;
+      if (filters?.status) {
+        filteredDev = filteredDev.filter(o => o.status === filters.status);
+      }
+      if (filters?.storeId) {
+        filteredDev = filteredDev.filter(o => o.store_id === filters.storeId);
+      }
+      if (filters?.dateFrom) {
+        filteredDev = filteredDev.filter(o => o.order_date >= filters.dateFrom);
+      }
+      if (filters?.dateTo) {
+        filteredDev = filteredDev.filter(o => o.order_date <= filters.dateTo);
+      }
+      
+      mergedData = [...filteredDev, ...mergedData];
+    }
+
+    return mergedData;
   },
 
   /**
@@ -371,7 +397,7 @@ export const ordersService = {
       orderIdToItems.set(row.order_id, arr);
     }
 
-    return orders
+    const dbOrders = orders
       .filter((o: any) => {
         if (this.isOldOrderNumberFormat(o.order_number)) return false;
         const orderStatus = (orderIdToStatus.get(o.id) ?? String(o.status ?? '')).toLowerCase();
@@ -381,6 +407,28 @@ export const ordersService = {
         return true;
       })
       .map((o: any) => ({ ...o, items: orderIdToItems.get(o.id) ?? [] }));
+
+    // Merge with dev simulated orders
+    const devOrders = devStorage.getItems<any>('orders').filter(o => {
+      // Simple filter for pending dev orders
+      return ['awaiting_dispatch', 'confirmed', 'partial', 'assigned'].includes(o.status) && !o.delivery_trip_id;
+    });
+
+    const devItems = devStorage.getItems<any>('order_items');
+    const devOrdersWithItems = devOrders.map(o => {
+      const items = devItems.filter(i => i.order_id === o.id);
+      return {
+        ...o,
+        items: items.map(i => ({
+          product_id: i.product_id,
+          quantity: Number(i.quantity) - Number(i.quantity_picked_up_at_store ?? 0) - Number(i.quantity_delivered ?? 0),
+          unit: i.unit,
+          is_bonus: i.is_bonus as any,
+        }))
+      };
+    });
+
+    return [...devOrdersWithItems, ...dbOrders];
   },
 
   /** จำนวนออเดอร์รอจัดทริป — logic เดียวกับ getPendingOrders (ใช้ badge เมนู / โหลดแบบเบาเมื่อเรียกแยกจากรายการเต็ม) */
@@ -459,7 +507,7 @@ export const ordersService = {
 
     if (itemsError) throw itemsError;
 
-    return orders.map((order: any) => {
+    const dbOrders = orders.map((order: any) => {
       const orderItems = (items ?? []).filter((i: any) => i.order_id === order.id);
       return {
         ...order,
@@ -473,6 +521,28 @@ export const ordersService = {
         isAwaitingDispatch: true
       };
     });
+
+    // Merge with dev simulated orders
+    const devOrders = devStorage.getItems<any>('orders').filter(o => o.status === 'awaiting_confirmation');
+    const devItems = devStorage.getItems<any>('order_items');
+    
+    // We might need product info for dev orders too, but for simplicity we'll just mock it or assume it's in the item
+    const devOrdersWithItems = devOrders.map(o => {
+      const oItems = devItems.filter(i => i.order_id === o.id);
+      return {
+        ...o,
+        items: oItems.map(i => ({
+          ...i,
+          product_name: (i as any).product_name || 'Simulated Product',
+          product_code: (i as any).product_code || 'SIM-001',
+          unit_name: i.unit || 'หน่วย'
+        })),
+        total_items: oItems.length,
+        isAwaitingDispatch: true
+      };
+    });
+
+    return [...devOrdersWithItems, ...dbOrders];
   },
 
   /**
@@ -1093,10 +1163,17 @@ export const ordersService = {
       .from('orders_with_details')
       .select('*')
       .eq('id', id)
-      .single();
+      .maybeSingle();
 
     if (error) throw error;
-    return data;
+    if (data) return data;
+
+    // Check dev simulated orders
+    const devOrders = devStorage.getItems<any>('orders');
+    const found = devOrders.find(o => o.id === id);
+    if (found) return found;
+
+    throw new Error('ไม่พบข้อมูลออเดอร์');
   },
 
   /**
@@ -1140,6 +1217,64 @@ export const ordersService = {
     payment_status?: string | null,
     delivery_time_slot?: string | null
   ) {
+    const isDevMode = useDebugStore.getState().simulateAllStorage;
+
+    if (isDevMode) {
+      const orderId = crypto.randomUUID();
+      const now = new Date().toISOString();
+      
+      const simulatedOrder = {
+        id: orderId,
+        order_number: `DEV-${Math.random().toString(36).substring(2, 7).toUpperCase()}`,
+        store_id: orderData.store_id,
+        customer_id: orderData.customer_id || null,
+        sales_person_id: orderData.sales_person_id || null,
+        order_date: orderData.order_date,
+        delivery_date: orderData.delivery_date || null,
+        delivery_address: orderData.delivery_address || null,
+        status: orderData.status,
+        total_amount: orderData.total_amount || 0,
+        notes: orderData.notes || null,
+        created_at: now,
+        updated_at: now,
+        created_by: orderData.created_by || null,
+        updated_by: orderData.updated_by || null,
+        warehouse_id: orderData.warehouse_id || null,
+        payment_status: payment_status && payment_status.trim() ? payment_status.trim() : null,
+        delivery_time_slot: delivery_time_slot && delivery_time_slot.trim() ? delivery_time_slot.trim() : null,
+        is_dev_mode: true
+      };
+
+      const orderItems = items.map((item) => {
+        const itemId = crypto.randomUUID();
+        const { lineTotal, discountAmount } = computeLineAndDiscount(item);
+        
+        return {
+          id: itemId,
+          order_id: orderId,
+          product_id: item.product_id,
+          quantity: item.quantity,
+          quantity_picked_up_at_store: 0,
+          quantity_delivered: 0,
+          unit_price: item.is_bonus ? 0 : item.unit_price,
+          unit: item.unit || null,
+          discount_percent: item.discount_percent || 0,
+          discount_amount: discountAmount,
+          line_total: lineTotal,
+          notes: null,
+          fulfillment_method: item.fulfillment_method || 'delivery',
+          is_bonus: item.is_bonus || false,
+          created_at: now,
+          updated_at: now,
+          is_dev_mode: true
+        };
+      });
+
+      devStorage.saveItem('orders', simulatedOrder);
+      devStorage.saveItems('order_items', orderItems);
+      return simulatedOrder;
+    }
+
     const payload: Record<string, unknown> = {
       ...orderData,
       payment_status: payment_status && payment_status.trim() ? payment_status.trim() : null,

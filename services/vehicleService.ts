@@ -2,6 +2,8 @@
 import { supabase } from '../lib/supabase';
 import type { Database } from '../types/database';
 import { useAuthStore } from '../stores/authStore';
+import { useDebugStore } from '../stores/debugStore';
+import { devStorage } from '../utils/devStorage';
 
 // Debug: Check if supabase client is initialized
 if (typeof window !== 'undefined') {
@@ -42,20 +44,9 @@ export const vehicleService = {
         .select('*')
         .order('created_at', { ascending: false });
 
-      if (error) {
-        console.error('[vehicleService] getAll: Error:', error);
-        // Check for common deployment issues
-        if (error.message.includes('JWT') || error.message.includes('permission') || error.message.includes('policy')) {
-          throw new Error('ไม่มีสิทธิ์เข้าถึงข้อมูล กรุณาตรวจสอบการ login และสิทธิ์การเข้าถึง');
-        }
-        if (error.message.includes('fetch') || error.message.includes('network')) {
-          throw new Error('ไม่สามารถเชื่อมต่อกับฐานข้อมูลได้ กรุณาตรวจสอบการเชื่อมต่ออินเทอร์เน็ต');
-        }
-        throw error;
-      }
-
-      console.log('[vehicleService] getAll: Success, count:', data?.length || 0);
-      return data || [];
+      if (error) throw error;
+      
+      return devStorage.mergeWithSimulated<Vehicle>('vehicles', data || []);
     } catch (err) {
       console.error('[vehicleService] getAll: Exception:', err);
       throw err;
@@ -68,10 +59,13 @@ export const vehicleService = {
       .from('vehicles')
       .select('*')
       .eq('id', id)
-      .single();
+      .maybeSingle();
 
     if (error) throw error;
-    return data;
+    if (data) return data;
+
+    const simVehicles = devStorage.getItems<Vehicle>('vehicles');
+    return simVehicles.find(v => v.id === id) || null;
   },
 
   // Get vehicles with status (using view)
@@ -235,6 +229,9 @@ export const vehicleService = {
 
   // Create new vehicle
   create: async (vehicle: VehicleInsert): Promise<Vehicle> => {
+    if (useDebugStore.getState().simulateAllStorage) {
+      return devStorage.saveItem('vehicles', vehicle) as any;
+    }
     const { data, error } = await supabase
       .from('vehicles')
       .insert(vehicle)
@@ -247,6 +244,10 @@ export const vehicleService = {
 
   // Update vehicle
   update: async (id: string, updates: VehicleUpdate): Promise<Vehicle> => {
+    const simVehicles = devStorage.getItems<Vehicle>('vehicles');
+    if (simVehicles.some(v => v.id === id)) {
+      return devStorage.saveItem('vehicles', { ...updates, id }) as any;
+    }
     const { data, error } = await supabase
       .from('vehicles')
       .update(updates)
@@ -260,6 +261,11 @@ export const vehicleService = {
 
   // Delete vehicle
   delete: async (id: string): Promise<void> => {
+    const simVehicles = devStorage.getItems<Vehicle>('vehicles');
+    if (simVehicles.some(v => v.id === id)) {
+      devStorage.deleteItem('vehicles', id);
+      return;
+    }
     const { error } = await supabase
       .from('vehicles')
       .delete()

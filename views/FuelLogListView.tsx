@@ -775,8 +775,13 @@ export const FuelLogListView: React.FC<FuelLogListViewProps> = ({
                             <Droplet className="w-5 h-5 text-enterprise-600 dark:text-enterprise-400" />
                           </div>
                           <div>
-                            <h3 className="font-semibold text-lg text-slate-900 dark:text-white">
+                            <h3 className="font-semibold text-lg text-slate-900 dark:text-white flex items-center gap-2">
                               {vehicle?.plate || (record as any).vehicle?.plate || 'N/A'}
+                              {!!(record as any).is_dev_mode && (
+                                <span className="px-1 py-0.5 rounded bg-amber-100 dark:bg-amber-900/40 text-amber-600 dark:text-amber-400 text-[10px] font-bold border border-amber-200 dark:border-amber-800">
+                                  DEV
+                                </span>
+                              )}
                             </h3>
                             <p className="text-sm text-slate-500 dark:text-slate-400">
                               {vehicle?.branch || (record as any).vehicle?.branch ? (

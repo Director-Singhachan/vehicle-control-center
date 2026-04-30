@@ -16,6 +16,8 @@ import type {
   DeliveryTripInsert,
   DeliveryTripUpdate,
 } from './types';
+import { useDebugStore } from '../../stores/debugStore';
+import { devStorage } from '../../utils/devStorage';
 
 export const tripCrudService = {
   // Get all delivery trips (no pagination, for internal uses)
@@ -138,8 +140,12 @@ export const tripCrudService = {
     }
 
     if (!trips || trips.length === 0) {
-      return { trips: [], total: 0 };
+      const simTrips = devStorage.getItems<DeliveryTripWithRelations>('delivery_trips');
+      return { trips: simTrips, total: simTrips.length };
     }
+
+    // Merge with simulated trips
+    const finalTrips = devStorage.mergeWithSimulated<DeliveryTripWithRelations>('delivery_trips', trips as any);
 
     // Fetch related data separately to avoid relationship ambiguity
     const vehicleIds = [...new Set(trips.map(t => t.vehicle_id).filter(Boolean))];

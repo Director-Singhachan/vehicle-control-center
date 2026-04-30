@@ -39,7 +39,7 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
     <Modal
       isOpen={!!order}
       onClose={onClose}
-      title={`รายละเอียดออเดอร์ ${order?.order_number || (order ? 'รอจัดทริป' : '')}`}
+      title={`${order?.is_dev_mode ? '[DEV MODE] ' : ''}รายละเอียดออเดอร์ ${order?.order_number || (order ? 'รอจัดทริป' : '')}`}
       size="large"
     >
       {loading ? (

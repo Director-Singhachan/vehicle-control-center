@@ -368,7 +368,14 @@ export function CustomerManagementView() {
                     className="border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors"
                   >
                     <td className="py-2.5 px-4 font-mono text-xs md:text-sm text-slate-700 dark:text-slate-200">
-                      {store.customer_code}
+                      <div className="flex items-center gap-1">
+                        {store.customer_code}
+                        {!!store.is_dev_mode && (
+                          <span className="px-1 py-0.5 rounded bg-amber-100 dark:bg-amber-900/40 text-amber-600 dark:text-amber-400 text-[10px] font-bold border border-amber-200 dark:border-amber-800">
+                            DEV
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="py-2.5 px-4 text-slate-900 dark:text-slate-50">
                       <div className="flex items-center gap-2">

@@ -486,7 +486,12 @@ export const ConfirmOrderView: React.FC = () => {
                                                         </div>
                                                         <div className="min-w-0 flex-1">
                                                             <div className="flex items-center gap-2">
-                                                                <h3 className="text-sm font-black text-slate-900 dark:text-white truncate">{order.order_number || 'ไม่มีเลขที่'}</h3>
+                                                                <h3 className="text-sm font-black text-slate-900 dark:text-white truncate flex items-center gap-1.5">
+                                                                    {order.is_dev_mode && (
+                                                                        <span className="px-1.5 py-0.5 rounded text-[9px] font-black bg-amber-500 text-white animate-pulse">DEV</span>
+                                                                    )}
+                                                                    {order.order_number || 'ไม่มีเลขที่'}
+                                                                </h3>
                                                                 {order.branch && (
                                                                     <Badge variant={order.branch === 'SD' ? 'success' : order.branch === 'HQ' ? 'info' : 'default'} className="rounded-lg px-1.5 py-0 text-[8px] font-black uppercase">
                                                                         {getBranchLabel(order.branch)}

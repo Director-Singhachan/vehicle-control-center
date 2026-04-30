@@ -114,7 +114,10 @@ const OrderCard = memo(({
           <div className="flex-1">
             <div className="flex items-start justify-between mb-4">
               <div>
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2">
+                  {order.is_dev_mode && (
+                    <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-500 text-white animate-pulse">DEV</span>
+                  )}
                   {order.order_number || (
                     <span className="text-amber-600 dark:text-amber-400 font-normal">
                       รอจัดทริป
