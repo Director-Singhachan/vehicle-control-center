@@ -844,11 +844,8 @@ function StorePostIt({
               {store.orders.length} บิล
             </span>
           </div>
-          <div className="font-bold text-sm leading-snug mb-1 line-clamp-2">
+          <div className="font-bold text-sm leading-snug line-clamp-2 mb-2">
             {store.customer_code} — {store.customer_name}
-          </div>
-          <div className="text-[10px] opacity-80 line-clamp-2 mb-2">
-            {store.address || 'ไม่มีที่อยู่'}
           </div>
 
           {lineItems.length > 0 && (
@@ -888,12 +885,15 @@ function StorePostIt({
                   <button
                     key={o.id ?? o.order_number}
                     type="button"
-                    title={`ดูรายละเอียด ${o.order_number || o.id}`}
+                    title={showBacklogLineExpand ? 'ดูรายละเอียดบิล' : `ดูรายละเอียด ${o.order_number || o.id}`}
+                    aria-label={showBacklogLineExpand ? 'ดูรายละเอียดบิล' : `ดูรายละเอียด ${o.order_number || o.id}`}
                     onClick={() => onViewOrder(o)}
                     className="inline-flex items-center gap-0.5 shrink-0 rounded-md border border-current/25 bg-white/90 dark:bg-charcoal-900/70 px-1.5 py-0.5 text-[9px] font-bold text-slate-800 dark:text-slate-100 hover:border-enterprise-400 hover:bg-enterprise-50/80 dark:hover:bg-enterprise-900/30"
                   >
                     <Eye size={10} className="opacity-80 shrink-0" aria-hidden />
-                    <span className="truncate max-w-[5.5rem]">{o.order_number || 'บิล'}</span>
+                    {!showBacklogLineExpand ? (
+                      <span className="truncate max-w-[5.5rem]">{o.order_number || 'บิล'}</span>
+                    ) : null}
                   </button>
                 ))}
               </div>

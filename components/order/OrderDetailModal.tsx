@@ -4,6 +4,17 @@ import { LoadingSpinner } from '../ui/LoadingSpinner';
 import { getOrderDisplayTotalAmount } from '../../utils/orderDisplay';
 import { BillCorrectionBadges } from './BillCorrectionBadges';
 
+/** ที่อยู่ส่งของครบถ้วน (รวมเลขที่) — ใช้เฉพาะใน modal ดูบิล */
+function orderFullDeliveryAddress(order: any): string | null {
+  const d = order?.delivery_address;
+  if (d != null && String(d).trim() !== '') return String(d).trim();
+  const s = order?.store_address;
+  if (s != null && String(s).trim() !== '') return String(s).trim();
+  const nested = order?.store?.address;
+  if (nested != null && String(nested).trim() !== '') return String(nested).trim();
+  return null;
+}
+
 interface OrderDetailModalProps {
   order: any;
   loading: boolean;
@@ -35,6 +46,8 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
     return getOrderDisplayTotalAmount(order ?? {});
   }, [loading, items, order]);
 
+  const fullDeliveryAddress = order ? orderFullDeliveryAddress(order) : null;
+
   return (
     <Modal
       isOpen={!!order}
@@ -55,12 +68,20 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
         <div className="space-y-6">
           {/* Header Card */}
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 p-5 rounded-2xl bg-slate-50 dark:bg-charcoal-950 border border-slate-100 dark:border-slate-800/60 shadow-inner">
-            <div className="flex flex-col gap-1">
+            <div className="flex flex-col gap-1 min-w-0 flex-1">
               <span className="text-xs font-bold tracking-wider text-slate-400 uppercase">ร้านค้า</span>
               <div className="text-xl font-bold text-slate-900 dark:text-white leading-tight">
                 {order.customer_name}
               </div>
               <div className="text-sm font-medium text-enterprise-600 dark:text-enterprise-400">{order.customer_code}</div>
+              {fullDeliveryAddress ? (
+                <div className="mt-3 pt-3 border-t border-slate-200/80 dark:border-slate-700/80">
+                  <span className="text-xs font-bold text-slate-500 dark:text-slate-400 block mb-1">ที่อยู่จัดส่ง (เลขที่–ซอย–ถนน)</span>
+                  <p className="text-sm text-slate-800 dark:text-slate-200 leading-relaxed whitespace-pre-wrap break-words">
+                    {fullDeliveryAddress}
+                  </p>
+                </div>
+              ) : null}
             </div>
             
             <div className="flex flex-col md:items-end gap-3 w-full md:max-w-md">
