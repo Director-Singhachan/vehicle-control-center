@@ -16,10 +16,10 @@ export interface StaffOption {
 
 // คนขับ: role === 'driver' หรือ unlinked (role null) — ยังไม่รู้ role
 // พนักงานบริการ: role === 'service_staff' หรือ unlinked
-function isDriverCandidate(s: StaffOption) {
+export function isDriverCandidateStaff(s: Pick<StaffOption, 'staffRole'>): boolean {
   return !s.staffRole || s.staffRole === 'driver';
 }
-function isHelperCandidate(s: StaffOption) {
+export function isHelperCandidateStaff(s: Pick<StaffOption, 'staffRole'>): boolean {
   return !s.staffRole || s.staffRole === 'service_staff';
 }
 
@@ -280,7 +280,7 @@ export const TripCrewSection: React.FC<TripCrewSectionProps> = ({
                 onMouseDown={(e) => e.stopPropagation()}
               >
                 {renderDropdown({
-                  candidates: availableStaff.filter(s => !selectedHelpers.includes(s.id) && isDriverCandidate(s)),
+                  candidates: availableStaff.filter(s => !selectedHelpers.includes(s.id) && isDriverCandidateStaff(s)),
                   isSelected: (id) => selectedDriverStaffId === id,
                   onSelect: (staff) => {
                     setSelectedDriverStaffId(staff.id);
@@ -368,7 +368,7 @@ export const TripCrewSection: React.FC<TripCrewSectionProps> = ({
                 onMouseDown={(e) => e.stopPropagation()}
               >
                 {renderDropdown({
-                  candidates: availableStaff.filter(s => !selectedHelpers.includes(s.id) && s.id !== selectedDriverStaffId && isHelperCandidate(s)),
+                  candidates: availableStaff.filter(s => !selectedHelpers.includes(s.id) && s.id !== selectedDriverStaffId && isHelperCandidateStaff(s)),
                   isSelected: (id) => selectedHelpers.includes(id),
                   onSelect: (staff) => {
                     setSelectedHelpers(prev => [...prev, staff.id]);

@@ -18,7 +18,8 @@ import { useToast } from './useToast';
 import { ordersService } from '../services/ordersService';
 import { deliveryTripService } from '../services/deliveryTripService';
 import { vehicleService } from '../services/vehicleService';
-import { profileService } from '../services/profileService';
+import { serviceStaffService } from '../services/serviceStaffService';
+import type { StaffOption } from '../components/trip/TripCrewSection';
 import { tripMetricsService } from '../services/tripMetricsService';
 import { supabase } from '../lib/supabase';
 import {
@@ -73,8 +74,10 @@ export interface PlanningSlot {
   id: string;
   stores: PlanningStore[];
   vehicle_id: string | null;
-  /** profiles.id เหมือน wizard — ว่างเมื่อไม่เลือก (บันทึกแล้ว backend ใช้ผู้ใช้ปัจจุบัน) */
-  driver_id?: string | null;
+  /** service_staff.id — บังคับเลือกก่อนยืนยันทริป */
+  driver_staff_id?: string | null;
+  /** service_staff.id ผู้ช่วยในทริป (ไม่รวมคนขับ) */
+  helper_staff_ids?: string[];
   service_type?: PlanningTripServiceType;
   /** ซ่อนรายการร้านในเที่ยวนี้เพื่อดูหลายเที่ยวได้สะดวก */
   stores_collapsed?: boolean;
@@ -95,7 +98,8 @@ function createEmptyLanes(count: number, baseTime: number): PlanningLane[] {
         id: `slot-${idx + 1}-1-${baseTime}`,
         stores: [],
         vehicle_id: null,
-        driver_id: null,
+        driver_staff_id: null,
+        helper_staff_ids: [],
         service_type: 'carry_in',
         stores_collapsed: false,
       },
@@ -266,20 +270,20 @@ function filterVehiclesForBoard(
   return list;
 }
 
-/** กรองโปรไฟล์คนขับให้สอดคล้องสาขารถ/ออเดอร์บนบอร์ด */
-function filterDriversForBoard(
-  drivers: Array<{ id: string; full_name: string; branch?: string | null }>,
+/** กรองพนักงานบริการให้สอดคล้องสาขา UI เหมือนรถ/ออเดอร์บนบอร์ด */
+function filterServiceStaffForBoard(
+  staff: StaffOption[],
   scope: { loading: boolean; unrestricted: boolean; allowedBranches: string[] },
   uiBranch: string,
-): Array<{ id: string; full_name: string; branch?: string | null }> {
-  if (scope.loading) return drivers;
-  let list = drivers;
+): StaffOption[] {
+  if (scope.loading) return staff;
+  let list = staff;
   if (!scope.unrestricted && scope.allowedBranches?.length) {
     const allowed = new Set(scope.allowedBranches);
-    list = list.filter((d) => !d.branch || allowed.has(String(d.branch)));
+    list = list.filter((s) => !s.branch || allowed.has(String(s.branch)));
   }
   if (uiBranch && uiBranch !== BRANCH_ALL_VALUE) {
-    list = list.filter((d) => !d.branch || String(d.branch) === uiBranch);
+    list = list.filter((s) => !s.branch || String(s.branch) === uiBranch);
   }
   return list;
 }
@@ -399,7 +403,7 @@ export function useTripPlanningBoard() {
   const [saving, setSaving] = useState(false);
   const [backlog, setBacklog] = useState<PlanningStore[]>([]);
   const [vehicles, setVehicles] = useState<any[]>([]);
-  const [drivers, setDrivers] = useState<Array<{ id: string; full_name: string; branch?: string | null }>>([]);
+  const [serviceStaff, setServiceStaff] = useState<StaffOption[]>([]);
   const [lanes, setLanes] = useState<PlanningLane[]>(() => createEmptyLanes(INITIAL_TRIP_PLANNING_LANE_COUNT, Date.now()));
   const lanesRef = useRef(lanes);
   useEffect(() => {
@@ -511,27 +515,27 @@ export function useTripPlanningBoard() {
       try {
         const block = ordersFiltersBlockFetch(ordersFetchFilters);
 
-        const [pendingOrders, vehListRaw, allProfiles] = await Promise.all([
+        const [pendingOrders, vehListRaw, staffRows] = await Promise.all([
           block ? Promise.resolve([] as any[]) : ordersService.getPendingOrders(ordersFetchFilters),
           vehicleService.getAll(),
-          profileService.getAll().catch(() => [] as any[]),
+          serviceStaffService.getAllActiveWithBranch().catch((): Awaited<ReturnType<typeof serviceStaffService.getAllActiveWithBranch>> => []),
         ]);
 
         let vehList = filterVehiclesForBoard(vehListRaw, orderScopeRef.current, branchFilter);
 
-        const driverCandidates = ((allProfiles as any[]) ?? [])
-          .filter((p: any) => p.role === 'driver')
-          .map((p: any) => ({
-            id: p.id as string,
-            full_name: String(p.full_name ?? '').trim() || '—',
-            branch: (p.branch as string | null) ?? null,
-          }));
-        const driverList = filterDriversForBoard(driverCandidates, orderScopeRef.current, branchFilter);
+        const staffOpts: StaffOption[] = (staffRows ?? []).map((s) => ({
+          id: s.id,
+          name: s.name,
+          employee_code: s.employee_code ?? null,
+          branch: s.branch ?? null,
+          staffRole: s.staffRole ?? null,
+        }));
+        const staffFiltered = filterServiceStaffForBoard(staffOpts, orderScopeRef.current, branchFilter);
 
         const finalBacklog = await mapPendingOrdersToStores(pendingOrders);
 
         setVehicles(vehList);
-        setDrivers(driverList);
+        setServiceStaff(staffFiltered);
 
         if (resetDraft) {
           setBacklog(finalBacklog);
@@ -573,7 +577,7 @@ export function useTripPlanningBoard() {
       setLoading(false);
       setBacklog([]);
       setVehicles([]);
-      setDrivers([]);
+      setServiceStaff([]);
     }
   }, [featureLoading, canUseBoard, orderScope.loading, ordersFetchFilters, fetchData, branchScopeReady]);
 
@@ -873,7 +877,8 @@ export function useTripPlanningBoard() {
               id: newSlotId,
               stores: [],
               vehicle_id: lane.vehicle_id,
-              driver_id: null,
+              driver_staff_id: null,
+              helper_staff_ids: [],
               service_type: 'carry_in' as PlanningTripServiceType,
               stores_collapsed: false,
             },
@@ -896,7 +901,8 @@ export function useTripPlanningBoard() {
             id: newSlotId,
             stores: [],
             vehicle_id: null,
-            driver_id: null,
+            driver_staff_id: null,
+            helper_staff_ids: [],
             service_type: 'carry_in' as PlanningTripServiceType,
             stores_collapsed: false,
           },
@@ -905,16 +911,34 @@ export function useTripPlanningBoard() {
     ]);
   }, []);
 
-  const updateSlotDriver = useCallback((laneId: string, slotId: string, driverId: string | null) => {
+  const updateSlotDriverStaff = useCallback((laneId: string, slotId: string, staffId: string | null) => {
     setLanes((prev) =>
       prev.map((lane) =>
         lane.id !== laneId
           ? lane
           : {
               ...lane,
-              slots: lane.slots.map((slot) =>
-                slot.id === slotId ? { ...slot, driver_id: driverId } : slot,
-              ),
+              slots: lane.slots.map((slot) => {
+                if (slot.id !== slotId) return slot;
+                let helpers = slot.helper_staff_ids ?? [];
+                if (staffId && helpers.includes(staffId)) {
+                  helpers = helpers.filter((h) => h !== staffId);
+                }
+                return { ...slot, driver_staff_id: staffId, helper_staff_ids: helpers };
+              }),
+            },
+      ),
+    );
+  }, []);
+
+  const updateSlotHelpers = useCallback((laneId: string, slotId: string, helperIds: string[]) => {
+    setLanes((prev) =>
+      prev.map((lane) =>
+        lane.id !== laneId
+          ? lane
+          : {
+              ...lane,
+              slots: lane.slots.map((slot) => (slot.id === slotId ? { ...slot, helper_staff_ids: helperIds } : slot)),
             },
       ),
     );
@@ -966,6 +990,12 @@ export function useTripPlanningBoard() {
       return;
     }
 
+    const missingDriverSlots = activeSlotsAll.filter((s) => !s.driver_staff_id || String(s.driver_staff_id).trim() === '');
+    if (missingDriverSlots.length > 0) {
+      error('กรุณาเลือกพนักงานขับในแต่ละเที่ยวที่มีคิวก่อนยืนยัน');
+      return;
+    }
+
     setSaving(true);
     try {
       const plannedDate = new Date().toISOString().split('T')[0];
@@ -982,7 +1012,8 @@ export function useTripPlanningBoard() {
           planned_date: plannedDate,
           notes: 'จัดทริปจากบอร์ดจัดคิว',
           service_type: slot.service_type ?? 'carry_in',
-          ...(slot.driver_id ? { driver_id: slot.driver_id } : {}),
+          driver_staff_id: slot.driver_staff_id!,
+          helpers: (slot.helper_staff_ids?.length ?? 0) > 0 ? slot.helper_staff_ids : undefined,
           stores: storesPayload,
         });
 
@@ -1018,7 +1049,7 @@ export function useTripPlanningBoard() {
     boardBranchSelectDisabled,
     backlog,
     vehicles,
-    drivers,
+    serviceStaff,
     lanes,
     setLanes,
     fetchData,
@@ -1049,7 +1080,8 @@ export function useTripPlanningBoard() {
     updateLaneVehicle,
     addSlotToLane,
     addLane,
-    updateSlotDriver,
+    updateSlotDriverStaff,
+    updateSlotHelpers,
     updateSlotServiceType,
     toggleSlotStoresCollapsed,
     findContainer,

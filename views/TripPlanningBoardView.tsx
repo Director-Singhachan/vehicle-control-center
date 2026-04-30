@@ -46,6 +46,8 @@ import type {
   PlanningTripServiceType,
 } from '../hooks/useTripPlanningBoard';
 import { useTripPlanningBoard } from '../hooks/useTripPlanningBoard';
+import type { StaffOption } from '../components/trip/TripCrewSection';
+import { isDriverCandidateStaff, isHelperCandidateStaff } from '../components/trip/TripCrewSection';
 import { aggregateTripProductLines } from '../utils/tripPlanningMerge';
 import { districtAreaColorClass } from '../utils/tripPlanningRouteColors';
 import { BRANCH_ALL_VALUE, getBranchLabel } from '../utils/branchLabels';
@@ -62,7 +64,7 @@ export const TripPlanningBoardView: React.FC = () => {
     saving,
     backlog,
     vehicles,
-    drivers,
+    serviceStaff,
     lanes,
     fetchData,
     activeId,
@@ -94,7 +96,8 @@ export const TripPlanningBoardView: React.FC = () => {
     updateLaneVehicle,
     addSlotToLane,
     addLane,
-    updateSlotDriver,
+    updateSlotDriverStaff,
+    updateSlotHelpers,
     updateSlotServiceType,
     toggleSlotStoresCollapsed,
     handleConfirmPlanning,
@@ -314,9 +317,10 @@ export const TripPlanningBoardView: React.FC = () => {
                   key={lane.id}
                   lane={lane}
                   availableVehicles={vehicles}
-                  drivers={drivers}
+                  drivers={serviceStaff}
                   onVehicleChange={(vid) => updateLaneVehicle(lane.id, vid)}
-                  onSlotDriverChange={(slotId, driverId) => updateSlotDriver(lane.id, slotId, driverId)}
+                  onSlotDriverStaffChange={(slotId, staffId) => updateSlotDriverStaff(lane.id, slotId, staffId)}
+                  onSlotHelpersChange={(slotId, ids) => updateSlotHelpers(lane.id, slotId, ids)}
                   onSlotServiceTypeChange={(slotId, st) => updateSlotServiceType(lane.id, slotId, st)}
                   onToggleSlotStoresCollapsed={toggleSlotStoresCollapsed}
                   onAddSlot={() => addSlotToLane(lane.id)}
@@ -816,7 +820,8 @@ function VehicleLane({
   availableVehicles,
   drivers,
   onVehicleChange,
-  onSlotDriverChange,
+  onSlotDriverStaffChange,
+  onSlotHelpersChange,
   onSlotServiceTypeChange,
   onToggleSlotStoresCollapsed,
   onAddSlot,
@@ -826,9 +831,10 @@ function VehicleLane({
 }: {
   lane: PlanningLane;
   availableVehicles: any[];
-  drivers: Array<{ id: string; full_name: string; branch?: string | null }>;
+  drivers: StaffOption[];
   onVehicleChange: (vid: string | null) => void;
-  onSlotDriverChange: (slotId: string, driverId: string | null) => void;
+  onSlotDriverStaffChange: (slotId: string, staffId: string | null) => void;
+  onSlotHelpersChange: (slotId: string, helperIds: string[]) => void;
   onSlotServiceTypeChange: (slotId: string, st: PlanningTripServiceType) => void;
   onToggleSlotStoresCollapsed: (slotId: string) => void;
   onAddSlot: () => void;
@@ -886,7 +892,8 @@ function VehicleLane({
             drivers={drivers}
             showMoveSelected={selectedCount > 0}
             onMoveSelectedHere={() => onMoveSelectedHere(slot.id)}
-            onDriverChange={(driverId) => onSlotDriverChange(slot.id, driverId)}
+            onDriverStaffChange={(staffId) => onSlotDriverStaffChange(slot.id, staffId)}
+            onHelpersChange={(ids) => onSlotHelpersChange(slot.id, ids)}
             onServiceTypeChange={(st) => onSlotServiceTypeChange(slot.id, st)}
             onToggleStoresCollapsed={() => onToggleSlotStoresCollapsed(slot.id)}
             onViewOrder={onViewOrder}
@@ -912,7 +919,8 @@ function TripSlot({
   drivers,
   showMoveSelected,
   onMoveSelectedHere,
-  onDriverChange,
+  onDriverStaffChange,
+  onHelpersChange,
   onServiceTypeChange,
   onToggleStoresCollapsed,
   onViewOrder,
@@ -920,16 +928,30 @@ function TripSlot({
   slot: PlanningSlot;
   index: number;
   vehicle: any;
-  drivers: Array<{ id: string; full_name: string; branch?: string | null }>;
+  drivers: StaffOption[];
   showMoveSelected: boolean;
   onMoveSelectedHere: () => void;
-  onDriverChange: (driverId: string | null) => void;
+  onDriverStaffChange: (staffId: string | null) => void;
+  onHelpersChange: (helperIds: string[]) => void;
   onServiceTypeChange: (st: PlanningTripServiceType) => void;
   onToggleStoresCollapsed: () => void;
   onViewOrder: (order: any) => void;
 }) {
   const [productsOpen, setProductsOpen] = useState(false);
   const { setNodeRef } = useDroppable({ id: slot.id });
+
+  const helperIds = slot.helper_staff_ids ?? [];
+
+  const driverCandidates = useMemo(() => {
+    return drivers.filter((s) => isDriverCandidateStaff(s) && !helperIds.includes(s.id));
+  }, [drivers, helperIds]);
+
+  const helperCandidates = useMemo(() => {
+    const ds = slot.driver_staff_id;
+    return drivers.filter(
+      (s) => isHelperCandidateStaff(s) && s.id !== ds && !helperIds.includes(s.id),
+    );
+  }, [drivers, slot.driver_staff_id, helperIds]);
 
   const totalPallets = useMemo(
     () => slot.stores.reduce((sum, s) => sum + s.total_pallets, 0),
@@ -979,31 +1001,84 @@ function TripSlot({
         </div>
       </div>
 
-      <div className="px-2 py-1 grid grid-cols-2 gap-1 border-b border-slate-100 dark:border-slate-800/80">
-        <select
-          value={slot.driver_id ?? ''}
-          onChange={(e) => onDriverChange(e.target.value || null)}
-          className="min-w-0 rounded-md border border-slate-200 dark:border-slate-600 bg-white dark:bg-charcoal-800 pl-1 pr-0 py-1 text-[10px] font-semibold text-slate-900 dark:text-slate-100"
-          aria-label="คนขับ"
-        >
-          <option value="">คนขับ (ค่าเริ่มต้น)</option>
-          {drivers.map((d) => (
-            <option key={d.id} value={d.id}>
-              {d.full_name || d.id}
-            </option>
-          ))}
-        </select>
-        <select
-          id={`svc-${slot.id}`}
-          value={svc}
-          onChange={(e) => onServiceTypeChange(e.target.value as PlanningTripServiceType)}
-          className="min-w-0 rounded-md border border-slate-200 dark:border-slate-600 bg-white dark:bg-charcoal-800 px-1 py-1 text-[10px] font-semibold text-slate-900 dark:text-slate-100"
-          aria-label="ประเภทงาน"
-        >
-          <option value="carry_in">ลงมือ</option>
-          <option value="lift_off">ตักลง</option>
-          <option value="standard">ทั่วไป</option>
-        </select>
+      <div className="px-2 py-1 space-y-1 border-b border-slate-100 dark:border-slate-800/80">
+        <div className="grid grid-cols-2 gap-1">
+          <select
+            value={slot.driver_staff_id ?? ''}
+            onChange={(e) => onDriverStaffChange(e.target.value || null)}
+            className="min-w-0 rounded-md border border-slate-200 dark:border-slate-600 bg-white dark:bg-charcoal-800 pl-1 pr-0 py-1 text-[10px] font-semibold text-slate-900 dark:text-slate-100"
+            aria-label="พนักงานขับ"
+          >
+            <option value="">เลือกพนักงานขับ *</option>
+            {driverCandidates.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name}
+                {s.employee_code ? ` (${s.employee_code})` : ''}
+                {s.branch ? ` · ${getBranchLabel(s.branch)}` : ''}
+              </option>
+            ))}
+          </select>
+          <select
+            id={`svc-${slot.id}`}
+            value={svc}
+            onChange={(e) => onServiceTypeChange(e.target.value as PlanningTripServiceType)}
+            className="min-w-0 rounded-md border border-slate-200 dark:border-slate-600 bg-white dark:bg-charcoal-800 px-1 py-1 text-[10px] font-semibold text-slate-900 dark:text-slate-100"
+            aria-label="ประเภทงาน"
+          >
+            <option value="carry_in">ลงมือ</option>
+            <option value="lift_off">ตักลง</option>
+            <option value="standard">ทั่วไป</option>
+          </select>
+        </div>
+        {slot.stores.length > 0 && !slot.driver_staff_id && (
+          <p className="text-[9px] font-bold text-amber-600 dark:text-amber-500 leading-tight">
+            ต้องเลือกพนักงานขับก่อนยืนยันทริป
+          </p>
+        )}
+        <div className="space-y-0.5 pt-0.5">
+          <div className="flex flex-wrap gap-1 min-h-[18px]">
+            {helperIds.map((hid) => {
+              const h = drivers.find((s) => s.id === hid);
+              return (
+                <span
+                  key={hid}
+                  className="inline-flex items-center gap-0.5 pl-1 pr-0.5 py-0.5 rounded-md bg-emerald-100/90 dark:bg-emerald-900/40 text-[9px] font-semibold text-emerald-900 dark:text-emerald-100 max-w-full border border-emerald-200/80 dark:border-emerald-800/60"
+                >
+                  <span className="truncate max-w-[118px]">{h?.name ?? hid}</span>
+                  <button
+                    type="button"
+                    className="p-0.5 rounded hover:bg-emerald-200/90 dark:hover:bg-emerald-800 shrink-0 text-emerald-800 dark:text-emerald-100"
+                    aria-label={`เอา ${h?.name ?? 'พนักงาน'} ออกจากทริป`}
+                    onClick={() => onHelpersChange(helperIds.filter((x) => x !== hid))}
+                  >
+                    <X size={10} strokeWidth={2.5} />
+                  </button>
+                </span>
+              );
+            })}
+          </div>
+          <select
+            className="w-full min-w-0 rounded-md border border-slate-200 dark:border-slate-600 bg-white dark:bg-charcoal-800 px-1 py-1 text-[10px] font-semibold text-slate-800 dark:text-slate-100"
+            value=""
+            aria-label="เพิ่มพนักงานในทริป"
+            onChange={(e) => {
+              const v = e.target.value;
+              if (v) {
+                onHelpersChange([...helperIds, v]);
+                e.target.value = '';
+              }
+            }}
+          >
+            <option value="">+ พนักงานในทริป (ผู้ช่วย)</option>
+            {helperCandidates.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name}
+                {s.employee_code ? ` (${s.employee_code})` : ''}
+                {s.branch ? ` · ${getBranchLabel(s.branch)}` : ''}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
 
       {slot.stores.length > 0 && (
