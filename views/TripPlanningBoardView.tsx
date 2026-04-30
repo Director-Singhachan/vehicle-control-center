@@ -801,7 +801,9 @@ function StorePostIt({
     id: store.id,
   });
 
-  const [showAllProducts, setShowAllProducts] = useState(!!showBacklogLineExpand);
+  const [showAllProducts, setShowAllProducts] = useState(
+    !!showBacklogLineExpand || !!onReturnToQueue,
+  );
 
   const lineItems = store.line_items ?? [];
   const lineQtySum = lineItems.reduce((s, l) => s + l.quantity, 0);
@@ -876,7 +878,7 @@ function StorePostIt({
             </div>
           )}
 
-          {showBacklogLineExpand && !isOverlay && lineItems.length > 0 && (
+          {(showBacklogLineExpand || onReturnToQueue) && !isOverlay && lineItems.length > 0 && (
             <div className="mb-2 space-y-1.5" onPointerDown={stopDrag}>
               <button
                 type="button"
