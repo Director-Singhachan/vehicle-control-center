@@ -49,6 +49,7 @@ export interface PlanningLineItem {
 }
 
 export interface PlanningStore {
+  /** รหัสการ์ดบนบอร์ด — 1 บิล = 1 การ์ด (ค่าเริ่มต้น = order.id) */
   id: string;
   store_id: string;
   customer_code: string;
@@ -193,48 +194,37 @@ function pendingOrderAddress(order: any): string | null {
 }
 
 async function mapPendingOrdersToStores(ordersWithItems: any[]): Promise<PlanningStore[]> {
-  const storeMap = new Map<string, PlanningStore>();
+  const cards: PlanningStore[] = [];
 
   for (const order of ordersWithItems) {
     const storeId = order.store_id as string | undefined;
     if (!storeId) continue;
+    const oid = order.id as string | undefined;
+    if (!oid) continue;
 
     const addr = pendingOrderAddress(order);
     const areaKey = getAreaGroupKey(addr);
     const districtKey = getDistrictKey(addr);
     const subDistrictKey = getSubDistrictKey(addr);
 
-    if (!storeMap.has(storeId)) {
-      storeMap.set(storeId, {
-        id: storeId,
-        store_id: storeId,
-        customer_code: order.customer_code || order.store?.customer_code || '-',
-        customer_name: order.customer_name || order.store?.customer_name || '-',
-        address: addr,
-        orders: [],
-        line_items: [],
-        total_pallets: 0,
-        total_weight_kg: 0,
-        areaKey,
-        districtKey,
-        subDistrictKey,
-      });
-    } else {
-      const st = storeMap.get(storeId)!;
-      if (!st.address && addr) {
-        st.address = addr;
-        st.areaKey = areaKey;
-        st.districtKey = districtKey;
-        st.subDistrictKey = subDistrictKey;
-      }
-    }
-    storeMap.get(storeId)!.orders.push(order);
+    cards.push({
+      id: oid,
+      store_id: storeId,
+      customer_code: order.customer_code || order.store?.customer_code || '-',
+      customer_name: order.customer_name || order.store?.customer_name || '-',
+      address: addr,
+      orders: [order],
+      line_items: [],
+      total_pallets: 0,
+      total_weight_kg: 0,
+      areaKey,
+      districtKey,
+      subDistrictKey,
+    });
   }
 
-  const storesArr = [...storeMap.values()];
-
   const allProductIds: string[] = [];
-  for (const store of storesArr) {
+  for (const store of cards) {
     const merged = mergeOrderItemsAcrossOrders(store.orders);
     for (const m of merged) {
       if (m.product_id) allProductIds.push(m.product_id);
@@ -243,7 +233,7 @@ async function mapPendingOrdersToStores(ordersWithItems: any[]): Promise<Plannin
   const productWeightMap = await fetchProductWeightMap(allProductIds);
 
   await Promise.all(
-    storesArr.map(async (store) => {
+    cards.map(async (store) => {
       store.line_items = buildPlanningLineItems(store.orders, productWeightMap);
       const { totalPallets, totalWeightKg } = await computePalletsForStore(store.orders, productWeightMap);
       store.total_pallets = totalPallets;
@@ -251,7 +241,7 @@ async function mapPendingOrdersToStores(ordersWithItems: any[]): Promise<Plannin
     }),
   );
 
-  return storesArr;
+  return cards;
 }
 
 /** ห้ามโหลดออเดอร์เมื่อ filters เป็น branchesIn ว่าง (กำลังโหลด scope / ไม่มีสาขาอนุญาต) */
@@ -307,23 +297,57 @@ function mergeServerPendingIntoDraft(
   prevLanes: PlanningLane[],
   serverStores: PlanningStore[],
 ): { lanes: PlanningLane[]; backlog: PlanningStore[] } {
-  const serverById = new Map(serverStores.map((s) => [s.store_id, s]));
-  const inLaneIds = new Set<string>();
+  const serverByCardId = new Map(serverStores.map((s) => [s.id, s]));
+  const inLaneCardIds = new Set<string>();
 
   const nextLanes = prevLanes.map((lane) => ({
     ...lane,
     slots: lane.slots.map((slot) => ({
       ...slot,
       stores: slot.stores.map((store) => {
-        inLaneIds.add(store.store_id);
-        const fresh = serverById.get(store.store_id);
+        inLaneCardIds.add(store.id);
+        const fresh = serverByCardId.get(store.id);
         return fresh ?? store;
       }),
     })),
   }));
 
-  const backlog = serverStores.filter((s) => !inLaneIds.has(s.store_id));
+  const backlog = serverStores.filter((s) => !inLaneCardIds.has(s.id));
   return { lanes: nextLanes, backlog };
+}
+
+/**
+ * รวมการ์ดที่เป็นสาขาเดียวกันเป็นแถวเดียวใน payload — backend ไม่อนุญาต store_id ซ้ำในทริปเดียว
+ * ลำดับจุดแวะ = ลำดับการปรากฏครั้งแรกของแต่ละร้านตามการ์ดในเที่ยว
+ */
+function buildStoresPayloadFromPlanningCards(cards: PlanningStore[]) {
+  const ordersByStore = new Map<string, any[]>();
+  const seqByStore = new Map<string, number>();
+  let nextSeq = 1;
+
+  for (const card of cards) {
+    const sid = card.store_id;
+    if (!ordersByStore.has(sid)) {
+      ordersByStore.set(sid, []);
+      seqByStore.set(sid, nextSeq++);
+    }
+    ordersByStore.get(sid)!.push(...card.orders);
+  }
+
+  const payload = [...ordersByStore.entries()].map(([store_id, orders]) => ({
+    store_id,
+    sequence_order: seqByStore.get(store_id)!,
+    items: mergeOrderItemsAcrossOrders(orders).map((m) => ({
+      product_id: m.product_id,
+      quantity: m.quantity,
+      unit: m.unit != null && String(m.unit).trim() !== '' ? String(m.unit).trim() : null,
+      is_bonus: m.is_bonus,
+      quantity_picked_up_at_store: 0 as number,
+    })),
+  }));
+
+  payload.sort((a, b) => a.sequence_order - b.sequence_order);
+  return payload;
 }
 
 function planningStoreSubDistrictKey(s: PlanningStore): string {
@@ -605,14 +629,19 @@ export function useTripPlanningBoard() {
     );
     if (searchQuery.trim()) {
       const lower = searchQuery.toLowerCase();
-      list = list.filter(
-        (s) =>
+      list = list.filter((s) => {
+        const billNums = (s.orders ?? [])
+          .map((o: { order_number?: string }) => String(o?.order_number ?? '').toLowerCase())
+          .filter(Boolean);
+        return (
           s.customer_name.toLowerCase().includes(lower) ||
           s.customer_code.toLowerCase().includes(lower) ||
           s.districtKey.toLowerCase().includes(lower) ||
           planningStoreSubDistrictKey(s).toLowerCase().includes(lower) ||
-          s.areaKey.toLowerCase().includes(lower),
-      );
+          s.areaKey.toLowerCase().includes(lower) ||
+          billNums.some((n) => n.includes(lower))
+        );
+      });
     }
     return list;
   }, [backlog, searchQuery, boardDistrictFilter, boardSubdistrictFilter]);
@@ -946,17 +975,7 @@ export function useTripPlanningBoard() {
 
       for (const slot of slotsOrdered) {
         const vehicle_id = slot.vehicle_id!;
-        const storesPayload = slot.stores.map((s, idx) => ({
-          store_id: s.store_id,
-          sequence_order: idx + 1,
-          items: mergeOrderItemsAcrossOrders(s.orders).map((m) => ({
-            product_id: m.product_id,
-            quantity: m.quantity,
-            unit: m.unit != null && String(m.unit).trim() !== '' ? String(m.unit).trim() : null,
-            is_bonus: m.is_bonus,
-            quantity_picked_up_at_store: 0 as number,
-          })),
-        }));
+        const storesPayload = buildStoresPayloadFromPlanningCards(slot.stores);
 
         const created = await deliveryTripService.create({
           vehicle_id,

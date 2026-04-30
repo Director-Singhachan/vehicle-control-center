@@ -208,7 +208,7 @@ export const TripPlanningBoardView: React.FC = () => {
                   Draft
                 </span>
                 <p className="text-xs text-slate-500 dark:text-slate-400 truncate max-w-[min(100%,28rem)]">
-                  ลากร้านจากซ้ายไปรถ — กดยืนยันถึงบันทึกทริป
+                  ลากบิลจากคิวไปรถ — กดยืนยันถึงบันทึกทริป
                 </p>
               </div>
               {orderScope.unrestricted && (
@@ -408,7 +408,7 @@ function BoardAreaFilterStrip({
                   <button
                     key={row.districtKey}
                     type="button"
-                    title={`${row.count} ร้าน · ${row.pallets.toFixed(1)} พาเลท`}
+                    title={`${row.count} บิล · ${row.pallets.toFixed(1)} พาเลท`}
                     onClick={() => onDistrictChipClick(row.districtKey)}
                     className={`inline-flex items-center gap-0.5 shrink-0 rounded-md px-1.5 py-0.5 text-[9px] font-bold border transition-colors touch-manipulation ${
                       active
@@ -504,7 +504,7 @@ function BacklogColumn({
         </h2>
 
         <Input
-          placeholder="ค้นหาร้าน…"
+          placeholder="ค้นหาร้าน / เลขบิล…"
           className="h-8 text-xs"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
@@ -523,7 +523,7 @@ function BacklogColumn({
           {selectedStoreIds.size > 0 && (
             <>
               <span className="text-[10px] font-bold text-enterprise-700 dark:text-enterprise-300 tabular-nums">
-                {selectedStoreIds.size} ร้าน
+                {selectedStoreIds.size} บิล
               </span>
               <button
                 type="button"
@@ -584,6 +584,7 @@ function TripSlotProductsDialog({
 }) {
   const tripLines = useMemo(() => aggregateTripProductLines(stores), [stores]);
   const totalUnits = useMemo(() => tripLines.reduce((s, l) => s + l.quantity, 0), [tripLines]);
+  const distinctStoreCount = useMemo(() => new Set(stores.map((s) => s.store_id)).size, [stores]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -606,7 +607,7 @@ function TripSlotProductsDialog({
             เที่ยวที่ {tripIndexDisplay} — สินค้าในเที่ยว
           </DialogTitle>
           <DialogDescription>
-            {stores.length} ร้าน · พาเลทรวม {totalPallets.toFixed(1)} / {maxPallets} PL
+            {stores.length} บิล · {distinctStoreCount} ร้าน · พาเลทรวม {totalPallets.toFixed(1)} / {maxPallets} PL
             {tripLines.length > 0 && (
               <span className="block mt-1 text-slate-700 dark:text-slate-300">
                 สรุป {tripLines.length} รายการสินค้า · จำนวนรวม {totalUnits % 1 === 0 ? String(totalUnits) : totalUnits.toFixed(2)} หน่วย
@@ -626,7 +627,7 @@ function TripSlotProductsDialog({
                 id={`trip-sum-${tripIndexDisplay}`}
                 className="text-xs font-black uppercase tracking-wider text-enterprise-700 dark:text-enterprise-300 mb-2"
               >
-                สรุปทั้งเที่ยว (รวมทุกร้าน)
+                สรุปทั้งเที่ยว (รวมทุกบิล)
               </h3>
               <ul className="rounded-xl border border-slate-200 dark:border-slate-700 divide-y divide-slate-100 dark:divide-slate-700/80 bg-slate-50/50 dark:bg-charcoal-950/40">
                 {tripLines.map((line) => (
@@ -647,7 +648,7 @@ function TripSlotProductsDialog({
               id={`trip-by-store-${tripIndexDisplay}`}
               className="text-xs font-black uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-2"
             >
-              แยกตามร้าน
+              แยกตามบิล
             </h3>
             <div className="space-y-3">
               {stores.map((store) => {
@@ -972,7 +973,7 @@ function TripSlot({
               onClick={onToggleStoresCollapsed}
               className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-enterprise-100 text-enterprise-800 hover:bg-enterprise-200 dark:bg-enterprise-900/50 dark:text-enterprise-200 dark:hover:bg-enterprise-900/80"
             >
-              {storesCollapsed ? `แสดง ${slot.stores.length} ร้าน` : 'ซ่อนร้าน'}
+              {storesCollapsed ? `แสดง ${slot.stores.length} บิล` : 'ซ่อนบิลในเที่ยว'}
             </button>
           )}
         </div>
@@ -1055,7 +1056,7 @@ function TripSlot({
             onClick={onToggleStoresCollapsed}
             className="w-full text-left text-[11px] font-semibold text-slate-600 dark:text-slate-300 py-2 px-1 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800/80"
           >
-            ซ่อนอยู่: {slot.stores.length} ร้าน · {totalPallets.toFixed(1)} PL — กดเพื่อแสดง
+            ซ่อนอยู่: {slot.stores.length} บิล · {totalPallets.toFixed(1)} PL — กดเพื่อแสดง
           </button>
         )}
       </div>
