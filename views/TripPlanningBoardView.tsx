@@ -26,6 +26,7 @@ import {
   ChevronDown,
   ChevronUp,
   ListTree,
+  StickyNote,
 } from 'lucide-react';
 
 import { Button } from '../components/ui/Button';
@@ -57,6 +58,7 @@ import { aggregateTripProductLines } from '../utils/tripPlanningMerge';
 import { districtAreaColorClass } from '../utils/tripPlanningRouteColors';
 import { BRANCH_ALL_VALUE, getBranchLabel } from '../utils/branchLabels';
 import { OrderDetailModal } from '../components/order/OrderDetailModal';
+import { TripPlanningBacklogPostItWall } from './TripPlanningBacklogPostItWall';
 import { OrderEffectiveStatusBadge } from '../components/order/OrderEffectiveStatusBadge';
 import { orderItemsService } from '../services/ordersService';
 
@@ -111,6 +113,7 @@ export const TripPlanningBoardView: React.FC = () => {
     dismissToast,
   } = useTripPlanningBoard();
 
+  const [backlogPostItWallOpen, setBacklogPostItWallOpen] = useState(false);
   const [orderPreview, setOrderPreview] = useState<any | null>(null);
   const [orderPreviewItems, setOrderPreviewItems] = useState<any[]>([]);
   const [orderPreviewLoading, setOrderPreviewLoading] = useState(false);
@@ -201,6 +204,12 @@ export const TripPlanningBoardView: React.FC = () => {
         summary={orderPreviewSummary}
         onClose={closeOrderPreview}
         getStatusBadge={getOrderPreviewStatusBadge}
+      />
+      <TripPlanningBacklogPostItWall
+        open={backlogPostItWallOpen}
+        onClose={() => setBacklogPostItWallOpen(false)}
+        cards={filteredBacklog}
+        onViewOrder={openOrderPreview}
       />
       <div className="h-full flex flex-col gap-0 bg-slate-100 dark:bg-charcoal-950 overflow-x-hidden overflow-y-auto min-h-[70vh]">
         <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-3 px-4 md:px-6 py-4 bg-white dark:bg-charcoal-900 border-b border-slate-200 dark:border-slate-800 shrink-0">
@@ -315,6 +324,7 @@ export const TripPlanningBoardView: React.FC = () => {
               onToggleSelect={toggleSelectStore}
               onClearSelection={clearSelection}
               onViewOrder={openOrderPreview}
+              onOpenPostItWall={() => setBacklogPostItWallOpen(true)}
             />
 
             <div className="flex-1 flex gap-3 overflow-x-auto pb-2 pt-0.5 px-1 min-h-0 scrollbar-thin">
@@ -488,6 +498,7 @@ function BacklogColumn({
   onToggleSelect,
   onClearSelection,
   onViewOrder,
+  onOpenPostItWall,
 }: {
   backlog: PlanningStore[];
   searchQuery: string;
@@ -498,6 +509,7 @@ function BacklogColumn({
   onToggleSelect: (id: string) => void;
   onClearSelection: () => void;
   onViewOrder: (order: any) => void;
+  onOpenPostItWall: () => void;
 }) {
   const { setNodeRef } = useDroppable({ id: 'backlog-container' });
 
@@ -523,6 +535,16 @@ function BacklogColumn({
         />
 
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          <button
+            type="button"
+            onClick={onOpenPostItWall}
+            disabled={filteredBacklog.length === 0}
+            title="เปิดเต็มจอเพื่อดูภาพรวมคิวแบบโพสอิท"
+            className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-1 rounded-md border border-amber-500/50 text-amber-900 bg-amber-50/90 hover:bg-amber-100 dark:border-amber-500/40 dark:text-amber-100 dark:bg-amber-900/25 dark:hover:bg-amber-900/40 disabled:opacity-40 disabled:pointer-events-none"
+          >
+            <StickyNote size={12} className="shrink-0 opacity-90" aria-hidden />
+            โหมดโพสอิท
+          </button>
           <button
             type="button"
             onClick={selectAllFilteredInBacklog}

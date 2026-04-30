@@ -30,7 +30,7 @@ export function Modal({ isOpen, onClose, title, children, size = 'medium' }: Mod
   };
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto">
+    <div className="fixed inset-0 z-[95] overflow-y-auto">
       {/* Backdrop */}
       <div 
         className="fixed inset-0 bg-black bg-opacity-50 transition-opacity"
