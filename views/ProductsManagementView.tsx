@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Package, Plus, Search, Edit2, Trash2, Filter, ChevronLeft, ChevronRight, AlertCircle } from 'lucide-react';
+import { Package, Plus, Search, Edit2, Trash2, Filter, ChevronLeft, ChevronRight, AlertCircle, Check } from 'lucide-react';
 import { useProducts, useProductCategories } from '../hooks/useInventory';
 import { productService } from '../services/inventoryService';
 import { Card } from '../components/ui/Card';
@@ -22,12 +22,14 @@ export function ProductsManagementView() {
   const canEditProducts = can('tab.products', 'edit');
   const canManageProducts = can('tab.products', 'manage');
 
-  const { products, loading, refetch } = useProducts();
+  const { products, loading: productsLoading, refetch } = useProducts({ is_active: 'all' });
   const { categories } = useProductCategories();
   const { showNotification } = useNotification();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [selectedStatus, setSelectedStatus] = useState<'all' | 'active' | 'inactive'>('all');
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [currentPage, setCurrentPage] = useState(1);
   const [pageInput, setPageInput] = useState('');
   const [itemsPerPage, setItemsPerPage] = useState(100);
@@ -52,6 +54,7 @@ export function ProductsManagementView() {
     is_liquid?: boolean;
     requires_temperature?: string;
     uses_pallet?: boolean;
+    is_active: boolean;
   }>({
     product_code: '',
     product_name: '',
@@ -70,6 +73,7 @@ export function ProductsManagementView() {
     is_liquid: false,
     requires_temperature: '',
     uses_pallet: false,
+    is_active: true,
   });
 
   // กรองสินค้า (รองรับรหัสสินค้า product_code และชื่อสินค้า product_name)
@@ -94,9 +98,14 @@ export function ProductsManagementView() {
         !selectedCategoryName ||
         String(product.category) === String(selectedCategoryName);
 
-      return matchesSearch && matchesCategory;
+      const matchesStatus =
+        selectedStatus === 'all' ||
+        (selectedStatus === 'active' && (product.is_active === true || product.is_active === null)) ||
+        (selectedStatus === 'inactive' && product.is_active === false);
+
+      return matchesSearch && matchesCategory && matchesStatus;
     });
-  }, [products, searchQuery, selectedCategory, categories]);
+  }, [products, searchQuery, selectedCategory, categories, selectedStatus]);
 
   // Pagination (client-side)
   const totalCount = filteredProducts.length;
@@ -109,7 +118,8 @@ export function ProductsManagementView() {
   // Reset page when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, selectedCategory, itemsPerPage]);
+    setSelectedIds(new Set());
+  }, [searchQuery, selectedCategory, itemsPerPage, selectedStatus]);
 
   const handleOpenModal = (product?: any) => {
     if (product) {
@@ -150,6 +160,7 @@ export function ProductsManagementView() {
         is_liquid: (product as any).is_liquid ?? false,
         requires_temperature: (product as any).requires_temperature || '',
         uses_pallet: (product as any).uses_pallet ?? false,
+        is_active: product.is_active ?? true,
       });
     } else {
       setEditingProduct(null);
@@ -171,6 +182,7 @@ export function ProductsManagementView() {
         is_liquid: false,
         requires_temperature: '',
         uses_pallet: false,
+        is_active: true,
       });
     }
     setIsModalOpen(true);
@@ -215,6 +227,7 @@ export function ProductsManagementView() {
         is_fragile: !!formData.is_fragile,
         is_liquid: !!formData.is_liquid,
         requires_temperature: formData.requires_temperature || null,
+        is_active: !!formData.is_active,
       };
 
       // NOTE: Database constraint ถูกลบไปแล้ว (20260129000001_remove_pallet_constraint.sql)
@@ -273,7 +286,42 @@ export function ProductsManagementView() {
     }
   };
 
-  if (loading || featureAccessLoading) {
+  const toggleSelectAll = () => {
+    if (selectedIds.size === paginatedProducts.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(paginatedProducts.map(p => p.id)));
+    }
+  };
+
+  const toggleSelect = (id: string) => {
+    const newSelected = new Set(selectedIds);
+    if (newSelected.has(id)) {
+      newSelected.delete(id);
+    } else {
+      newSelected.add(id);
+    }
+    setSelectedIds(newSelected);
+  };
+
+  const handleBulkStatusChange = async (is_active: boolean) => {
+    if (selectedIds.size === 0) return;
+    if (!canEditProducts) return;
+
+    const actionText = is_active ? 'เปิดใช้งาน' : 'ปิดใช้งาน';
+    if (!confirm(`ต้องการ${actionText}สินค้า ${selectedIds.size} รายการที่เลือกใช่หรือไม่?`)) return;
+
+    try {
+      await productService.bulkUpdateStatus(Array.from(selectedIds), is_active);
+      showNotification('success', `${actionText}สินค้าเรียบร้อย`);
+      setSelectedIds(new Set());
+      refetch();
+    } catch (error: any) {
+      showNotification('error', error.message || 'เกิดข้อผิดพลาด');
+    }
+  };
+
+  if (productsLoading || featureAccessLoading) {
     return (
       <PageLayout title="จัดการสินค้า">
         <div className="flex items-center justify-center h-64">
@@ -313,7 +361,7 @@ export function ProductsManagementView() {
           />
         </div>
 
-        {/* Category Filter + Page size */}
+        {/* Filters */}
         <div className="flex items-center gap-3">
           <div className="relative">
             <Filter className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 dark:text-gray-500" />
@@ -330,6 +378,16 @@ export function ProductsManagementView() {
               ))}
             </select>
           </div>
+
+          <select
+            value={selectedStatus}
+            onChange={(e) => setSelectedStatus(e.target.value as any)}
+            className="px-4 py-2.5 border border-gray-300 dark:border-slate-600 rounded-xl bg-white dark:bg-slate-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-transparent"
+          >
+            <option value="all">ทุกสถานะ</option>
+            <option value="active">เปิดใช้งาน</option>
+            <option value="inactive">ปิดใช้งาน</option>
+          </select>
 
           <select
             value={itemsPerPage}
@@ -354,12 +412,59 @@ export function ProductsManagementView() {
         </div>
       </div>
 
+      {/* Bulk Actions Bar */}
+      {selectedIds.size > 0 && (
+        <div className="mb-4 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800/30 rounded-xl flex items-center justify-between animate-in fade-in slide-in-from-top-2">
+          <div className="flex items-center gap-3">
+            <Badge variant="info" className="rounded-lg px-3 py-1">
+              เลือกแล้ว {selectedIds.size} รายการ
+            </Badge>
+            <span className="text-sm text-blue-700 dark:text-blue-300 font-medium">จัดการรายการที่เลือก:</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              className="bg-white dark:bg-slate-800 text-green-600 border-green-200 dark:border-green-900/30 hover:bg-green-50 dark:hover:bg-green-900/20"
+              onClick={() => handleBulkStatusChange(true)}
+            >
+              เปิดใช้งานทั้งหมด
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="bg-white dark:bg-slate-800 text-gray-600 border-gray-200 dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-700"
+              onClick={() => handleBulkStatusChange(false)}
+            >
+              ปิดใช้งานทั้งหมด
+            </Button>
+            <div className="w-px h-6 bg-blue-200 dark:bg-blue-800/50 mx-1" />
+            <Button
+              size="sm"
+              variant="ghost"
+              className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+              onClick={() => setSelectedIds(new Set())}
+            >
+              ยกเลิกการเลือก
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* Products Table */}
       <Card>
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
               <tr className="border-b border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800/50">
+                <th className="py-4 px-6 text-center w-10">
+                  <input
+                    type="checkbox"
+                    checked={paginatedProducts.length > 0 && selectedIds.size === paginatedProducts.length}
+                    onChange={toggleSelectAll}
+                    className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                  />
+                </th>
                 <th className="text-left py-4 px-6 text-sm font-semibold text-gray-700 dark:text-gray-300">รหัสสินค้า</th>
                 <th className="text-left py-4 px-6 text-sm font-semibold text-gray-700 dark:text-gray-300">สินค้า</th>
                 <th className="text-left py-4 px-6 text-sm font-semibold text-gray-700 dark:text-gray-300">หมวดหมู่</th>
@@ -367,19 +472,28 @@ export function ProductsManagementView() {
                 <th className="text-right py-4 px-6 text-sm font-semibold text-gray-700 dark:text-gray-300">ทุน</th>
                 <th className="text-center py-4 px-6 text-sm font-semibold text-gray-700 dark:text-gray-300">หน่วย</th>
                 <th className="text-right py-4 px-6 text-sm font-semibold text-gray-700 dark:text-gray-300">สต็อกต่ำสุด</th>
+                <th className="text-center py-4 px-6 text-sm font-semibold text-gray-700 dark:text-gray-300">สถานะ</th>
                 <th className="text-center py-4 px-6 text-sm font-semibold text-gray-700 dark:text-gray-300">การกระทำ</th>
               </tr>
             </thead>
             <tbody>
               {paginatedProducts.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="py-6 px-6 text-center text-gray-500 dark:text-gray-400">
+                  <td colSpan={10} className="py-6 px-6 text-center text-gray-500 dark:text-gray-400">
                     ไม่พบสินค้าที่ค้นหา (ทั้งหมด {products.length} รายการ)
                   </td>
                 </tr>
               )}
               {paginatedProducts.map((product: any) => (
-                <tr key={product.id} className="border-b border-gray-100 dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors">
+                <tr key={product.id} className={`border-b border-gray-100 dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors ${selectedIds.has(product.id) ? 'bg-blue-50/50 dark:bg-blue-900/10' : ''}`}>
+                  <td className="py-4 px-6 text-center">
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.has(product.id)}
+                      onChange={() => toggleSelect(product.id)}
+                      className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                    />
+                  </td>
                   <td className="py-4 px-6">
                     <code className="text-sm font-mono bg-gray-100 dark:bg-slate-800 text-gray-900 dark:text-white px-2 py-1 rounded">
                       {product.product_code}
@@ -417,6 +531,13 @@ export function ProductsManagementView() {
                   </td>
                   <td className="py-4 px-6 text-right text-sm text-gray-600 dark:text-gray-400">
                     {product.min_stock_level ?? 0}
+                  </td>
+                  <td className="py-4 px-6 text-center">
+                    {(product.is_active === true || product.is_active === null) ? (
+                      <Badge variant="success" className="rounded-lg">เปิดใช้งาน</Badge>
+                    ) : (
+                      <Badge variant="default" className="rounded-lg bg-gray-200 text-gray-600 dark:bg-slate-700 dark:text-gray-400">ปิดใช้งาน</Badge>
+                    )}
                   </td>
                   <td className="py-4 px-6">
                     <div className="flex items-center justify-center gap-2">
@@ -826,7 +947,33 @@ export function ProductsManagementView() {
             </div>
           </div>
 
-          <div className="flex gap-3 justify-end pt-4 border-t dark:border-slate-700">
+          {/* Status Toggle */}
+          <div className="pt-4 border-t border-gray-100 dark:border-slate-700">
+            <label className="flex items-center justify-between cursor-pointer group">
+              <div className="flex items-center gap-3">
+                <div className={`p-2 rounded-lg transition-colors ${formData.is_active ? 'bg-green-100 text-green-600 dark:bg-green-900/30' : 'bg-gray-100 text-gray-400 dark:bg-slate-800'}`}>
+                  <Check className="w-5 h-5" />
+                </div>
+                <div>
+                  <p className="font-medium text-gray-900 dark:text-white">สถานะการใช้งานสินค้า</p>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">
+                    {formData.is_active ? 'เปิดให้สามารถเลือกสินค้าในออเดอร์ได้' : 'ซ่อนสินค้านี้จากการสร้างออเดอร์ใหม่'}
+                  </p>
+                </div>
+              </div>
+              <div className="relative">
+                <input
+                  type="checkbox"
+                  className="sr-only peer"
+                  checked={formData.is_active}
+                  onChange={(e) => setFormData({ ...formData, is_active: e.target.checked })}
+                />
+                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+              </div>
+            </label>
+          </div>
+
+          <div className="flex justify-end gap-3 pt-6 border-t border-gray-100 dark:border-slate-700">
             <Button type="button" onClick={handleCloseModal} variant="outline">
               ยกเลิก
             </Button>

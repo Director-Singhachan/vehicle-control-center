@@ -10,7 +10,7 @@ type Warehouse = Database['public']['Tables']['warehouses']['Row'];
 type Inventory = Database['public']['Tables']['inventory']['Row'];
 type InventoryWithDetails = Database['public']['Views']['inventory_with_details']['Row'];
 type InventoryTransaction = Database['public']['Tables']['inventory_transactions']['Row'];
-type TripItem = Database['public']['Tables']['trip_items']['Row'];
+type TripItem = Database['public']['Tables']['delivery_trip_items']['Row'];
 
 // ========================================
 // Product Categories
@@ -123,13 +123,22 @@ export const productService = {
   /**
    * ดึงสินค้าทั้งหมดพร้อมข้อมูลหมวดหมู่
    */
-  async getAll() {
-    const { data, error } = await supabase
+  async getAll(filters?: { is_active?: boolean | 'all' }) {
+    let query = supabase
       .from('products')
       .select('*')
-      // บางข้อมูลเก่าอาจไม่มี is_active ให้ดึงทั้งที่เป็น true หรือค่าว่าง
-      .or('is_active.is.null,is_active.eq.true')
       .order('product_name');
+
+    if (filters?.is_active === 'all') {
+      // Fetch all products regardless of status
+    } else if (filters?.is_active !== undefined) {
+      query = query.eq('is_active', filters.is_active);
+    } else {
+      // Default behavior: fetch only active products (or null for legacy data)
+      query = query.or('is_active.is.null,is_active.eq.true');
+    }
+
+    const { data, error } = await query;
 
     if (error) throw error;
     return data;
@@ -156,7 +165,7 @@ export const productService = {
     const { data, error } = await supabase
       .from('products')
       .select('*')
-      .or(`name.ilike.%${query}%,sku.ilike.%${query}%`)
+      .or(`product_name.ilike.%${query}%,product_code.ilike.%${query}%`)
       .eq('is_active', true)
       .limit(20);
 
@@ -173,7 +182,7 @@ export const productService = {
       .select('*')
       .eq('category_id', categoryId)
       .eq('is_active', true)
-      .order('name');
+      .order('product_name');
 
     if (error) throw error;
     return data;
@@ -218,6 +227,20 @@ export const productService = {
       .eq('id', id);
 
     if (error) throw error;
+  },
+
+  /**
+   * อัพเดทสถานะสินค้าหลายรายการพร้อมกัน
+   */
+  async bulkUpdateStatus(ids: string[], is_active: boolean) {
+    const { data, error } = await supabase
+      .from('products')
+      .update({ is_active })
+      .in('id', ids)
+      .select();
+
+    if (error) throw error;
+    return data;
   },
 };
 
@@ -623,7 +646,7 @@ export const tripItemService = {
    */
   async getByTripId(tripId: string) {
     const { data, error } = await supabase
-      .from('trip_items')
+      .from('delivery_trip_items')
       .select(`
         *,
         product:products(*)
@@ -640,7 +663,7 @@ export const tripItemService = {
    */
   async create(item: Omit<TripItem, 'id' | 'created_at' | 'updated_at'>) {
     const { data, error } = await supabase
-      .from('trip_items')
+      .from('delivery_trip_items')
       .insert(item)
       .select(`
         *,
@@ -657,7 +680,7 @@ export const tripItemService = {
    */
   async update(id: string, updates: Partial<TripItem>) {
     const { data, error } = await supabase
-      .from('trip_items')
+      .from('delivery_trip_items')
       .update(updates)
       .eq('id', id)
       .select(`
@@ -675,7 +698,7 @@ export const tripItemService = {
    */
   async delete(id: string) {
     const { error } = await supabase
-      .from('trip_items')
+      .from('delivery_trip_items')
       .delete()
       .eq('id', id);
 

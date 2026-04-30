@@ -80,7 +80,7 @@ export function useProductCategories() {
 // Products Hooks
 // ========================================
 
-export function useProducts() {
+export function useProducts(filters?: { is_active?: boolean | 'all' }) {
   const [products, setProducts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
@@ -88,7 +88,7 @@ export function useProducts() {
   const fetchProducts = async () => {
     try {
       setLoading(true);
-      const data = await productService.getAll();
+      const data = await productService.getAll(filters);
       setProducts(data);
       setError(null);
     } catch (err) {
@@ -100,13 +100,13 @@ export function useProducts() {
 
   useEffect(() => {
     fetchProducts();
-  }, []);
+  }, [filters?.is_active]);
 
   return { products, loading, error, refetch: fetchProducts };
 }
 
 export function useProduct(id: string | null) {
-  const [product, setProduct] = useState<any | null>(null);
+  const [product, setProduct] = useState<Product | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
 
