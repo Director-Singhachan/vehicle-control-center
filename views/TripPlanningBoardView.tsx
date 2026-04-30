@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   DndContext,
   DragOverlay,
@@ -21,6 +21,7 @@ import {
   ClipboardList,
   X,
   MapPin,
+  Eye,
 } from 'lucide-react';
 
 import { Button } from '../components/ui/Button';
@@ -48,6 +49,9 @@ import { useTripPlanningBoard } from '../hooks/useTripPlanningBoard';
 import { aggregateTripProductLines } from '../utils/tripPlanningMerge';
 import { districtAreaColorClass } from '../utils/tripPlanningRouteColors';
 import { BRANCH_ALL_VALUE, getBranchLabel } from '../utils/branchLabels';
+import { OrderDetailModal } from '../components/order/OrderDetailModal';
+import { OrderEffectiveStatusBadge } from '../components/order/OrderEffectiveStatusBadge';
+import { orderItemsService } from '../services/ordersService';
 
 export const TripPlanningBoardView: React.FC = () => {
   const {
@@ -98,6 +102,61 @@ export const TripPlanningBoardView: React.FC = () => {
     dismissToast,
   } = useTripPlanningBoard();
 
+  const [orderPreview, setOrderPreview] = useState<any | null>(null);
+  const [orderPreviewItems, setOrderPreviewItems] = useState<any[]>([]);
+  const [orderPreviewLoading, setOrderPreviewLoading] = useState(false);
+  const [orderPreviewError, setOrderPreviewError] = useState<string | null>(null);
+
+  const orderPreviewSummary = useMemo(() => {
+    if (!orderPreviewItems?.length) return null;
+    let ordered = 0;
+    let pickedUp = 0;
+    let delivered = 0;
+    let remaining = 0;
+    for (const item of orderPreviewItems) {
+      const qty = Number(item.quantity || 0);
+      const picked = Number(item.quantity_picked_up_at_store ?? 0);
+      const deliv = Number(item.quantity_delivered ?? 0);
+      const method = (item.fulfillment_method ?? 'delivery') as string;
+      ordered += qty;
+      pickedUp += picked;
+      if (method === 'delivery') {
+        delivered += deliv;
+        remaining += Math.max(qty - picked - deliv, 0);
+      } else {
+        remaining += Math.max(qty - picked, 0);
+      }
+    }
+    return { ordered, pickedUp, delivered, remaining };
+  }, [orderPreviewItems]);
+
+  const openOrderPreview = useCallback(async (order: any) => {
+    if (!order?.id) return;
+    setOrderPreview(order);
+    setOrderPreviewLoading(true);
+    setOrderPreviewError(null);
+    setOrderPreviewItems([]);
+    try {
+      const items = await orderItemsService.getByOrderId(order.id);
+      setOrderPreviewItems(items);
+    } catch (err: unknown) {
+      const e = err instanceof Error ? err : new Error(String(err));
+      console.error('[TripPlanningBoard] order preview', e);
+      setOrderPreviewError(e.message || 'ไม่สามารถโหลดรายการสินค้าได้');
+      setOrderPreviewItems([]);
+    } finally {
+      setOrderPreviewLoading(false);
+    }
+  }, []);
+
+  const closeOrderPreview = useCallback(() => {
+    setOrderPreview(null);
+    setOrderPreviewItems([]);
+    setOrderPreviewError(null);
+  }, []);
+
+  const getOrderPreviewStatusBadge = useCallback((order: any) => <OrderEffectiveStatusBadge order={order} />, []);
+
   if (featureLoading || orderScope.loading) {
     return (
       <PageLayout title="บอร์ดจัดคิว" subtitle="กำลังตรวจสอบสิทธิ์และข้อมูล...">
@@ -125,6 +184,15 @@ export const TripPlanningBoardView: React.FC = () => {
   return (
     <>
       <ToastContainer toasts={toasts} onDismiss={dismissToast} />
+      <OrderDetailModal
+        order={orderPreview}
+        loading={orderPreviewLoading}
+        error={orderPreviewError}
+        items={orderPreviewItems}
+        summary={orderPreviewSummary}
+        onClose={closeOrderPreview}
+        getStatusBadge={getOrderPreviewStatusBadge}
+      />
       <div className="h-full flex flex-col gap-0 bg-slate-100 dark:bg-charcoal-950 overflow-x-hidden overflow-y-auto min-h-[70vh]">
         <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-3 px-4 md:px-6 py-4 bg-white dark:bg-charcoal-900 border-b border-slate-200 dark:border-slate-800 shrink-0">
           <div className="flex items-center gap-3 min-w-0 flex-1">
@@ -237,6 +305,7 @@ export const TripPlanningBoardView: React.FC = () => {
               selectedStoreIds={selectedStoreIds}
               onToggleSelect={toggleSelectStore}
               onClearSelection={clearSelection}
+              onViewOrder={openOrderPreview}
             />
 
             <div className="flex-1 flex gap-3 overflow-x-auto pb-2 pt-0.5 px-1 min-h-0 scrollbar-thin">
@@ -253,6 +322,7 @@ export const TripPlanningBoardView: React.FC = () => {
                   onAddSlot={() => addSlotToLane(lane.id)}
                   selectedCount={selectedStoreIds.size}
                   onMoveSelectedHere={(slotId) => moveSelectedToSlot(slotId)}
+                  onViewOrder={openOrderPreview}
                 />
               ))}
 
@@ -406,6 +476,7 @@ function BacklogColumn({
   selectedStoreIds,
   onToggleSelect,
   onClearSelection,
+  onViewOrder,
 }: {
   backlog: PlanningStore[];
   searchQuery: string;
@@ -415,6 +486,7 @@ function BacklogColumn({
   selectedStoreIds: Set<string>;
   onToggleSelect: (id: string) => void;
   onClearSelection: () => void;
+  onViewOrder: (order: any) => void;
 }) {
   const { setNodeRef } = useDroppable({ id: 'backlog-container' });
 
@@ -478,6 +550,7 @@ function BacklogColumn({
               colorClass={districtAreaColorClass(store.areaKey, store.districtKey)}
               selected={selectedStoreIds.has(store.id)}
               onToggleSelect={() => onToggleSelect(store.id)}
+              onViewOrder={onViewOrder}
             />
           ))}
         </SortableContext>
@@ -638,12 +711,14 @@ function StorePostIt({
   isOverlay,
   selected,
   onToggleSelect,
+  onViewOrder,
 }: {
   store: PlanningStore;
   colorClass: string;
   isOverlay?: boolean;
   selected?: boolean;
   onToggleSelect?: () => void;
+  onViewOrder?: (order: any) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: store.id,
@@ -697,6 +772,25 @@ function StorePostIt({
           <div className="text-[10px] opacity-80 line-clamp-2 mb-2">
             {store.address || 'ไม่มีที่อยู่'}
           </div>
+          {onViewOrder && !isOverlay && (store.orders?.length ?? 0) > 0 && (
+            <div
+              className="flex flex-nowrap gap-1 overflow-x-auto scrollbar-thin mb-2 pb-0.5"
+              onPointerDown={(e) => e.stopPropagation()}
+            >
+              {(store.orders ?? []).map((o: any) => (
+                <button
+                  key={o.id}
+                  type="button"
+                  title={`ดูรายละเอียด ${o.order_number || o.id}`}
+                  onClick={() => onViewOrder(o)}
+                  className="inline-flex items-center gap-0.5 shrink-0 rounded-md border border-current/25 bg-white/90 dark:bg-charcoal-900/70 px-1.5 py-0.5 text-[9px] font-bold text-slate-800 dark:text-slate-100 hover:border-enterprise-400 hover:bg-enterprise-50/80 dark:hover:bg-enterprise-900/30"
+                >
+                  <Eye size={10} className="opacity-80 shrink-0" aria-hidden />
+                  <span className="truncate max-w-[5.5rem]">{o.order_number || 'บิล'}</span>
+                </button>
+              ))}
+            </div>
+          )}
           {(lineItems.length) > 0 && (
             <div className="text-[10px] font-semibold opacity-75 mb-1.5">
               {lineItems.length} รายการสินค้า · รวม{' '}
@@ -727,6 +821,7 @@ function VehicleLane({
   onAddSlot,
   selectedCount,
   onMoveSelectedHere,
+  onViewOrder,
 }: {
   lane: PlanningLane;
   availableVehicles: any[];
@@ -738,6 +833,7 @@ function VehicleLane({
   onAddSlot: () => void;
   selectedCount: number;
   onMoveSelectedHere: (slotId: string) => void;
+  onViewOrder: (order: any) => void;
 }) {
   const vehicle = availableVehicles.find((v) => v.id === lane.vehicle_id);
 
@@ -792,6 +888,7 @@ function VehicleLane({
             onDriverChange={(driverId) => onSlotDriverChange(slot.id, driverId)}
             onServiceTypeChange={(st) => onSlotServiceTypeChange(slot.id, st)}
             onToggleStoresCollapsed={() => onToggleSlotStoresCollapsed(slot.id)}
+            onViewOrder={onViewOrder}
           />
         ))}
         <button
@@ -817,6 +914,7 @@ function TripSlot({
   onDriverChange,
   onServiceTypeChange,
   onToggleStoresCollapsed,
+  onViewOrder,
 }: {
   slot: PlanningSlot;
   index: number;
@@ -827,6 +925,7 @@ function TripSlot({
   onDriverChange: (driverId: string | null) => void;
   onServiceTypeChange: (st: PlanningTripServiceType) => void;
   onToggleStoresCollapsed: () => void;
+  onViewOrder: (order: any) => void;
 }) {
   const [productsOpen, setProductsOpen] = useState(false);
   const { setNodeRef } = useDroppable({ id: slot.id });
@@ -940,6 +1039,7 @@ function TripSlot({
                   key={store.id}
                   store={store}
                   colorClass={districtAreaColorClass(store.areaKey, store.districtKey)}
+                  onViewOrder={onViewOrder}
                 />
               ))}
             </SortableContext>
