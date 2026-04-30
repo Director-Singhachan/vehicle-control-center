@@ -266,6 +266,38 @@ function filterDriversForBoard(
   return list;
 }
 
+/** คีย์สำหรับเทียบว่า “ขอบเขตการโหลดคิว” เปลี่ยนไหม — ไม่พึ่ง reference ของ object filter */
+function stableBoardFetchKey(filters: { branch?: string; branchesIn?: string[] } | undefined): string {
+  if (filters == null) return 'all';
+  if (filters.branch) return `branch:${filters.branch}`;
+  if (filters.branchesIn?.length) return `in:${[...filters.branchesIn].sort().join(',')}`;
+  return 'blocked';
+}
+
+/** โหลดคิวใหม่โดยไม่ล้างร่าง: รีเฟรชข้อมูลร้านในเลน + คิวซ้าย = pending ที่ยังไม่อยู่ในเลน */
+function mergeServerPendingIntoDraft(
+  prevLanes: PlanningLane[],
+  serverStores: PlanningStore[],
+): { lanes: PlanningLane[]; backlog: PlanningStore[] } {
+  const serverById = new Map(serverStores.map((s) => [s.store_id, s]));
+  const inLaneIds = new Set<string>();
+
+  const nextLanes = prevLanes.map((lane) => ({
+    ...lane,
+    slots: lane.slots.map((slot) => ({
+      ...slot,
+      stores: slot.stores.map((store) => {
+        inLaneIds.add(store.store_id);
+        const fresh = serverById.get(store.store_id);
+        return fresh ?? store;
+      }),
+    })),
+  }));
+
+  const backlog = serverStores.filter((s) => !inLaneIds.has(s.store_id));
+  return { lanes: nextLanes, backlog };
+}
+
 export function useTripPlanningBoard() {
   const { profile } = useAuth();
   const toastApi = useToast();
@@ -285,6 +317,12 @@ export function useTripPlanningBoard() {
   const [vehicles, setVehicles] = useState<any[]>([]);
   const [drivers, setDrivers] = useState<Array<{ id: string; full_name: string; branch?: string | null }>>([]);
   const [lanes, setLanes] = useState<PlanningLane[]>(() => createEmptyLanes(INITIAL_TRIP_PLANNING_LANE_COUNT, Date.now()));
+  const lanesRef = useRef(lanes);
+  useEffect(() => {
+    lanesRef.current = lanes;
+  }, [lanes]);
+  const lastBoardFetchKeyRef = useRef<string | null>(null);
+  const fetchCompletedOnceRef = useRef(false);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [activeStore, setActiveStore] = useState<PlanningStore | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -295,7 +333,15 @@ export function useTripPlanningBoard() {
       return { branchesIn: [] as string[] };
     }
     return orderQueryFiltersForUiBranch(orderScope, branchFilter, BRANCH_ALL_VALUE);
-  }, [featureLoading, canUseBoard, orderScope, branchFilter, branchScopeReady]);
+  }, [
+    featureLoading,
+    canUseBoard,
+    orderScope.loading,
+    orderScope.unrestricted,
+    orderScope.allowedBranches.join(','),
+    branchFilter,
+    branchScopeReady,
+  ]);
 
   const boardBranchOptions = useMemo(() => {
     if (orderScope.loading) {
@@ -350,6 +396,11 @@ export function useTripPlanningBoard() {
     }
   }, [orderScope, branchFilter]);
 
+  const orderScopeRef = useRef(orderScope);
+  useEffect(() => {
+    orderScopeRef.current = orderScope;
+  }, [orderScope]);
+
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: { distance: 8 },
@@ -365,47 +416,67 @@ export function useTripPlanningBoard() {
     }),
   };
 
-  const fetchData = useCallback(async () => {
-    setLoading(true);
-    try {
-      const block = ordersFiltersBlockFetch(ordersFetchFilters);
+  const fetchData = useCallback(
+    async (options?: { resetDraft?: boolean }) => {
+      const resetDraft = options?.resetDraft ?? true;
+      const showFullLoading = resetDraft || !fetchCompletedOnceRef.current;
+      if (showFullLoading) setLoading(true);
 
-      const [pendingOrders, vehListRaw, allProfiles] = await Promise.all([
-        block ? Promise.resolve([] as any[]) : ordersService.getPendingOrders(ordersFetchFilters),
-        vehicleService.getAll(),
-        profileService.getAll().catch(() => [] as any[]),
-      ]);
+      try {
+        const block = ordersFiltersBlockFetch(ordersFetchFilters);
 
-      let vehList = filterVehiclesForBoard(vehListRaw, orderScope, branchFilter);
+        const [pendingOrders, vehListRaw, allProfiles] = await Promise.all([
+          block ? Promise.resolve([] as any[]) : ordersService.getPendingOrders(ordersFetchFilters),
+          vehicleService.getAll(),
+          profileService.getAll().catch(() => [] as any[]),
+        ]);
 
-      const driverCandidates = ((allProfiles as any[]) ?? [])
-        .filter((p: any) => p.role === 'driver')
-        .map((p: any) => ({
-          id: p.id as string,
-          full_name: String(p.full_name ?? '').trim() || '—',
-          branch: (p.branch as string | null) ?? null,
-        }));
-      const driverList = filterDriversForBoard(driverCandidates, orderScope, branchFilter);
+        let vehList = filterVehiclesForBoard(vehListRaw, orderScopeRef.current, branchFilter);
 
-      const finalBacklog = await mapPendingOrdersToStores(pendingOrders);
+        const driverCandidates = ((allProfiles as any[]) ?? [])
+          .filter((p: any) => p.role === 'driver')
+          .map((p: any) => ({
+            id: p.id as string,
+            full_name: String(p.full_name ?? '').trim() || '—',
+            branch: (p.branch as string | null) ?? null,
+          }));
+        const driverList = filterDriversForBoard(driverCandidates, orderScopeRef.current, branchFilter);
 
-      setBacklog(finalBacklog);
-      setVehicles(vehList);
-      setDrivers(driverList);
-      setSelectedStoreIds(new Set());
-      setLanes(createEmptyLanes(INITIAL_TRIP_PLANNING_LANE_COUNT, Date.now()));
-    } catch (e) {
-      console.error('[useTripPlanningBoard] fetch failed', e);
-      throw e;
-    } finally {
-      setLoading(false);
-    }
-  }, [ordersFetchFilters, orderScope, branchFilter]);
+        const finalBacklog = await mapPendingOrdersToStores(pendingOrders);
+
+        setVehicles(vehList);
+        setDrivers(driverList);
+
+        if (resetDraft) {
+          setBacklog(finalBacklog);
+          setSelectedStoreIds(new Set());
+          setLanes(createEmptyLanes(INITIAL_TRIP_PLANNING_LANE_COUNT, Date.now()));
+        } else {
+          const { lanes: mergedLanes, backlog: mergedBacklog } = mergeServerPendingIntoDraft(
+            lanesRef.current,
+            finalBacklog,
+          );
+          setLanes(mergedLanes);
+          setBacklog(mergedBacklog);
+        }
+        fetchCompletedOnceRef.current = true;
+      } catch (e) {
+        console.error('[useTripPlanningBoard] fetch failed', e);
+        throw e;
+      } finally {
+        setLoading(false);
+      }
+    },
+    [ordersFetchFilters, branchFilter],
+  );
 
   useEffect(() => {
     if (!branchScopeReady) return;
     if (!featureLoading && canUseBoard && !orderScope.loading && !ordersFiltersBlockFetch(ordersFetchFilters)) {
-      void fetchData();
+      const key = stableBoardFetchKey(ordersFetchFilters);
+      const resetDraft = lastBoardFetchKeyRef.current != null && lastBoardFetchKeyRef.current !== key;
+      lastBoardFetchKeyRef.current = key;
+      void fetchData({ resetDraft });
     }
     if (
       ordersFiltersBlockFetch(ordersFetchFilters) &&
@@ -783,7 +854,7 @@ export function useTripPlanningBoard() {
       }
 
       success(`สร้างและผูกออเดอร์แล้ว ${successCount} ทริป`);
-      await fetchData();
+      await fetchData({ resetDraft: true });
     } catch (e: any) {
       console.error('[useTripPlanningBoard] confirm:', e);
       error(e?.message || 'เกิดข้อผิดพลาดในการสร้างทริป');

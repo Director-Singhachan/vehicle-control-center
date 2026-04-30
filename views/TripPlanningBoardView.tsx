@@ -170,7 +170,7 @@ export const TripPlanningBoardView: React.FC = () => {
               <Button
                 variant="outline"
                 type="button"
-                onClick={() => void fetchData()}
+                onClick={() => void fetchData({ resetDraft: false })}
                 disabled={loading}
                 className="h-11 min-h-[44px] flex-1 sm:flex-none sm:min-w-[8.25rem] rounded-xl px-4 font-semibold border-2 border-slate-300 bg-white text-slate-900 hover:bg-slate-50 hover:border-slate-400 dark:border-slate-600 dark:bg-charcoal-800 dark:text-slate-100 dark:hover:bg-charcoal-700 dark:hover:border-slate-500"
               >
