@@ -11,7 +11,6 @@ import {
   Truck,
   Package,
   Plus,
-  ChevronDown,
   ChevronRight,
   RefreshCw,
   Search,
@@ -19,9 +18,9 @@ import {
   AlertTriangle,
   Info,
   Building2,
-  User,
   ClipboardList,
   X,
+  MapPin,
 } from 'lucide-react';
 
 import { Button } from '../components/ui/Button';
@@ -210,25 +209,29 @@ export const TripPlanningBoardView: React.FC = () => {
             </p>
           </div>
         ) : (
-          <DndContext
-          sensors={sensors}
-          collisionDetection={closestCorners}
-          onDragStart={handleDragStart}
-          onDragOver={handleDragOver}
-          onDragEnd={handleDragEnd}
-        >
-          <div className="flex-1 flex flex-col lg:flex-row overflow-hidden p-3 md:p-4 gap-3 md:gap-4 min-h-0">
+          <div className="flex flex-1 flex-col min-h-0 overflow-hidden">
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCorners}
+              onDragStart={handleDragStart}
+              onDragOver={handleDragOver}
+              onDragEnd={handleDragEnd}
+            >
+              <div className="flex flex-1 flex-col min-h-0 overflow-hidden">
+                <BoardAreaFilterStrip
+                  backlogDistrictSummary={backlogDistrictSummary}
+                  boardDistrictFilter={boardDistrictFilter}
+                  boardSubdistrictFilter={boardSubdistrictFilter}
+                  boardDistrictOptionKeys={boardDistrictOptionKeys}
+                  boardSubdistrictSelectOptions={boardSubdistrictSelectOptions}
+                  onBoardDistrictFilterChange={onBoardDistrictFilterChange}
+                  setBoardSubdistrictFilter={setBoardSubdistrictFilter}
+                />
+                <div className="flex flex-1 flex-col lg:flex-row overflow-hidden px-3 md:px-4 pb-2 md:pb-3 pt-0 gap-3 md:gap-4 min-h-0">
             <BacklogColumn
               backlog={backlog}
               searchQuery={searchQuery}
               setSearchQuery={setSearchQuery}
-              backlogDistrictSummary={backlogDistrictSummary}
-              boardDistrictFilter={boardDistrictFilter}
-              boardSubdistrictFilter={boardSubdistrictFilter}
-              boardDistrictOptionKeys={boardDistrictOptionKeys}
-              boardSubdistrictSelectOptions={boardSubdistrictSelectOptions}
-              onBoardDistrictFilterChange={onBoardDistrictFilterChange}
-              setBoardSubdistrictFilter={setBoardSubdistrictFilter}
               selectAllFilteredInBacklog={selectAllFilteredInBacklog}
               filteredBacklog={filteredBacklog}
               selectedStoreIds={selectedStoreIds}
@@ -236,7 +239,7 @@ export const TripPlanningBoardView: React.FC = () => {
               onClearSelection={clearSelection}
             />
 
-            <div className="flex-1 flex gap-3 overflow-x-auto pb-4 pt-1 px-1 min-h-0 scrollbar-thin">
+            <div className="flex-1 flex gap-3 overflow-x-auto pb-2 pt-0.5 px-1 min-h-0 scrollbar-thin">
               {lanes.map((lane) => (
                 <VehicleLane
                   key={lane.id}
@@ -264,20 +267,22 @@ export const TripPlanningBoardView: React.FC = () => {
                 <span className="font-black text-xs uppercase tracking-widest text-slate-600 dark:text-slate-300">เพิ่มคอลัมน์รถ</span>
               </button>
             </div>
-          </div>
-
-          <DragOverlay adjustScale dropAnimation={dropAnimationConfig}>
-            {activeId && activeStore ? (
-              <div className="opacity-95 scale-105 shadow-2xl">
-                <StorePostIt
-                  store={activeStore}
-                  isOverlay
-                  colorClass={districtAreaColorClass(activeStore.areaKey, activeStore.districtKey)}
-                />
+                </div>
               </div>
-            ) : null}
-          </DragOverlay>
-        </DndContext>
+
+              <DragOverlay adjustScale dropAnimation={dropAnimationConfig}>
+                {activeId && activeStore ? (
+                  <div className="opacity-95 scale-105 shadow-2xl">
+                    <StorePostIt
+                      store={activeStore}
+                      isOverlay
+                      colorClass={districtAreaColorClass(activeStore.areaKey, activeStore.districtKey)}
+                    />
+                  </div>
+                ) : null}
+              </DragOverlay>
+            </DndContext>
+          </div>
         )}
 
         <p className="px-4 pb-3 text-[11px] text-slate-500 dark:text-slate-400 flex items-start gap-1.5 shrink-0">
@@ -289,10 +294,8 @@ export const TripPlanningBoardView: React.FC = () => {
   );
 };
 
-function BacklogColumn({
-  backlog,
-  searchQuery,
-  setSearchQuery,
+/** แถบกรองพื้นที่แยกจากคอลัมน์คิว — ไม่บังรายการออเดอร์ */
+function BoardAreaFilterStrip({
   backlogDistrictSummary,
   boardDistrictFilter,
   boardSubdistrictFilter,
@@ -300,15 +303,7 @@ function BacklogColumn({
   boardSubdistrictSelectOptions,
   onBoardDistrictFilterChange,
   setBoardSubdistrictFilter,
-  selectAllFilteredInBacklog,
-  filteredBacklog,
-  selectedStoreIds,
-  onToggleSelect,
-  onClearSelection,
 }: {
-  backlog: PlanningStore[];
-  searchQuery: string;
-  setSearchQuery: (q: string) => void;
   backlogDistrictSummary: BacklogDistrictSummaryRow[];
   boardDistrictFilter: string;
   boardSubdistrictFilter: string;
@@ -316,15 +311,7 @@ function BacklogColumn({
   boardSubdistrictSelectOptions: { value: string; label: string }[];
   onBoardDistrictFilterChange: (districtKey: string) => void;
   setBoardSubdistrictFilter: (subValue: string) => void;
-  selectAllFilteredInBacklog: () => void;
-  filteredBacklog: PlanningStore[];
-  selectedStoreIds: Set<string>;
-  onToggleSelect: (id: string) => void;
-  onClearSelection: () => void;
 }) {
-  const { setNodeRef } = useDroppable({ id: 'backlog-container' });
-  const [areaFiltersOpen, setAreaFiltersOpen] = useState(false);
-
   const onDistrictChipClick = (districtKey: string) => {
     if (boardDistrictFilter === districtKey && boardSubdistrictFilter === '') {
       onBoardDistrictFilterChange('');
@@ -334,8 +321,106 @@ function BacklogColumn({
   };
 
   return (
+    <div className="shrink-0 px-3 md:px-4 pt-2 pb-2 border-b border-slate-200/80 dark:border-slate-800/80 bg-slate-100/70 dark:bg-charcoal-950/80">
+      <div className="rounded-xl border border-slate-200/90 dark:border-slate-700/90 bg-white dark:bg-charcoal-900 px-2 py-1.5 shadow-sm flex flex-col lg:flex-row lg:items-center gap-2 min-h-0">
+        <div className="flex items-center gap-2 min-w-0 flex-1">
+          <div className="hidden sm:flex items-center gap-1 text-slate-500 dark:text-slate-400 shrink-0" title="กรองคิวตามพื้นที่ — ชิป = อำเภอในคิว กดซ้ำยกเลิก">
+            <MapPin size={12} className="shrink-0 opacity-80" aria-hidden />
+            <span className="text-[9px] font-black uppercase tracking-wider whitespace-nowrap">คิวตามอำเภอ</span>
+          </div>
+          <div className="flex flex-nowrap gap-1 overflow-x-auto scrollbar-thin min-w-0 py-0.5 flex-1">
+            {backlogDistrictSummary.length === 0 ? (
+              <span className="text-[10px] text-slate-400 dark:text-slate-500 py-0.5 px-1">ไม่มีข้อมูลสรุป (คิวว่าง)</span>
+            ) : (
+              backlogDistrictSummary.map((row) => {
+                const active = boardDistrictFilter === row.districtKey && boardSubdistrictFilter === '';
+                return (
+                  <button
+                    key={row.districtKey}
+                    type="button"
+                    title={`${row.count} ร้าน · ${row.pallets.toFixed(1)} พาเลท`}
+                    onClick={() => onDistrictChipClick(row.districtKey)}
+                    className={`inline-flex items-center gap-0.5 shrink-0 rounded-md px-1.5 py-0.5 text-[9px] font-bold border transition-colors touch-manipulation ${
+                      active
+                        ? 'border-enterprise-500 bg-enterprise-100 text-enterprise-900 dark:border-enterprise-400 dark:bg-enterprise-900/35 dark:text-enterprise-100'
+                        : 'border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-600 dark:bg-charcoal-800 dark:text-slate-200'
+                    }`}
+                  >
+                    <span className="max-w-[6rem] truncate">{row.districtKey}</span>
+                    <span className="tabular-nums opacity-80">{row.count}</span>
+                  </button>
+                );
+              })
+            )}
+          </div>
+        </div>
+
+        <div className="flex flex-wrap sm:flex-nowrap items-stretch gap-1.5 shrink-0 lg:border-l lg:border-slate-200 lg:dark:border-slate-700 lg:pl-2">
+          <select
+            value={boardDistrictFilter}
+            onChange={(e) => onBoardDistrictFilterChange(e.target.value)}
+            className="min-w-0 flex-1 sm:flex-none sm:min-w-[7rem] h-8 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-charcoal-800 dark:[color-scheme:dark] px-1.5 text-[10px] font-bold text-slate-900 dark:text-slate-100 outline-none focus:ring-1 focus:ring-enterprise-500"
+            aria-label="อำเภอ / เขต"
+          >
+            <option value="">ทุกอำเภอ</option>
+            {boardDistrictOptionKeys.map((d) => (
+              <option key={d} value={d}>
+                {d}
+              </option>
+            ))}
+          </select>
+          <select
+            value={boardSubdistrictFilter}
+            onChange={(e) => setBoardSubdistrictFilter(e.target.value)}
+            className="min-w-0 flex-1 sm:flex-none sm:min-w-[7.5rem] h-8 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-charcoal-800 dark:[color-scheme:dark] px-1.5 text-[10px] font-bold text-slate-900 dark:text-slate-100 outline-none focus:ring-1 focus:ring-enterprise-500"
+            aria-label="ตำบล / แขวง"
+          >
+            <option value="">{boardDistrictFilter ? 'ทุกตำบล' : 'ตำบล (คู่ ต.·อ.)'}</option>
+            {boardSubdistrictSelectOptions.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+          {(boardDistrictFilter || boardSubdistrictFilter) && (
+            <button
+              type="button"
+              onClick={() => onBoardDistrictFilterChange('')}
+              className="h-8 px-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-charcoal-900 text-[10px] font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-charcoal-800 whitespace-nowrap"
+            >
+              ล้างพื้นที่
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function BacklogColumn({
+  backlog,
+  searchQuery,
+  setSearchQuery,
+  selectAllFilteredInBacklog,
+  filteredBacklog,
+  selectedStoreIds,
+  onToggleSelect,
+  onClearSelection,
+}: {
+  backlog: PlanningStore[];
+  searchQuery: string;
+  setSearchQuery: (q: string) => void;
+  selectAllFilteredInBacklog: () => void;
+  filteredBacklog: PlanningStore[];
+  selectedStoreIds: Set<string>;
+  onToggleSelect: (id: string) => void;
+  onClearSelection: () => void;
+}) {
+  const { setNodeRef } = useDroppable({ id: 'backlog-container' });
+
+  return (
     <div className="w-full lg:w-80 flex flex-col bg-white dark:bg-charcoal-900 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden shadow-sm shrink-0 max-h-[min(70vh,960px)] min-h-0">
-      <div className="shrink-0 p-2 border-b border-slate-100 dark:border-slate-800 space-y-2">
+      <div className="shrink-0 p-2 border-b border-slate-100 dark:border-slate-800 space-y-1.5">
         <h2 className="font-black text-slate-900 dark:text-white flex items-center gap-2 text-[11px] uppercase tracking-wider">
           <Package size={14} className="text-enterprise-600 dark:text-enterprise-400 shrink-0" aria-hidden />
           <span>
@@ -347,7 +432,7 @@ function BacklogColumn({
         </h2>
 
         <Input
-          placeholder="ค้นหาร้าน / อำเภอ / ตำบล…"
+          placeholder="ค้นหาร้าน…"
           className="h-8 text-xs"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
@@ -378,113 +463,6 @@ function BacklogColumn({
             </>
           )}
         </div>
-
-        <div className="flex gap-1 items-stretch">
-          <button
-            type="button"
-            onClick={() => setAreaFiltersOpen((v) => !v)}
-            className="flex-1 min-w-0 flex items-center justify-between gap-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/80 dark:bg-charcoal-800/60 px-2 py-1.5 text-left hover:bg-slate-100/90 dark:hover:bg-charcoal-800 transition-colors"
-            aria-expanded={areaFiltersOpen}
-          >
-            <span className="flex items-center gap-1.5 min-w-0 text-[10px] font-black uppercase tracking-wide text-slate-600 dark:text-slate-400">
-              <ChevronDown
-                size={14}
-                className={`shrink-0 text-slate-500 transition-transform ${areaFiltersOpen ? 'rotate-180' : ''}`}
-                aria-hidden
-              />
-              <span className="truncate">กรองอำเภอ / ตำบล · ภาพรวม</span>
-            </span>
-            {(boardDistrictFilter || boardSubdistrictFilter) && (
-              <span className="shrink-0 text-[9px] font-bold rounded bg-enterprise-500/20 text-enterprise-800 dark:text-enterprise-200 px-1.5 py-0.5">
-                ใช้งาน
-              </span>
-            )}
-          </button>
-          {(boardDistrictFilter || boardSubdistrictFilter) && (
-            <button
-              type="button"
-              title="ล้างตัวกรองพื้นที่"
-              onClick={() => onBoardDistrictFilterChange('')}
-              className="shrink-0 px-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-charcoal-900 text-[10px] font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-charcoal-800"
-            >
-              ล้าง
-            </button>
-          )}
-        </div>
-
-        {areaFiltersOpen && (
-          <div className="space-y-2 pt-0.5 border-t border-slate-100 dark:border-slate-800/90">
-            {backlogDistrictSummary.length > 0 && (
-              <div>
-                <div className="text-[9px] font-bold text-slate-500 dark:text-slate-400 mb-1 px-0.5">
-                  แตะชิป = เลือกอำเภอ (กดซ้ำยกเลิก)
-                </div>
-                <div className="flex flex-nowrap gap-1 overflow-x-auto pb-0.5 scrollbar-thin">
-                  {backlogDistrictSummary.map((row) => {
-                    const active = boardDistrictFilter === row.districtKey && boardSubdistrictFilter === '';
-                    return (
-                      <button
-                        key={row.districtKey}
-                        type="button"
-                        title={`${row.count} ร้าน · ${row.pallets.toFixed(1)} พาเลท`}
-                        onClick={() => onDistrictChipClick(row.districtKey)}
-                        className={`inline-flex items-center gap-0.5 shrink-0 rounded-md px-1.5 py-0.5 text-[9px] font-bold border transition-colors touch-manipulation ${
-                          active
-                            ? 'border-enterprise-500 bg-enterprise-100 text-enterprise-900 dark:border-enterprise-400 dark:bg-enterprise-900/35 dark:text-enterprise-100'
-                            : 'border-slate-200 bg-white text-slate-700 dark:border-slate-600 dark:bg-charcoal-900 dark:text-slate-200'
-                        }`}
-                      >
-                        <span className="max-w-[5.5rem] truncate">{row.districtKey}</span>
-                        <span className="tabular-nums opacity-80">{row.count}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            <div className="grid grid-cols-2 gap-1.5">
-              <select
-                value={boardDistrictFilter}
-                onChange={(e) => onBoardDistrictFilterChange(e.target.value)}
-                className="min-w-0 h-8 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-charcoal-800 dark:[color-scheme:dark] px-1.5 text-[10px] font-bold text-slate-900 dark:text-slate-100 outline-none focus:ring-1 focus:ring-enterprise-500"
-                aria-label="กรองตามอำเภอหรือเขต"
-              >
-                <option value="">ทุกอำเภอ</option>
-                {boardDistrictOptionKeys.map((d) => (
-                  <option key={d} value={d}>
-                    {d}
-                  </option>
-                ))}
-              </select>
-              <select
-                value={boardSubdistrictFilter}
-                onChange={(e) => setBoardSubdistrictFilter(e.target.value)}
-                className="min-w-0 h-8 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-charcoal-800 dark:[color-scheme:dark] px-1.5 text-[10px] font-bold text-slate-900 dark:text-slate-100 outline-none focus:ring-1 focus:ring-enterprise-500"
-                aria-label="กรองตามตำบลหรือแขวง"
-              >
-                <option value="">
-                  {boardDistrictFilter ? 'ทุกตำบล' : 'ตำบล (คู่ ต.·อ.)'}
-                </option>
-                {boardSubdistrictSelectOptions.map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {(boardDistrictFilter || boardSubdistrictFilter) && (
-              <button
-                type="button"
-                onClick={() => onBoardDistrictFilterChange('')}
-                className="text-[10px] font-bold text-slate-500 hover:text-slate-900 dark:hover:text-white w-full text-center py-0.5"
-              >
-                ล้างตัวกรองพื้นที่
-              </button>
-            )}
-          </div>
-        )}
       </div>
 
       <div
@@ -764,24 +742,24 @@ function VehicleLane({
   const vehicle = availableVehicles.find((v) => v.id === lane.vehicle_id);
 
   return (
-    <div className="w-72 shrink-0 flex flex-col bg-white dark:bg-charcoal-900 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden shadow-sm max-h-[min(70vh,960px)]">
-      <div className="p-3 border-b border-slate-100 dark:border-slate-800">
-        <div className="flex items-center gap-2 mb-2">
+    <div className="w-72 shrink-0 flex flex-col bg-white dark:bg-charcoal-900 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden shadow-sm max-h-[min(70vh,960px)] min-h-0">
+      <div className="p-2 border-b border-slate-100 dark:border-slate-800">
+        <div className="flex items-center gap-1.5">
           <div
-            className={`p-1.5 rounded-lg ${
+            className={`p-1 rounded-md shrink-0 ${
               lane.vehicle_id
                 ? 'bg-enterprise-100 text-enterprise-600 dark:bg-enterprise-900/40'
                 : 'bg-slate-100 text-slate-400 dark:bg-slate-800'
             }`}
           >
-            <Truck size={16} />
+            <Truck size={14} />
           </div>
           <select
-            className="flex-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 text-xs font-bold text-slate-900 dark:text-white outline-none"
+            className="flex-1 min-w-0 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-1.5 py-1 text-[11px] font-bold text-slate-900 dark:text-white outline-none"
             value={lane.vehicle_id || ''}
             onChange={(e) => onVehicleChange(e.target.value || null)}
           >
-            <option value="">เลือกรถ...</option>
+            <option value="">เลือกรถ…</option>
             {availableVehicles.map((v) => (
               <option key={v.id} value={v.id}>
                 {v.plate} {v.model ? `· ${v.model}` : ''}
@@ -790,18 +768,18 @@ function VehicleLane({
           </select>
         </div>
         {vehicle ? (
-          <div className="flex justify-between text-[10px] font-bold text-slate-500 dark:text-slate-400">
+          <div className="mt-1 flex justify-between text-[9px] font-bold text-slate-500 dark:text-slate-400">
             <span>สูงสุด</span>
-            <span className="text-enterprise-600 dark:text-enterprise-400">
+            <span className="text-enterprise-600 dark:text-enterprise-400 tabular-nums">
               {vehicle.loading_constraints?.max_pallets ?? 8} PL
             </span>
           </div>
         ) : (
-          <p className="text-[10px] text-amber-600 dark:text-amber-400 font-bold text-center">ยังไม่เลือกรถ</p>
+          <p className="mt-1 text-[9px] text-amber-600 dark:text-amber-400 font-bold text-center leading-tight">ยังไม่เลือกรถ</p>
         )}
       </div>
 
-      <div className="flex-1 overflow-y-auto p-2.5 space-y-3 bg-slate-50/50 dark:bg-charcoal-950/30 scrollbar-thin">
+      <div className="flex-1 min-h-0 overflow-y-auto p-2 space-y-2 bg-slate-50/50 dark:bg-charcoal-950/30 scrollbar-thin">
         {lane.slots.map((slot, idx) => (
           <TripSlot
             key={slot.id}
@@ -818,7 +796,7 @@ function VehicleLane({
         ))}
         <button
           type="button"
-          className="w-full py-2.5 border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-xl text-[10px] font-black text-slate-400 hover:text-enterprise-600 flex items-center justify-center gap-1.5"
+          className="w-full py-2 border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-xl text-[10px] font-black text-slate-400 hover:text-enterprise-600 flex items-center justify-center gap-1"
           onClick={onAddSlot}
         >
           <Plus size={14} />
@@ -877,11 +855,11 @@ function TripSlot({
             : 'border-white dark:border-slate-700 bg-white dark:bg-charcoal-900'
       }`}
     >
-      <div className="px-3 py-2 border-b flex items-center justify-between gap-2 flex-wrap bg-slate-50/80 dark:bg-slate-800/40">
-        <span className="text-[10px] font-black uppercase text-slate-500 dark:text-slate-400 tracking-widest">
+      <div className="px-2 py-1.5 border-b flex items-center justify-between gap-2 flex-wrap bg-slate-50/80 dark:bg-slate-800/40">
+        <span className="text-[9px] font-black uppercase text-slate-500 dark:text-slate-400 tracking-widest">
           เที่ยว {index + 1}
         </span>
-        <div className="flex items-center gap-1.5 flex-wrap justify-end">
+        <div className="flex items-center gap-1 flex-wrap justify-end">
           {isOver && <AlertTriangle size={12} className="text-red-500" aria-hidden />}
           {isLow && !isOver && <Info size={12} className="text-amber-600 dark:text-amber-500" aria-hidden />}
           <span
@@ -901,38 +879,31 @@ function TripSlot({
         </div>
       </div>
 
-      <div className="px-2 pt-2 space-y-1.5 border-b border-slate-100 dark:border-slate-800/80 pb-2">
-        <label className="flex items-center gap-2 text-[10px]">
-          <User size={14} className="text-slate-400 shrink-0" aria-hidden />
-          <select
-            value={slot.driver_id ?? ''}
-            onChange={(e) => onDriverChange(e.target.value || null)}
-            className="flex-1 min-w-0 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-charcoal-800 px-2 py-1.5 text-[11px] font-semibold text-slate-900 dark:text-slate-100"
-          >
-            <option value="">คนขับ — ใช้ผู้ใช้ปัจจุบัน (ถ้าไม่ระบุ)</option>
-            {drivers.map((d) => (
-              <option key={d.id} value={d.id}>
-                {d.full_name || d.id}
-              </option>
-            ))}
-          </select>
-        </label>
-        <div>
-          <label className="sr-only" htmlFor={`svc-${slot.id}`}>
-            ประเภทงาน
-          </label>
-          <select
-            id={`svc-${slot.id}`}
-            value={svc}
-            onChange={(e) => onServiceTypeChange(e.target.value as PlanningTripServiceType)}
-            className="w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-charcoal-800 px-2 py-1.5 text-[11px] font-semibold text-slate-900 dark:text-slate-100"
-          >
-            <option value="carry_in">ลงมือ</option>
-            <option value="lift_off">ตักลง</option>
-            <option value="standard">ทั่วไป (ค่ามาตรฐาน)</option>
-          </select>
-          <p className="mt-1 text-[9px] text-slate-500 dark:text-slate-400 px-0.5">ประเภทงานมีผลต่อเรทคอมมิชชัน</p>
-        </div>
+      <div className="px-2 py-1 grid grid-cols-2 gap-1 border-b border-slate-100 dark:border-slate-800/80">
+        <select
+          value={slot.driver_id ?? ''}
+          onChange={(e) => onDriverChange(e.target.value || null)}
+          className="min-w-0 rounded-md border border-slate-200 dark:border-slate-600 bg-white dark:bg-charcoal-800 pl-1 pr-0 py-1 text-[10px] font-semibold text-slate-900 dark:text-slate-100"
+          aria-label="คนขับ"
+        >
+          <option value="">คนขับ (ค่าเริ่มต้น)</option>
+          {drivers.map((d) => (
+            <option key={d.id} value={d.id}>
+              {d.full_name || d.id}
+            </option>
+          ))}
+        </select>
+        <select
+          id={`svc-${slot.id}`}
+          value={svc}
+          onChange={(e) => onServiceTypeChange(e.target.value as PlanningTripServiceType)}
+          className="min-w-0 rounded-md border border-slate-200 dark:border-slate-600 bg-white dark:bg-charcoal-800 px-1 py-1 text-[10px] font-semibold text-slate-900 dark:text-slate-100"
+          aria-label="ประเภทงาน"
+        >
+          <option value="carry_in">ลงมือ</option>
+          <option value="lift_off">ตักลง</option>
+          <option value="standard">ทั่วไป</option>
+        </select>
       </div>
 
       {slot.stores.length > 0 && (
