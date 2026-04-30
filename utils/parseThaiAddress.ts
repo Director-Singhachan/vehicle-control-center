@@ -89,3 +89,17 @@ export function getDistrictKey(address: string | null | undefined): string {
     }
     return 'ไม่ระบุอำเภอ';
 }
+
+/**
+ * Get sub-district / khwaeng label for filters (ตำบล or แขวง parsed the same way).
+ */
+export function getSubDistrictKey(address: string | null | undefined): string {
+    const parsed = parseThaiAddress(address);
+    if (parsed.subDistrict) {
+        return `ต.${parsed.subDistrict}`;
+    }
+    return 'ไม่ระบุตำบล';
+}
+
+/** ตัวคั่นค่าใน select เมื่อเลือกคู่ อ.x / ต.y แบบเลือกทุกอำเภอ */
+export const THAI_LOCATION_PAIR_SEP = '\u001f';

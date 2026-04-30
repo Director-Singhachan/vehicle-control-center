@@ -21,7 +21,12 @@ import { vehicleService } from '../services/vehicleService';
 import { profileService } from '../services/profileService';
 import { tripMetricsService } from '../services/tripMetricsService';
 import { supabase } from '../lib/supabase';
-import { getAreaGroupKey, getDistrictKey } from '../utils/parseThaiAddress';
+import {
+  getAreaGroupKey,
+  getDistrictKey,
+  getSubDistrictKey,
+  THAI_LOCATION_PAIR_SEP,
+} from '../utils/parseThaiAddress';
 import { orderQueryFiltersForUiBranch, normalizeProfileBranch } from '../utils/orderUserScope';
 import {
   BRANCH_ALL_VALUE,
@@ -56,6 +61,8 @@ export interface PlanningStore {
   total_weight_kg: number;
   areaKey: string;
   districtKey: string;
+  /** ตำบล / แขวง สำหรับกรองและจัดกลุ่ม */
+  subDistrictKey: string;
 }
 
 /** ตรงกับ delivery_trips.service_type + wizard (ลงมือ/ตักลง/ค่าเริ่มต้นระบบ) */
@@ -174,6 +181,17 @@ function buildPlanningLineItems(
     .sort((a, b) => a.product_name.localeCompare(b.product_name, 'th'));
 }
 
+/** ที่อยู่จากแถว orders_with_details / pending — ไม่มี nested store */
+function pendingOrderAddress(order: any): string | null {
+  const d = order?.delivery_address;
+  if (d != null && String(d).trim() !== '') return String(d).trim();
+  const s = order?.store_address;
+  if (s != null && String(s).trim() !== '') return String(s).trim();
+  const nested = order?.store?.address;
+  if (nested != null && String(nested).trim() !== '') return String(nested).trim();
+  return null;
+}
+
 async function mapPendingOrdersToStores(ordersWithItems: any[]): Promise<PlanningStore[]> {
   const storeMap = new Map<string, PlanningStore>();
 
@@ -181,9 +199,10 @@ async function mapPendingOrdersToStores(ordersWithItems: any[]): Promise<Plannin
     const storeId = order.store_id as string | undefined;
     if (!storeId) continue;
 
-    const addr = order.delivery_address || order.store?.address || null;
+    const addr = pendingOrderAddress(order);
     const areaKey = getAreaGroupKey(addr);
     const districtKey = getDistrictKey(addr);
+    const subDistrictKey = getSubDistrictKey(addr);
 
     if (!storeMap.has(storeId)) {
       storeMap.set(storeId, {
@@ -198,7 +217,16 @@ async function mapPendingOrdersToStores(ordersWithItems: any[]): Promise<Plannin
         total_weight_kg: 0,
         areaKey,
         districtKey,
+        subDistrictKey,
       });
+    } else {
+      const st = storeMap.get(storeId)!;
+      if (!st.address && addr) {
+        st.address = addr;
+        st.areaKey = areaKey;
+        st.districtKey = districtKey;
+        st.subDistrictKey = subDistrictKey;
+      }
     }
     storeMap.get(storeId)!.orders.push(order);
   }
@@ -298,6 +326,38 @@ function mergeServerPendingIntoDraft(
   return { lanes: nextLanes, backlog };
 }
 
+function planningStoreSubDistrictKey(s: PlanningStore): string {
+  return s.subDistrictKey ?? getSubDistrictKey(s.address);
+}
+
+function storeMatchesBoardLocation(s: PlanningStore, districtFilter: string, subFilter: string): boolean {
+  const dKey = s.districtKey;
+  const sKey = planningStoreSubDistrictKey(s);
+  const allD = districtFilter === '';
+  const allS = subFilter === '';
+  if (allD && allS) return true;
+  if (!allD && allS) return dKey === districtFilter;
+  if (!allD && !allS) return dKey === districtFilter && sKey === subFilter;
+  if (allD && !allS) {
+    const sep = THAI_LOCATION_PAIR_SEP;
+    const i = subFilter.indexOf(sep);
+    if (i !== -1) {
+      const d = subFilter.slice(0, i);
+      const t = subFilter.slice(i + sep.length);
+      return dKey === d && sKey === t;
+    }
+    return sKey === subFilter;
+  }
+  return true;
+}
+
+export interface BacklogDistrictSummaryRow {
+  districtKey: string;
+  count: number;
+  pallets: number;
+  weightKg: number;
+}
+
 export function useTripPlanningBoard() {
   const { profile } = useAuth();
   const toastApi = useToast();
@@ -326,6 +386,8 @@ export function useTripPlanningBoard() {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [activeStore, setActiveStore] = useState<PlanningStore | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [boardDistrictFilter, setBoardDistrictFilter] = useState('');
+  const [boardSubdistrictFilter, setBoardSubdistrictFilter] = useState('');
   const [selectedStoreIds, setSelectedStoreIds] = useState<Set<string>>(() => new Set());
 
   const ordersFetchFilters = useMemo(() => {
@@ -491,17 +553,78 @@ export function useTripPlanningBoard() {
     }
   }, [featureLoading, canUseBoard, orderScope.loading, ordersFetchFilters, fetchData, branchScopeReady]);
 
+  const backlogDistrictSummary = useMemo(() => {
+    const m = new Map<string, { count: number; pallets: number; weightKg: number }>();
+    for (const s of backlog) {
+      const cur = m.get(s.districtKey) ?? { count: 0, pallets: 0, weightKg: 0 };
+      cur.count += 1;
+      cur.pallets += s.total_pallets;
+      cur.weightKg += s.total_weight_kg;
+      m.set(s.districtKey, cur);
+    }
+    return [...m.entries()]
+      .map(([districtKey, agg]) => ({ districtKey, ...agg }))
+      .sort((a, b) => a.districtKey.localeCompare(b.districtKey, 'th'));
+  }, [backlog]);
+
+  const boardDistrictOptionKeys = useMemo(() => {
+    const u = new Set(backlog.map((s) => s.districtKey));
+    return [...u].sort((a, b) => a.localeCompare(b, 'th'));
+  }, [backlog]);
+
+  const boardSubdistrictSelectOptions = useMemo((): { value: string; label: string }[] => {
+    if (boardDistrictFilter) {
+      const subs = new Set<string>();
+      for (const st of backlog) {
+        if (st.districtKey === boardDistrictFilter) subs.add(planningStoreSubDistrictKey(st));
+      }
+      return [...subs]
+        .sort((a, b) => a.localeCompare(b, 'th'))
+        .map((sub) => ({ value: sub, label: sub }));
+    }
+    const seen = new Set<string>();
+    const out: { value: string; label: string }[] = [];
+    for (const st of backlog) {
+      const d = st.districtKey;
+      const sub = planningStoreSubDistrictKey(st);
+      const value = `${d}${THAI_LOCATION_PAIR_SEP}${sub}`;
+      if (seen.has(value)) continue;
+      seen.add(value);
+      out.push({
+        value,
+        label: `${sub} · ${d}`,
+      });
+    }
+    out.sort((a, b) => a.label.localeCompare(b.label, 'th'));
+    return out;
+  }, [backlog, boardDistrictFilter]);
+
   const filteredBacklog = useMemo(() => {
-    if (!searchQuery.trim()) return backlog;
-    const lower = searchQuery.toLowerCase();
-    return backlog.filter(
-      (s) =>
-        s.customer_name.toLowerCase().includes(lower) ||
-        s.customer_code.toLowerCase().includes(lower) ||
-        s.districtKey.toLowerCase().includes(lower) ||
-        s.areaKey.toLowerCase().includes(lower),
+    let list = backlog.filter((s) =>
+      storeMatchesBoardLocation(s, boardDistrictFilter, boardSubdistrictFilter),
     );
-  }, [backlog, searchQuery]);
+    if (searchQuery.trim()) {
+      const lower = searchQuery.toLowerCase();
+      list = list.filter(
+        (s) =>
+          s.customer_name.toLowerCase().includes(lower) ||
+          s.customer_code.toLowerCase().includes(lower) ||
+          s.districtKey.toLowerCase().includes(lower) ||
+          planningStoreSubDistrictKey(s).toLowerCase().includes(lower) ||
+          s.areaKey.toLowerCase().includes(lower),
+      );
+    }
+    return list;
+  }, [backlog, searchQuery, boardDistrictFilter, boardSubdistrictFilter]);
+
+  const onBoardDistrictFilterChange = useCallback((value: string) => {
+    setBoardDistrictFilter(value);
+    setBoardSubdistrictFilter('');
+  }, []);
+
+  const selectAllFilteredInBacklog = useCallback(() => {
+    setSelectedStoreIds(new Set(filteredBacklog.map((s) => s.id)));
+  }, [filteredBacklog]);
 
   const findContainer = useCallback(
     (id: string) => {
@@ -884,6 +1007,14 @@ export function useTripPlanningBoard() {
     activeStore,
     searchQuery,
     setSearchQuery,
+    boardDistrictFilter,
+    boardSubdistrictFilter,
+    setBoardSubdistrictFilter,
+    onBoardDistrictFilterChange,
+    backlogDistrictSummary,
+    boardDistrictOptionKeys,
+    boardSubdistrictSelectOptions,
+    selectAllFilteredInBacklog,
     filteredBacklog,
     selectedStoreIds,
     toggleSelectStore,
