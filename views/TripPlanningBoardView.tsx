@@ -23,6 +23,9 @@ import {
   MapPin,
   Eye,
   Undo2,
+  ChevronDown,
+  ChevronUp,
+  ListTree,
 } from 'lucide-react';
 
 import { Button } from '../components/ui/Button';
@@ -42,6 +45,7 @@ import {
 import type {
   BacklogDistrictSummaryRow,
   PlanningLane,
+  PlanningLineItem,
   PlanningSlot,
   PlanningStore,
   PlanningTripServiceType,
@@ -558,6 +562,7 @@ function BacklogColumn({
               selected={selectedStoreIds.has(store.id)}
               onToggleSelect={() => onToggleSelect(store.id)}
               onViewOrder={onViewOrder}
+              showBacklogLineExpand
             />
           ))}
         </SortableContext>
@@ -713,6 +718,42 @@ function TripSlotProductsDialog({
   );
 }
 
+function ProductLinesList({
+  lines,
+  dense,
+}: {
+  lines: PlanningLineItem[];
+  /** ข้อความเล็กลงในพื้นที่แคบ */
+  dense?: boolean;
+}) {
+  if (lines.length === 0) return null;
+  const textCls = dense ? 'text-[10px]' : 'text-xs';
+  return (
+    <ul
+      className={`rounded-lg border border-current/15 bg-white/50 dark:bg-charcoal-950/50 divide-y divide-current/10 max-h-[min(55vh,480px)] overflow-y-auto scrollbar-thin ${textCls}`}
+      onPointerDown={(e) => e.stopPropagation()}
+    >
+      {lines.map((line) => (
+        <li
+          key={`${line.product_id}-${line.unit ?? ''}-${line.is_bonus}`}
+          className="flex justify-between gap-2 px-2 py-1.5 leading-snug"
+        >
+          <span className="min-w-0 flex-1 text-slate-900 dark:text-slate-100">
+            {line.product_name}
+            {line.is_bonus ? (
+              <span className="text-rose-600 dark:text-rose-400 font-semibold ml-1">bonus</span>
+            ) : null}
+          </span>
+          <span className="shrink-0 tabular-nums font-bold text-slate-800 dark:text-slate-100">
+            {line.quantity % 1 === 0 ? line.quantity : line.quantity.toFixed(2)}
+            {line.unit ? ` ${line.unit}` : ''}
+          </span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 function StorePostIt({
   store,
   colorClass,
@@ -721,6 +762,7 @@ function StorePostIt({
   onToggleSelect,
   onViewOrder,
   onReturnToQueue,
+  showBacklogLineExpand,
 }: {
   store: PlanningStore;
   colorClass: string;
@@ -730,10 +772,14 @@ function StorePostIt({
   onViewOrder?: (order: any) => void;
   /** ถ้ามี = แสดงปุ่มเอากลับคิว (เฉพาะการ์ดในเที่ยว) */
   onReturnToQueue?: () => void;
+  /** เฉพาะคิวรอจัด — แสดงปุ่มแสดง/ซ่อนรายการสินค้าทั้งหมด (รวมทุกบิลในการ์ด) */
+  showBacklogLineExpand?: boolean;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: store.id,
   });
+
+  const [showAllProducts, setShowAllProducts] = useState(false);
 
   const lineItems = store.line_items ?? [];
   const lineQtySum = lineItems.reduce((s, l) => s + l.quantity, 0);
@@ -743,6 +789,8 @@ function StorePostIt({
     transition,
     opacity: isDragging ? 0.25 : 1,
   };
+
+  const stopDrag = (e: React.PointerEvent | React.MouseEvent) => e.stopPropagation();
 
   return (
     <div
@@ -802,31 +850,56 @@ function StorePostIt({
           <div className="text-[10px] opacity-80 line-clamp-2 mb-2">
             {store.address || 'ไม่มีที่อยู่'}
           </div>
-          {onViewOrder && !isOverlay && (store.orders?.length ?? 0) > 0 && (
-            <div
-              className="flex flex-nowrap gap-1 overflow-x-auto scrollbar-thin mb-2 pb-0.5"
-              onPointerDown={(e) => e.stopPropagation()}
-            >
-              {(store.orders ?? []).map((o: any) => (
-                <button
-                  key={o.id}
-                  type="button"
-                  title={`ดูรายละเอียด ${o.order_number || o.id}`}
-                  onClick={() => onViewOrder(o)}
-                  className="inline-flex items-center gap-0.5 shrink-0 rounded-md border border-current/25 bg-white/90 dark:bg-charcoal-900/70 px-1.5 py-0.5 text-[9px] font-bold text-slate-800 dark:text-slate-100 hover:border-enterprise-400 hover:bg-enterprise-50/80 dark:hover:bg-enterprise-900/30"
-                >
-                  <Eye size={10} className="opacity-80 shrink-0" aria-hidden />
-                  <span className="truncate max-w-[5.5rem]">{o.order_number || 'บิล'}</span>
-                </button>
-              ))}
-            </div>
-          )}
-          {(lineItems.length) > 0 && (
+
+          {lineItems.length > 0 && (
             <div className="text-[10px] font-semibold opacity-75 mb-1.5">
-              {lineItems.length} รายการสินค้า · รวม{' '}
-              {lineQtySum % 1 === 0 ? lineQtySum : lineQtySum.toFixed(2)} หน่วย
+              {lineItems.length} รายการสินค้า · รวม {lineQtySum % 1 === 0 ? lineQtySum : lineQtySum.toFixed(2)} หน่วย
             </div>
           )}
+
+          {showBacklogLineExpand && !isOverlay && lineItems.length > 0 && (
+            <div className="mb-2 space-y-1.5" onPointerDown={stopDrag}>
+              <button
+                type="button"
+                onClick={() => setShowAllProducts((v) => !v)}
+                className="w-full flex items-center justify-center gap-1.5 py-1.5 rounded-lg border border-current/20 bg-white/80 dark:bg-charcoal-900/60 text-[10px] font-bold text-slate-800 dark:text-slate-100 hover:bg-white dark:hover:bg-charcoal-800 shadow-sm"
+              >
+                <ListTree size={12} className="shrink-0 opacity-80" aria-hidden />
+                {showAllProducts ? (
+                  <>
+                    ซ่อนรายการสินค้าทั้งหมด
+                    <ChevronUp size={12} className="shrink-0" aria-hidden />
+                  </>
+                ) : (
+                  <>
+                    แสดงรายการสินค้าทั้งหมด ({lineItems.length})
+                    <ChevronDown size={12} className="shrink-0" aria-hidden />
+                  </>
+                )}
+              </button>
+              {showAllProducts ? <ProductLinesList lines={lineItems} dense /> : null}
+            </div>
+          )}
+
+          {onViewOrder && !isOverlay && (store.orders?.length ?? 0) > 0 && (
+            <div className="mb-2 space-y-1.5" onPointerDown={stopDrag}>
+              <div className="flex flex-nowrap gap-1 overflow-x-auto scrollbar-thin pb-0.5">
+                {(store.orders ?? []).map((o: any) => (
+                  <button
+                    key={o.id ?? o.order_number}
+                    type="button"
+                    title={`ดูรายละเอียด ${o.order_number || o.id}`}
+                    onClick={() => onViewOrder(o)}
+                    className="inline-flex items-center gap-0.5 shrink-0 rounded-md border border-current/25 bg-white/90 dark:bg-charcoal-900/70 px-1.5 py-0.5 text-[9px] font-bold text-slate-800 dark:text-slate-100 hover:border-enterprise-400 hover:bg-enterprise-50/80 dark:hover:bg-enterprise-900/30"
+                  >
+                    <Eye size={10} className="opacity-80 shrink-0" aria-hidden />
+                    <span className="truncate max-w-[5.5rem]">{o.order_number || 'บิล'}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div className="flex items-center justify-between pt-2 border-t border-current/15">
             <div className="text-[10px] font-black flex items-center gap-1 bg-black/[0.05] dark:bg-white/[0.08] px-1.5 py-0.5 rounded tabular-nums">
               <Package size={10} className="text-enterprise-600 dark:text-enterprise-300 shrink-0 opacity-90" aria-hidden />
