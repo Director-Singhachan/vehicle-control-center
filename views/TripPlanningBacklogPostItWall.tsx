@@ -46,7 +46,7 @@ function WallPostItCard({
   onViewOrder: (order: any) => void;
   rotateIdx: number;
 }) {
-  const [showLines, setShowLines] = useState(false);
+  const [showLines, setShowLines] = useState(true);
   const colorClass = districtAreaColorClass(store.areaKey, store.districtKey);
   const lineItems = store.line_items ?? [];
   const lineQtySum = lineItems.reduce((s, l) => s + l.quantity, 0);

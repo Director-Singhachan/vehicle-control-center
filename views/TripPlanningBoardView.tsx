@@ -801,7 +801,7 @@ function StorePostIt({
     id: store.id,
   });
 
-  const [showAllProducts, setShowAllProducts] = useState(false);
+  const [showAllProducts, setShowAllProducts] = useState(!!showBacklogLineExpand);
 
   const lineItems = store.line_items ?? [];
   const lineQtySum = lineItems.reduce((s, l) => s + l.quantity, 0);
